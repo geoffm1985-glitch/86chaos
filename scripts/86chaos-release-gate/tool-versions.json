@@ -1,0 +1,11 @@
+{
+  "@playwright/test": "1.49.1",
+  "@axe-core/playwright": "4.10.2",
+  "@firebase/rules-unit-testing": "3.0.3",
+  "firebase-tools": "15.24.0",
+  "@testing-library/react": "13.4.0",
+  "@testing-library/jest-dom": "6.6.3",
+  "@testing-library/user-event": "14.6.1",
+  "eslint": "8.57.1",
+  "fast-check": "3.23.2"
+}

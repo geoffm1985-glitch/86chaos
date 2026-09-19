@@ -1,0 +1,3240 @@
+{
+  "ok": true,
+  "version": "16.0.150",
+  "generatedAt": "2026-08-08T08:22:51.738Z",
+  "searchResults": [
+    {
+      "question": "why aren't my schedules publishing",
+      "topArticleIds": [
+        "schedule-publish",
+        "availability-use",
+        "my-schedule-view"
+      ],
+      "answer": {
+        "ok": true,
+        "answer": "Schedules usually stay unpublished when the week has not been selected, changes were made after the last publish, or the wrong schedule period is open. Schedules usually stay unpublished when the correct week is not selected, the shifts are still drafts, or you are looking at a different schedule period. Try this: Open [[Schedule Builder|schedule-builder]]. Check that you are on the right week or month. Choose Publish.",
+        "sourceArticleIds": [
+          "schedule-publish",
+          "availability-use",
+          "my-schedule-view"
+        ],
+        "suggestedDeepLinkIds": [
+          "schedule-builder",
+          "my-schedule",
+          "full-schedule",
+          "availability"
+        ],
+        "confidence": 0.82,
+        "insufficientInformation": false,
+        "matches": [
+          {
+            "id": "schedule-publish",
+            "title": "Why aren’t my schedules publishing?",
+            "subjectId": "schedule-time-clock",
+            "subtopicId": "schedule-publishing",
+            "audience": "Manager / Owner",
+            "summary": "Schedules usually stay unpublished when the week has not been selected, changes were made after the last publish, or the wrong schedule period is open.",
+            "commonQuestions": [
+              "Why aren't my schedules publishing?",
+              "Schedule not publishing",
+              "How do I publish selected weeks?"
+            ],
+            "keywords": [
+              "schedule publish",
+              "publishing",
+              "selected weeks",
+              "draft shifts",
+              "live shifts",
+              "employee cannot see"
+            ],
+            "synonyms": [
+              "schedule publish",
+              "publishing",
+              "selected weeks",
+              "draft shifts",
+              "live shifts",
+              "employee cannot see"
+            ],
+            "sections": [
+              {
+                "title": "Short answer",
+                "body": [
+                  "Schedules usually stay unpublished when the correct week is not selected, the shifts are still drafts, or you are looking at a different schedule period."
+                ]
+              },
+              {
+                "title": "Try this",
+                "steps": [
+                  "Open [[Schedule Builder|schedule-builder]].",
+                  "Check that you are on the right week or month.",
+                  "Choose Publish.",
+                  "Select the week or weeks you want.",
+                  "Confirm the publish action.",
+                  "Open My Schedule or Full Schedule to verify the shifts appear."
+                ]
+              },
+              {
+                "title": "What staff should see",
+                "body": [
+                  "Employees see published shifts that are assigned to their correct employee account."
+                ]
+              }
+            ],
+            "troubleshooting": [
+              "If one employee cannot see a shift, check the employee identity on the shift.",
+              "If a whole week is missing, check selected-week publishing."
+            ],
+            "relatedArticleIds": [
+              "schedule-visibility",
+              "schedule-visibility"
+            ],
+            "deepLinkIds": [
+              "schedule-builder",
+              "my-schedule",
+              "full-schedule"
+            ],
+            "externalLinks": [],
+            "lastVerifiedVersion": "16.0.150",
+            "score": 100
+          },
+          {
+            "id": "availability-use",
+            "title": "How do I set my availability?",
+            "subjectId": "schedule-time-clock",
+            "subtopicId": "availability",
+            "audience": "Everyone",
+            "summary": "Availability tells managers when you usually can or cannot work.",
+            "commonQuestions": [
+              "How do I set availability?",
+              "Why can’t I work that day?"
+            ],
+            "keywords": [
+              "availability",
+              "cannot work",
+              "preferred time",
+              "schedule"
+            ],
+            "synonyms": [
+              "availability",
+              "cannot work",
+              "preferred time",
+              "schedule"
+            ],
+            "sections": [
+              {
+                "title": "Short answer",
+                "body": [
+                  "Open [[Availability|availability]] and save the days or times you can usually work."
+                ]
+              },
+              {
+                "title": "Important",
+                "body": [
+                  "Availability helps managers build the schedule. It is not the same as an approved day off. Use Request Off for specific dates."
+                ]
+              }
+            ],
+            "troubleshooting": [],
+            "relatedArticleIds": [
+              "request-off-how"
+            ],
+            "deepLinkIds": [
+              "availability"
+            ],
+            "externalLinks": [],
+            "lastVerifiedVersion": "16.0.150",
+            "score": 47
+          },
+          {
+            "id": "my-schedule-view",
+            "title": "How do I see my schedule?",
+            "subjectId": "schedule-time-clock",
+            "subtopicId": "my-schedule",
+            "audience": "Everyone",
+            "summary": "My Schedule shows your published shifts.",
+            "commonQuestions": [
+              "How do I see my schedule?",
+              "Where are my shifts?"
+            ],
+            "keywords": [
+              "my schedule",
+              "shift",
+              "published",
+              "see my shifts"
+            ],
+            "synonyms": [
+              "my schedule",
+              "shift",
+              "published",
+              "see my shifts"
+            ],
+            "sections": [
+              {
+                "title": "Short answer",
+                "body": [
+                  "Open [[My Schedule|my-schedule]] to see your published shifts."
+                ]
+              },
+              {
+                "title": "What you should see",
+                "steps": [
+                  "Open Time Clock & Schedule.",
+                  "Choose My Schedule.",
+                  "Look for your shifts by date.",
+                  "Use Full Schedule if your manager allows you to see more."
+                ]
+              }
+            ],
+            "troubleshooting": [
+              "If a shift is missing, ask a manager to confirm the schedule was published and that the shift is assigned to the right employee."
+            ],
+            "relatedArticleIds": [
+              "schedule-visibility"
+            ],
+            "deepLinkIds": [
+              "my-schedule",
+              "full-schedule"
+            ],
+            "externalLinks": [],
+            "lastVerifiedVersion": "16.0.150",
+            "score": 45
+          },
+          {
+            "id": "schedule-visibility",
+            "title": "Why can’t an employee see a shift?",
+            "subjectId": "schedule-time-clock",
+            "subtopicId": "schedule-visibility",
+            "audience": "Manager / Owner",
+            "summary": "A missing shift is usually unpublished, assigned to the wrong employee, or outside the view being checked.",
+            "commonQuestions": [
+              "Why can't Allen see his schedule?",
+              "Employee can't see schedule"
+            ],
+            "keywords": [
+              "employee cannot see schedule",
+              "shift missing",
+              "published",
+              "wrong employee",
+              "visibility"
+            ],
+            "synonyms": [
+              "employee cannot see schedule",
+              "shift missing",
+              "published",
+              "wrong employee",
+              "visibility"
+            ],
+            "sections": [
+              {
+                "title": "Short answer",
+                "body": [
+                  "Check publish status, date range, and the employee assigned to the shift."
+                ]
+              },
+              {
+                "title": "Try this",
+                "steps": [
+                  "Open [[Schedule Builder|schedule-builder]].",
+                  "Find the shift.",
+                  "Confirm the shift is published.",
+                  "Confirm the employee name and account match the real staff member.",
+                  "Open [[My Schedule|my-schedule]] or [[Full Schedule|full-schedule]] to verify."
+                ]
+              }
+            ],
+            "troubleshooting": [
+              "Deleted or old shifts should not reappear. Report a problem if they do."
+            ],
+            "relatedArticleIds": [
+              "schedule-publish"
+            ],
+            "deepLinkIds": [
+              "schedule-builder",
+              "my-schedule",
+              "full-schedule"
+            ],
+            "externalLinks": [],
+            "lastVerifiedVersion": "16.0.150",
+            "score": 43
+          },
+          {
+            "id": "custom-shifts-on-phone",
+            "title": "Why aren’t my saved Custom Shifts on my phone?",
+            "subjectId": "schedule-time-clock",
+            "subtopicId": "schedule-builder",
+            "audience": "Manager / Owner",
+            "summary": "Custom Shifts should sync through the restaurant workspace so authorized managers can see them on other devices.",
+            "commonQuestions": [
+              "Why are saved shifts missing on my phone?",
+              "Why are custom shifts not on mobile?",
+              "Are custom shifts shared?",
+              "Where did my custom shifts go?"
+            ],
+            "keywords": [
+              "custom shifts phone",
+              "saved shifts on phone",
+              "mobile custom shifts",
+              "shared shifts",
+              "sync custom shifts",
+              "another device"
+            ],
+            "synonyms": [
+              "custom shifts phone",
+              "saved shifts on phone",
+              "mobile custom shifts",
+              "shared shifts",
+              "sync custom shifts",
+              "another device"
+            ],
+            "sections": [
+              {
+                "title": "Short answer",
+                "body": [
+                  "Custom Shifts are shared for the restaurant. Open the same workspace on your phone and refresh [[Schedule Builder|schedule-builder]]."
+                ]
+              },
+              {
+                "title": "Try this",
+                "steps": [
+                  "Make sure the phone is signed into the same restaurant workspace.",
+                  "Open [[Schedule Builder|schedule-builder]].",
+                  "Wait for the Custom Shift list to finish loading.",
+                  "Refresh once if the list still looks old.",
+                  "Ask a manager or owner to confirm the shift was saved successfully."
+                ]
+              },
+              {
+                "title": "If it still does not show",
+                "body": [
+                  "The app may be using a last-known list while it reconnects. Do not create duplicates until the shared list loads."
+                ]
+              }
+            ],
+            "troubleshooting": [
+              "A saved Custom Shift is shared only inside the restaurant where it was created."
+            ],
+            "relatedArticleIds": [
+              "custom-shifts-overview",
+              "custom-shift-save"
+            ],
+            "deepLinkIds": [
+              "schedule-builder"
+            ],
+            "externalLinks": [],
+            "lastVerifiedVersion": "16.0.150",
+            "score": 35
+          }
+        ]
+      }
+    },
+    {
+      "question": "employee can't see schedule",
+      "topArticleIds": [
+        "schedule-visibility",
+        "custom-shifts-on-phone",
+        "schedule-publish"
+      ],
+      "answer": {
+        "ok": true,
+        "answer": "A missing shift is usually unpublished, assigned to the wrong employee, or outside the view being checked. Check publish status, date range, and the employee assigned to the shift. Try this: Open [[Schedule Builder|schedule-builder]]. Find the shift. Confirm the shift is published.",
+        "sourceArticleIds": [
+          "schedule-visibility",
+          "custom-shifts-on-phone",
+          "schedule-publish"
+        ],
+        "suggestedDeepLinkIds": [
+          "schedule-builder",
+          "my-schedule",
+          "full-schedule",
+          "availability"
+        ],
+        "confidence": 0.82,
+        "insufficientInformation": false,
+        "matches": [
+          {
+            "id": "schedule-visibility",
+            "title": "Why can’t an employee see a shift?",
+            "subjectId": "schedule-time-clock",
+            "subtopicId": "schedule-visibility",
+            "audience": "Manager / Owner",
+            "summary": "A missing shift is usually unpublished, assigned to the wrong employee, or outside the view being checked.",
+            "commonQuestions": [
+              "Why can't Allen see his schedule?",
+              "Employee can't see schedule"
+            ],
+            "keywords": [
+              "employee cannot see schedule",
+              "shift missing",
+              "published",
+              "wrong employee",
+              "visibility"
+            ],
+            "synonyms": [
+              "employee cannot see schedule",
+              "shift missing",
+              "published",
+              "wrong employee",
+              "visibility"
+            ],
+            "sections": [
+              {
+                "title": "Short answer",
+                "body": [
+                  "Check publish status, date range, and the employee assigned to the shift."
+                ]
+              },
+              {
+                "title": "Try this",
+                "steps": [
+                  "Open [[Schedule Builder|schedule-builder]].",
+                  "Find the shift.",
+                  "Confirm the shift is published.",
+                  "Confirm the employee name and account match the real staff member.",
+                  "Open [[My Schedule|my-schedule]] or [[Full Schedule|full-schedule]] to verify."
+                ]
+              }
+            ],
+            "troubleshooting": [
+              "Deleted or old shifts should not reappear. Report a problem if they do."
+            ],
+            "relatedArticleIds": [
+              "schedule-publish"
+            ],
+            "deepLinkIds": [
+              "schedule-builder",
+              "my-schedule",
+              "full-schedule"
+            ],
+            "externalLinks": [],
+            "lastVerifiedVersion": "16.0.150",
+            "score": 100
+          },
+          {
+            "id": "custom-shifts-on-phone",
+            "title": "Why aren’t my saved Custom Shifts on my phone?",
+            "subjectId": "schedule-time-clock",
+            "subtopicId": "schedule-builder",
+            "audience": "Manager / Owner",
+            "summary": "Custom Shifts should sync through the restaurant workspace so authorized managers can see them on other devices.",
+            "commonQuestions": [
+              "Why are saved shifts missing on my phone?",
+              "Why are custom shifts not on mobile?",
+              "Are custom shifts shared?",
+              "Where did my custom shifts go?"
+            ],
+            "keywords": [
+              "custom shifts phone",
+              "saved shifts on phone",
+              "mobile custom shifts",
+              "shared shifts",
+              "sync custom shifts",
+              "another device"
+            ],
+            "synonyms": [
+              "custom shifts phone",
+              "saved shifts on phone",
+              "mobile custom shifts",
+              "shared shifts",
+              "sync custom shifts",
+              "another device"
+            ],
+            "sections": [
+              {
+                "title": "Short answer",
+                "body": [
+                  "Custom Shifts are shared for the restaurant. Open the same workspace on your phone and refresh [[Schedule Builder|schedule-builder]]."
+                ]
+              },
+              {
+                "title": "Try this",
+                "steps": [
+                  "Make sure the phone is signed into the same restaurant workspace.",
+                  "Open [[Schedule Builder|schedule-builder]].",
+                  "Wait for the Custom Shift list to finish loading.",
+                  "Refresh once if the list still looks old.",
+                  "Ask a manager or owner to confirm the shift was saved successfully."
+                ]
+              },
+              {
+                "title": "If it still does not show",
+                "body": [
+                  "The app may be using a last-known list while it reconnects. Do not create duplicates until the shared list loads."
+                ]
+              }
+            ],
+            "troubleshooting": [
+              "A saved Custom Shift is shared only inside the restaurant where it was created."
+            ],
+            "relatedArticleIds": [
+              "custom-shifts-overview",
+              "custom-shift-save"
+            ],
+            "deepLinkIds": [
+              "schedule-builder"
+            ],
+            "externalLinks": [],
+            "lastVerifiedVersion": "16.0.150",
+            "score": 48
+          },
+          {
+            "id": "schedule-publish",
+            "title": "Why aren’t my schedules publishing?",
+            "subjectId": "schedule-time-clock",
+            "subtopicId": "schedule-publishing",
+            "audience": "Manager / Owner",
+            "summary": "Schedules usually stay unpublished when the week has not been selected, changes were made after the last publish, or the wrong schedule period is open.",
+            "commonQuestions": [
+              "Why aren't my schedules publishing?",
+              "Schedule not publishing",
+              "How do I publish selected weeks?"
+            ],
+            "keywords": [
+              "schedule publish",
+              "publishing",
+              "selected weeks",
+              "draft shifts",
+              "live shifts",
+              "employee cannot see"
+            ],
+            "synonyms": [
+              "schedule publish",
+              "publishing",
+              "selected weeks",
+              "draft shifts",
+              "live shifts",
+              "employee cannot see"
+            ],
+            "sections": [
+              {
+                "title": "Short answer",
+                "body": [
+                  "Schedules usually stay unpublished when the correct week is not selected, the shifts are still drafts, or you are looking at a different schedule period."
+                ]
+              },
+              {
+                "title": "Try this",
+                "steps": [
+                  "Open [[Schedule Builder|schedule-builder]].",
+                  "Check that you are on the right week or month.",
+                  "Choose Publish.",
+                  "Select the week or weeks you want.",
+                  "Confirm the publish action.",
+                  "Open My Schedule or Full Schedule to verify the shifts appear."
+                ]
+              },
+              {
+                "title": "What staff should see",
+                "body": [
+                  "Employees see published shifts that are assigned to their correct employee account."
+                ]
+              }
+            ],
+            "troubleshooting": [
+              "If one employee cannot see a shift, check the employee identity on the shift.",
+              "If a whole week is missing, check selected-week publishing."
+            ],
+            "relatedArticleIds": [
+              "schedule-visibility",
+              "schedule-visibility"
+            ],
+            "deepLinkIds": [
+              "schedule-builder",
+              "my-schedule",
+              "full-schedule"
+            ],
+            "externalLinks": [],
+            "lastVerifiedVersion": "16.0.150",
+            "score": 48
+          },
+          {
+            "id": "availability-use",
+            "title": "How do I set my availability?",
+            "subjectId": "schedule-time-clock",
+            "subtopicId": "availability",
+            "audience": "Everyone",
+            "summary": "Availability tells managers when you usually can or cannot work.",
+            "commonQuestions": [
+              "How do I set availability?",
+              "Why can’t I work that day?"
+            ],
+            "keywords": [
+              "availability",
+              "cannot work",
+              "preferred time",
+              "schedule"
+            ],
+            "synonyms": [
+              "availability",
+              "cannot work",
+              "preferred time",
+              "schedule"
+            ],
+            "sections": [
+              {
+                "title": "Short answer",
+                "body": [
+                  "Open [[Availability|availability]] and save the days or times you can usually work."
+                ]
+              },
+              {
+                "title": "Important",
+                "body": [
+                  "Availability helps managers build the schedule. It is not the same as an approved day off. Use Request Off for specific dates."
+                ]
+              }
+            ],
+            "troubleshooting": [],
+            "relatedArticleIds": [
+              "request-off-how"
+            ],
+            "deepLinkIds": [
+              "availability"
+            ],
+            "externalLinks": [],
+            "lastVerifiedVersion": "16.0.150",
+            "score": 47
+          },
+          {
+            "id": "my-schedule-view",
+            "title": "How do I see my schedule?",
+            "subjectId": "schedule-time-clock",
+            "subtopicId": "my-schedule",
+            "audience": "Everyone",
+            "summary": "My Schedule shows your published shifts.",
+            "commonQuestions": [
+              "How do I see my schedule?",
+              "Where are my shifts?"
+            ],
+            "keywords": [
+              "my schedule",
+              "shift",
+              "published",
+              "see my shifts"
+            ],
+            "synonyms": [
+              "my schedule",
+              "shift",
+              "published",
+              "see my shifts"
+            ],
+            "sections": [
+              {
+                "title": "Short answer",
+                "body": [
+                  "Open [[My Schedule|my-schedule]] to see your published shifts."
+                ]
+              },
+              {
+                "title": "What you should see",
+                "steps": [
+                  "Open Time Clock & Schedule.",
+                  "Choose My Schedule.",
+                  "Look for your shifts by date.",
+                  "Use Full Schedule if your manager allows you to see more."
+                ]
+              }
+            ],
+            "troubleshooting": [
+              "If a shift is missing, ask a manager to confirm the schedule was published and that the shift is assigned to the right employee."
+            ],
+            "relatedArticleIds": [
+              "schedule-visibility"
+            ],
+            "deepLinkIds": [
+              "my-schedule",
+              "full-schedule"
+            ],
+            "externalLinks": [],
+            "lastVerifiedVersion": "16.0.150",
+            "score": 43
+          }
+        ]
+      }
+    },
+    {
+      "question": "how do I request off",
+      "topArticleIds": [
+        "request-off-how",
+        "availability-use",
+        "request-off-conflicts"
+      ],
+      "answer": {
+        "ok": true,
+        "answer": "Request Off lets you ask for a day off before the schedule is finalized. Open [[Request Off|request-off]], choose the date, then submit your request. Try this: Open Time Clock & Schedule. Choose Request Off. Tap the date you need off.",
+        "sourceArticleIds": [
+          "request-off-how",
+          "availability-use",
+          "request-off-conflicts"
+        ],
+        "suggestedDeepLinkIds": [
+          "request-off",
+          "availability",
+          "today-home",
+          "schedule-builder"
+        ],
+        "confidence": 0.82,
+        "insufficientInformation": false,
+        "matches": [
+          {
+            "id": "request-off-how",
+            "title": "How do I request a day off?",
+            "subjectId": "schedule-time-clock",
+            "subtopicId": "request-off",
+            "audience": "Everyone",
+            "summary": "Request Off lets you ask for a day off before the schedule is finalized.",
+            "commonQuestions": [
+              "How do I request off?",
+              "How do I ask for a day off?"
+            ],
+            "keywords": [
+              "request off",
+              "day off",
+              "time off",
+              "availability",
+              "vacation"
+            ],
+            "synonyms": [
+              "request off",
+              "day off",
+              "time off",
+              "availability",
+              "vacation"
+            ],
+            "sections": [
+              {
+                "title": "Short answer",
+                "body": [
+                  "Open [[Request Off|request-off]], choose the date, then submit your request."
+                ]
+              },
+              {
+                "title": "How to do it",
+                "steps": [
+                  "Open Time Clock & Schedule.",
+                  "Choose Request Off.",
+                  "Tap the date you need off.",
+                  "Read any warning that appears.",
+                  "Choose Continue only if you still want to request that day.",
+                  "Submit the request."
+                ]
+              },
+              {
+                "title": "What you should see",
+                "body": [
+                  "Your request should show as pending until a manager reviews it."
+                ]
+              }
+            ],
+            "troubleshooting": [
+              "If someone else already requested the same date, the app warns you before adding the date.",
+              "A request is not the same as an approved day off until a manager approves it."
+            ],
+            "relatedArticleIds": [
+              "request-off-conflicts",
+              "cannot-request-off"
+            ],
+            "deepLinkIds": [
+              "request-off"
+            ],
+            "externalLinks": [],
+            "lastVerifiedVersion": "16.0.150",
+            "score": 100
+          },
+          {
+            "id": "availability-use",
+            "title": "How do I set my availability?",
+            "subjectId": "schedule-time-clock",
+            "subtopicId": "availability",
+            "audience": "Everyone",
+            "summary": "Availability tells managers when you usually can or cannot work.",
+            "commonQuestions": [
+              "How do I set availability?",
+              "Why can’t I work that day?"
+            ],
+            "keywords": [
+              "availability",
+              "cannot work",
+              "preferred time",
+              "schedule"
+            ],
+            "synonyms": [
+              "availability",
+              "cannot work",
+              "preferred time",
+              "schedule"
+            ],
+            "sections": [
+              {
+                "title": "Short answer",
+                "body": [
+                  "Open [[Availability|availability]] and save the days or times you can usually work."
+                ]
+              },
+              {
+                "title": "Important",
+                "body": [
+                  "Availability helps managers build the schedule. It is not the same as an approved day off. Use Request Off for specific dates."
+                ]
+              }
+            ],
+            "troubleshooting": [],
+            "relatedArticleIds": [
+              "request-off-how"
+            ],
+            "deepLinkIds": [
+              "availability"
+            ],
+            "externalLinks": [],
+            "lastVerifiedVersion": "16.0.150",
+            "score": 56
+          },
+          {
+            "id": "request-off-conflicts",
+            "title": "Why did I get a Request Off warning?",
+            "subjectId": "schedule-time-clock",
+            "subtopicId": "request-off",
+            "audience": "Everyone",
+            "summary": "The warning means another employee already has an active request for that date.",
+            "commonQuestions": [
+              "Why does Request Off warn me?",
+              "Someone else requested this date"
+            ],
+            "keywords": [
+              "request off warning",
+              "conflict",
+              "already requested",
+              "day may not be available"
+            ],
+            "synonyms": [
+              "request off warning",
+              "conflict",
+              "already requested",
+              "day may not be available"
+            ],
+            "sections": [
+              {
+                "title": "Short answer",
+                "body": [
+                  "The day may not be available because someone else has already requested it."
+                ]
+              },
+              {
+                "title": "What to do",
+                "steps": [
+                  "Read the warning.",
+                  "Choose Cancel if you do not want to request that day.",
+                  "Choose Continue if you still want to ask.",
+                  "Wait for a manager to approve or deny the request."
+                ]
+              }
+            ],
+            "troubleshooting": [
+              "The warning does not mean your request is blocked. It helps you avoid surprises."
+            ],
+            "relatedArticleIds": [
+              "request-off-how"
+            ],
+            "deepLinkIds": [
+              "request-off"
+            ],
+            "externalLinks": [],
+            "lastVerifiedVersion": "16.0.150",
+            "score": 48
+          },
+          {
+            "id": "navigation-basics",
+            "title": "Where do I find things in 86 Chaos?",
+            "subjectId": "getting-started",
+            "subtopicId": "navigation",
+            "audience": "Everyone",
+            "summary": "Use the main menu and search. Common work is grouped by the job you are trying to do.",
+            "commonQuestions": [
+              "Where is Schedule Builder?",
+              "Where is Inventory?",
+              "Where is Request Off?"
+            ],
+            "keywords": [
+              "navigation",
+              "menu",
+              "find",
+              "where is",
+              "tab",
+              "search"
+            ],
+            "synonyms": [
+              "navigation",
+              "menu",
+              "find",
+              "where is",
+              "tab",
+              "search"
+            ],
+            "sections": [
+              {
+                "title": "Short answer",
+                "body": [
+                  "Open the menu, then choose the area that matches your work."
+                ]
+              },
+              {
+                "title": "Common places",
+                "steps": [
+                  "Use Today for daily notes and Need Attention.",
+                  "Use Time Clock & Schedule for shifts, clocking in, Request Off, and Availability.",
+                  "Use Inventory for counts, invoices, vendors, and orders.",
+                  "Use Prep & Tasks for prep lists and checklists.",
+                  "Use Help when you are not sure where to start."
+                ]
+              }
+            ],
+            "troubleshooting": [],
+            "relatedArticleIds": [
+              "schedule-builder-find",
+              "inventory-counts",
+              "request-off-how"
+            ],
+            "deepLinkIds": [
+              "today-home",
+              "schedule-builder",
+              "inventory",
+              "prep"
+            ],
+            "externalLinks": [],
+            "lastVerifiedVersion": "16.0.150",
+            "score": 40
+          },
+          {
+            "id": "month-view-use",
+            "title": "How do I use Month View?",
+            "subjectId": "schedule-time-clock",
+            "subtopicId": "month-view",
+            "audience": "Everyone",
+            "summary": "Month View shows shifts and events across the month.",
+            "commonQuestions": [
+              "Where is Month View?",
+              "How do I print a monthly schedule?"
+            ],
+            "keywords": [
+              "month view",
+              "calendar",
+              "print schedule",
+              "monthly"
+            ],
+            "synonyms": [
+              "month view",
+              "calendar",
+              "print schedule",
+              "monthly"
+            ],
+            "sections": [
+              {
+                "title": "Short answer",
+                "body": [
+                  "Open [[Month View|month-view]] to scan a full month."
+                ]
+              },
+              {
+                "title": "Tips",
+                "steps": [
+                  "Use it for big-picture schedule checks.",
+                  "Print only after the manager publishes the schedule.",
+                  "Check crowded days carefully."
+                ]
+              }
+            ],
+            "troubleshooting": [],
+            "relatedArticleIds": [
+              "schedule-publish"
+            ],
+            "deepLinkIds": [
+              "month-view"
+            ],
+            "externalLinks": [],
+            "lastVerifiedVersion": "16.0.150",
+            "score": 35
+          }
+        ]
+      }
+    },
+    {
+      "question": "can't clock in",
+      "topArticleIds": [
+        "clock-in-help",
+        "missed-punch-help",
+        "availability-use"
+      ],
+      "answer": {
+        "ok": true,
+        "answer": "Clock-in problems usually mean the schedule, account, browser, or location setting needs review. Open [[Time Clock|time-clock]]. If the button is missing or disabled, check the message shown on the screen. Try this: Make sure you are signed into the right workspace. Refresh the app once. Check that your account is active.",
+        "sourceArticleIds": [
+          "clock-in-help",
+          "missed-punch-help",
+          "availability-use"
+        ],
+        "suggestedDeepLinkIds": [
+          "time-clock",
+          "labor",
+          "availability",
+          "schedule-builder"
+        ],
+        "confidence": 0.82,
+        "insufficientInformation": false,
+        "matches": [
+          {
+            "id": "clock-in-help",
+            "title": "Why can’t I clock in?",
+            "subjectId": "schedule-time-clock",
+            "subtopicId": "time-clock",
+            "audience": "Everyone",
+            "summary": "Clock-in problems usually mean the schedule, account, browser, or location setting needs review.",
+            "commonQuestions": [
+              "Why can’t I clock in?",
+              "Clock in button missing"
+            ],
+            "keywords": [
+              "clock in",
+              "clock out",
+              "time clock",
+              "cannot clock in",
+              "geofence",
+              "location"
+            ],
+            "synonyms": [
+              "clock in",
+              "clock out",
+              "time clock",
+              "cannot clock in",
+              "geofence",
+              "location"
+            ],
+            "sections": [
+              {
+                "title": "Short answer",
+                "body": [
+                  "Open [[Time Clock|time-clock]]. If the button is missing or disabled, check the message shown on the screen."
+                ]
+              },
+              {
+                "title": "Try this",
+                "steps": [
+                  "Make sure you are signed into the right workspace.",
+                  "Refresh the app once.",
+                  "Check that your account is active.",
+                  "Allow location if your restaurant requires it.",
+                  "Ask a manager to check your scheduled shift or time-clock settings."
+                ]
+              }
+            ],
+            "troubleshooting": [
+              "A manager may need to fix a missed punch.",
+              "Do not create a second account to clock in."
+            ],
+            "relatedArticleIds": [
+              "missed-punch-help"
+            ],
+            "deepLinkIds": [
+              "time-clock"
+            ],
+            "externalLinks": [],
+            "lastVerifiedVersion": "16.0.150",
+            "score": 60
+          },
+          {
+            "id": "missed-punch-help",
+            "title": "How do missed punches get fixed?",
+            "subjectId": "schedule-time-clock",
+            "subtopicId": "missed-punches",
+            "audience": "Everyone",
+            "summary": "A manager can correct missed punches when a clock-in or clock-out was missed.",
+            "commonQuestions": [
+              "I forgot to clock out",
+              "I missed a punch"
+            ],
+            "keywords": [
+              "missed punch",
+              "forgot clock out",
+              "forgot clock in",
+              "manager correction"
+            ],
+            "synonyms": [
+              "missed punch",
+              "forgot clock out",
+              "forgot clock in",
+              "manager correction"
+            ],
+            "sections": [
+              {
+                "title": "Short answer",
+                "body": [
+                  "Tell a manager the date, time, and reason."
+                ]
+              },
+              {
+                "title": "What the manager does",
+                "steps": [
+                  "Open Labor or Time Clock review.",
+                  "Find the employee and date.",
+                  "Add or correct the punch.",
+                  "Save the note for review."
+                ]
+              }
+            ],
+            "troubleshooting": [],
+            "relatedArticleIds": [
+              "clock-in-help"
+            ],
+            "deepLinkIds": [
+              "labor"
+            ],
+            "externalLinks": [],
+            "lastVerifiedVersion": "16.0.150",
+            "score": 35
+          },
+          {
+            "id": "availability-use",
+            "title": "How do I set my availability?",
+            "subjectId": "schedule-time-clock",
+            "subtopicId": "availability",
+            "audience": "Everyone",
+            "summary": "Availability tells managers when you usually can or cannot work.",
+            "commonQuestions": [
+              "How do I set availability?",
+              "Why can’t I work that day?"
+            ],
+            "keywords": [
+              "availability",
+              "cannot work",
+              "preferred time",
+              "schedule"
+            ],
+            "synonyms": [
+              "availability",
+              "cannot work",
+              "preferred time",
+              "schedule"
+            ],
+            "sections": [
+              {
+                "title": "Short answer",
+                "body": [
+                  "Open [[Availability|availability]] and save the days or times you can usually work."
+                ]
+              },
+              {
+                "title": "Important",
+                "body": [
+                  "Availability helps managers build the schedule. It is not the same as an approved day off. Use Request Off for specific dates."
+                ]
+              }
+            ],
+            "troubleshooting": [],
+            "relatedArticleIds": [
+              "request-off-how"
+            ],
+            "deepLinkIds": [
+              "availability"
+            ],
+            "externalLinks": [],
+            "lastVerifiedVersion": "16.0.150",
+            "score": 27
+          },
+          {
+            "id": "custom-shifts-overview",
+            "title": "What are Custom Shifts?",
+            "subjectId": "schedule-time-clock",
+            "subtopicId": "schedule-builder",
+            "audience": "Manager / Owner",
+            "summary": "Custom Shifts are saved shift presets for one restaurant. They help managers add the same kind of shift without typing the times every time.",
+            "commonQuestions": [
+              "What are Custom Shifts?",
+              "Are custom shifts shared?",
+              "Where did my saved shifts go?"
+            ],
+            "keywords": [
+              "custom shifts",
+              "saved shifts",
+              "shift preset",
+              "schedule builder",
+              "shared shifts",
+              "preset"
+            ],
+            "synonyms": [
+              "custom shifts",
+              "saved shifts",
+              "shift preset",
+              "schedule builder",
+              "shared shifts",
+              "preset"
+            ],
+            "sections": [
+              {
+                "title": "Short answer",
+                "body": [
+                  "Custom Shifts are reusable shift buttons inside [[Schedule Builder|schedule-builder]]. They are shared for that restaurant with people who can use Schedule Builder."
+                ]
+              },
+              {
+                "title": "Who can use this",
+                "body": [
+                  "Managers, owners, and other people with Schedule Builder permission can use shared Custom Shifts. Staff who only view their own schedule cannot edit them."
+                ]
+              },
+              {
+                "title": "What you should see",
+                "body": [
+                  "When a Custom Shift is saved for the restaurant, it should appear on desktop, phone, tablet, and any fresh browser session for the same workspace."
+                ]
+              }
+            ],
+            "troubleshooting": [
+              "Make sure you are in the right restaurant workspace.",
+              "Ask a manager or owner to confirm you have Schedule Builder access."
+            ],
+            "relatedArticleIds": [
+              "custom-shift-save",
+              "custom-shifts-on-phone"
+            ],
+            "deepLinkIds": [
+              "schedule-builder"
+            ],
+            "externalLinks": [],
+            "lastVerifiedVersion": "16.0.150",
+            "score": 27
+          },
+          {
+            "id": "custom-shifts-on-phone",
+            "title": "Why aren’t my saved Custom Shifts on my phone?",
+            "subjectId": "schedule-time-clock",
+            "subtopicId": "schedule-builder",
+            "audience": "Manager / Owner",
+            "summary": "Custom Shifts should sync through the restaurant workspace so authorized managers can see them on other devices.",
+            "commonQuestions": [
+              "Why are saved shifts missing on my phone?",
+              "Why are custom shifts not on mobile?",
+              "Are custom shifts shared?",
+              "Where did my custom shifts go?"
+            ],
+            "keywords": [
+              "custom shifts phone",
+              "saved shifts on phone",
+              "mobile custom shifts",
+              "shared shifts",
+              "sync custom shifts",
+              "another device"
+            ],
+            "synonyms": [
+              "custom shifts phone",
+              "saved shifts on phone",
+              "mobile custom shifts",
+              "shared shifts",
+              "sync custom shifts",
+              "another device"
+            ],
+            "sections": [
+              {
+                "title": "Short answer",
+                "body": [
+                  "Custom Shifts are shared for the restaurant. Open the same workspace on your phone and refresh [[Schedule Builder|schedule-builder]]."
+                ]
+              },
+              {
+                "title": "Try this",
+                "steps": [
+                  "Make sure the phone is signed into the same restaurant workspace.",
+                  "Open [[Schedule Builder|schedule-builder]].",
+                  "Wait for the Custom Shift list to finish loading.",
+                  "Refresh once if the list still looks old.",
+                  "Ask a manager or owner to confirm the shift was saved successfully."
+                ]
+              },
+              {
+                "title": "If it still does not show",
+                "body": [
+                  "The app may be using a last-known list while it reconnects. Do not create duplicates until the shared list loads."
+                ]
+              }
+            ],
+            "troubleshooting": [
+              "A saved Custom Shift is shared only inside the restaurant where it was created."
+            ],
+            "relatedArticleIds": [
+              "custom-shifts-overview",
+              "custom-shift-save"
+            ],
+            "deepLinkIds": [
+              "schedule-builder"
+            ],
+            "externalLinks": [],
+            "lastVerifiedVersion": "16.0.150",
+            "score": 27
+          }
+        ]
+      }
+    },
+    {
+      "question": "where is schedule builder",
+      "topArticleIds": [
+        "schedule-builder-find",
+        "navigation-basics",
+        "custom-shifts-overview"
+      ],
+      "answer": {
+        "ok": true,
+        "answer": "Schedule Builder lives inside Time Clock & Schedule for managers and owners. Managers and owners can open [[Schedule Builder|schedule-builder]] from Time Clock & Schedule. Try this: Open Time Clock & Schedule. Choose Schedule Builder. Pick the week or month you are working on.",
+        "sourceArticleIds": [
+          "schedule-builder-find",
+          "navigation-basics",
+          "custom-shifts-overview"
+        ],
+        "suggestedDeepLinkIds": [
+          "schedule-builder",
+          "today-home",
+          "inventory",
+          "prep"
+        ],
+        "confidence": 0.82,
+        "insufficientInformation": false,
+        "matches": [
+          {
+            "id": "schedule-builder-find",
+            "title": "Where is Schedule Builder?",
+            "subjectId": "schedule-time-clock",
+            "subtopicId": "schedule-builder",
+            "audience": "Manager / Owner",
+            "summary": "Schedule Builder lives inside Time Clock & Schedule for managers and owners.",
+            "commonQuestions": [
+              "Where is Schedule Builder?",
+              "How do I build a schedule?"
+            ],
+            "keywords": [
+              "schedule builder",
+              "build schedule",
+              "smart fill",
+              "coverage target",
+              "templates"
+            ],
+            "synonyms": [
+              "schedule builder",
+              "build schedule",
+              "smart fill",
+              "coverage target",
+              "templates"
+            ],
+            "sections": [
+              {
+                "title": "Short answer",
+                "body": [
+                  "Managers and owners can open [[Schedule Builder|schedule-builder]] from Time Clock & Schedule."
+                ]
+              },
+              {
+                "title": "How to open it",
+                "steps": [
+                  "Open Time Clock & Schedule.",
+                  "Choose Schedule Builder.",
+                  "Pick the week or month you are working on.",
+                  "Add, copy, or edit shifts."
+                ]
+              },
+              {
+                "title": "Staff note",
+                "body": [
+                  "If you are staff, you may not have access to Schedule Builder. Ask a manager to check it."
+                ]
+              }
+            ],
+            "troubleshooting": [
+              "If an employee is missing, check that the staff record is active and assigned to the right workspace."
+            ],
+            "relatedArticleIds": [
+              "employee-missing-schedule-builder",
+              "schedule-publish"
+            ],
+            "deepLinkIds": [
+              "schedule-builder"
+            ],
+            "externalLinks": [],
+            "lastVerifiedVersion": "16.0.150",
+            "score": 100
+          },
+          {
+            "id": "navigation-basics",
+            "title": "Where do I find things in 86 Chaos?",
+            "subjectId": "getting-started",
+            "subtopicId": "navigation",
+            "audience": "Everyone",
+            "summary": "Use the main menu and search. Common work is grouped by the job you are trying to do.",
+            "commonQuestions": [
+              "Where is Schedule Builder?",
+              "Where is Inventory?",
+              "Where is Request Off?"
+            ],
+            "keywords": [
+              "navigation",
+              "menu",
+              "find",
+              "where is",
+              "tab",
+              "search"
+            ],
+            "synonyms": [
+              "navigation",
+              "menu",
+              "find",
+              "where is",
+              "tab",
+              "search"
+            ],
+            "sections": [
+              {
+                "title": "Short answer",
+                "body": [
+                  "Open the menu, then choose the area that matches your work."
+                ]
+              },
+              {
+                "title": "Common places",
+                "steps": [
+                  "Use Today for daily notes and Need Attention.",
+                  "Use Time Clock & Schedule for shifts, clocking in, Request Off, and Availability.",
+                  "Use Inventory for counts, invoices, vendors, and orders.",
+                  "Use Prep & Tasks for prep lists and checklists.",
+                  "Use Help when you are not sure where to start."
+                ]
+              }
+            ],
+            "troubleshooting": [],
+            "relatedArticleIds": [
+              "schedule-builder-find",
+              "inventory-counts",
+              "request-off-how"
+            ],
+            "deepLinkIds": [
+              "today-home",
+              "schedule-builder",
+              "inventory",
+              "prep"
+            ],
+            "externalLinks": [],
+            "lastVerifiedVersion": "16.0.150",
+            "score": 100
+          },
+          {
+            "id": "custom-shifts-overview",
+            "title": "What are Custom Shifts?",
+            "subjectId": "schedule-time-clock",
+            "subtopicId": "schedule-builder",
+            "audience": "Manager / Owner",
+            "summary": "Custom Shifts are saved shift presets for one restaurant. They help managers add the same kind of shift without typing the times every time.",
+            "commonQuestions": [
+              "What are Custom Shifts?",
+              "Are custom shifts shared?",
+              "Where did my saved shifts go?"
+            ],
+            "keywords": [
+              "custom shifts",
+              "saved shifts",
+              "shift preset",
+              "schedule builder",
+              "shared shifts",
+              "preset"
+            ],
+            "synonyms": [
+              "custom shifts",
+              "saved shifts",
+              "shift preset",
+              "schedule builder",
+              "shared shifts",
+              "preset"
+            ],
+            "sections": [
+              {
+                "title": "Short answer",
+                "body": [
+                  "Custom Shifts are reusable shift buttons inside [[Schedule Builder|schedule-builder]]. They are shared for that restaurant with people who can use Schedule Builder."
+                ]
+              },
+              {
+                "title": "Who can use this",
+                "body": [
+                  "Managers, owners, and other people with Schedule Builder permission can use shared Custom Shifts. Staff who only view their own schedule cannot edit them."
+                ]
+              },
+              {
+                "title": "What you should see",
+                "body": [
+                  "When a Custom Shift is saved for the restaurant, it should appear on desktop, phone, tablet, and any fresh browser session for the same workspace."
+                ]
+              }
+            ],
+            "troubleshooting": [
+              "Make sure you are in the right restaurant workspace.",
+              "Ask a manager or owner to confirm you have Schedule Builder access."
+            ],
+            "relatedArticleIds": [
+              "custom-shift-save",
+              "custom-shifts-on-phone"
+            ],
+            "deepLinkIds": [
+              "schedule-builder"
+            ],
+            "externalLinks": [],
+            "lastVerifiedVersion": "16.0.150",
+            "score": 68
+          },
+          {
+            "id": "custom-shift-edit-delete",
+            "title": "How do I edit or delete a Custom Shift?",
+            "subjectId": "schedule-time-clock",
+            "subtopicId": "schedule-builder",
+            "audience": "Manager / Owner",
+            "summary": "Editing a Custom Shift changes the reusable preset. It does not change shifts already placed on the schedule.",
+            "commonQuestions": [
+              "How do I edit a Custom Shift?",
+              "How do I delete a saved shift?",
+              "Will deleting a preset delete scheduled shifts?"
+            ],
+            "keywords": [
+              "edit custom shift",
+              "delete custom shift",
+              "saved shift",
+              "preset",
+              "schedule builder"
+            ],
+            "synonyms": [
+              "edit custom shift",
+              "delete custom shift",
+              "saved shift",
+              "preset",
+              "schedule builder"
+            ],
+            "sections": [
+              {
+                "title": "Short answer",
+                "body": [
+                  "Open [[Schedule Builder|schedule-builder]], find the saved Custom Shift, then use Edit or Delete for that exact preset."
+                ]
+              },
+              {
+                "title": "How to do it",
+                "steps": [
+                  "Open [[Schedule Builder|schedule-builder]].",
+                  "Find the exact Custom Shift name.",
+                  "Choose Edit to change the name or times.",
+                  "Choose Delete only when you no longer want the preset.",
+                  "Confirm when the app asks."
+                ]
+              },
+              {
+                "title": "What changes",
+                "body": [
+                  "Only the reusable Custom Shift preset changes. Shifts that were already added to the schedule stay where they are."
+                ]
+              }
+            ],
+            "troubleshooting": [
+              "If you do not see Edit or Delete, you may not have Schedule Builder permission."
+            ],
+            "relatedArticleIds": [
+              "custom-shifts-overview",
+              "custom-shifts-on-phone"
+            ],
+            "deepLinkIds": [
+              "schedule-builder"
+            ],
+            "externalLinks": [],
+            "lastVerifiedVersion": "16.0.150",
+            "score": 63
+          },
+          {
+            "id": "employee-missing-schedule-builder",
+            "title": "Why is an employee missing from Schedule Builder?",
+            "subjectId": "schedule-time-clock",
+            "subtopicId": "schedule-builder",
+            "audience": "Manager / Owner",
+            "summary": "An employee may be inactive, in the wrong workspace, or not saved as a staff member.",
+            "commonQuestions": [
+              "Employee missing from Schedule Builder",
+              "Allen missing from schedule builder"
+            ],
+            "keywords": [
+              "employee missing",
+              "schedule builder",
+              "staff roster",
+              "active employee"
+            ],
+            "synonyms": [
+              "employee missing",
+              "schedule builder",
+              "staff roster",
+              "active employee"
+            ],
+            "sections": [
+              {
+                "title": "Short answer",
+                "body": [
+                  "Check Staff Roster first."
+                ]
+              },
+              {
+                "title": "Try this",
+                "steps": [
+                  "Open [[Staff Roster|staff-roster]].",
+                  "Find the employee.",
+                  "Make sure the employee is active.",
+                  "Make sure the employee belongs to the correct workspace.",
+                  "Return to [[Schedule Builder|schedule-builder]] and refresh."
+                ]
+              }
+            ],
+            "troubleshooting": [],
+            "relatedArticleIds": [
+              "staff-roster-use"
+            ],
+            "deepLinkIds": [
+              "staff-roster",
+              "schedule-builder"
+            ],
+            "externalLinks": [],
+            "lastVerifiedVersion": "16.0.150",
+            "score": 52
+          }
+        ]
+      }
+    },
+    {
+      "question": "invoice didnt scan",
+      "topArticleIds": [
+        "invoice-scan-failed",
+        "price-changes-use",
+        "invoice-scan-review"
+      ],
+      "answer": {
+        "ok": true,
+        "answer": "Invoice scans fail most often because the image is blurry, the file is too large, or the scanner cannot read the layout. Try one clear page first. Try this: Use a flat, well-lit photo. Crop out the table or counter. Upload fewer pages.",
+        "sourceArticleIds": [
+          "invoice-scan-failed",
+          "price-changes-use",
+          "invoice-scan-review"
+        ],
+        "suggestedDeepLinkIds": [
+          "invoices",
+          "86voice",
+          "prep",
+          "tasks"
+        ],
+        "confidence": 0.82,
+        "insufficientInformation": false,
+        "matches": [
+          {
+            "id": "invoice-scan-failed",
+            "title": "Why didn’t my invoice scan?",
+            "subjectId": "troubleshooting",
+            "subtopicId": "invoice-failed",
+            "audience": "Manager / Owner",
+            "summary": "Invoice scans fail most often because the image is blurry, the file is too large, or the scanner cannot read the layout.",
+            "commonQuestions": [
+              "Invoice didn't scan",
+              "Why did my invoice scan fail?"
+            ],
+            "keywords": [
+              "invoice didnt scan",
+              "invoice didn't scan",
+              "invoice failed",
+              "scan failed",
+              "blurry",
+              "large file",
+              "timeout"
+            ],
+            "synonyms": [
+              "invoice didnt scan",
+              "invoice didn't scan",
+              "invoice failed",
+              "scan failed",
+              "blurry",
+              "large file",
+              "timeout"
+            ],
+            "sections": [
+              {
+                "title": "Short answer",
+                "body": [
+                  "Try one clear page first."
+                ]
+              },
+              {
+                "title": "Try this",
+                "steps": [
+                  "Use a flat, well-lit photo.",
+                  "Crop out the table or counter.",
+                  "Upload fewer pages.",
+                  "Check that the file is not too large.",
+                  "Try again once before reporting the problem."
+                ]
+              }
+            ],
+            "troubleshooting": [
+              "If it still fails, use Report a Problem and include what type of file you uploaded."
+            ],
+            "relatedArticleIds": [
+              "invoice-scan-review"
+            ],
+            "deepLinkIds": [
+              "invoices"
+            ],
+            "externalLinks": [],
+            "lastVerifiedVersion": "16.0.150",
+            "score": 100
+          },
+          {
+            "id": "price-changes-use",
+            "title": "How do price change warnings work?",
+            "subjectId": "inventory-purchasing",
+            "subtopicId": "price-changes",
+            "audience": "Manager / Owner",
+            "summary": "Price change warnings help you spot vendor cost jumps before they surprise you.",
+            "commonQuestions": [
+              "What is a price jump?",
+              "Why did a price warning show?"
+            ],
+            "keywords": [
+              "price change",
+              "price jump",
+              "vendor cost",
+              "invoice"
+            ],
+            "synonyms": [
+              "price change",
+              "price jump",
+              "vendor cost",
+              "invoice"
+            ],
+            "sections": [
+              {
+                "title": "Short answer",
+                "body": [
+                  "The app compares recent invoice prices and flags items that changed enough to review."
+                ]
+              },
+              {
+                "title": "What to do",
+                "steps": [
+                  "Open the price warning.",
+                  "Compare old and new prices.",
+                  "Check pack size and unit first.",
+                  "Update menu or order decisions if needed."
+                ]
+              }
+            ],
+            "troubleshooting": [],
+            "relatedArticleIds": [
+              "invoice-scan-review"
+            ],
+            "deepLinkIds": [
+              "invoices"
+            ],
+            "externalLinks": [],
+            "lastVerifiedVersion": "16.0.150",
+            "score": 36
+          },
+          {
+            "id": "invoice-scan-review",
+            "title": "How do I scan and review an invoice?",
+            "subjectId": "inventory-purchasing",
+            "subtopicId": "invoice-scanning",
+            "audience": "Manager / Owner",
+            "summary": "Invoice scanning reads a picture or PDF, but a manager still reviews the results before saving.",
+            "commonQuestions": [
+              "Why did my invoice scan fail?",
+              "How do I scan invoices?"
+            ],
+            "keywords": [
+              "invoice scan",
+              "invoice review",
+              "vendor",
+              "price change",
+              "failed scan"
+            ],
+            "synonyms": [
+              "invoice scan",
+              "invoice review",
+              "vendor",
+              "price change",
+              "failed scan"
+            ],
+            "sections": [
+              {
+                "title": "Short answer",
+                "body": [
+                  "Open [[Invoices|invoices]], upload the invoice, then review every row before approval."
+                ]
+              },
+              {
+                "title": "How to do it",
+                "steps": [
+                  "Open Inventory.",
+                  "Choose Invoices.",
+                  "Upload a clear image or PDF.",
+                  "Wait for the scan to finish.",
+                  "Review vendor, date, item names, quantities, pack sizes, and prices.",
+                  "Approve only after the rows look right."
+                ]
+              }
+            ],
+            "troubleshooting": [
+              "If the scan fails, try a clearer photo or smaller file.",
+              "Do not approve rows you have not checked."
+            ],
+            "relatedArticleIds": [
+              "invoice-scan-failed"
+            ],
+            "deepLinkIds": [
+              "invoices"
+            ],
+            "externalLinks": [],
+            "lastVerifiedVersion": "16.0.150",
+            "score": 24
+          },
+          {
+            "id": "voice-open-close",
+            "title": "How do I open and close 86Voice?",
+            "subjectId": "voice-smart-tools",
+            "subtopicId": "voice-open-close",
+            "audience": "Everyone",
+            "summary": "86Voice opens from the microphone button and can help with navigation, prep, tasks, reminders, and searches.",
+            "commonQuestions": [
+              "How do I open 86Voice?",
+              "How do I close 86Voice?"
+            ],
+            "keywords": [
+              "86voice",
+              "voice",
+              "microphone",
+              "open voice",
+              "close voice"
+            ],
+            "synonyms": [
+              "86voice",
+              "voice",
+              "microphone",
+              "open voice",
+              "close voice"
+            ],
+            "sections": [
+              {
+                "title": "Short answer",
+                "body": [
+                  "Use the microphone button to open 86Voice. Use Close 86Voice panel or Hide 86Voice assistant to close it."
+                ]
+              },
+              {
+                "title": "What it can do",
+                "steps": [
+                  "Open pages.",
+                  "Search Help.",
+                  "Add prep or tasks when allowed.",
+                  "Create reminders when allowed.",
+                  "Look up recipes."
+                ]
+              }
+            ],
+            "troubleshooting": [],
+            "relatedArticleIds": [
+              "voice-commands-use",
+              "voice-not-hearing"
+            ],
+            "deepLinkIds": [
+              "86voice"
+            ],
+            "externalLinks": [],
+            "lastVerifiedVersion": "16.0.150",
+            "score": 20
+          },
+          {
+            "id": "voice-commands-use",
+            "title": "What can I say to 86Voice?",
+            "subjectId": "voice-smart-tools",
+            "subtopicId": "voice-commands",
+            "audience": "Everyone",
+            "summary": "Use plain restaurant phrases. 86Voice follows the same permissions as the app.",
+            "commonQuestions": [
+              "What voice commands work?",
+              "Can I say 86 eggs?"
+            ],
+            "keywords": [
+              "86voice commands",
+              "prep commands",
+              "task commands",
+              "86 alerts",
+              "recipe lookup",
+              "undo"
+            ],
+            "synonyms": [
+              "86voice commands",
+              "prep commands",
+              "task commands",
+              "86 alerts",
+              "recipe lookup",
+              "undo"
+            ],
+            "sections": [
+              {
+                "title": "Short answer",
+                "body": [
+                  "Say what you want in normal kitchen words."
+                ]
+              },
+              {
+                "title": "Examples",
+                "steps": [
+                  "Open prep.",
+                  "Mark onions done.",
+                  "Add clean fryer wall to tasks.",
+                  "Remind me tomorrow to call the vendor.",
+                  "Show the ranch recipe.",
+                  "Search Help for invoice scanning."
+                ]
+              }
+            ],
+            "troubleshooting": [
+              "If 86Voice is not sure, it should ask you to choose before saving."
+            ],
+            "relatedArticleIds": [
+              "voice-not-hearing"
+            ],
+            "deepLinkIds": [
+              "86voice",
+              "prep",
+              "tasks",
+              "reminders",
+              "recipes"
+            ],
+            "externalLinks": [],
+            "lastVerifiedVersion": "16.0.150",
+            "score": 16
+          }
+        ]
+      }
+    },
+    {
+      "question": "how do i install the app",
+      "topArticleIds": [
+        "install-app",
+        "reinstall-pwa",
+        "custom-shift-edit-delete"
+      ],
+      "answer": {
+        "ok": true,
+        "answer": "Install the app from your browser menu so it opens like a normal app. Open 86 Chaos in a supported browser and use the browser install or Add to Home Screen option.",
+        "sourceArticleIds": [
+          "install-app",
+          "reinstall-pwa",
+          "custom-shift-edit-delete"
+        ],
+        "suggestedDeepLinkIds": [
+          "schedule-builder",
+          "settings",
+          "request-off"
+        ],
+        "confidence": 0.82,
+        "insufficientInformation": false,
+        "matches": [
+          {
+            "id": "install-app",
+            "title": "How do I install 86 Chaos on my device?",
+            "subjectId": "getting-started",
+            "subtopicId": "installing",
+            "audience": "Everyone",
+            "summary": "Install the app from your browser menu so it opens like a normal app.",
+            "commonQuestions": [
+              "How do I install the app?",
+              "How do I add 86 Chaos to my home screen?"
+            ],
+            "keywords": [
+              "install",
+              "pwa",
+              "home screen",
+              "edge",
+              "chrome",
+              "safari",
+              "samsung internet",
+              "app icon"
+            ],
+            "synonyms": [
+              "install",
+              "pwa",
+              "home screen",
+              "edge",
+              "chrome",
+              "safari",
+              "samsung internet",
+              "app icon"
+            ],
+            "sections": [
+              {
+                "title": "Short answer",
+                "body": [
+                  "Open 86 Chaos in a supported browser and use the browser install or Add to Home Screen option."
+                ]
+              },
+              {
+                "title": "Windows Edge or Chrome",
+                "steps": [
+                  "Open 86 Chaos.",
+                  "Open the browser menu.",
+                  "Choose Install app when it appears.",
+                  "Pin it to the taskbar if you want quick access."
+                ]
+              },
+              {
+                "title": "Android",
+                "steps": [
+                  "Open 86 Chaos in Chrome or Samsung Internet.",
+                  "Open the browser menu.",
+                  "Choose Install app or Add page to Home screen.",
+                  "Open it from the new app icon."
+                ]
+              },
+              {
+                "title": "iPhone or iPad",
+                "steps": [
+                  "Open 86 Chaos in Safari.",
+                  "Tap Share.",
+                  "Tap Add to Home Screen.",
+                  "Tap Add."
+                ]
+              },
+              {
+                "title": "Wrong icon after reinstall",
+                "body": [
+                  "Your device may keep an old cached icon. Remove the installed app, close the browser, then install it again after the new icon update is live."
+                ]
+              }
+            ],
+            "troubleshooting": [
+              "If the icon looks gray, remove the installed app and install it again after the update.",
+              "Firefox support can vary by device. Use Chrome, Edge, Samsung Internet, or Safari if installation is not offered."
+            ],
+            "relatedArticleIds": [
+              "app-icon-gray",
+              "reinstall-pwa"
+            ],
+            "deepLinkIds": [],
+            "externalLinks": [
+              {
+                "id": "microsoft-edge-install",
+                "label": "Microsoft Edge install help",
+                "url": "https://support.microsoft.com/"
+              },
+              {
+                "id": "apple-add-home-screen",
+                "label": "Apple Add to Home Screen help",
+                "url": "https://support.apple.com/"
+              }
+            ],
+            "lastVerifiedVersion": "16.0.150",
+            "score": 100
+          },
+          {
+            "id": "reinstall-pwa",
+            "title": "How do I safely reinstall the app?",
+            "subjectId": "troubleshooting",
+            "subtopicId": "reinstall-pwa",
+            "audience": "Everyone",
+            "summary": "Removing the installed app shortcut and installing it again is safe for normal users.",
+            "commonQuestions": [
+              "How do I reinstall 86 Chaos?",
+              "Can I remove the app icon safely?"
+            ],
+            "keywords": [
+              "reinstall",
+              "remove app",
+              "install again",
+              "home screen"
+            ],
+            "synonyms": [
+              "reinstall",
+              "remove app",
+              "install again",
+              "home screen"
+            ],
+            "sections": [
+              {
+                "title": "Short answer",
+                "body": [
+                  "You can remove the installed shortcut and install it again. This does not delete the restaurant workspace."
+                ]
+              },
+              {
+                "title": "How to do it",
+                "steps": [
+                  "Sign out if you can.",
+                  "Remove the installed app from the device.",
+                  "Open the browser version.",
+                  "Install the app again.",
+                  "Sign in."
+                ]
+              }
+            ],
+            "troubleshooting": [],
+            "relatedArticleIds": [
+              "install-app",
+              "app-icon-gray"
+            ],
+            "deepLinkIds": [],
+            "externalLinks": [],
+            "lastVerifiedVersion": "16.0.150",
+            "score": 48
+          },
+          {
+            "id": "custom-shift-edit-delete",
+            "title": "How do I edit or delete a Custom Shift?",
+            "subjectId": "schedule-time-clock",
+            "subtopicId": "schedule-builder",
+            "audience": "Manager / Owner",
+            "summary": "Editing a Custom Shift changes the reusable preset. It does not change shifts already placed on the schedule.",
+            "commonQuestions": [
+              "How do I edit a Custom Shift?",
+              "How do I delete a saved shift?",
+              "Will deleting a preset delete scheduled shifts?"
+            ],
+            "keywords": [
+              "edit custom shift",
+              "delete custom shift",
+              "saved shift",
+              "preset",
+              "schedule builder"
+            ],
+            "synonyms": [
+              "edit custom shift",
+              "delete custom shift",
+              "saved shift",
+              "preset",
+              "schedule builder"
+            ],
+            "sections": [
+              {
+                "title": "Short answer",
+                "body": [
+                  "Open [[Schedule Builder|schedule-builder]], find the saved Custom Shift, then use Edit or Delete for that exact preset."
+                ]
+              },
+              {
+                "title": "How to do it",
+                "steps": [
+                  "Open [[Schedule Builder|schedule-builder]].",
+                  "Find the exact Custom Shift name.",
+                  "Choose Edit to change the name or times.",
+                  "Choose Delete only when you no longer want the preset.",
+                  "Confirm when the app asks."
+                ]
+              },
+              {
+                "title": "What changes",
+                "body": [
+                  "Only the reusable Custom Shift preset changes. Shifts that were already added to the schedule stay where they are."
+                ]
+              }
+            ],
+            "troubleshooting": [
+              "If you do not see Edit or Delete, you may not have Schedule Builder permission."
+            ],
+            "relatedArticleIds": [
+              "custom-shifts-overview",
+              "custom-shifts-on-phone"
+            ],
+            "deepLinkIds": [
+              "schedule-builder"
+            ],
+            "externalLinks": [],
+            "lastVerifiedVersion": "16.0.150",
+            "score": 40
+          },
+          {
+            "id": "first-login",
+            "title": "How do I log in the first time?",
+            "subjectId": "getting-started",
+            "subtopicId": "first-login",
+            "audience": "Everyone",
+            "summary": "Use the email or username your manager gave you, then unlock the app with your password.",
+            "commonQuestions": [
+              "How do I log in?",
+              "What do I do on first login?"
+            ],
+            "keywords": [
+              "login",
+              "first login",
+              "unlock system",
+              "email",
+              "username",
+              "password"
+            ],
+            "synonyms": [
+              "login",
+              "first login",
+              "unlock system",
+              "email",
+              "username",
+              "password"
+            ],
+            "sections": [
+              {
+                "title": "Short answer",
+                "body": [
+                  "Open 86 Chaos, type your Email Address, type your Password, then choose Unlock System."
+                ]
+              },
+              {
+                "title": "Who can use this",
+                "body": [
+                  "Everyone with an active restaurant account can log in."
+                ]
+              },
+              {
+                "title": "How to do it",
+                "steps": [
+                  "Open the 86 Chaos app or website.",
+                  "Type your Email Address.",
+                  "Type your Password.",
+                  "Choose Unlock System.",
+                  "Pick your workspace if you are asked."
+                ]
+              },
+              {
+                "title": "If it does not work",
+                "body": [
+                  "Check spelling first. If you still cannot get in, use Forgot Password or Username or ask a manager to check your staff account."
+                ]
+              }
+            ],
+            "troubleshooting": [
+              "Check your email spelling.",
+              "Ask a manager to confirm your account is active."
+            ],
+            "relatedArticleIds": [
+              "password-reset"
+            ],
+            "deepLinkIds": [
+              "settings"
+            ],
+            "externalLinks": [],
+            "lastVerifiedVersion": "16.0.150",
+            "score": 40
+          },
+          {
+            "id": "request-off-how",
+            "title": "How do I request a day off?",
+            "subjectId": "schedule-time-clock",
+            "subtopicId": "request-off",
+            "audience": "Everyone",
+            "summary": "Request Off lets you ask for a day off before the schedule is finalized.",
+            "commonQuestions": [
+              "How do I request off?",
+              "How do I ask for a day off?"
+            ],
+            "keywords": [
+              "request off",
+              "day off",
+              "time off",
+              "availability",
+              "vacation"
+            ],
+            "synonyms": [
+              "request off",
+              "day off",
+              "time off",
+              "availability",
+              "vacation"
+            ],
+            "sections": [
+              {
+                "title": "Short answer",
+                "body": [
+                  "Open [[Request Off|request-off]], choose the date, then submit your request."
+                ]
+              },
+              {
+                "title": "How to do it",
+                "steps": [
+                  "Open Time Clock & Schedule.",
+                  "Choose Request Off.",
+                  "Tap the date you need off.",
+                  "Read any warning that appears.",
+                  "Choose Continue only if you still want to request that day.",
+                  "Submit the request."
+                ]
+              },
+              {
+                "title": "What you should see",
+                "body": [
+                  "Your request should show as pending until a manager reviews it."
+                ]
+              }
+            ],
+            "troubleshooting": [
+              "If someone else already requested the same date, the app warns you before adding the date.",
+              "A request is not the same as an approved day off until a manager approves it."
+            ],
+            "relatedArticleIds": [
+              "request-off-conflicts",
+              "cannot-request-off"
+            ],
+            "deepLinkIds": [
+              "request-off"
+            ],
+            "externalLinks": [],
+            "lastVerifiedVersion": "16.0.150",
+            "score": 40
+          }
+        ]
+      }
+    },
+    {
+      "question": "app icon is gray",
+      "topArticleIds": [
+        "app-icon-gray",
+        "install-app",
+        "reinstall-pwa"
+      ],
+      "answer": {
+        "ok": true,
+        "answer": "Installed apps can hold on to an old cached icon after an update. Remove the installed app, then install it again after the icon update is live. Try this: Open the installed app once and confirm it is 86 Chaos. Remove or uninstall the installed app from your device. Open 86 Chaos in the browser.",
+        "sourceArticleIds": [
+          "app-icon-gray",
+          "install-app",
+          "reinstall-pwa"
+        ],
+        "suggestedDeepLinkIds": [
+          "time-clock"
+        ],
+        "confidence": 0.82,
+        "insufficientInformation": false,
+        "matches": [
+          {
+            "id": "app-icon-gray",
+            "title": "Why does my installed app show the wrong icon?",
+            "subjectId": "troubleshooting",
+            "subtopicId": "wrong-icon",
+            "audience": "Everyone",
+            "summary": "Installed apps can hold on to an old cached icon after an update.",
+            "commonQuestions": [
+              "Why is my app icon gray?",
+              "Wrong app icon"
+            ],
+            "keywords": [
+              "app icon gray",
+              "wrong icon",
+              "generic icon",
+              "installed app",
+              "pwa icon"
+            ],
+            "synonyms": [
+              "app icon gray",
+              "wrong icon",
+              "generic icon",
+              "installed app",
+              "pwa icon"
+            ],
+            "sections": [
+              {
+                "title": "Short answer",
+                "body": [
+                  "Remove the installed app, then install it again after the icon update is live."
+                ]
+              },
+              {
+                "title": "Try this",
+                "steps": [
+                  "Open the installed app once and confirm it is 86 Chaos.",
+                  "Remove or uninstall the installed app from your device.",
+                  "Open 86 Chaos in the browser.",
+                  "Install it again from the browser menu.",
+                  "Check the new icon."
+                ]
+              }
+            ],
+            "troubleshooting": [
+              "This does not delete restaurant data. Your data is saved in the app, not in the home-screen icon."
+            ],
+            "relatedArticleIds": [
+              "install-app",
+              "reinstall-pwa"
+            ],
+            "deepLinkIds": [],
+            "externalLinks": [],
+            "lastVerifiedVersion": "16.0.150",
+            "score": 100
+          },
+          {
+            "id": "install-app",
+            "title": "How do I install 86 Chaos on my device?",
+            "subjectId": "getting-started",
+            "subtopicId": "installing",
+            "audience": "Everyone",
+            "summary": "Install the app from your browser menu so it opens like a normal app.",
+            "commonQuestions": [
+              "How do I install the app?",
+              "How do I add 86 Chaos to my home screen?"
+            ],
+            "keywords": [
+              "install",
+              "pwa",
+              "home screen",
+              "edge",
+              "chrome",
+              "safari",
+              "samsung internet",
+              "app icon"
+            ],
+            "synonyms": [
+              "install",
+              "pwa",
+              "home screen",
+              "edge",
+              "chrome",
+              "safari",
+              "samsung internet",
+              "app icon"
+            ],
+            "sections": [
+              {
+                "title": "Short answer",
+                "body": [
+                  "Open 86 Chaos in a supported browser and use the browser install or Add to Home Screen option."
+                ]
+              },
+              {
+                "title": "Windows Edge or Chrome",
+                "steps": [
+                  "Open 86 Chaos.",
+                  "Open the browser menu.",
+                  "Choose Install app when it appears.",
+                  "Pin it to the taskbar if you want quick access."
+                ]
+              },
+              {
+                "title": "Android",
+                "steps": [
+                  "Open 86 Chaos in Chrome or Samsung Internet.",
+                  "Open the browser menu.",
+                  "Choose Install app or Add page to Home screen.",
+                  "Open it from the new app icon."
+                ]
+              },
+              {
+                "title": "iPhone or iPad",
+                "steps": [
+                  "Open 86 Chaos in Safari.",
+                  "Tap Share.",
+                  "Tap Add to Home Screen.",
+                  "Tap Add."
+                ]
+              },
+              {
+                "title": "Wrong icon after reinstall",
+                "body": [
+                  "Your device may keep an old cached icon. Remove the installed app, close the browser, then install it again after the new icon update is live."
+                ]
+              }
+            ],
+            "troubleshooting": [
+              "If the icon looks gray, remove the installed app and install it again after the update.",
+              "Firefox support can vary by device. Use Chrome, Edge, Samsung Internet, or Safari if installation is not offered."
+            ],
+            "relatedArticleIds": [
+              "app-icon-gray",
+              "reinstall-pwa"
+            ],
+            "deepLinkIds": [],
+            "externalLinks": [
+              {
+                "id": "microsoft-edge-install",
+                "label": "Microsoft Edge install help",
+                "url": "https://support.microsoft.com/"
+              },
+              {
+                "id": "apple-add-home-screen",
+                "label": "Apple Add to Home Screen help",
+                "url": "https://support.apple.com/"
+              }
+            ],
+            "lastVerifiedVersion": "16.0.150",
+            "score": 84
+          },
+          {
+            "id": "reinstall-pwa",
+            "title": "How do I safely reinstall the app?",
+            "subjectId": "troubleshooting",
+            "subtopicId": "reinstall-pwa",
+            "audience": "Everyone",
+            "summary": "Removing the installed app shortcut and installing it again is safe for normal users.",
+            "commonQuestions": [
+              "How do I reinstall 86 Chaos?",
+              "Can I remove the app icon safely?"
+            ],
+            "keywords": [
+              "reinstall",
+              "remove app",
+              "install again",
+              "home screen"
+            ],
+            "synonyms": [
+              "reinstall",
+              "remove app",
+              "install again",
+              "home screen"
+            ],
+            "sections": [
+              {
+                "title": "Short answer",
+                "body": [
+                  "You can remove the installed shortcut and install it again. This does not delete the restaurant workspace."
+                ]
+              },
+              {
+                "title": "How to do it",
+                "steps": [
+                  "Sign out if you can.",
+                  "Remove the installed app from the device.",
+                  "Open the browser version.",
+                  "Install the app again.",
+                  "Sign in."
+                ]
+              }
+            ],
+            "troubleshooting": [],
+            "relatedArticleIds": [
+              "install-app",
+              "app-icon-gray"
+            ],
+            "deepLinkIds": [],
+            "externalLinks": [],
+            "lastVerifiedVersion": "16.0.150",
+            "score": 56
+          },
+          {
+            "id": "browser-compatibility-help",
+            "title": "Which browsers work best?",
+            "subjectId": "troubleshooting",
+            "subtopicId": "browser-compatibility",
+            "audience": "Everyone",
+            "summary": "86 Chaos works best in current Chrome, Edge, Safari, or Samsung Internet for normal restaurant use.",
+            "commonQuestions": [
+              "What browser should I use?",
+              "Does Firefox install app?"
+            ],
+            "keywords": [
+              "browser",
+              "chrome",
+              "edge",
+              "safari",
+              "samsung internet",
+              "firefox"
+            ],
+            "synonyms": [
+              "browser",
+              "chrome",
+              "edge",
+              "safari",
+              "samsung internet",
+              "firefox"
+            ],
+            "sections": [
+              {
+                "title": "Short answer",
+                "body": [
+                  "Use a current browser and keep it updated."
+                ]
+              },
+              {
+                "title": "Install notes",
+                "body": [
+                  "Edge and Chrome usually work well for installed apps on Windows. Chrome and Samsung Internet work well on Android. Safari is the correct choice for Add to Home Screen on iPhone and iPad. Firefox support may vary by device."
+                ]
+              }
+            ],
+            "troubleshooting": [],
+            "relatedArticleIds": [
+              "install-app"
+            ],
+            "deepLinkIds": [],
+            "externalLinks": [],
+            "lastVerifiedVersion": "16.0.150",
+            "score": 40
+          },
+          {
+            "id": "clock-in-help",
+            "title": "Why can’t I clock in?",
+            "subjectId": "schedule-time-clock",
+            "subtopicId": "time-clock",
+            "audience": "Everyone",
+            "summary": "Clock-in problems usually mean the schedule, account, browser, or location setting needs review.",
+            "commonQuestions": [
+              "Why can’t I clock in?",
+              "Clock in button missing"
+            ],
+            "keywords": [
+              "clock in",
+              "clock out",
+              "time clock",
+              "cannot clock in",
+              "geofence",
+              "location"
+            ],
+            "synonyms": [
+              "clock in",
+              "clock out",
+              "time clock",
+              "cannot clock in",
+              "geofence",
+              "location"
+            ],
+            "sections": [
+              {
+                "title": "Short answer",
+                "body": [
+                  "Open [[Time Clock|time-clock]]. If the button is missing or disabled, check the message shown on the screen."
+                ]
+              },
+              {
+                "title": "Try this",
+                "steps": [
+                  "Make sure you are signed into the right workspace.",
+                  "Refresh the app once.",
+                  "Check that your account is active.",
+                  "Allow location if your restaurant requires it.",
+                  "Ask a manager to check your scheduled shift or time-clock settings."
+                ]
+              }
+            ],
+            "troubleshooting": [
+              "A manager may need to fix a missed punch.",
+              "Do not create a second account to clock in."
+            ],
+            "relatedArticleIds": [
+              "missed-punch-help"
+            ],
+            "deepLinkIds": [
+              "time-clock"
+            ],
+            "externalLinks": [],
+            "lastVerifiedVersion": "16.0.150",
+            "score": 24
+          }
+        ]
+      }
+    },
+    {
+      "question": "86voice cant hear me",
+      "topArticleIds": [
+        "voice-not-hearing",
+        "voice-open-close",
+        "voice-commands-use"
+      ],
+      "answer": {
+        "ok": true,
+        "answer": "Voice problems usually come from microphone permission, browser support, or background noise. Check microphone permission first. Try this: Close 86Voice. Check the browser microphone permission. Move away from loud equipment if possible.",
+        "sourceArticleIds": [
+          "voice-not-hearing",
+          "voice-open-close",
+          "voice-commands-use"
+        ],
+        "suggestedDeepLinkIds": [
+          "86voice",
+          "prep",
+          "tasks",
+          "reminders"
+        ],
+        "confidence": 0.82,
+        "insufficientInformation": false,
+        "matches": [
+          {
+            "id": "voice-not-hearing",
+            "title": "Why isn’t 86Voice hearing me?",
+            "subjectId": "troubleshooting",
+            "subtopicId": "voice-troubleshooting",
+            "audience": "Everyone",
+            "summary": "Voice problems usually come from microphone permission, browser support, or background noise.",
+            "commonQuestions": [
+              "Why isn't 86Voice hearing me?",
+              "Voice unavailable"
+            ],
+            "keywords": [
+              "86voice not hearing",
+              "microphone",
+              "voice unavailable",
+              "speech"
+            ],
+            "synonyms": [
+              "86voice not hearing",
+              "microphone",
+              "voice unavailable",
+              "speech"
+            ],
+            "sections": [
+              {
+                "title": "Short answer",
+                "body": [
+                  "Check microphone permission first."
+                ]
+              },
+              {
+                "title": "Try this",
+                "steps": [
+                  "Close 86Voice.",
+                  "Check the browser microphone permission.",
+                  "Move away from loud equipment if possible.",
+                  "Open 86Voice again.",
+                  "Type the command if speech is not available on that device."
+                ]
+              }
+            ],
+            "troubleshooting": [
+              "Some browsers do not support speech recognition. You can still type commands when available."
+            ],
+            "relatedArticleIds": [
+              "voice-open-close"
+            ],
+            "deepLinkIds": [
+              "86voice"
+            ],
+            "externalLinks": [],
+            "lastVerifiedVersion": "16.0.150",
+            "score": 100
+          },
+          {
+            "id": "voice-open-close",
+            "title": "How do I open and close 86Voice?",
+            "subjectId": "voice-smart-tools",
+            "subtopicId": "voice-open-close",
+            "audience": "Everyone",
+            "summary": "86Voice opens from the microphone button and can help with navigation, prep, tasks, reminders, and searches.",
+            "commonQuestions": [
+              "How do I open 86Voice?",
+              "How do I close 86Voice?"
+            ],
+            "keywords": [
+              "86voice",
+              "voice",
+              "microphone",
+              "open voice",
+              "close voice"
+            ],
+            "synonyms": [
+              "86voice",
+              "voice",
+              "microphone",
+              "open voice",
+              "close voice"
+            ],
+            "sections": [
+              {
+                "title": "Short answer",
+                "body": [
+                  "Use the microphone button to open 86Voice. Use Close 86Voice panel or Hide 86Voice assistant to close it."
+                ]
+              },
+              {
+                "title": "What it can do",
+                "steps": [
+                  "Open pages.",
+                  "Search Help.",
+                  "Add prep or tasks when allowed.",
+                  "Create reminders when allowed.",
+                  "Look up recipes."
+                ]
+              }
+            ],
+            "troubleshooting": [],
+            "relatedArticleIds": [
+              "voice-commands-use",
+              "voice-not-hearing"
+            ],
+            "deepLinkIds": [
+              "86voice"
+            ],
+            "externalLinks": [],
+            "lastVerifiedVersion": "16.0.150",
+            "score": 67
+          },
+          {
+            "id": "voice-commands-use",
+            "title": "What can I say to 86Voice?",
+            "subjectId": "voice-smart-tools",
+            "subtopicId": "voice-commands",
+            "audience": "Everyone",
+            "summary": "Use plain restaurant phrases. 86Voice follows the same permissions as the app.",
+            "commonQuestions": [
+              "What voice commands work?",
+              "Can I say 86 eggs?"
+            ],
+            "keywords": [
+              "86voice commands",
+              "prep commands",
+              "task commands",
+              "86 alerts",
+              "recipe lookup",
+              "undo"
+            ],
+            "synonyms": [
+              "86voice commands",
+              "prep commands",
+              "task commands",
+              "86 alerts",
+              "recipe lookup",
+              "undo"
+            ],
+            "sections": [
+              {
+                "title": "Short answer",
+                "body": [
+                  "Say what you want in normal kitchen words."
+                ]
+              },
+              {
+                "title": "Examples",
+                "steps": [
+                  "Open prep.",
+                  "Mark onions done.",
+                  "Add clean fryer wall to tasks.",
+                  "Remind me tomorrow to call the vendor.",
+                  "Show the ranch recipe.",
+                  "Search Help for invoice scanning."
+                ]
+              }
+            ],
+            "troubleshooting": [
+              "If 86Voice is not sure, it should ask you to choose before saving."
+            ],
+            "relatedArticleIds": [
+              "voice-not-hearing"
+            ],
+            "deepLinkIds": [
+              "86voice",
+              "prep",
+              "tasks",
+              "reminders",
+              "recipes"
+            ],
+            "externalLinks": [],
+            "lastVerifiedVersion": "16.0.150",
+            "score": 27
+          },
+          {
+            "id": "event-reminders-use",
+            "title": "How do event reminders work?",
+            "subjectId": "maintenance-events",
+            "subtopicId": "event-reminders",
+            "audience": "Everyone",
+            "summary": "Event reminders help the team prepare before important dates.",
+            "commonQuestions": [
+              "Can events remind me?",
+              "How do event reminders work?"
+            ],
+            "keywords": [
+              "event reminders",
+              "events",
+              "notifications"
+            ],
+            "synonyms": [
+              "event reminders",
+              "events",
+              "notifications"
+            ],
+            "sections": [
+              {
+                "title": "Short answer",
+                "body": [
+                  "When event reminders are enabled, the app can show reminders before the event."
+                ]
+              }
+            ],
+            "troubleshooting": [],
+            "relatedArticleIds": [
+              "events-use"
+            ],
+            "deepLinkIds": [
+              "events"
+            ],
+            "externalLinks": [],
+            "lastVerifiedVersion": "16.0.150",
+            "score": 11
+          },
+          {
+            "id": "personal-reminders-use",
+            "title": "How do Personal Reminders work?",
+            "subjectId": "messages-notifications",
+            "subtopicId": "personal-reminders",
+            "audience": "Everyone",
+            "summary": "Personal Reminders help you remember your own work. Shared reminders show only to people included in the reminder.",
+            "commonQuestions": [
+              "Where are reminders?",
+              "How do shared reminders work?"
+            ],
+            "keywords": [
+              "personal reminders",
+              "shared reminders",
+              "remind me"
+            ],
+            "synonyms": [
+              "personal reminders",
+              "shared reminders",
+              "remind me"
+            ],
+            "sections": [
+              {
+                "title": "Short answer",
+                "body": [
+                  "Open [[Personal Reminders|reminders]] to see reminders that include you."
+                ]
+              },
+              {
+                "title": "Shared reminders",
+                "body": [
+                  "A shared reminder appears only for the people selected on the reminder."
+                ]
+              }
+            ],
+            "troubleshooting": [
+              "If a reminder is missing, check the date and whether you were included."
+            ],
+            "relatedArticleIds": [
+              "push-notifications-help"
+            ],
+            "deepLinkIds": [
+              "reminders"
+            ],
+            "externalLinks": [],
+            "lastVerifiedVersion": "16.0.150",
+            "score": 8
+          }
+        ]
+      }
+    },
+    {
+      "question": "where is back office",
+      "topArticleIds": [
+        "back-office-use",
+        "navigation-basics",
+        "custom-shifts-overview"
+      ],
+      "answer": {
+        "ok": true,
+        "answer": "Back Office groups owner and manager review tools that are safe for restaurant users. Open [[Back Office|back-office]] for restaurant-level review tools.",
+        "sourceArticleIds": [
+          "back-office-use",
+          "navigation-basics",
+          "custom-shifts-overview"
+        ],
+        "suggestedDeepLinkIds": [
+          "back-office",
+          "financials",
+          "staff-roster",
+          "today-home"
+        ],
+        "confidence": 0.82,
+        "insufficientInformation": false,
+        "matches": [
+          {
+            "id": "back-office-use",
+            "title": "What is Back Office?",
+            "subjectId": "back-office",
+            "subtopicId": "back-office-overview",
+            "audience": "Manager / Owner",
+            "summary": "Back Office groups owner and manager review tools that are safe for restaurant users.",
+            "commonQuestions": [
+              "Where is Back Office?",
+              "What is in Back Office?"
+            ],
+            "keywords": [
+              "back office",
+              "owner review",
+              "manager tools",
+              "reports"
+            ],
+            "synonyms": [
+              "back office",
+              "owner review",
+              "manager tools",
+              "reports"
+            ],
+            "sections": [
+              {
+                "title": "Short answer",
+                "body": [
+                  "Open [[Back Office|back-office]] for restaurant-level review tools."
+                ]
+              },
+              {
+                "title": "What it is not",
+                "body": [
+                  "Back Office is not the internal platform administrator area. Customer Help does not include internal platform instructions."
+                ]
+              }
+            ],
+            "troubleshooting": [],
+            "relatedArticleIds": [
+              "financial-center-use",
+              "staff-roster-use"
+            ],
+            "deepLinkIds": [
+              "back-office",
+              "financials",
+              "staff-roster"
+            ],
+            "externalLinks": [],
+            "lastVerifiedVersion": "16.0.150",
+            "score": 100
+          },
+          {
+            "id": "navigation-basics",
+            "title": "Where do I find things in 86 Chaos?",
+            "subjectId": "getting-started",
+            "subtopicId": "navigation",
+            "audience": "Everyone",
+            "summary": "Use the main menu and search. Common work is grouped by the job you are trying to do.",
+            "commonQuestions": [
+              "Where is Schedule Builder?",
+              "Where is Inventory?",
+              "Where is Request Off?"
+            ],
+            "keywords": [
+              "navigation",
+              "menu",
+              "find",
+              "where is",
+              "tab",
+              "search"
+            ],
+            "synonyms": [
+              "navigation",
+              "menu",
+              "find",
+              "where is",
+              "tab",
+              "search"
+            ],
+            "sections": [
+              {
+                "title": "Short answer",
+                "body": [
+                  "Open the menu, then choose the area that matches your work."
+                ]
+              },
+              {
+                "title": "Common places",
+                "steps": [
+                  "Use Today for daily notes and Need Attention.",
+                  "Use Time Clock & Schedule for shifts, clocking in, Request Off, and Availability.",
+                  "Use Inventory for counts, invoices, vendors, and orders.",
+                  "Use Prep & Tasks for prep lists and checklists.",
+                  "Use Help when you are not sure where to start."
+                ]
+              }
+            ],
+            "troubleshooting": [],
+            "relatedArticleIds": [
+              "schedule-builder-find",
+              "inventory-counts",
+              "request-off-how"
+            ],
+            "deepLinkIds": [
+              "today-home",
+              "schedule-builder",
+              "inventory",
+              "prep"
+            ],
+            "externalLinks": [],
+            "lastVerifiedVersion": "16.0.150",
+            "score": 36
+          },
+          {
+            "id": "custom-shifts-overview",
+            "title": "What are Custom Shifts?",
+            "subjectId": "schedule-time-clock",
+            "subtopicId": "schedule-builder",
+            "audience": "Manager / Owner",
+            "summary": "Custom Shifts are saved shift presets for one restaurant. They help managers add the same kind of shift without typing the times every time.",
+            "commonQuestions": [
+              "What are Custom Shifts?",
+              "Are custom shifts shared?",
+              "Where did my saved shifts go?"
+            ],
+            "keywords": [
+              "custom shifts",
+              "saved shifts",
+              "shift preset",
+              "schedule builder",
+              "shared shifts",
+              "preset"
+            ],
+            "synonyms": [
+              "custom shifts",
+              "saved shifts",
+              "shift preset",
+              "schedule builder",
+              "shared shifts",
+              "preset"
+            ],
+            "sections": [
+              {
+                "title": "Short answer",
+                "body": [
+                  "Custom Shifts are reusable shift buttons inside [[Schedule Builder|schedule-builder]]. They are shared for that restaurant with people who can use Schedule Builder."
+                ]
+              },
+              {
+                "title": "Who can use this",
+                "body": [
+                  "Managers, owners, and other people with Schedule Builder permission can use shared Custom Shifts. Staff who only view their own schedule cannot edit them."
+                ]
+              },
+              {
+                "title": "What you should see",
+                "body": [
+                  "When a Custom Shift is saved for the restaurant, it should appear on desktop, phone, tablet, and any fresh browser session for the same workspace."
+                ]
+              }
+            ],
+            "troubleshooting": [
+              "Make sure you are in the right restaurant workspace.",
+              "Ask a manager or owner to confirm you have Schedule Builder access."
+            ],
+            "relatedArticleIds": [
+              "custom-shift-save",
+              "custom-shifts-on-phone"
+            ],
+            "deepLinkIds": [
+              "schedule-builder"
+            ],
+            "externalLinks": [],
+            "lastVerifiedVersion": "16.0.150",
+            "score": 24
+          },
+          {
+            "id": "custom-shifts-on-phone",
+            "title": "Why aren’t my saved Custom Shifts on my phone?",
+            "subjectId": "schedule-time-clock",
+            "subtopicId": "schedule-builder",
+            "audience": "Manager / Owner",
+            "summary": "Custom Shifts should sync through the restaurant workspace so authorized managers can see them on other devices.",
+            "commonQuestions": [
+              "Why are saved shifts missing on my phone?",
+              "Why are custom shifts not on mobile?",
+              "Are custom shifts shared?",
+              "Where did my custom shifts go?"
+            ],
+            "keywords": [
+              "custom shifts phone",
+              "saved shifts on phone",
+              "mobile custom shifts",
+              "shared shifts",
+              "sync custom shifts",
+              "another device"
+            ],
+            "synonyms": [
+              "custom shifts phone",
+              "saved shifts on phone",
+              "mobile custom shifts",
+              "shared shifts",
+              "sync custom shifts",
+              "another device"
+            ],
+            "sections": [
+              {
+                "title": "Short answer",
+                "body": [
+                  "Custom Shifts are shared for the restaurant. Open the same workspace on your phone and refresh [[Schedule Builder|schedule-builder]]."
+                ]
+              },
+              {
+                "title": "Try this",
+                "steps": [
+                  "Make sure the phone is signed into the same restaurant workspace.",
+                  "Open [[Schedule Builder|schedule-builder]].",
+                  "Wait for the Custom Shift list to finish loading.",
+                  "Refresh once if the list still looks old.",
+                  "Ask a manager or owner to confirm the shift was saved successfully."
+                ]
+              },
+              {
+                "title": "If it still does not show",
+                "body": [
+                  "The app may be using a last-known list while it reconnects. Do not create duplicates until the shared list loads."
+                ]
+              }
+            ],
+            "troubleshooting": [
+              "A saved Custom Shift is shared only inside the restaurant where it was created."
+            ],
+            "relatedArticleIds": [
+              "custom-shifts-overview",
+              "custom-shift-save"
+            ],
+            "deepLinkIds": [
+              "schedule-builder"
+            ],
+            "externalLinks": [],
+            "lastVerifiedVersion": "16.0.150",
+            "score": 24
+          },
+          {
+            "id": "hr-training-use",
+            "title": "How do HR & Training tools work?",
+            "subjectId": "staff-training",
+            "subtopicId": "hr-training",
+            "audience": "Manager / Owner",
+            "summary": "HR & Training helps organize training records and certifications.",
+            "commonQuestions": [
+              "Where are training records?",
+              "How do I track certifications?"
+            ],
+            "keywords": [
+              "hr training",
+              "training",
+              "certifications",
+              "manuals"
+            ],
+            "synonyms": [
+              "hr training",
+              "training",
+              "certifications",
+              "manuals"
+            ],
+            "sections": [
+              {
+                "title": "Short answer",
+                "body": [
+                  "Open [[HR & Training|hr-training]] to review employee training items and certifications."
+                ]
+              },
+              {
+                "title": "Important",
+                "body": [
+                  "Follow your restaurant policy and local employment requirements. 86 Chaos helps organize records; it does not replace legal advice."
+                ]
+              }
+            ],
+            "troubleshooting": [],
+            "relatedArticleIds": [
+              "certifications-use"
+            ],
+            "deepLinkIds": [
+              "hr-training"
+            ],
+            "externalLinks": [],
+            "lastVerifiedVersion": "16.0.150",
+            "score": 19
+          }
+        ]
+      }
+    }
+  ],
+  "grounding": {
+    "corpus": "customer-help-only",
+    "firestoreAccess": false,
+    "storesConversation": false,
+    "validatesArticleIds": true,
+    "validatesDeepLinkIds": true
+  }
+}

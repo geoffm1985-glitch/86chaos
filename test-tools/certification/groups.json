@@ -1,0 +1,89 @@
+{
+  "schemaVersion": 1,
+  "release": "17.0.4",
+  "groups": {
+    "hostile-contracts": {
+      "mandatory": true,
+      "fidelity": [
+        "ACTUAL MODULE",
+        "ACTUAL HANDLER"
+      ],
+      "command": "npm run test:hostile:contracts",
+      "runnerGroups": [
+        "hostile certification"
+      ]
+    },
+    "hostile-mutations": {
+      "mandatory": true,
+      "fidelity": [
+        "ACTUAL MODULE"
+      ],
+      "command": "npm run test:hostile:mutations",
+      "runnerGroups": [
+        "hostile certification"
+      ]
+    },
+    "schedule-publish": {
+      "mandatory": true,
+      "fidelity": [
+        "ACTUAL MODULE",
+        "PLAYWRIGHT UI"
+      ],
+      "command": "npm run test:schedule-publish",
+      "runnerGroups": [
+        "schedule publication module and UI tests",
+        "schedule publication Firestore concurrency"
+      ]
+    },
+    "firebase": {
+      "mandatory": true,
+      "fidelity": [
+        "FIREBASE EMULATOR"
+      ],
+      "command": "npm run test:release:firebase",
+      "runnerGroups": [
+        "POS Bridge Firestore concurrency emulator tests",
+        "schedule publication Firestore concurrency",
+        "complete canonical firestore/storage emulator rules tests"
+      ]
+    },
+    "deployed": {
+      "mandatory": true,
+      "fidelity": [
+        "DEPLOYED HTTP",
+        "PLAYWRIGHT UI"
+      ],
+      "command": "npm run test:release:deployed",
+      "evidence": "playwright"
+    },
+    "recovery": {
+      "mandatory": true,
+      "fidelity": [
+        "ACTUAL MODULE",
+        "FIREBASE EMULATOR"
+      ],
+      "command": "npm run test:release:recovery",
+      "runnerGroups": [
+        "recovery drill"
+      ]
+    },
+    "scale": {
+      "mandatory": true,
+      "fidelity": [
+        "ACTUAL MODULE"
+      ],
+      "command": "npm run test:release:scale",
+      "runnerGroups": [
+        "scale and completeness boundaries"
+      ]
+    },
+    "real-device": {
+      "mandatory": true,
+      "fidelity": [
+        "REAL DEVICE REQUIRED"
+      ],
+      "automated": false,
+      "artifact": "real-device-evidence.json"
+    }
+  }
+}

@@ -1,0 +1,396 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function authEmailMatches(value) {
+      let email = signedIn() ? request.auth.token.get('email', '') : '';
+      return email != '' && value is string && value != '' && value == email;
+    }
+
+    function uploadPurposeIs(expected) {
+      return request.resource != null && request.resource.metadata is map && request.resource.metadata.purpose == expected;
+    }
+
+    function userPath() {
+      return /databases/(default)/documents/users/$(request.auth.uid);
+    }
+
+    function userExists() {
+      return signedIn() && firestore.exists(userPath());
+    }
+
+    function userDoc() {
+      return firestore.get(userPath()).data;
+    }
+
+    function userMember(restaurantId) {
+      return userDoc().get('memberships', {}).get(restaurantId, {});
+    }
+
+    function userPerms(restaurantId) {
+      return userMember(restaurantId).get('permissions', userDoc().get('permissions', {}));
+    }
+
+    function restaurantPath(restaurantId) {
+      return /databases/(default)/documents/restaurants/$(restaurantId);
+    }
+
+    function restaurantDoc(restaurantId) {
+      return firestore.get(restaurantPath(restaurantId)).data;
+    }
+
+    function isStorageSuperAdmin() {
+      return signedIn() && (
+        request.auth.token.get('superAdmin', false) == true ||
+        (
+          userExists() &&
+          (
+            userDoc().get('isSuperAdmin', false) == true ||
+            userDoc().get('systemAccess', {}).get('superAdmin', false) == true
+          )
+        )
+      );
+    }
+
+    function isTenantMember(restaurantId) {
+      return userExists() && (
+        userDoc().get('restaurantId', '') == restaurantId ||
+        userDoc().get('workspaceIds', []).hasAny([restaurantId]) ||
+        userMember(restaurantId).get('isActive', false) == true
+      );
+    }
+
+    function canManageProfilePhoto(restaurantId, uid) {
+      return isStorageSuperAdmin() ||
+        (
+          isTenantMember(restaurantId) &&
+          (
+            request.auth.uid == uid ||
+            userMember(restaurantId).get('isOwner', false) == true ||
+            userMember(restaurantId).get('accountOwner', false) == true ||
+            userMember(restaurantId).get('workspaceOwner', false) == true ||
+            userMember(restaurantId).get('isAdmin', false) == true ||
+            userDoc().get('isOwner', false) == true ||
+            userDoc().get('accountOwner', false) == true ||
+            userDoc().get('workspaceOwner', false) == true ||
+            userDoc().get('isAdmin', false) == true ||
+            userPerms(restaurantId).get('team', false) == true
+          )
+        );
+    }
+
+    function canManageBrandAssets(restaurantId) {
+      let restaurant = restaurantDoc(restaurantId);
+      return isStorageSuperAdmin() ||
+        (
+          isTenantMember(restaurantId) &&
+          (
+            restaurant.get('ownerUid', '') == request.auth.uid ||
+            restaurant.get('ownerUserId', '') == request.auth.uid ||
+            authEmailMatches(restaurant.get('ownerEmail', '')) ||
+            authEmailMatches(restaurant.get('ownerEmailLower', '')) ||
+            userMember(restaurantId).get('isOwner', false) == true ||
+            userMember(restaurantId).get('accountOwner', false) == true ||
+            userMember(restaurantId).get('workspaceOwner', false) == true ||
+            userMember(restaurantId).get('isAdmin', false) == true ||
+            userDoc().get('isOwner', false) == true ||
+            userDoc().get('accountOwner', false) == true ||
+            userDoc().get('workspaceOwner', false) == true ||
+            userDoc().get('isAdmin', false) == true ||
+            userPerms(restaurantId).get('branding', false) == true ||
+            userPerms(restaurantId).get('settings', false) == true
+          )
+        );
+    }
+
+    function canUseMenuIntelligence(restaurantId) {
+      return isStorageSuperAdmin() ||
+        (
+          isTenantMember(restaurantId) &&
+          (
+            userMember(restaurantId).get('isOwner', false) == true ||
+            userMember(restaurantId).get('accountOwner', false) == true ||
+            userMember(restaurantId).get('workspaceOwner', false) == true ||
+            userMember(restaurantId).get('isAdmin', false) == true ||
+            userDoc().get('isOwner', false) == true ||
+            userDoc().get('accountOwner', false) == true ||
+            userDoc().get('workspaceOwner', false) == true ||
+            userDoc().get('isAdmin', false) == true ||
+            userPerms(restaurantId).get('menuIntelligence', false) == true ||
+            userPerms(restaurantId).get('inventory', false) == true ||
+            userPerms(restaurantId).get('inventoryEdit', false) == true
+          )
+        );
+    }
+
+    function canUseInvoiceScans(restaurantId) {
+      return isStorageSuperAdmin() ||
+        (
+          isTenantMember(restaurantId) &&
+          (
+            userMember(restaurantId).get('isOwner', false) == true ||
+            userMember(restaurantId).get('accountOwner', false) == true ||
+            userMember(restaurantId).get('workspaceOwner', false) == true ||
+            userMember(restaurantId).get('isAdmin', false) == true ||
+            userDoc().get('isOwner', false) == true ||
+            userDoc().get('accountOwner', false) == true ||
+            userDoc().get('workspaceOwner', false) == true ||
+            userDoc().get('isAdmin', false) == true ||
+            userPerms(restaurantId).get('inventory', false) == true ||
+            userPerms(restaurantId).get('inventoryEdit', false) == true ||
+            userPerms(restaurantId).get('invoiceScan', false) == true ||
+            userPerms(restaurantId).get('scans', false) == true ||
+            userPerms(restaurantId).get('financialEdit', false) == true
+          )
+        );
+    }
+
+    function canManageHr(restaurantId) {
+      return isStorageSuperAdmin() ||
+        (
+          isTenantMember(restaurantId) &&
+          (
+            userMember(restaurantId).get('isOwner', false) == true ||
+            userMember(restaurantId).get('accountOwner', false) == true ||
+            userMember(restaurantId).get('workspaceOwner', false) == true ||
+            userMember(restaurantId).get('isAdmin', false) == true ||
+            userDoc().get('isOwner', false) == true ||
+            userDoc().get('accountOwner', false) == true ||
+            userDoc().get('workspaceOwner', false) == true ||
+            userDoc().get('isAdmin', false) == true ||
+            userPerms(restaurantId).get('hr', false) == true
+          )
+        );
+    }
+
+    function canUseBackOfficeVault(restaurantId) {
+      let restaurant = restaurantDoc(restaurantId);
+      let subscription = restaurant.get('subscription', {});
+      let plan = subscription.get('planId', restaurant.get('planId', ''));
+      let status = subscription.get('status', restaurant.get('subscriptionStatus', restaurant.get('billingStatus', 'active')));
+      return isStorageSuperAdmin() ||
+        (
+          isTenantMember(restaurantId) &&
+          subscription.get('entitlementActive', true) != false &&
+          !(status in ['canceled', 'cancelled', 'trial_expired', 'expired', 'disabled', 'suspended']) &&
+          plan in ['owner_pro', 'master_admin'] &&
+          (
+            restaurant.get('ownerUid', '') == request.auth.uid ||
+            restaurant.get('ownerUserId', '') == request.auth.uid ||
+            authEmailMatches(restaurant.get('ownerEmail', '')) ||
+            authEmailMatches(restaurant.get('ownerEmailLower', '')) ||
+            userMember(restaurantId).get('isOwner', false) == true ||
+            userMember(restaurantId).get('accountOwner', false) == true ||
+            userMember(restaurantId).get('workspaceOwner', false) == true ||
+            userMember(restaurantId).get('isAdmin', false) == true ||
+            userDoc().get('isOwner', false) == true ||
+            userDoc().get('accountOwner', false) == true ||
+            userDoc().get('workspaceOwner', false) == true ||
+            userDoc().get('isAdmin', false) == true ||
+            userPerms(restaurantId).get('backOffice', false) == true ||
+            userPerms(restaurantId).get('ownerTools', false) == true ||
+            userPerms(restaurantId).get('settings', false) == true ||
+            userPerms(restaurantId).get('financialEdit', false) == true
+          )
+        );
+    }
+
+    function documentVaultMetadataMatches(restaurantId, recordId) {
+      return request.resource != null &&
+        request.resource.metadata is map &&
+        request.resource.metadata.get('purpose', '') == 'document-vault' &&
+        request.resource.metadata.get('restaurantId', '') == restaurantId &&
+        request.resource.metadata.get('recordId', '') == recordId &&
+        request.resource.metadata.get('uploadedBy', '') == request.auth.uid &&
+        request.resource.metadata.get('source', '') == '86chaos-document-vault';
+    }
+
+    function allowedVaultContentType(fileName) {
+      return (request.resource.contentType == 'application/pdf' && fileName.matches('.*[.][Pp][Dd][Ff]$')) ||
+        (request.resource.contentType == 'image/jpeg' && fileName.matches('.*[.][Jj][Pp][Ee]?[Gg]$')) ||
+        (request.resource.contentType == 'image/png' && fileName.matches('.*[.][Pp][Nn][Gg]$')) ||
+        (request.resource.contentType == 'image/webp' && fileName.matches('.*[.][Ww][Ee][Bb][Pp]$')) ||
+        (request.resource.contentType == 'image/heic' && fileName.matches('.*[.][Hh][Ee][Ii][Cc]$')) ||
+        (request.resource.contentType == 'image/heif' && fileName.matches('.*[.][Hh][Ee][Ii][Ff]$')) ||
+        (request.resource.contentType == 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' && fileName.matches('.*[.][Dd][Oo][Cc][Xx]$')) ||
+        (request.resource.contentType == 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' && fileName.matches('.*[.][Xx][Ll][Ss][Xx]$')) ||
+        (request.resource.contentType == 'text/plain' && fileName.matches('.*[.][Tt][Xx][Tt]$')) ||
+        (request.resource.contentType == 'text/csv' && fileName.matches('.*[.][Cc][Ss][Vv]$'));
+    }
+
+    function isAllowedDocumentVaultObject(restaurantId, recordId, fileName) {
+      return request.resource != null &&
+        request.resource.size > 0 &&
+        request.resource.size <= 12 * 1024 * 1024 &&
+        allowedVaultContentType(fileName) &&
+        documentVaultMetadataMatches(restaurantId, recordId);
+    }
+
+    function isAllowedImage() {
+      return request.resource != null &&
+        request.resource.size > 0 &&
+        request.resource.size < 8 * 1024 * 1024 &&
+        request.resource.contentType.matches('image/.*');
+    }
+
+    function isAllowedDocument() {
+      return request.resource != null &&
+        request.resource.size > 0 &&
+        request.resource.size < 15 * 1024 * 1024 &&
+        (
+          request.resource.contentType.matches('image/.*') ||
+          request.resource.contentType == 'application/pdf'
+        );
+    }
+
+    function trainingManualPath(manualId) {
+      return /databases/(default)/documents/trainingManuals/$(manualId);
+    }
+
+    function publishedTrainingManualFor(restaurantId, manualId) {
+      let manual = firestore.get(trainingManualPath(manualId)).data;
+      return manual.restaurantId == restaurantId && manual.status == 'Published';
+    }
+
+    function isAllowedTrainingManualType(contentType) {
+      return contentType in [
+        'application/pdf',
+        'application/msword',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'text/plain'
+      ];
+    }
+
+    function isAllowedTrainingManual(restaurantId, manualId) {
+      return request.resource != null &&
+        uploadPurposeIs('hr-training-manual') &&
+        request.resource.metadata.restaurantId == restaurantId &&
+        request.resource.metadata.manualId == manualId &&
+        request.resource.size > 0 &&
+        request.resource.size <= 15 * 1024 * 1024 &&
+        (
+          isAllowedTrainingManualType(request.resource.contentType) ||
+          (
+            request.resource.contentType == 'application/gzip' &&
+            request.resource.metadata.compression == 'gzip' &&
+            isAllowedTrainingManualType(request.resource.metadata.originalContentType)
+          )
+        );
+    }
+
+    function isAllowedInvoiceScan(restaurantId) {
+      return request.resource != null &&
+        uploadPurposeIs('invoice-scan') &&
+        request.resource.metadata.restaurantId == restaurantId &&
+        request.resource.size > 0 &&
+        request.resource.size <= 20 * 1024 * 1024 &&
+        (
+          request.resource.contentType.matches('image/.*') ||
+          request.resource.contentType == 'application/pdf'
+        );
+    }
+
+    function isAllowedMenuUpload(restaurantId) {
+      return request.resource != null &&
+        uploadPurposeIs('menu-scan') &&
+        request.resource.metadata.restaurantId == restaurantId &&
+        request.resource.size > 0 &&
+        request.resource.size <= 20 * 1024 * 1024 &&
+        (
+          request.resource.contentType.matches('image/.*') ||
+          request.resource.contentType == 'application/pdf'
+        );
+    }
+
+    // Restaurant-scoped profile photos. Users may manage only their own photo unless they manage staff.
+    match /{restaurantId}/profilePhotos/{uid}/{fileName} {
+      allow read: if signedIn() && (isStorageSuperAdmin() || isTenantMember(restaurantId));
+      allow create, update: if signedIn() && canManageProfilePhoto(restaurantId, uid) && isAllowedImage();
+      allow delete: if signedIn() && canManageProfilePhoto(restaurantId, uid);
+    }
+
+    match /{restaurantId}/profilePhotos/{allPaths=**} {
+      allow read: if signedIn() && (isStorageSuperAdmin() || isTenantMember(restaurantId));
+      allow write: if false;
+    }
+
+    // Restaurant-scoped branding/logo assets.
+    // 86 Chaos branding is locked in the app. This path is only for customer restaurant logos.
+    match /{restaurantId}/brandAssets/{allPaths=**} {
+      allow read: if signedIn() && (isStorageSuperAdmin() || isTenantMember(restaurantId));
+      allow create, update: if signedIn() && canManageBrandAssets(restaurantId) && isAllowedImage();
+      allow delete: if signedIn() && canManageBrandAssets(restaurantId);
+    }
+
+    // Legacy Cheers branding path from older Settings builds. Current builds use
+    // restaurant-scoped brandAssets, but this keeps older deployed clients from
+    // hitting storage/unauthorized while the update rolls out.
+    match /cheers-restaurant-assets/{allPaths=**} {
+      allow read: if signedIn() && (isStorageSuperAdmin() || isTenantMember('cheers_chilton_01'));
+      allow create, update: if signedIn() && canManageBrandAssets('cheers_chilton_01') && isAllowedImage();
+      allow delete: if signedIn() && canManageBrandAssets('cheers_chilton_01');
+    }
+
+    // Restaurant-scoped message attachments.
+    match /{restaurantId}/messageAttachments/{allPaths=**} {
+      allow read: if signedIn() && (isStorageSuperAdmin() || isTenantMember(restaurantId));
+      allow create, update: if signedIn() && (isStorageSuperAdmin() || isTenantMember(restaurantId)) && isAllowedDocument();
+      allow delete: if signedIn() && (isStorageSuperAdmin() || isTenantMember(restaurantId));
+    }
+
+    // Restaurant-scoped maintenance photos.
+    match /{restaurantId}/maintenancePhotos/{allPaths=**} {
+      allow read: if signedIn() && (isStorageSuperAdmin() || isTenantMember(restaurantId));
+      allow create, update: if signedIn() && (isStorageSuperAdmin() || isTenantMember(restaurantId)) && isAllowedImage();
+      allow delete: if signedIn() && (isStorageSuperAdmin() || isTenantMember(restaurantId));
+    }
+
+    // Restaurant-scoped invoice scans. Invoice files are limited to inventory/scan/financial-authorized users.
+    match /{restaurantId}/invoices/{allPaths=**} {
+      allow read: if signedIn() && canUseInvoiceScans(restaurantId);
+      allow create, update: if signedIn() && canUseInvoiceScans(restaurantId) && isAllowedInvoiceScan(restaurantId);
+      allow delete: if signedIn() && canUseInvoiceScans(restaurantId);
+    }
+
+    // Restaurant-scoped menu uploads for Menu Intelligence review.
+    match /{restaurantId}/menuUploads/{allPaths=**} {
+      allow read: if signedIn() && canUseMenuIntelligence(restaurantId);
+      allow create, update: if signedIn() && canUseMenuIntelligence(restaurantId) && isAllowedMenuUpload(restaurantId);
+      allow delete: if signedIn() && canUseMenuIntelligence(restaurantId);
+    }
+
+    // Versioned HR training manuals. Employees may fetch only files whose
+    // matching Firestore record is currently Published. HR managers may upload,
+    // inspect, and delete any version for their own workspace.
+    match /{restaurantId}/hrTrainingManuals/{manualId}/{allPaths=**} {
+      allow read: if signedIn() && (canManageHr(restaurantId) || (isTenantMember(restaurantId) && publishedTrainingManualFor(restaurantId, manualId)));
+      allow create: if signedIn() && canManageHr(restaurantId) && isAllowedTrainingManual(restaurantId, manualId);
+      allow update: if false;
+      allow delete: if signedIn() && canManageHr(restaurantId);
+    }
+
+    // Owner Pro Back Office Document Vault files. This exact app path must stay locked to
+    // Back Office-authorized users and the metadata must match the route path.
+    match /restaurants/{restaurantId}/back-office/document-vault/{recordId}/{fileName} {
+      allow read: if signedIn() && canUseBackOfficeVault(restaurantId);
+      allow create, update: if signedIn() && canUseBackOfficeVault(restaurantId) && isAllowedDocumentVaultObject(restaurantId, recordId, fileName);
+      allow delete: if signedIn() && canUseBackOfficeVault(restaurantId);
+    }
+
+    // Backups are Super Admin only. No regular signed-in user can read or write backups.
+    match /backups/{allPaths=**} {
+      allow read, write: if signedIn() && isStorageSuperAdmin();
+    }
+
+    // Locked production fallback. Anything not explicitly allowed above is denied.
+    // Do not replace this with signed-in read/write access.
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

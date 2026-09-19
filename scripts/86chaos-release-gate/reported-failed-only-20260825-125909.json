@@ -1,0 +1,169 @@
+{
+  "ok": true,
+  "mode": "failed-only",
+  "selectionSource": "bundled-latest-failed-only-20260825-125909-fail-only",
+  "source": "authoritative-failed-only-run-20260825-125909",
+  "targetRunId": "2026-08-25T12-59-09",
+  "targetSourceVersion": "16.0.198",
+  "targetDeployedVersion": "16.0.198",
+  "totalSelected": 5,
+  "desktopSelected": 3,
+  "mobileSelected": 2,
+  "previousFailuresSelected": 5,
+  "previousTimeoutsSelected": 0,
+  "previousPassesSelected": 0,
+  "previousSkipsSelected": 0,
+  "notRunSelected": 0,
+  "selected": [
+    {
+      "spec": "86chaos-release-gate/28-exhaustive-route-state-control-graph.spec.cjs",
+      "specPath": "86chaos-release-gate/28-exhaustive-route-state-control-graph.spec.cjs",
+      "title": "every real route, declared nested surface, field, and safe control is rendered and probeable",
+      "leafTitle": "every real route, declared nested surface, field, and safe control is rendered and probeable",
+      "exactTestTitle": "every real route, declared nested surface, field, and safe control is rendered and probeable",
+      "fullSuitePath": "28 ultimate route + nested-state + control graph",
+      "suitePathParts": [
+        "28 ultimate route + nested-state + control graph"
+      ],
+      "titlePathParts": [
+        "28 ultimate route + nested-state + control graph",
+        "every real route, declared nested surface, field, and safe control is rendered and probeable"
+      ],
+      "fullTitle": "28 ultimate route + nested-state + control graph > every real route, declared nested surface, field, and safe control is rendered and probeable",
+      "stableKey": "86chaos-release-gate/28-exhaustive-route-state-control-graph.spec.cjs\u000028 ultimate route + nested-state + control graph\u0000every real route, declared nested surface, field, and safe control is rendered and probeable\u0000chromium",
+      "project": "chromium",
+      "projects": [
+        "chromium"
+      ],
+      "priorStatus": "failed",
+      "selectionReasons": [
+        "previous_failure"
+      ],
+      "baselineStatus": "",
+      "sourceVersion": "16.0.198",
+      "deployedVersion": "16.0.198",
+      "fullRunId": "2026-08-25T12-59-09"
+    },
+    {
+      "spec": "86chaos-release-gate/28-exhaustive-route-state-control-graph.spec.cjs",
+      "specPath": "86chaos-release-gate/28-exhaustive-route-state-control-graph.spec.cjs",
+      "title": "every real route, declared nested surface, field, and safe control is rendered and probeable",
+      "leafTitle": "every real route, declared nested surface, field, and safe control is rendered and probeable",
+      "exactTestTitle": "every real route, declared nested surface, field, and safe control is rendered and probeable",
+      "fullSuitePath": "28 ultimate route + nested-state + control graph",
+      "suitePathParts": [
+        "28 ultimate route + nested-state + control graph"
+      ],
+      "titlePathParts": [
+        "28 ultimate route + nested-state + control graph",
+        "every real route, declared nested surface, field, and safe control is rendered and probeable"
+      ],
+      "fullTitle": "28 ultimate route + nested-state + control graph > every real route, declared nested surface, field, and safe control is rendered and probeable",
+      "stableKey": "86chaos-release-gate/28-exhaustive-route-state-control-graph.spec.cjs\u000028 ultimate route + nested-state + control graph\u0000every real route, declared nested surface, field, and safe control is rendered and probeable\u0000mobile-chromium",
+      "project": "mobile-chromium",
+      "projects": [
+        "mobile-chromium"
+      ],
+      "priorStatus": "failed",
+      "selectionReasons": [
+        "previous_failure"
+      ],
+      "baselineStatus": "",
+      "sourceVersion": "16.0.198",
+      "deployedVersion": "16.0.198",
+      "fullRunId": "2026-08-25T12-59-09"
+    },
+    {
+      "spec": "86chaos-release-gate/31-exhaustive-responsive-nested-layout.spec.cjs",
+      "specPath": "86chaos-release-gate/31-exhaustive-responsive-nested-layout.spec.cjs",
+      "title": "every route and nested surface fits phone/tablet/laptop/desktop without unusable overflow or tap targets",
+      "leafTitle": "every route and nested surface fits phone/tablet/laptop/desktop without unusable overflow or tap targets",
+      "exactTestTitle": "every route and nested surface fits phone/tablet/laptop/desktop without unusable overflow or tap targets",
+      "fullSuitePath": "31 exhaustive responsive layout across nested states",
+      "suitePathParts": [
+        "31 exhaustive responsive layout across nested states"
+      ],
+      "titlePathParts": [
+        "31 exhaustive responsive layout across nested states",
+        "every route and nested surface fits phone/tablet/laptop/desktop without unusable overflow or tap targets"
+      ],
+      "fullTitle": "31 exhaustive responsive layout across nested states > every route and nested surface fits phone/tablet/laptop/desktop without unusable overflow or tap targets",
+      "stableKey": "86chaos-release-gate/31-exhaustive-responsive-nested-layout.spec.cjs\u000031 exhaustive responsive layout across nested states\u0000every route and nested surface fits phone/tablet/laptop/desktop without unusable overflow or tap targets\u0000chromium",
+      "project": "chromium",
+      "projects": [
+        "chromium"
+      ],
+      "priorStatus": "failed",
+      "selectionReasons": [
+        "previous_failure"
+      ],
+      "baselineStatus": "",
+      "sourceVersion": "16.0.198",
+      "deployedVersion": "16.0.198",
+      "fullRunId": "2026-08-25T12-59-09"
+    },
+    {
+      "spec": "86chaos-release-gate/32-exhaustive-nested-accessibility.spec.cjs",
+      "specPath": "86chaos-release-gate/32-exhaustive-nested-accessibility.spec.cjs",
+      "title": "every declared nested surface has zero serious/critical WCAG violations on desktop and mobile projects",
+      "leafTitle": "every declared nested surface has zero serious/critical WCAG violations on desktop and mobile projects",
+      "exactTestTitle": "every declared nested surface has zero serious/critical WCAG violations on desktop and mobile projects",
+      "fullSuitePath": "32 nested-state WCAG accessibility",
+      "suitePathParts": [
+        "32 nested-state WCAG accessibility"
+      ],
+      "titlePathParts": [
+        "32 nested-state WCAG accessibility",
+        "every declared nested surface has zero serious/critical WCAG violations on desktop and mobile projects"
+      ],
+      "fullTitle": "32 nested-state WCAG accessibility > every declared nested surface has zero serious/critical WCAG violations on desktop and mobile projects",
+      "stableKey": "86chaos-release-gate/32-exhaustive-nested-accessibility.spec.cjs\u000032 nested-state WCAG accessibility\u0000every declared nested surface has zero serious/critical WCAG violations on desktop and mobile projects\u0000chromium",
+      "project": "chromium",
+      "projects": [
+        "chromium"
+      ],
+      "priorStatus": "failed",
+      "selectionReasons": [
+        "previous_failure"
+      ],
+      "baselineStatus": "",
+      "sourceVersion": "16.0.198",
+      "deployedVersion": "16.0.198",
+      "fullRunId": "2026-08-25T12-59-09"
+    },
+    {
+      "spec": "86chaos-release-gate/32-exhaustive-nested-accessibility.spec.cjs",
+      "specPath": "86chaos-release-gate/32-exhaustive-nested-accessibility.spec.cjs",
+      "title": "every declared nested surface has zero serious/critical WCAG violations on desktop and mobile projects",
+      "leafTitle": "every declared nested surface has zero serious/critical WCAG violations on desktop and mobile projects",
+      "exactTestTitle": "every declared nested surface has zero serious/critical WCAG violations on desktop and mobile projects",
+      "fullSuitePath": "32 nested-state WCAG accessibility",
+      "suitePathParts": [
+        "32 nested-state WCAG accessibility"
+      ],
+      "titlePathParts": [
+        "32 nested-state WCAG accessibility",
+        "every declared nested surface has zero serious/critical WCAG violations on desktop and mobile projects"
+      ],
+      "fullTitle": "32 nested-state WCAG accessibility > every declared nested surface has zero serious/critical WCAG violations on desktop and mobile projects",
+      "stableKey": "86chaos-release-gate/32-exhaustive-nested-accessibility.spec.cjs\u000032 nested-state WCAG accessibility\u0000every declared nested surface has zero serious/critical WCAG violations on desktop and mobile projects\u0000mobile-chromium",
+      "project": "mobile-chromium",
+      "projects": [
+        "mobile-chromium"
+      ],
+      "priorStatus": "failed",
+      "selectionReasons": [
+        "previous_failure"
+      ],
+      "baselineStatus": "",
+      "sourceVersion": "16.0.198",
+      "deployedVersion": "16.0.198",
+      "fullRunId": "2026-08-25T12-59-09"
+    }
+  ],
+  "generatedAt": "2026-08-25T23:13:05.891Z",
+  "previousFailedOnlyRunId": "2026-08-25T12-59-09",
+  "previousFailedOnlySourceVersion": "16.0.198",
+  "previousFailedOnlyDeployedVersion": "16.0.198",
+  "previousFailedOnlyRunDir": ""
+}

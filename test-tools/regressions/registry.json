@@ -1,0 +1,316 @@
+{
+  "schemaVersion": 1,
+  "release": "17.0.4",
+  "defects": [
+    {
+      "defectId": "RG-API-WRAPPER-FIDELITY",
+      "origin": "release gate",
+      "affectedInvariant": "Shared API wrappers count only when invoked and verified",
+      "reproducer": "test:hostile:contracts",
+      "permanentTestIds": [
+        "API-ENDPOINT-NO-HANDLER",
+        "API-SHARED-HANDLER-NO-CATCH"
+      ],
+      "fidelity": "ACTUAL MODULE",
+      "fixedVersion": "17.0.0",
+      "mutationId": "API-ENDPOINT-NO-HANDLER",
+      "mandatoryGroup": "hostile-contracts"
+    },
+    {
+      "defectId": "RG-SAFE-WRITE-TENANT",
+      "origin": "Astra",
+      "affectedInvariant": "Foreign existing document IDs cannot be updated or deleted",
+      "reproducer": "safe-write-tenant-17-0-0.test.cjs",
+      "permanentTestIds": [
+        "foreign-target-denied"
+      ],
+      "fidelity": "ACTUAL MODULE",
+      "fixedVersion": "17.0.0",
+      "mutationId": "SAFE-WRITE-TENANT-CHECK",
+      "mandatoryGroup": "hostile-tenant"
+    },
+    {
+      "defectId": "RG-CLOCK-SECONDARY-ALERT",
+      "origin": "Astra",
+      "affectedInvariant": "A committed punch remains truthfully clocked in when alert creation fails",
+      "reproducer": "clock-daily-close-recovery-17-0-0.test.cjs",
+      "permanentTestIds": [
+        "durable-punch-preserved"
+      ],
+      "fidelity": "SOURCE ASSERTION",
+      "fixedVersion": "17.0.0",
+      "mutationId": "CLOCK-CLEAR-AFTER-ALERT",
+      "mandatoryGroup": "hostile-faults"
+    },
+    {
+      "defectId": "RG-DAILY-CLOSE-FIRST-SAVE",
+      "origin": "Astra",
+      "affectedInvariant": "Concurrent first saves converge on one restaurant/date record",
+      "reproducer": "clock-daily-close-recovery-17-0-0.test.cjs",
+      "permanentTestIds": [
+        "daily-close-deterministic-id"
+      ],
+      "fidelity": "SOURCE ASSERTION",
+      "fixedVersion": "17.0.0",
+      "mutationId": "DAILY-CLOSE-RANDOM-ID",
+      "mandatoryGroup": "hostile-concurrency"
+    },
+    {
+      "defectId": "RG-ROLE-PUBLISH-SCOPE",
+      "origin": "Astra",
+      "affectedInvariant": "Publication follows the shift's canonical configured role",
+      "reproducer": "schedule-publish-17-0-0.test.cjs",
+      "permanentTestIds": [
+        "assigned-shift-role-filter"
+      ],
+      "fidelity": "ACTUAL MODULE",
+      "fixedVersion": "17.0.0",
+      "mutationId": "PUBLISH-ROLE-BYPASS",
+      "mandatoryGroup": "schedule-publish"
+    },
+    {
+      "defectId": "RG-SAFE-WRITE-AUTHORITY-INJECTION",
+      "origin": "Astra hostile review",
+      "affectedInvariant": "Generic writes cannot manufacture authority or publication state",
+      "reproducer": "safe-write-hostile-17-0-1.test.cjs",
+      "permanentTestIds": [
+        "ACTUAL HANDLER denies authority and publication injection"
+      ],
+      "fidelity": "ACTUAL HANDLER",
+      "fixedVersion": "17.0.1",
+      "mutationId": "SAFE-WRITE-TENANT-CHECK",
+      "mandatoryGroup": "hostile-contracts"
+    },
+    {
+      "defectId": "RG-CANONICAL-AUTHORITY",
+      "origin": "Astra hostile review",
+      "affectedInvariant": "Canonical membership never inherits legacy elevation",
+      "reproducer": "canonical-authority-17-0-0.test.cjs",
+      "permanentTestIds": [
+        "canonical staff never inherits legacy admin"
+      ],
+      "fidelity": "ACTUAL MODULE",
+      "fixedVersion": "17.0.1",
+      "mutationId": "AUTH-CANONICAL-FALLBACK",
+      "mandatoryGroup": "hostile-contracts"
+    },
+    {
+      "defectId": "RG-PUBLISH-PLAN-FENCE",
+      "origin": "Astra hostile review",
+      "affectedInvariant": "Confirmed and executed publication plans are identical and every side effect is fenced",
+      "reproducer": "schedule-publish-17-0-0.test.cjs",
+      "permanentTestIds": [
+        "confirmed plan and executed candidate set are identical"
+      ],
+      "fidelity": "ACTUAL MODULE",
+      "fixedVersion": "17.0.1",
+      "mutationId": "PUBLISH-FENCE",
+      "mandatoryGroup": "schedule-publish"
+    },
+    {
+      "defectId": "RG-TIMEOFF-CROSS-PRODUCT",
+      "origin": "Astra hostile review",
+      "affectedInvariant": "Publication changes only exact verified employee/date time-off pairs",
+      "reproducer": "schedule-publish-emulator-17-0-0.test.cjs",
+      "permanentTestIds": [
+        "exact employee/date pairs prevent cross-product"
+      ],
+      "fidelity": "FIREBASE EMULATOR",
+      "fixedVersion": "17.0.1",
+      "mutationId": "PUBLISH-FENCE",
+      "mandatoryGroup": "firebase"
+    },
+    {
+      "defectId": "RG-INVENTORY-LOST-UPDATE",
+      "origin": "Astra hostile review",
+      "affectedInvariant": "Waste log and stock change are atomic and idempotent",
+      "reproducer": "integrity-concurrency-17-0-1.test.cjs",
+      "permanentTestIds": [
+        "simultaneous waste deductions"
+      ],
+      "fidelity": "FIREBASE EMULATOR",
+      "fixedVersion": "17.0.1",
+      "mutationId": "SAFE-WRITE-TENANT-CHECK",
+      "mandatoryGroup": "firebase"
+    },
+    {
+      "defectId": "RG-POS-WINNER-DEPENDENT-CONCURRENCY",
+      "origin": "17.0.1 full release gate",
+      "affectedInvariant": "POS sequence and entity-version concurrency assertions are correct regardless of the winning caller",
+      "reproducer": "pos-bridge-emulator-16-0-236.test.cjs",
+      "permanentTestIds": [
+        "concurrent conflicting claims for the same sequence have one winner without winner assumptions",
+        "same entity and version with different content has one durable winner at distinct sequences",
+        "legitimate new entity and version is accepted at an available sequence"
+      ],
+      "fidelity": "FIREBASE EMULATOR",
+      "fixedVersion": "17.0.2",
+      "mandatoryGroup": "firebase"
+    },
+    {
+      "defectId": "RG-POS-CLOSED-TRANSACTION",
+      "origin": "17.0.1 full release gate",
+      "affectedInvariant": "The exact Firestore closed-transaction compatibility error starts a bounded fresh idempotent transaction and leaves no duplicate durable evidence",
+      "reproducer": "pos-bridge-emulator-16-0-236.test.cjs",
+      "permanentTestIds": [
+        "concurrent late identical arrivals recover a narrowly classified closed transaction without duplicates"
+      ],
+      "fidelity": "FIREBASE EMULATOR",
+      "fixedVersion": "17.0.2",
+      "mandatoryGroup": "firebase"
+    },
+    {
+      "defectId": "RG-DAILY-CLOSE-OVERLAP-FIDELITY",
+      "origin": "17.0.1 focused emulator run",
+      "affectedInvariant": "Daily Close concurrency evidence synchronizes actual first transaction reads and validates the winner, stale write, and lost acknowledgement",
+      "reproducer": "integrity-concurrency-17-0-1.test.cjs",
+      "permanentTestIds": [
+        "simultaneous first Daily Close saves converge; stale edit fails; lost ACK retry is idempotent"
+      ],
+      "fidelity": "FIREBASE EMULATOR",
+      "fixedVersion": "17.0.2",
+      "mandatoryGroup": "firebase"
+    },
+    {
+      "defectId": "RG-SCHEDULE-CANONICAL-PERSON-FIXTURE",
+      "origin": "17.0.1 full release gate",
+      "affectedInvariant": "Confirmed and server-loaded canonical employee identity are internally consistent while real identity changes remain rejected",
+      "reproducer": "schedule-publish-emulator-17-0-0.test.cjs",
+      "permanentTestIds": [
+        "unchanged canonical identities publish exact employee/date pairs without cross-product effects",
+        "canonical identity change after confirmation is rejected with zero side effects",
+        "provider timeout is ambiguous, provider is reached, and publication remains durable"
+      ],
+      "fidelity": "FIREBASE EMULATOR",
+      "fixedVersion": "17.0.2",
+      "mandatoryGroup": "firebase"
+    },
+    {
+      "defectId": "RG-TRACE-PACKAGE-EXPORT",
+      "origin": "Astra 17.0.2 hostile review",
+      "affectedInvariant": "Plain Node trace construction uses supported package metadata lookup",
+      "reproducer": "firestore-emulator-trace-17-0-3.test.cjs",
+      "permanentTestIds": [
+        "plain Node trace construction uses supported package metadata lookup"
+      ],
+      "fidelity": "ACTUAL MODULE",
+      "fixedVersion": "17.0.3",
+      "mandatoryGroup": "hostile-contracts"
+    },
+    {
+      "defectId": "RG-TRACE-SYNCHRONIZATION",
+      "origin": "Astra 17.0.2 hostile review",
+      "affectedInvariant": "Concurrency traces distinguish distinct barrier participants from overlapping SDK reads",
+      "reproducer": "firestore-emulator-trace-17-0-3.test.cjs",
+      "permanentTestIds": [
+        "read barrier requires distinct callers and records arrival before SDK submission",
+        "barrier rejection does not manufacture submitted or pending reads"
+      ],
+      "fidelity": "ACTUAL MODULE",
+      "fixedVersion": "17.0.3",
+      "mandatoryGroup": "hostile-contracts"
+    },
+    {
+      "defectId": "RG-API-SHARED-EARLY-RETURN",
+      "origin": "Astra 17.0.2 hostile review",
+      "affectedInvariant": "Recognized shared helpers must execute reachable enforcement before returning",
+      "reproducer": "api-contract-analyzer-17-0-0.test.cjs",
+      "permanentTestIds": [
+        "shared helper control flow rejects early returns before live enforcement",
+        "ineffective guards, no-op local parsers, and unawaited authority fail closed"
+      ],
+      "fidelity": "ACTUAL MODULE",
+      "fixedVersion": "17.0.3",
+      "mutationId": "API-SHARED-METHOD-EARLY-RETURN",
+      "mandatoryGroup": "hostile-mutations"
+    },
+    {
+      "defectId": "RG-PUBLISH-RESUME-GENERATION",
+      "origin": "Astra 17.0.2 hostile review",
+      "affectedInvariant": "A resumed worker verifies earlier committed shifts against recorded per-shift generation and content without weakening worker fencing",
+      "reproducer": "schedule-publish-emulator-17-0-0.test.cjs",
+      "permanentTestIds": [
+        "same-operation resume verifies prior-generation commits and removes stale verified evidence"
+      ],
+      "fidelity": "FIREBASE EMULATOR",
+      "fixedVersion": "17.0.3",
+      "mandatoryGroup": "firebase"
+    },
+    {
+      "defectId": "RG-TIMEOFF-QUERY-RECOVERY",
+      "origin": "Astra 17.0.2 hostile review",
+      "affectedInvariant": "Required time-off query failures persist recoverable state and never masquerade as complete",
+      "reproducer": "schedule-publish-emulator-17-0-0.test.cjs",
+      "permanentTestIds": [
+        "time-off query failure persists partial recoverable state and resumes exact pairs",
+        "all required time-off query failures remain incomplete with zero request mutation"
+      ],
+      "fidelity": "FIREBASE EMULATOR",
+      "fixedVersion": "17.0.3",
+      "mandatoryGroup": "firebase"
+    },
+    {
+      "defectId": "RG-WASTE-ITEM-REASSIGNMENT",
+      "origin": "Astra 17.0.2 hostile review",
+      "affectedInvariant": "Waste updates and deletes remain bound to canonical item, revision, and normalized request intent",
+      "reproducer": "safe-write-hostile-17-0-1.test.cjs",
+      "permanentTestIds": [
+        "waste update/delete remain bound to canonical item, revision, and request intent",
+        "generic contracts deny Daily Close and independent waste writes and require stock operations"
+      ],
+      "fidelity": "ACTUAL MODULE",
+      "fixedVersion": "17.0.3",
+      "mandatoryGroup": "hostile-contracts"
+    },
+    {
+      "defectId": "RG-DAILY-CLOSE-PERMISSION-CONFUSION",
+      "origin": "Astra 17.0.2 hostile review",
+      "affectedInvariant": "Settings-only authority cannot mutate Daily Close while actual sales authority remains supported",
+      "reproducer": "permission-matrix-17-0-0.test.cjs",
+      "permanentTestIds": [
+        "Daily Close denies unrelated permission-only users before mutation"
+      ],
+      "fidelity": "ACTUAL HANDLER",
+      "fixedVersion": "17.0.3",
+      "mandatoryGroup": "hostile-contracts"
+    },
+    {
+      "defectId": "RG-POS-ASSERTION-CLOCK-RACE",
+      "origin": "Astra 17.0.2 hostile review",
+      "affectedInvariant": "POS assertion fixtures derive iat and exp from one integer timestamp and reach intended rotation hooks",
+      "reproducer": "pos-bridge-auth-16-0-236.test.cjs",
+      "permanentTestIds": [
+        "assertion fixture derives iat and exp from one integer boundary timestamp",
+        "rotation hook was reached"
+      ],
+      "fidelity": "ACTUAL MODULE",
+      "fixedVersion": "17.0.3",
+      "mandatoryGroup": "hostile-contracts"
+    },
+    {
+      "defectId": "RG-CERTIFICATION-IDENTITY",
+      "origin": "Astra 17.0.2 hostile review",
+      "affectedInvariant": "Full certification rejects null identity, wrong branch/commit, same-version wrong source, mutable deployment, and absent evidence",
+      "reproducer": "source-evidence-16-0-228.test.cjs",
+      "permanentTestIds": [
+        "full certification rejects null, wrong-branch, and same-version wrong-source identity"
+      ],
+      "fidelity": "ACTUAL MODULE",
+      "fixedVersion": "17.0.3",
+      "mandatoryGroup": "hostile-contracts"
+    },
+    {
+      "defectId": "RG-CERTIFICATION-IDENTITY-EXECUTION",
+      "origin": "17.0.3 full release-gate blocked before tests",
+      "affectedInvariant": "Generated release artifacts cannot contaminate source identity; certification derives clean local identity, pins one immutable Vercel deployment, and carries start evidence into final verification",
+      "reproducer": "source-evidence-16-0-228.test.cjs",
+      "permanentTestIds": [
+        "generated release artifacts do not change source manifest",
+        "full certification rejects null, wrong-branch, and same-version wrong-source identity"
+      ],
+      "fidelity": "ACTUAL MODULE",
+      "fixedVersion": "17.0.4",
+      "mandatoryGroup": "hostile-contracts"
+    }
+  ]
+}

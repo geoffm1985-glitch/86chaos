@@ -1,0 +1,23 @@
+const fs = require('fs');
+const path = require('path');
+const assert = require('assert');
+const { execFileSync } = require('child_process');
+const root = path.resolve(__dirname, '..');
+const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
+const json = (file) => JSON.parse(read(file));
+
+const pkg = json('package.json');
+const manifest = json('public/manifest.json');
+assert.strictEqual(pkg.version, '16.0.66');
+assert.strictEqual(pkg.scripts['test:source'], 'node scripts/validate-16-0-66.js');
+assert.ok(!pkg.jest || !pkg.jest.coverageThreshold, 'Jest should not fail before writing coverage artifacts because of impossible whole-app thresholds');
+assert.ok(manifest.icons.find(icon => icon.src === 'app-icon-192.png' && icon.sizes === '192x192'));
+assert.ok(manifest.icons.find(icon => icon.src === 'app-icon-512.png' && icon.sizes === '512x512'));
+assert.ok(manifest.icons.find(icon => icon.src === 'app-icon-maskable-512.png' && icon.sizes === '512x512' && /maskable/.test(icon.purpose || '')));
+assert.ok(read('public/index.html').includes('rel="apple-touch-icon"'));
+assert.ok(read('src/setupTests.js').startsWith('/* global globalThis, jest */'));
+assert.ok(read('scripts/86chaos-release-gate/source-inventory.cjs').includes("require.resolve('@babel/parser', { paths: [root] })"));
+assert.ok(read('scripts/86chaos-release-gate/verify-role-accounts.cjs').includes('buildFirebaseAuthRequestHeaders'));
+assert.ok(read('scripts/86chaos-release-gate/enforce-jest-coverage.cjs').includes("'CHAOS_MIN_JEST_LINES', 0"));
+execFileSync(process.execPath, ['scripts/validate-16-0-66.js'], { cwd: root, stdio: 'inherit' });
+console.log('16.0.66 targeted test passed.');
