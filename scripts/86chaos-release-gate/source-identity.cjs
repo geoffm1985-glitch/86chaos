@@ -13,7 +13,7 @@ function normalizeRelative(value = '') { return String(value || '').replace(/\\/
 function excludedFile(relative = '') {
   const file = normalizeRelative(relative);
   const base = path.posix.basename(file);
-  if (!file || file === 'public/build-identity.json') return true;
+  if (!file || file === 'public/build-identity.json' || file === 'release-source-manifest.json') return true;
   if (file.split('/').some(part => excludedDirectories.has(part))) return true;
   if (base.startsWith('.env') || base.endsWith('.log') || base.endsWith('.pyc')) return true;
   if (/^86chaos-release-gate-.*\.zip$/i.test(base)) return true;
@@ -141,28 +141,48 @@ function committedSourceFiles(root) {
 function isBuildInput(file) {
   return /^(src|api|public|scripts)\//.test(file) || /^(package(?:-lock)?\.json|vercel\.json|firebase\.json|firestore.*|storage\.rules|requirements\.txt)$/.test(file);
 }
+function readBundledSourceManifest(root) {
+  const manifestPath = path.join(root, 'release-source-manifest.json');
+  if (!fs.existsSync(manifestPath)) return null;
+  let manifest;
+  try { manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8')); } catch (_) { throw new Error('Bundled release source manifest is invalid JSON.'); }
+  const files = Array.isArray(manifest.files) ? manifest.files.map(row => ({ file: normalizeRelative(row.file), sha256: String(row.sha256 || '') })) : [];
+  if (!files.length || files.some(row => !row.file || !/^[a-f0-9]{64}$/i.test(row.sha256) || excludedFile(row.file))) throw new Error('Bundled release source manifest is incomplete.');
+  files.sort((a,b)=>a.file < b.file ? -1 : a.file > b.file ? 1 : 0);
+  const sourceHash = hash(JSON.stringify(files));
+  if (!/^[a-f0-9]{64}$/i.test(String(manifest.sourceHash || '')) || sourceHash !== manifest.sourceHash) throw new Error('Bundled release source manifest hash is invalid.');
+  return { files, sourceHash };
+}
 function captureBuildSourceIdentity(root = process.cwd()) {
   if (!process.env.VERCEL) return captureSourceIdentity(root);
-  const committed=committedSourceFiles(root);
-  if (!committed) {
-    if (process.env.VERCEL) throw new Error('Vercel build requires the Git source tree to bind deployed source.');
-    return captureSourceIdentity(root);
-  }
+  const committed = committedSourceFiles(root);
+  const bundled = committed ? null : readBundledSourceManifest(root);
+  const authoritative = committed || bundled?.files;
+  if (!authoritative) throw new Error('Vercel build requires committed source evidence or a bundled release source manifest.');
+  const sourceHash = committed ? hash(JSON.stringify(committed)) : bundled.sourceHash;
   const changes=[];
-  for (const row of committed) {
+  for (const row of authoritative) {
     const absolute=path.join(root,row.file);
     const current=fs.existsSync(absolute)?hash(sourceBytes(row.file,fs.readFileSync(absolute))):null;
     if (current!==row.sha256) changes.push({file:row.file,reason:current?'modified':'absent',buildInput:isBuildInput(row.file)});
   }
   const blocked=changes.filter(row=>row.buildInput);
-  if(blocked.length) throw new Error('Build source differs from Git HEAD: '+blocked.map(row=>row.file+' ('+row.reason+')').join(', '));
-  // Additional untracked application code must never enter a certified build.
-  const untracked=runGit(root,['ls-files','--others','--exclude-standard','-z']).split('\0').filter(file=>file&&!excludedFile(file)&&isBuildInput(file));
-  if(untracked.length) throw new Error('Untracked build inputs: '+untracked.join(', '));
+  if(blocked.length) throw new Error('Build source differs from release source: '+blocked.map(row=>row.file+' ('+row.reason+')').join(', '));
+  // Additional application code must never enter a certified build. Use Git when
+  // available locally, otherwise compare Vercel's workspace to the bundled manifest.
+  let unexpected=[];
+  const untrackedOutput=runGit(root,['ls-files','--others','--exclude-standard','-z']);
+  if(untrackedOutput) {
+    unexpected=untrackedOutput.split('\0').filter(file=>file&&!excludedFile(file)&&isBuildInput(file));
+  } else {
+    const expected=new Set(authoritative.map(row=>row.file));
+    unexpected=sourceFiles(root).filter(file=>isBuildInput(file)&&!expected.has(file));
+  }
+  if(unexpected.length) throw new Error('Unmanifested build inputs: '+unexpected.join(', '));
   const git=gitIdentity(root);
-  return {schemaVersion:3,version:JSON.parse(fs.readFileSync(path.join(root,'package.json'),'utf8')).version,
-    sourceHash:hash(JSON.stringify(committed)),files:committed,...git,buildSourceChanges:changes,
+  return {schemaVersion:4,version:JSON.parse(fs.readFileSync(path.join(root,'package.json'),'utf8')).version,
+    sourceHash,files:authoritative,...git,buildSourceChanges:changes,sourceEvidence:committed?'git-tree':'bundled-manifest',
     capturedAt:new Date().toISOString(),previewUrl:process.env.VERCEL_URL?`https://${process.env.VERCEL_URL}`:process.env.APP_URL||null,intendedProductionUrl:'https://app.86chaos.com'};
 }
 
-module.exports = { sourceBytes, committedSourceFiles, captureBuildSourceIdentity, hash, excludedFile, sourceFiles, gitIdentity, captureSourceIdentity, compareSourceIdentity };
+module.exports = { sourceBytes, committedSourceFiles, readBundledSourceManifest, captureBuildSourceIdentity, hash, excludedFile, sourceFiles, gitIdentity, captureSourceIdentity, compareSourceIdentity };

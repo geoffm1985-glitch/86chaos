@@ -1,17 +1,16 @@
 {
-  "version": "17.0.5",
-  "name": "86 Chaos 17.0.5",
-  "build": "17.0.5",
-  "label": "86 Chaos 17.0.5",
+  "version": "17.0.6",
+  "name": "86 Chaos 17.0.6",
+  "build": "17.0.6",
+  "label": "86 Chaos 17.0.6",
   "releasedAt": "2026-09-19T00:00:00.000Z",
-  "releaseTitle": "Schedule Role Reconciliation and Release Gate Repair",
+  "releaseTitle": "Vercel Build Identity Repair",
   "notes": [
-    "Preserves durable roster-role identity during copying and reconciles unique legacy names through publication.",
-    "Shows unresolved shifts with explicit manager role review and stale-data protection.",
-    "Binds deployment identity to committed source with independent build-input verification.",
-    "Moves the mobile microphone into a lower safe-area-aware strip outside the schedule scroll area."
+    "Repairs Vercel prebuild identity stamping so deployment does not require a local .git object database.",
+    "Uses a bundled deterministic release-source manifest when Git objects are unavailable while preserving exact build-input verification.",
+    "Preserves the 17.0.5 schedule role reconciliation, release-gate execution repairs, and mobile microphone placement unchanged."
   ],
-  "title": "86 Chaos 17.0.5",
-  "summary": "Repairs schedule role reconciliation, release-gate source identity, and mobile microphone placement.",
-  "description": "Targeted 17.0.5 repair; full deployed release gate remains required for certification."
+  "title": "86 Chaos 17.0.6",
+  "summary": "Surgical deployment repair for Vercel build identity stamping.",
+  "description": "Preserves 17.0.5 application behavior and changes only deployment source-identity handling plus required 17.0.6 version metadata."
 }
