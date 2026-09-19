@@ -34,7 +34,7 @@ function trackedSourceFiles(root) {
 }
 
 function sourceFiles(root, directory = root, files = []) {
-  if (directory === root) {
+  if (directory === root && !process.env.VERCEL) {
     const tracked = trackedSourceFiles(root);
     if (tracked && tracked.length) return tracked;
   }
@@ -51,17 +51,23 @@ function sourceFiles(root, directory = root, files = []) {
 
 function gitIdentity(root) {
   const isVercel = Boolean(process.env.VERCEL || process.env.VERCEL_ENV || process.env.VERCEL_GIT_COMMIT_SHA);
+  if (isVercel) {
+    return {
+      commit: String(process.env.VERCEL_GIT_COMMIT_SHA || '').trim() || null,
+      branch: String(process.env.VERCEL_GIT_COMMIT_REF || '').trim() || null,
+      dirty: false,
+      dirtyPaths: [],
+    };
+  }
   const localCommit = runGit(root, ['rev-parse', 'HEAD']).trim();
   const localBranch = runGit(root, ['branch', '--show-current']).trim();
-  const commit = (isVercel ? String(process.env.VERCEL_GIT_COMMIT_SHA || '').trim() : '') || localCommit || String(process.env.VERCEL_GIT_COMMIT_SHA || '').trim() || null;
-  const branch = (isVercel ? String(process.env.VERCEL_GIT_COMMIT_REF || '').trim() : '') || localBranch || String(process.env.VERCEL_GIT_COMMIT_REF || '').trim() || null;
   const status = runGit(root, ['status', '--porcelain', '--untracked-files=normal'], 10000);
   const relevantStatus = status.split(/\r?\n/).map(line => line.trimEnd()).filter(Boolean).filter(line => {
     let file = line.length > 3 ? line.slice(3).trim() : '';
     if (file.includes(' -> ')) file = file.split(' -> ').pop();
     return !excludedFile(file);
   });
-  return { commit, branch, dirty: relevantStatus.length > 0, dirtyPaths: relevantStatus };
+  return { commit: localCommit || null, branch: localBranch || null, dirty: relevantStatus.length > 0, dirtyPaths: relevantStatus };
 }
 
 function captureSourceIdentity(root = process.cwd()) {
@@ -155,11 +161,13 @@ function readBundledSourceManifest(root) {
 }
 function captureBuildSourceIdentity(root = process.cwd()) {
   if (!process.env.VERCEL) return captureSourceIdentity(root);
-  const committed = committedSourceFiles(root);
-  const bundled = committed ? null : readBundledSourceManifest(root);
-  const authoritative = committed || bundled?.files;
-  if (!authoritative) throw new Error('Vercel build requires committed source evidence or a bundled release source manifest.');
-  const sourceHash = committed ? hash(JSON.stringify(committed)) : bundled.sourceHash;
+  // Vercel's build workspace is not guaranteed to expose a complete Git object
+  // database. The committed release manifest is bundled specifically so build
+  // identity never depends on git ls-tree/cat-file succeeding inside Vercel.
+  const bundled = readBundledSourceManifest(root);
+  const authoritative = bundled?.files;
+  if (!authoritative) throw new Error('Vercel build requires the bundled release source manifest.');
+  const sourceHash = bundled.sourceHash;
   const changes=[];
   for (const row of authoritative) {
     const absolute=path.join(root,row.file);
@@ -170,18 +178,12 @@ function captureBuildSourceIdentity(root = process.cwd()) {
   if(blocked.length) throw new Error('Build source differs from release source: '+blocked.map(row=>row.file+' ('+row.reason+')').join(', '));
   // Additional application code must never enter a certified build. Use Git when
   // available locally, otherwise compare Vercel's workspace to the bundled manifest.
-  let unexpected=[];
-  const untrackedOutput=runGit(root,['ls-files','--others','--exclude-standard','-z']);
-  if(untrackedOutput) {
-    unexpected=untrackedOutput.split('\0').filter(file=>file&&!excludedFile(file)&&isBuildInput(file));
-  } else {
-    const expected=new Set(authoritative.map(row=>row.file));
-    unexpected=sourceFiles(root).filter(file=>isBuildInput(file)&&!expected.has(file));
-  }
+  const expected=new Set(authoritative.map(row=>row.file));
+  const unexpected=sourceFiles(root).filter(file=>isBuildInput(file)&&!expected.has(file));
   if(unexpected.length) throw new Error('Unmanifested build inputs: '+unexpected.join(', '));
   const git=gitIdentity(root);
   return {schemaVersion:4,version:JSON.parse(fs.readFileSync(path.join(root,'package.json'),'utf8')).version,
-    sourceHash,files:authoritative,...git,buildSourceChanges:changes,sourceEvidence:committed?'git-tree':'bundled-manifest',
+    sourceHash,files:authoritative,...git,buildSourceChanges:changes,sourceEvidence:'bundled-manifest',
     capturedAt:new Date().toISOString(),previewUrl:process.env.VERCEL_URL?`https://${process.env.VERCEL_URL}`:process.env.APP_URL||null,intendedProductionUrl:'https://app.86chaos.com'};
 }
 

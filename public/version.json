@@ -1,16 +1,16 @@
 {
-  "version": "17.0.6",
-  "name": "86 Chaos 17.0.6",
-  "build": "17.0.6",
-  "label": "86 Chaos 17.0.6",
+  "version": "17.0.7",
+  "name": "86 Chaos 17.0.7",
+  "build": "17.0.7",
+  "label": "86 Chaos 17.0.7",
   "releasedAt": "2026-09-19T00:00:00.000Z",
-  "releaseTitle": "Vercel Build Identity Repair",
+  "releaseTitle": "Vercel Build Workspace Identity Repair",
   "notes": [
-    "Repairs Vercel prebuild identity stamping so deployment does not require a local .git object database.",
-    "Uses a bundled deterministic release-source manifest when Git objects are unavailable while preserving exact build-input verification.",
-    "Preserves the 17.0.5 schedule role reconciliation, release-gate execution repairs, and mobile microphone placement unchanged."
+    "Uses the bundled deterministic release-source manifest unconditionally inside Vercel builds instead of probing the Vercel checkout Git object database.",
+    "Uses VERCEL_GIT_COMMIT_SHA and VERCEL_GIT_COMMIT_REF directly for deployed commit and branch identity, with no git subprocess requirement in Vercel.",
+    "Preserves the 17.0.5 schedule role reconciliation, release-gate repairs, and mobile microphone placement unchanged."
   ],
-  "title": "86 Chaos 17.0.6",
-  "summary": "Surgical deployment repair for Vercel build identity stamping.",
-  "description": "Preserves 17.0.5 application behavior and changes only deployment source-identity handling plus required 17.0.6 version metadata."
+  "title": "86 Chaos 17.0.7",
+  "summary": "Surgical Vercel deployment repair that removes all Git-object requirements from the Vercel build path.",
+  "description": "Preserves 17.0.6 application behavior and changes only Vercel build identity handling plus required 17.0.7 version metadata."
 }
