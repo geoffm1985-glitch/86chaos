@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "release": "17.0.4",
+  "release": "17.0.5",
   "defects": [
     {
       "defectId": "RG-API-WRAPPER-FIDELITY",
@@ -311,6 +311,29 @@
       "fidelity": "ACTUAL MODULE",
       "fixedVersion": "17.0.4",
       "mandatoryGroup": "hostile-contracts"
+    },
+    {
+      "defectId": "RG-BUILD-WORKSPACE-IDENTITY-1705",
+      "affectedInvariant": "Committed identity plus independent runtime-source validation; actual preflight advances into mandatory source execution",
+      "reproducer": "release-gate-execution-17-0-5.test.cjs",
+      "permanentTestIds": [
+        "17.0.5 actual preflight pins immutable identity and executes mandatory source tests; mismatches execute zero tests"
+      ],
+      "fidelity": "ACTUAL MODULE / HTTP TRANSPORT FIXTURE",
+      "fixedVersion": "17.0.5",
+      "mandatoryGroup": "hostile-contracts"
+    },
+    {
+      "defectId": "SCHEDULE-LEGACY-ROLE-1705",
+      "affectedInvariant": "Shared ID-first resolution, unique legacy repair, copy identity preservation, explicit fenced role review",
+      "reproducer": "repair-17-0-5.test.cjs",
+      "permanentTestIds": [
+        "17.0.5 actual client confirmation enters the canonical server publication plan",
+        "17.0.5 duplicate names and reused historical names remain ambiguous"
+      ],
+      "fidelity": "ACTUAL MODULE / FIREBASE EMULATOR",
+      "fixedVersion": "17.0.5",
+      "mandatoryGroup": "schedule-publish"
     }
   ]
 }

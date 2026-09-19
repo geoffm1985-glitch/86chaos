@@ -1,7 +1,7 @@
 'use strict';
 const { getMessaging } = require('firebase-admin/messaging');
 const { initAdmin, authorize, requireAppCheckIfEnforced } = require('./_chaos-admin');
-const { executeSchedulePublish, getOperationStatus, safeError } = require('./_schedule-publish-service.cjs');
+const { executeSchedulePublish, getOperationStatus, reconcileScheduleRoles, safeError } = require('./_schedule-publish-service.cjs');
 
 const MAX_BODY_BYTES = 2 * 1024 * 1024;
 function bodyBytes(req) { try { return Buffer.byteLength(typeof req.body === 'string' ? req.body : JSON.stringify(req.body || {}),'utf8'); } catch (_) { return MAX_BODY_BYTES + 1; } }
@@ -19,6 +19,7 @@ module.exports = async function handler(req,res) {
     const body=parseBody(req);const restaurantId=String(body.restaurantId||'').trim();const app=initAdmin(req);const authorizeSchedule=()=>authorize(req,app,{allowTenantAdmin:true,targetRestaurantId:restaurantId,requiredPermissions:['schedule']});const ctx=await authorizeSchedule();if(!ctx.ok)return res.status(ctx.status||403).json({ok:false,error:ctx.error});
     const appCheck=await requireAppCheckIfEnforced(ctx.app||app,req);if(!appCheck.ok)return res.status(appCheck.status||401).json({ok:false,error:appCheck.error});
     if(!canPublishSchedule(ctx))return res.status(403).json({ok:false,error:'Schedule publishing permission is required.'});
+    if(body.action==='reconcile-roles'){const result=await reconcileScheduleRoles({db:ctx.db||app.firestore(),ctx,body});return res.status(200).json({ok:true,...result});}
     if(body.action==='status'){const result=await getOperationStatus(ctx.db||app.firestore(),ctx,body);return res.status(200).json({ok:true,...result});}
     const reauthorize=async()=>{const fresh=await authorizeSchedule();if(!fresh.ok)throw Object.assign(new Error('Schedule publication authority changed during execution.'),{statusCode:403,code:'authority_changed'});return fresh;};
     const result=await executeSchedulePublish({db:ctx.db||app.firestore(),ctx,body,messaging:getMessaging(ctx.app||app),auth:(ctx.app||app).auth(),reauthorize});return res.status(['partial','recoverable'].includes(result.status)?409:200).json({ok:result.status==='complete',...result});

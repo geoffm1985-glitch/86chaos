@@ -341,9 +341,15 @@ if (-not $AnotherReleaseGateRunActive) {
 
 if (-not $AnotherReleaseGateRunActive) {
 Set-RunnerPhase 'environment-preflight'
-$PreflightExit = Run-Step "Environment preflight" "node scripts/86chaos-release-gate/preflight-env.cjs"
+$PreflightExit = Run-Step "Environment preflight" "node scripts/86chaos-release-gate/preflight-and-start.cjs"
 if ($PreflightExit -ne 0) {
-  Stop-BeforePlaywright "Release gate blocked before dependency installation because environment/deployment preflight failed."
+  $PreflightReason = "Release gate stopped in environment/deployment preflight or source validation. See the current run log."
+  $PreflightReportPath = Join-Path $RunDir 'environment-preflight.json'
+  if (Test-Path $PreflightReportPath) {
+    $PreflightReport = Get-Content $PreflightReportPath -Raw | ConvertFrom-Json
+    if ($PreflightReport.primaryBlockingFailure) { $PreflightReason = [string]$PreflightReport.primaryBlockingFailure }
+  }
+  Stop-BeforePlaywright $PreflightReason
 } else {
   $PreflightReportPath = Join-Path $RunDir 'environment-preflight.json'
   $PreflightReport = Get-Content $PreflightReportPath -Raw | ConvertFrom-Json

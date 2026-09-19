@@ -4,8 +4,10 @@ const path = require('path');
 const crypto = require('crypto');
 const cp = require('child_process');
 
+const textExtensions = /\.(?:js|jsx|cjs|mjs|json|css|html|md|txt|ps1|cmd|yml|yaml|rules|py|toml|sh)$/i;
+function sourceBytes(file, bytes) { return textExtensions.test(file) || ['.gitignore','.gitattributes','.npmrc'].includes(path.posix.basename(file)) ? Buffer.from(bytes.toString('utf8').replace(/\r\n/g, '\n')) : bytes; }
 const hash = bytes => crypto.createHash('sha256').update(bytes).digest('hex');
-const excludedDirectories = new Set(['.git', '.vercel', '.firebase', 'node_modules', 'build', 'coverage', 'test-results', 'playwright-report', 'release-evidence', '__pycache__']);
+const excludedDirectories = new Set(['.git', '.vercel', '.firebase', 'node_modules', 'build', 'coverage', 'test-results', 'playwright-report', 'release-evidence', '__pycache__', 'dist', '.cache']);
 
 function normalizeRelative(value = '') { return String(value || '').replace(/\\/g, '/').replace(/^\.\//, ''); }
 function excludedFile(relative = '') {
@@ -27,7 +29,7 @@ function runGit(root, args, timeout = 5000) {
 function trackedSourceFiles(root) {
   const output = runGit(root, ['ls-files', '-z'], 10000);
   if (!output) return null;
-  const files = output.split('\0').map(normalizeRelative).filter(Boolean).filter(file => !excludedFile(file)).filter(file => fs.existsSync(path.join(root, file)));
+  const files = output.split('\0').map(normalizeRelative).filter(Boolean).filter(file => !excludedFile(file));
   return files.sort();
 }
 
@@ -63,7 +65,7 @@ function gitIdentity(root) {
 }
 
 function captureSourceIdentity(root = process.cwd()) {
-  const files = sourceFiles(root).map(file => ({ file, sha256: hash(fs.readFileSync(path.join(root, file))) }));
+  const files = sourceFiles(root).map(file => ({ file, sha256: hash(sourceBytes(file, fs.readFileSync(path.join(root, file)))) }));
   const packagePath = path.join(root, 'package.json');
   let version = null;
   try { version = JSON.parse(fs.readFileSync(packagePath, 'utf8')).version || null; } catch (_) {}
@@ -113,4 +115,54 @@ function compareSourceIdentity(before, after, options = {}) {
   return { ok: failures.length === 0, failures, sourceHash: after.sourceHash, commit: after.commit, testedAt: new Date().toISOString() };
 }
 
-module.exports = { hash, excludedFile, sourceFiles, gitIdentity, captureSourceIdentity, compareSourceIdentity };
+
+// Bind Vercel's source to the committed tree, then independently check every
+// build/runtime input still present in the build workspace against that tree.
+// Platform-filtered test/docs files must not change the deployment fingerprint.
+function committedSourceFiles(root) {
+  const tree = runGit(root, ['ls-tree', '-r', '-z', 'HEAD'], 10000);
+  if (!tree) return null;
+  const rows = tree.split('\0').filter(Boolean).map(row => {
+    const tab = row.indexOf('\t'), [mode, type, oid] = row.slice(0, tab).split(' ');
+    return { file: row.slice(tab + 1), mode, type, oid };
+  }).filter(row => !excludedFile(row.file)).sort((a,b)=>a.file < b.file ? -1 : a.file > b.file ? 1 : 0);
+  if (rows.some(row => row.type !== 'blob' || row.mode === '120000')) throw new Error('Release source may not contain submodules or symbolic links.');
+  const result = cp.spawnSync('git', ['cat-file', '--batch'], {cwd:root, input:rows.map(row=>row.oid).join('\n')+'\n', maxBuffer:128*1024*1024, timeout:30000});
+  if (result.status !== 0) throw new Error('Could not read committed release source.');
+  let offset=0;
+  return rows.map(row => {
+    const end=result.stdout.indexOf(10,offset), header=result.stdout.subarray(offset,end).toString('utf8');
+    const size=Number(header.split(' ')[2]);
+    if (!Number.isSafeInteger(size)) throw new Error('Incomplete Git source evidence.');
+    const bytes=result.stdout.subarray(end+1,end+1+size); offset=end+1+size+1;
+    return {file:row.file,sha256:hash(sourceBytes(row.file,bytes))};
+  });
+}
+function isBuildInput(file) {
+  return /^(src|api|public|scripts)\//.test(file) || /^(package(?:-lock)?\.json|vercel\.json|firebase\.json|firestore.*|storage\.rules|requirements\.txt)$/.test(file);
+}
+function captureBuildSourceIdentity(root = process.cwd()) {
+  if (!process.env.VERCEL) return captureSourceIdentity(root);
+  const committed=committedSourceFiles(root);
+  if (!committed) {
+    if (process.env.VERCEL) throw new Error('Vercel build requires the Git source tree to bind deployed source.');
+    return captureSourceIdentity(root);
+  }
+  const changes=[];
+  for (const row of committed) {
+    const absolute=path.join(root,row.file);
+    const current=fs.existsSync(absolute)?hash(sourceBytes(row.file,fs.readFileSync(absolute))):null;
+    if (current!==row.sha256) changes.push({file:row.file,reason:current?'modified':'absent',buildInput:isBuildInput(row.file)});
+  }
+  const blocked=changes.filter(row=>row.buildInput);
+  if(blocked.length) throw new Error('Build source differs from Git HEAD: '+blocked.map(row=>row.file+' ('+row.reason+')').join(', '));
+  // Additional untracked application code must never enter a certified build.
+  const untracked=runGit(root,['ls-files','--others','--exclude-standard','-z']).split('\0').filter(file=>file&&!excludedFile(file)&&isBuildInput(file));
+  if(untracked.length) throw new Error('Untracked build inputs: '+untracked.join(', '));
+  const git=gitIdentity(root);
+  return {schemaVersion:3,version:JSON.parse(fs.readFileSync(path.join(root,'package.json'),'utf8')).version,
+    sourceHash:hash(JSON.stringify(committed)),files:committed,...git,buildSourceChanges:changes,
+    capturedAt:new Date().toISOString(),previewUrl:process.env.VERCEL_URL?`https://${process.env.VERCEL_URL}`:process.env.APP_URL||null,intendedProductionUrl:'https://app.86chaos.com'};
+}
+
+module.exports = { sourceBytes, committedSourceFiles, captureBuildSourceIdentity, hash, excludedFile, sourceFiles, gitIdentity, captureSourceIdentity, compareSourceIdentity };

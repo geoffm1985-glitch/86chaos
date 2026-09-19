@@ -1,18 +1,17 @@
 {
-  "version": "17.0.4",
-  "name": "86 Chaos 17.0.4",
-  "build": "17.0.4",
-  "label": "86 Chaos 17.0.4",
-  "releasedAt": "2026-09-18T00:00:00.000Z",
-  "releaseTitle": "Release Gate Identity and Immutable Deployment Pinning Repair",
+  "version": "17.0.5",
+  "name": "86 Chaos 17.0.5",
+  "build": "17.0.5",
+  "label": "86 Chaos 17.0.5",
+  "releasedAt": "2026-09-19T00:00:00.000Z",
+  "releaseTitle": "Schedule Role Reconciliation and Release Gate Repair",
   "notes": [
-    "Makes source manifests deterministic by hashing tracked source instead of generated release-gate artifacts.",
-    "Derives certification commit and source identity from the clean testing checkout instead of requiring duplicate manual environment values.",
-    "Pins the full release gate to the immutable Vercel deployment discovered during preflight before any deployed tests run.",
-    "Separates optional delivered-archive evidence from deployable source identity while preserving fail-closed commit, branch, version, project, Firebase, and protected-config checks.",
-    "Carries complete preflight identity evidence into final certification and keeps postflight deployment drift detection mandatory."
+    "Preserves durable roster-role identity during copying and reconciles unique legacy names through publication.",
+    "Shows unresolved shifts with explicit manager role review and stale-data protection.",
+    "Binds deployment identity to committed source with independent build-input verification.",
+    "Moves the mobile microphone into a lower safe-area-aware strip outside the schedule scroll area."
   ],
-  "title": "86 Chaos 17.0.4",
-  "summary": "Repairs certification identity so the full release gate can bind clean local source to one immutable Vercel deployment and actually execute the required tests.",
-  "description": "Preserves 17.0.3 application behavior while making release identity deterministic, excluding generated gate artifacts, pinning deployed testing to an immutable preview, and keeping certification fail-closed."
+  "title": "86 Chaos 17.0.5",
+  "summary": "Repairs schedule role reconciliation, release-gate source identity, and mobile microphone placement.",
+  "description": "Targeted 17.0.5 repair; full deployed release gate remains required for certification."
 }

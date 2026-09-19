@@ -10,24 +10,7 @@ const employeeIdFields = ['scheduleUserId','employeeId','rosterUserId','userId',
 const employeeNameFields = ['employeeName','assignedName','name','displayName','fullName'];
 const employeeEmailFields = ['employeeEmail','assignedEmail','email','userEmail'];
 
-function normalizeRole(role = {}) {
-  return { ...role, id: clean(role.id || role.rosterRoleId), name: clean(role.name), revision: Math.max(1, Number(role.revision || 1)), previousNames: Array.isArray(role.previousNames) ? role.previousNames.map(clean).filter(Boolean) : [], archived: role.archived === true || Boolean(role.archivedAt) };
-}
-function resolveRole(shift = {}, roles = []) {
-  const normalized = roles.map(normalizeRole).filter(role => role.id);
-  const explicitId = clean(shift.rosterRoleId);
-  if (explicitId) {
-    const role = normalized.find(row => row.id === explicitId);
-    return role ? { ok:true, role, rosterRoleId:role.id, rosterRoleNameSnapshot:role.name, migratable:false } : { ok:false, reason:'role-id-not-found', rosterRoleId:explicitId };
-  }
-  const legacyName = clean(shift.rosterRoleNameSnapshot || shift.role || shift.scheduleRole || shift.targetRole);
-  if (!legacyName) return { ok:false, reason:'missing-role-identity' };
-  const key = nameKey(legacyName);
-  const matches = normalized.filter(role => nameKey(role.name) === key || role.previousNames.some(name => nameKey(name) === key));
-  if (matches.length !== 1) return { ok:false, reason:matches.length ? 'ambiguous-legacy-role-name' : 'legacy-role-name-not-found', legacyName };
-  if (matches[0].archived) return { ok:false, reason:'legacy-role-resolves-to-archived-role', rosterRoleId:matches[0].id, legacyName };
-  return { ok:true, role:matches[0], rosterRoleId:matches[0].id, rosterRoleNameSnapshot:matches[0].name, migratable:true };
-}
+const { normalizeRosterRole: normalizeRole, resolveShiftRosterRole: resolveRole } = require('../src/core/rosterRoleIdentityCore.cjs');
 function stable(value) {
   if (Array.isArray(value)) return value.map(stable);
   if (!value || typeof value !== 'object') return value;

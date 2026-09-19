@@ -265,4 +265,34 @@ async function executeSchedulePublish({db,ctx,body,messaging,auth=null,clock=()=
   }catch(error){try{await fencedTransaction(db,operation,plan,clock,(tx,op)=>tx.set(operation.ref,{status:'recoverable',lastErrorCode:clean(error.code||'publish_failed'),lastErrorAt:asDate(clock).toISOString(),remainingCount:(op.remainingShiftIds||[]).length,updatedAt:asDate(clock).toISOString()},{merge:true}),{allowExpired:true});}catch(_){}throw error;}
 }
 
-module.exports={LEASE_MS,CHUNK_SIZE,NOTIFICATION_BATCH_SIZE,safeError,requestIntent,requestDigest,validateRequest,loadRoles,loadRoleConfiguration,loadCandidateShifts,loadRosterPeople,resolveEmployeeForShift,assertFenceState,fencedTransaction,acquireOperation,publishedVerificationState,publishedCommitEvidence,publishedStateMatches,commitChunk,verifyCommitted,processTimeOff,collectEligibleRecipients,notifyAffected,finalizeOperation,getOperationStatus,executeSchedulePublish};
+// Explicit manager review only; automatic unique-name normalization remains in
+// the fenced publication transaction. Never infer a missing shift role from an
+// employee's current job title, which may have changed since the shift was made.
+async function reconcileScheduleRoles({db, ctx, body, clock = new Date()}) {
+  const tenant=clean(body.restaurantId), rows=body.repairs;
+  const fail=(message,code='role_review_changed',statusCode=409)=>{throw Object.assign(new Error(message),{code,statusCode});};
+  if(!tenant || !Array.isArray(rows) || !rows.length || rows.length>100 || new Set(rows.map(row=>row.id)).size!==rows.length) fail('Review one to 100 distinct shifts.', 'invalid_request',400);
+  for(const row of rows) if(!row || !row.expectedRoleIdentity || typeof row.expectedRoleIdentity!=='object' || Array.isArray(row.expectedRoleIdentity) || !/^[^/]{1,1500}$/.test(clean(row.id)) || !/^[^/]{1,1500}$/.test(clean(row.rosterRoleId)) || !/^[a-f0-9]{64}$/.test(clean(row.contentDigest))) fail('Exact shift evidence and a selected role are required.','invalid_request',400);
+  const core=require('./_schedule-publish-core.cjs');
+  return db.runTransaction(async tx=>{
+    const lease=await tx.get(db.collection('schedulePublishLeases').doc(tenantLeaseId(tenant)));
+    if(lease.exists && lease.data().status==='active' && Date.parse(lease.data().leaseExpiresAt||0)>asDate(clock).getTime()) fail('A schedule publication is running. Wait before reviewing roles.','publish_in_progress');
+    const rolesSnap=await tx.get(db.collection('roles').where('restaurantId','==',tenant));
+    const roles=rolesSnap.docs.map(doc=>({...doc.data(),id:doc.id}));
+    const snapshots=[];for(const row of rows)snapshots.push(await tx.get(db.collection('shifts').doc(row.id)));
+    const patches=rows.map((row,index)=>{
+      const snap=snapshots[index], shift=snap.exists?snap.data():null;
+      if(!shift || clean(shift.restaurantId||shift.workspaceId)!==tenant || (shift.workspaceId&&clean(shift.workspaceId)!==tenant) || shift.deleted===true || clean(shift.status)==='deleted') fail('A reviewed shift is no longer available.');
+      const expected=core.expectedFingerprint(shift);
+      if(expected.contentDigest!==row.contentDigest || digest(row.expectedRoleIdentity)!==digest(require('../src/core/rosterRoleIdentityCore.cjs').copyRosterRoleFields(shift))) fail('A reviewed shift changed. Publish again to reload its current details.');
+      if(core.resolveRole(shift,roles).ok) fail('This shift now has a valid role. Publish again to reload the schedule.');
+      const role=roles.find(role=>role.id===row.rosterRoleId);
+      if(!role || role.archived || role.archivedAt || !clean(role.name)) fail('The selected role is no longer available.');
+      return {rosterRoleId:role.id,rosterRoleNameSnapshot:role.name,role:role.name,revision:Number(shift.revision||0)+1,updatedAt:asDate(clock).toISOString(),roleReconciledAt:asDate(clock).toISOString(),roleReconciledBy:ctx.uid,roleReconciliationSource:'explicit-manager-review',previousRoleIdentity:{rosterRoleId:clean(shift.rosterRoleId),rosterRoleNameSnapshot:clean(shift.rosterRoleNameSnapshot),role:clean(shift.role),scheduleRole:clean(shift.scheduleRole),targetRole:clean(shift.targetRole)}};
+    });
+    patches.forEach((patch,index)=>tx.update(snapshots[index].ref,patch));
+    return {repairedShiftIds:rows.map(row=>row.id)};
+  });
+}
+
+module.exports={reconcileScheduleRoles,LEASE_MS,CHUNK_SIZE,NOTIFICATION_BATCH_SIZE,safeError,requestIntent,requestDigest,validateRequest,loadRoles,loadRoleConfiguration,loadCandidateShifts,loadRosterPeople,resolveEmployeeForShift,assertFenceState,fencedTransaction,acquireOperation,publishedVerificationState,publishedCommitEvidence,publishedStateMatches,commitChunk,verifyCommitted,processTimeOff,collectEligibleRecipients,notifyAffected,finalizeOperation,getOperationStatus,executeSchedulePublish};

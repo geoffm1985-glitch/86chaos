@@ -24,7 +24,7 @@ import { buildMonthSchedulePrintModel } from '../core/schedulePrintModel';
 import { generateMonthSchedulePdf } from '../core/schedulePdf';
 import { deliverSchedulePdf } from '../core/schedulePdfDelivery';
 import { createSchedulePublishGuard, makeSchedulePublishProgress } from '../core/schedulePublishProgress';
-import { activeRosterRoles, resolveShiftRosterRole } from '../core/rosterRoleIdentity';
+import { activeRosterRoles, resolveShiftRosterRole, copyRosterRoleFields } from '../core/rosterRoleIdentity';
 import { buildSchedulePublicationPlan, buildConfirmedShiftEvidence, digestSchedulePublicationPlan } from '../core/schedulePublicationPlan';
 import { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, MapClickListener, SmartEmptyState, MiniProblemCard, getHomeProfile, calculatePunchHours, getWeekStart, roleMatches, toLocalTimeInput, makeLocalIso, PunchTable, FriendlyEmpty, GlobalSearchModal, QuickActionDock, KitchenTVMode, ChangeLogModal, UndoBar } from '../components/common';
 
@@ -769,6 +769,7 @@ export const buildAutoPopulateShift = (sourceShift = {}, newDate = '', restauran
     ...buildCanonicalScheduleCreateFields(newDate, restaurantId),
     ...buildScheduleIdentityFields(identitySource, sourceShift),
     role: sourceShift.role || resolvedPerson?.role || 'Unassigned',
+    ...copyRosterRoleFields(sourceShift),
     startTime: sourceShift.startTime || '',
     endTime: sourceShift.endTime || '',
     isPublished: false,
@@ -1858,6 +1859,9 @@ const [eventDate, setEventDate] = useState(getToday());
   const [selectedPublishWeekKeys, setSelectedPublishWeekKeys] = useState([]);
   const [publishAllRoles, setPublishAllRoles] = useState(true);
   const [selectedPublishRoleIds, setSelectedPublishRoleIds] = useState([]);
+  const [roleReview, setRoleReview] = useState(null);
+  const [roleReviewBusy, setRoleReviewBusy] = useState(false);
+  const [roleReviewSelections, setRoleReviewSelections] = useState({});
   const [publishPickerSource, setPublishPickerSource] = useState('builder');
   const publishOperationGuardRef = useRef(null);
   if (!publishOperationGuardRef.current) publishOperationGuardRef.current = createSchedulePublishGuard();
@@ -2646,7 +2650,7 @@ const [eventDate, setEventDate] = useState(getToday());
         const nowIso = new Date().toISOString();
         const shiftMonth = getMonthStr(d);
         const rescueEdit = canEditRescueMonth(shiftMonth);
-        const assignedRole = resolveShiftRosterRole({ role: emp.role || 'Unassigned' }, publishRosterRoles);
+        const assignedRole = resolveShiftRosterRole({ rosterRoleId: emp.rosterRoleId, role: emp.role || 'Unassigned' }, publishRosterRoles);
         const shiftData = {
           ...buildCanonicalScheduleCreateFields(d, appUser.restaurantId),
           ...buildScheduleIdentityFields(emp),
@@ -2695,7 +2699,24 @@ const [eventDate, setEventDate] = useState(getToday());
     }
   };
 
-const handlePublish = async (scope = 'selected-weeks') => {
+const saveReviewedRoles = async () => {
+    if (roleReviewBusy || !roleReview?.rows?.length) return;
+    setRoleReviewBusy(true);
+    try {
+      const repairs = await Promise.all(roleReview.rows.map(async row => {
+        const evidence = await buildConfirmedShiftEvidence({ shift: row.shift });
+        return { id: row.shiftId, rosterRoleId: roleReviewSelections[row.shiftId], contentDigest: evidence.contentDigest, expectedRoleIdentity: copyRosterRoleFields(row.shift) };
+      }));
+      const response = await secureFetch('/api/schedule-publish', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'reconcile-roles', restaurantId: appUser.restaurantId, repairs }) });
+      const result = await response.json();
+      if (!response.ok || !result.ok) throw new Error(result.error || 'Role review could not be saved.');
+      setRoleReview(null);
+      addToast('Roles Saved', 'The selected shift roles were saved. Tap Publish again to review and publish the schedule.');
+    } catch (error) { addToast('Role Review Not Saved', error.message); }
+    finally { setRoleReviewBusy(false); }
+  };
+
+  const handlePublish = async (scope = 'selected-weeks') => {
     const publishGuard = publishOperationGuardRef.current;
     if (!publishGuard?.begin()) {
       addToast('Publishing in Progress', 'A schedule publish is already running. Please wait for it to finish.');
@@ -2748,7 +2769,10 @@ const handlePublish = async (scope = 'selected-weeks') => {
       });
       if (rolePlan.unresolvedRoles.length) {
         setPublishProgress(makeSchedulePublishProgress());
-        addToast('Role Review Needed', `${rolePlan.unresolvedRoles.length} shift${rolePlan.unresolvedRoles.length === 1 ? '' : 's'} have missing or ambiguous Roster Role identity. Review those shifts before publishing.`);
+        setRoleReviewSelections({});
+        setRoleReview({ revision: rolePlan.roleConfigurationRevision, rows: rolePlan.unresolvedRoles.map(issue => ({ ...issue, shift: dateScopedCandidates.find(shift => getShiftWritableDocId(shift) === issue.shiftId) })) });
+        setIsPublishPickerOpen(false);
+        addToast('Role Review Needed', `${rolePlan.unresolvedRoles.length} shifts need an explicit role selection. Review the listed shifts, save their roles, then publish again.`);
         return;
       }
       const selectedCandidateIds = new Set(rolePlan.candidateShiftIds);
@@ -2780,7 +2804,8 @@ const handlePublish = async (scope = 'selected-weeks') => {
         const publishedFieldsOk = shift.isPublished === true && shift.published === true && String(shift.status || '').toLowerCase() === 'published' && String(shift.publishStatus || '').toLowerCase() === 'published';
         const identityOk = scheduleIdentityBlockMatchesPerson(shift, resolved.person);
         const dateOk = String(shift.date || shift.scheduleDateKey || '') === dateKey && String(shift.scheduleDateKey || shift.date || '') === dateKey;
-        const needsWrite = !isLive || !publishedFieldsOk || !identityOk || !dateOk || !shift.scheduleId;
+        const resolvedRole = resolveShiftRosterRole(shift, publishRosterRoles);
+        const needsWrite = !isLive || !publishedFieldsOk || !identityOk || !dateOk || !shift.scheduleId || resolvedRole.migratable || String(shift.rosterRoleId || '').trim() !== resolvedRole.rosterRoleId;
         if (!needsWrite) {
           alreadyValid.push(shiftDocId);
           return;
@@ -4048,6 +4073,21 @@ const handleExportTimesheets = () => {
                     </div>
                 ))}
             </div>
+        </div>
+      </Modal>
+
+      <Modal isOpen={Boolean(roleReview)} onClose={() => { if (!roleReviewBusy) setRoleReview(null); }} title="Review Shift Roles" sizeClass="max-w-2xl">
+        <div className="space-y-3">
+          <p className="text-sm text-slate-300">These saved shifts do not identify one configured role. Choose the correct role for each shift. Saving roles does not publish the schedule.</p>
+          {(roleReview?.rows || []).map(row => <label key={row.shiftId} className="block rounded-xl border border-[#2A353D] p-3 space-y-2">
+            <span className="block font-bold">{row.shift?.employeeName || row.shift?.assignedName || 'Unassigned employee'} · {row.shift?.scheduleDateKey || row.shift?.date} · {row.shift?.startTime}–{row.shift?.endTime}</span>
+            <span className="block text-xs text-amber-300">{row.reason === 'missing-role-identity' ? 'No role was saved on this shift.' : row.reason === 'ambiguous-legacy-role-name' ? `More than one role matches “${row.legacyName}”.` : `Saved role “${row.legacyName || row.shift?.rosterRoleId || 'unknown'}” cannot be matched safely.`}</span>
+            <select aria-label={`Role for ${row.shiftId}`} className={T.input} value={roleReviewSelections[row.shiftId] || ''} disabled={roleReviewBusy} onChange={event => setRoleReviewSelections(prev => ({...prev, [row.shiftId]: event.target.value}))}>
+              <option value="">Choose the correct role…</option>
+              {publishSelectableRoles.map(role => <option key={role.id} value={role.id}>{role.name} ({role.id.slice(-6)})</option>)}
+            </select>
+          </label>)}
+          <button type="button" className={`${T.btn} w-full`} disabled={roleReviewBusy || !(roleReview?.rows || []).every(row => roleReviewSelections[row.shiftId])} onClick={saveReviewedRoles}>{roleReviewBusy ? 'Saving…' : 'Save Reviewed Roles'}</button>
         </div>
       </Modal>
 
@@ -5756,7 +5796,7 @@ const ScheduleCopilot = ({ period, periodLabel = '', users = [], shifts = [], ti
         const canonicalFields = buildCanonicalScheduleCreateFields(date, appUser.restaurantId);
         recordScheduleOperationDiagnostic('canonicalDatePatches');
         const copiedIdentity = buildScheduleIdentityFields(matchedPerson || { ...s, id: '' }, s);
-        await addDoc(collection(db, 'shifts'), { ...canonicalFields, ...copiedIdentity, role: canonicalScheduleRole(s.role || users.find(u => u.id === s.employeeId)?.role || 'Staff'), startTime: s.startTime, endTime: s.endTime, isPublished: false, publishState: 'draft', scheduleBuilderDraft: true, readyToPublish: true, copiedFrom: s.id, createdAt: nowIso, updatedAt: nowIso, createdBy: appUser.id || 'copy-week', updatedBy: appUser.id || 'copy-week', source: 'schedule_copy_week', assignmentSource: 'schedule_copy_week' });
+        await addDoc(collection(db, 'shifts'), { ...canonicalFields, ...copiedIdentity, role: canonicalScheduleRole(s.role || users.find(u => u.id === s.employeeId)?.role || 'Staff'), ...copyRosterRoleFields(s), startTime: s.startTime, endTime: s.endTime, isPublished: false, publishState: 'draft', scheduleBuilderDraft: true, readyToPublish: true, copiedFrom: s.id, createdAt: nowIso, updatedAt: nowIso, createdBy: appUser.id || 'copy-week', updatedBy: appUser.id || 'copy-week', source: 'schedule_copy_week', assignmentSource: 'schedule_copy_week' });
         recordScheduleOperationDiagnostic('directSdkWrites');
         recordScheduleOperationDiagnostic('totalScheduleDocumentsWritten');
         made++;

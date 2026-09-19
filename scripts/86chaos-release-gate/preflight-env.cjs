@@ -4,7 +4,7 @@ const { loadEnv, env, boolEnv } = require('../86chaos-full-audit/env-loader.cjs'
 const { ensureRunDir, writeJson } = require('./run-context.cjs');
 const { applyQaWorkspaceEnv, validateQaWorkspaceName } = require('./qa-workspace.cjs');
 const { assertMutationSafety } = require('./mutation-safety.cjs');
-const { captureSourceIdentity } = require('./source-identity.cjs');
+const { captureSourceIdentity, hash, sourceBytes } = require('./source-identity.cjs');
 const {
   CANONICAL_VERCEL_PROJECT_SLUG,
   inspectReleaseTargetEnvConflicts,
@@ -33,6 +33,7 @@ function immutableVercelUrl(value = '') {
   try {
     const url = new URL(String(value || ''));
     const host = url.hostname.toLowerCase();
+    if (url.protocol !== 'https:' || url.username || url.password || url.port) return '';
     if (!host.endsWith('.vercel.app')) return '';
     if (/-git-[^.]+-/i.test(host)) return '';
     return `${url.protocol}//${url.host}`;
@@ -63,7 +64,7 @@ function requirePair(prefix) {
 
 async function main() {
   const appUrl = value('APP_URL', 'CHAOS_BASE_URL', 'BASE_URL');
-  const expectedVersion = sanitizeVersionText(value('CHAOS_EXPECTED_VERSION'));
+  const expectedVersion = sanitizeVersionText(value('CHAOS_EXPECTED_VERSION') || JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')).version);
   const certificationMode=boolEnv('CHAOS_CERTIFICATION_MODE');
   const configuredCommit=value('CHAOS_EXPECTED_GIT_COMMIT');
   const expectedBranch=value('CHAOS_EXPECTED_BRANCH')||'testing';
@@ -191,7 +192,25 @@ async function main() {
       if(serverBuildIdentity.firebaseTestingProject!==expectedTestProject)errors.push('Deployed server Firebase target does not match the required testing project.');
       if(clientBuildIdentity.firebaseTestingProject&&clientBuildIdentity.firebaseTestingProject!==expectedTestProject)errors.push('Deployed client build identity does not match the required testing Firebase project.');
       if(expectedArchiveSha256&&serverBuildIdentity.sourceArchiveSha256&&serverBuildIdentity.sourceArchiveSha256!==expectedArchiveSha256)errors.push('Optional deployed archive identity conflicts with CHAOS_SOURCE_ARCHIVE_SHA256.');
-      for(const key of ['rulesHash','firebaseConfigHash','vercelConfigHash']){if(!clientBuildIdentity[key]||serverBuildIdentity[key]!==clientBuildIdentity[key])errors.push(`Deployed protected configuration identity ${key} is missing or inconsistent.`);}
+      for(const [key,file] of Object.entries({rulesHash:'firestore.rules',firebaseConfigHash:'firebase.json',vercelConfigHash:'vercel.json'})) {
+        const localHash=hash(sourceBytes(file,fs.readFileSync(path.join(root,file))));
+        if(clientBuildIdentity[key]!==localHash||serverBuildIdentity[key]!==localHash) errors.push(`Deployed protected configuration ${file} does not match local source.`);
+      }
+      if (expectedDeploymentUrl) {
+        const pinnedClient=await fetchText(`${expectedDeploymentUrl}/build-identity.json?releaseGateRun=${encodeURIComponent(runId)}`);
+        const pinnedServer=await fetchText(`${expectedDeploymentUrl}/api/build-identity?releaseGateRun=${encodeURIComponent(runId)}`);
+        if(!pinnedClient.ok||!pinnedServer.ok) errors.push('Immutable deployment identity could not be fetched.');
+        else {
+          const client=JSON.parse(pinnedClient.text),server=JSON.parse(pinnedServer.text);
+          for(const key of ['sourceManifestHash','gitCommit','gitBranch','vercelDeploymentId','vercelDeploymentUrl','vercelProjectId','firebaseTestingProject','rulesHash','firebaseConfigHash','vercelConfigHash','version']) if(server[key]!==serverBuildIdentity[key]) errors.push(`Immutable deployment differs from alias identity: ${key}.`);
+          if((client.sourceManifestHash||client.sourceHash)!==expectedManifest || client.version!==expectedVersion) errors.push('Immutable client source/version differs from the confirmed candidate.');
+        }
+      }
+      if(clientBuildIdentity.sourceFiles && clientBuildIdentity.sourceManifestHash!==expectedManifest) {
+        const deployed=new Map(clientBuildIdentity.sourceFiles.map(row=>[row.file,row.sha256]));
+        const differing=sourceIdentity.files.filter(row=>deployed.get(row.file)!==row.sha256).map(row=>row.file);
+        errors.push(`Source differences: ${differing.slice(0,12).join(', ') || 'deployment contains additional files'}. Rebuild the exact testing commit.`);
+      }
     }
   }
   visibleVersion = htmlVersion || '';
@@ -256,6 +275,7 @@ async function main() {
 
   const result = {
     ok: errors.length === 0,
+    primaryBlockingFailure: errors[0] || '',
     generatedAt: new Date().toISOString(),
     runId,
     node: process.version,

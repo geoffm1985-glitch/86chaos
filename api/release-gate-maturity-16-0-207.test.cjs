@@ -145,19 +145,19 @@ test('16.0.207 Schedule Builder tools have valid tablist semantics and the seed 
   assert.match(oracle, /test\.setTimeout\(4 \* 60 \* 1000\)/);
 });
 
-test('16.0.208 historical maturity assertions coexist with current 17.0.4 version metadata', () => {
+test('16.0.208 historical maturity assertions coexist with current 17.0.5 version metadata', () => {
   const pkg = JSON.parse(read('package.json'));
   const lock = JSON.parse(read('package-lock.json'));
   const version = JSON.parse(read('public/version.json'));
   const apiVersion = read('api/_version.js');
   const appCore = read('src/core/appCore.js');
-  assert.equal(pkg.version, '17.0.4');
-  assert.equal(lock.version, '17.0.4');
-  assert.equal(lock.packages[''].version, '17.0.4');
-  assert.equal(pkg.scripts['test:source'], 'node scripts/validate-17-0-4.js');
-  assert.equal(version.version, '17.0.4');
-  assert.equal(version.build, '17.0.4');
-  assert.match(apiVersion, /APP_VERSION = '17.0.4'/);
-  assert.match(apiVersion, /SECURITY_SCHEMA_VERSION = '17.0.4'/);
-  assert.match(appCore, /CURRENT_VERSION = '17.0.4'/);
+  assert.equal(pkg.version, '17.0.5');
+  assert.equal(lock.version, '17.0.5');
+  assert.equal(lock.packages[''].version, '17.0.5');
+  assert.equal(pkg.scripts['test:source'], 'node scripts/validate-17-0-5.js');
+  assert.equal(version.version, '17.0.5');
+  assert.equal(version.build, '17.0.5');
+  assert.match(apiVersion, /APP_VERSION = '17.0.5'/);
+  assert.match(apiVersion, /SECURITY_SCHEMA_VERSION = '17.0.5'/);
+  assert.match(appCore, /CURRENT_VERSION = '17.0.5'/);
 });

@@ -1,0 +1,20 @@
+#!/usr/bin/env node
+'use strict';
+const fs=require('node:fs');
+const assert=require('node:assert/strict');
+const read=file=>fs.readFileSync(file,'utf8');
+const json=file=>JSON.parse(read(file));
+const pkg=json('package.json'),lock=json('package-lock.json'),version=json('public/version.json');
+assert.equal(pkg.version,'17.0.5');assert.equal(lock.version,pkg.version);assert.equal(lock.packages[''].version,pkg.version);assert.equal(version.version,pkg.version);assert.equal(version.releaseTitle,'Schedule Role Reconciliation and Release Gate Repair');
+for(const f of ['src/core/appCore.js','api/_version.js','api/_pos-bridge-config.js'])assert(read(f).includes("'17.0.5'"));
+for(const dir of ['src','api','scripts','test-tools','tests'])assert(fs.statSync(dir).isDirectory(),dir+' is required');
+for(const file of ['firebase.json','vercel.json','firestore.rules','storage.rules','RUN_86CHAOS_PLAY_STORE_RELEASE_GATE.ps1','.gitignore'])assert(fs.statSync(file).isFile());
+const groups=json('test-tools/certification/groups.json');assert.equal(groups.release,pkg.version);
+for(const group of Object.values(groups.groups))if(group.mandatory&&group.automated!==false)assert(pkg.scripts[group.command.replace(/^npm run /,'')]);
+assert(Object.values(groups.groups).some(group=>group.mandatory&&group.automated===false&&group.artifact));
+assert.equal(json('test-tools/regressions/registry.json').release,pkg.version);assert.equal(json('test-tools/certification/cost-performance-baselines.json').status,'CAPTURE_REQUIRED_ON_EXACT_DEPLOYED_CANDIDATE');
+for(const test of ['api/repair-17-0-5.test.cjs','api/release-gate-execution-17-0-5.test.cjs'])assert(pkg.scripts['test:hostile:contracts'].includes(test));
+const {resolveShiftRosterRole}=require('../src/core/rosterRoleIdentityCore.cjs');
+assert.equal(resolveShiftRosterRole({rosterRoleNameSnapshot:' ',role:'Line'},[{id:'r',name:'Grill',previousNames:['Line']}]).rosterRoleId,'r');
+assert.equal(resolveShiftRosterRole({role:'Bar'},[{id:'a',name:'Bar'},{id:'b',name:'Bar'}]).ok,false);
+console.log('17.0.5 source validation passed; this does not certify the release.');

@@ -119,4 +119,26 @@ if(!process.env.FIRESTORE_EMULATOR_HOST){
     assert.equal(storedShiftDoc.data().isPublished,true);assert.equal(storedOperation.data().status,'complete');assert.equal(storedOperation.data().notificationState.status,'ambiguous');
     assert.doesNotMatch(JSON.stringify(result),/provider sentinel/i);assert.doesNotMatch(JSON.stringify(storedOperation.data()),/provider sentinel/i);
   });
+  test('17.0.5 FIREBASE EMULATOR legacy whitespace snapshot publishes once and resumes without duplicate shifts',async()=>{
+    const shift={...makeShift(),rosterRoleId:'',rosterRoleNameSnapshot:'  ',role:'Configured A'};
+    await seedRole();await seedPerson(people.a);await seedShift(shift);
+    const body={restaurantId:'rest-a',operationId:'operation_1705_legacy',dayKeys:[shift.date],allRoles:true,roleConfigurationRevision:roleRevision,expectedShifts:[evidence(shift)]};
+    const messaging={async sendEachForMulticast(payload){return{responses:payload.tokens.map(()=>({success:true}))};}};
+    const result=await service.executeSchedulePublish({db,ctx:{uid:'manager-a'},body,messaging});assert.equal(result.status,'complete');
+    const saved=(await db.collection('shifts').doc(shift.id).get()).data();assert.equal(saved.rosterRoleId,'role-a');assert.equal(saved.isPublished,true);
+    const replay=await service.executeSchedulePublish({db,ctx:{uid:'manager-a'},body,messaging});assert.equal(replay.status,'complete');assert.equal((await db.collection('shifts').get()).size,1);assert.equal((await db.collection('shifts').doc(shift.id).get()).data().revision,saved.revision);
+  });
+  test('17.0.5 FIREBASE EMULATOR explicit review repairs only selected role metadata and rejects stale, foreign and leased shifts',async()=>{
+    await seedRole();const shift={...makeShift(),rosterRoleId:'',rosterRoleNameSnapshot:'',role:''};await seedShift(shift);
+    const raw=storedShift(shift),body={restaurantId:'rest-a',repairs:[{id:shift.id,rosterRoleId:'role-a',contentDigest:core.expectedFingerprint(raw).contentDigest,expectedRoleIdentity:require('../src/core/rosterRoleIdentityCore.cjs').copyRosterRoleFields(raw)}]};
+    const ctx={uid:'manager-a'};
+    await assert.rejects(()=>service.reconcileScheduleRoles({db,ctx,body:{...body,restaurantId:'rest-b'}}),e=>e.code==='role_review_changed');
+    await assert.rejects(()=>service.reconcileScheduleRoles({db,ctx,body:{...body,repairs:[{...body.repairs[0],contentDigest:'0'.repeat(64)}]}}),e=>e.code==='role_review_changed');
+    const leaseId=require('node:crypto').createHash('sha256').update('rest-a').digest('hex');const lease=db.collection('schedulePublishLeases').doc(leaseId);
+    await lease.set({status:'active',leaseExpiresAt:'2099-01-01T00:00:00Z'});await assert.rejects(()=>service.reconcileScheduleRoles({db,ctx,body}),e=>e.code==='publish_in_progress');await lease.delete();
+    const result=await service.reconcileScheduleRoles({db,ctx,body});assert.deepEqual(result.repairedShiftIds,[shift.id]);
+    const saved=(await db.collection('shifts').doc(shift.id).get()).data();assert.equal(saved.rosterRoleId,'role-a');assert.notEqual(saved.isPublished,true);assert.equal(saved.employeeId,raw.employeeId);assert.equal(saved.date,raw.date);assert.equal(saved.startTime,raw.startTime);assert.equal(saved.previousRoleIdentity.role,'');
+    await assert.rejects(()=>service.reconcileScheduleRoles({db,ctx,body}),e=>e.code==='role_review_changed');
+  });
+
 }
