@@ -18,19 +18,19 @@ test('16.0.210 archive-only Request Off check uses the seeded date and an actual
   assert.match(archiveOnlyBlock, /Bulk archive should show one final summary toast/);
 });
 
-test('16.0.210 historical maturity assertions coexist with current 17.0.10 version metadata', () => {
+test('16.0.210 historical maturity assertions coexist with current 17.0.11 version metadata', () => {
   const pkg = json('package.json');
   const lock = json('package-lock.json');
   const version = json('public/version.json');
   const appCore = read('src/core/appCore.js');
   const apiVersion = read('api/_version.js');
-  assert.equal(pkg.version, '17.0.10');
-  assert.equal(lock.version, '17.0.10');
-  assert.equal(lock.packages[''].version, '17.0.10');
+  assert.equal(pkg.version, '17.0.11');
+  assert.equal(lock.version, '17.0.11');
+  assert.equal(lock.packages[''].version, '17.0.11');
   assert.equal(pkg.scripts['test:source'], 'node scripts/validate-17-0-10.js');
-  assert.equal(version.version, '17.0.10');
-  assert.equal(version.build, '17.0.10');
-  assert.equal(version.releaseTitle, 'Repository Safety Manifest Repair');
+  assert.equal(version.version, '17.0.11');
+  assert.equal(version.build, '17.0.11');
+  assert.equal(version.releaseTitle, 'Schedule Builder Runtime, Firebase Gate Referrer, and Automated Release Workflow Repair');
   assert.match(appCore, /CURRENT_VERSION = '17\.0\.10'/);
   assert.match(apiVersion, /APP_VERSION = '17\.0\.10'/);
   assert.match(apiVersion, /SECURITY_SCHEMA_VERSION = '17\.0\.10'/);

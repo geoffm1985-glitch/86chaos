@@ -5,6 +5,11 @@ const { ensureRunDir, writeJson, getRoleReportPath, readJsonIfExists } = require
 const { loadEnv, env } = require('../86chaos-full-audit/env-loader.cjs');
 const { readFirebaseConfig } = require('../86chaos-full-audit/firebase-client.cjs');
 const { EXPECTED_FIREBASE_PROJECT, ROLE_DEFINITIONS, safeAccountDefinition } = require('./qa-role-definitions.cjs');
+const {
+  firebaseAuthReferrerUrl,
+  buildFirebaseAuthReferrerHeaders,
+  validateFirebaseAuthReferrer,
+} = require('./firebase-auth-referrer.cjs');
 
 function normalizeEmail(value) {
   return String(value || '').trim().toLowerCase();
@@ -24,22 +29,6 @@ function appUrl(pathOrTab = '') {
   if (/^https?:\/\//i.test(pathOrTab)) return pathOrTab;
   if (String(pathOrTab).startsWith('/')) return `${base}${pathOrTab}`;
   return `${base}/?tab=${encodeURIComponent(pathOrTab)}`;
-}
-
-function authRequestBaseUrl() {
-  return appUrl() || process.env.CHAOS_BASE_URL || process.env.PLAYWRIGHT_BASE_URL || '';
-}
-
-function appendCanonicalFirebaseAuthHeaders(headers, base = authRequestBaseUrl()) {
-  if (!base) return headers;
-  try {
-    const origin = new URL(base).origin;
-    headers.Origin = origin;
-    headers.Referer = `${origin}/`;
-  } catch (_) {
-    headers.Referer = String(base);
-  }
-  return headers;
 }
 
 function stripFirebaseAuthOriginHeaderDuplicates(headers = {}) {
@@ -63,7 +52,7 @@ function getFirebaseAuthOriginHeaderCounts(headers = {}) {
 
 function buildFirebaseAuthRequestHeaders(extraHeaders = {}) {
   const headers = { 'Content-Type': 'application/json', ...stripFirebaseAuthOriginHeaderDuplicates(extraHeaders) };
-  return appendCanonicalFirebaseAuthHeaders(headers);
+  return buildFirebaseAuthReferrerHeaders(headers);
 }
 
 function buildFirebaseAuthFetchOptions(init = {}) {
@@ -154,7 +143,7 @@ async function signInAccount(account, config, fetchImpl = global.fetch) {
 async function fetchWhoami(account, fetchImpl = global.fetch) {
   const url = appUrl('/api/whoami');
   if (!url) throw new Error('APP_URL or CHAOS_BASE_URL is missing, so /api/whoami cannot be verified.');
-  const { response, text, data: whoami } = await fetchDetailedJson(url, buildFirebaseAuthFetchOptions({ method: 'GET', headers: { Authorization: `Bearer ${account.idToken}` } }), fetchImpl);
+  const { response, text, data: whoami } = await fetchDetailedJson(url, { method: 'GET', headers: { Authorization: `Bearer ${account.idToken}` } }, fetchImpl);
   const expectedPlatformAuthority = account.expectedPlatformAuthority === true;
   const expectedNonPlatformDenial = !expectedPlatformAuthority && response.status === 403;
   if (!response.ok && !expectedNonPlatformDenial) throwHttpResponseError(url, response, text);
@@ -282,6 +271,7 @@ function buildReport({ runId, runDir, expectedProject, appUrlValue, config, rows
     generatedAt: new Date().toISOString(),
     phase,
     appUrl: appUrlValue || '',
+    firebaseAuthReferrerUrl: firebaseAuthReferrerUrl(),
     expectedFirebaseProjectId: expectedProject,
     firebaseProjectId: config?.projectId || '',
     allEmailsUnique: new Set(safeRows.map(row => row.email).filter(Boolean)).size === safeRows.filter(row => row.email).length,
@@ -325,6 +315,7 @@ async function verifyRoleAccounts(options = {}) {
   }
   const configured = readConfiguredAccounts();
   errors.push(...validateLocalRoleEnv(configured, expectedProject));
+  errors.push(...validateFirebaseAuthReferrer({ firebaseProjectId: config?.projectId || expectedProject }).errors);
   if (config?.projectId && config.projectId !== expectedProject) {
     errors.push(`Firebase config projectId is ${config.projectId}; release-gate role tests require ${expectedProject}.`);
   }
@@ -405,4 +396,6 @@ module.exports = {
   getFirebaseAuthOriginHeaderCounts,
   stripFirebaseAuthOriginHeaderDuplicates,
   isFirebaseAuthRequestFormatFailure,
+  firebaseAuthReferrerUrl,
+  validateFirebaseAuthReferrer,
 };

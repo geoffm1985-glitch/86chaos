@@ -5,6 +5,9 @@ $PSDefaultParameterValues['Out-File:Encoding'] = 'utf8'
 $PSDefaultParameterValues['Set-Content:Encoding'] = 'utf8'
 $PSDefaultParameterValues['Add-Content:Encoding'] = 'utf8'
 $env:PYTHONUTF8 = '1'
+$GateStartedAt = Get-Date
+$env:GIT_PAGER = 'cat'
+$env:PAGER = 'cat'
 
 $Root = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location $Root
@@ -16,8 +19,9 @@ if (-not (Test-Path ".\package-lock.json")) {
   throw "package-lock.json was not found. The release gate requires the committed lockfile."
 }
 
-$ReleaseTargetKeys = @('APP_URL', 'CHAOS_BASE_URL', 'CHAOS_EXPECTED_VERSION', 'CHAOS_EXPECTED_VERCEL_PROJECT_SLUG')
+$ReleaseTargetKeys = @('APP_URL', 'CHAOS_BASE_URL', 'CHAOS_EXPECTED_VERSION', 'CHAOS_EXPECTED_VERCEL_PROJECT_SLUG', 'CHAOS_FIREBASE_AUTH_REFERRER_URL')
 $CanonicalVercelProjectSlug = '86chaos'
+$CanonicalFirebaseAuthReferrerUrl = 'https://86chaos-git-testing-cheers-portal-s-projects.vercel.app'
 
 function Read-EnvFileMap {
   param([string]$Path)
@@ -50,6 +54,12 @@ function Assert-NoReleaseTargetConflicts {
     $values = @()
     $processValue = [Environment]::GetEnvironmentVariable($key, 'Process')
     if ($processValue) { $values += [pscustomobject]@{ Source = 'process environment'; Value = $processValue } }
+    if ($env:CHAOS_AUTOMATED_RELEASE_WORKFLOW -eq 'true' -and $processValue) {
+      # The checked-in release workflow supplies an explicitly validated target
+      # for this child process. Local env files remain untouched and cannot
+      # override it; manual runs retain strict conflict detection below.
+      continue
+    }
     if ($TestEnv.ContainsKey($key) -and $TestEnv[$key]) { $values += [pscustomobject]@{ Source = '.env.test.local'; Value = $TestEnv[$key] } }
     if ($LocalEnv.ContainsKey($key) -and $LocalEnv[$key]) { $values += [pscustomobject]@{ Source = '.env.local'; Value = $LocalEnv[$key] } }
     for ($i = 0; $i -lt $values.Count; $i++) {
@@ -81,11 +91,13 @@ Import-EnvFile $EnvTestLocal
 Import-EnvFile $EnvLocal
 $env:CHAOS_CERTIFICATION_MODE = 'true'
 if (-not $env:CHAOS_EXPECTED_VERCEL_PROJECT_SLUG) { $env:CHAOS_EXPECTED_VERCEL_PROJECT_SLUG = $CanonicalVercelProjectSlug }
+if (-not $env:CHAOS_FIREBASE_AUTH_REFERRER_URL) { $env:CHAOS_FIREBASE_AUTH_REFERRER_URL = $CanonicalFirebaseAuthReferrerUrl }
 Write-Host "Release-gate target:" -ForegroundColor Cyan
 Write-Host "  APP_URL=$env:APP_URL" -ForegroundColor Cyan
 Write-Host "  CHAOS_BASE_URL=$env:CHAOS_BASE_URL" -ForegroundColor Cyan
 Write-Host "  CHAOS_EXPECTED_VERSION=$env:CHAOS_EXPECTED_VERSION" -ForegroundColor Cyan
 Write-Host "  CHAOS_EXPECTED_VERCEL_PROJECT_SLUG=$env:CHAOS_EXPECTED_VERCEL_PROJECT_SLUG" -ForegroundColor Cyan
+Write-Host "  CHAOS_FIREBASE_AUTH_REFERRER_URL=$env:CHAOS_FIREBASE_AUTH_REFERRER_URL" -ForegroundColor Cyan
 
 $RunId = Get-Date -Format "yyyy-MM-ddTHH-mm-ss"
 $env:CHAOS_RELEASE_GATE_RUN_ID = $RunId
@@ -146,6 +158,8 @@ $RunnerState = [ordered]@{
   status = 'running'
   startedAt = (Get-Date -Format o)
   finishedAt = ''
+  totalElapsedMs = $null
+  totalElapsedFormatted = ''
   lastCompletedStep = ''
   anyTestsRan = $false
   blockedBeforeTestExecution = $false
@@ -274,9 +288,34 @@ function New-Slim-ReleaseGateReport {
   $copiedCount = (Get-ChildItem $DestinationDir -Recurse -File -ErrorAction SilentlyContinue | Measure-Object).Count
   if ($copiedCount -eq 0) { Set-Content (Join-Path $DestinationDir 'release-gate-empty-report.txt') "No current-run report files were copied." }
   Compress-Archive -Path "$DestinationDir\*" -DestinationPath $ZipPath -Force
-  Write-Host ""
-  Write-Host "Slim release-gate upload ZIP created:" -ForegroundColor Cyan
-  Write-Host $ZipPath -ForegroundColor Cyan
+}
+
+function Format-TotalElapsed {
+  param([long]$Milliseconds)
+  $span = [TimeSpan]::FromMilliseconds([Math]::Max(0, $Milliseconds))
+  if ($span.Days -gt 0) { return ("{0}d {1}h {2}m {3}s" -f $span.Days, $span.Hours, $span.Minutes, $span.Seconds) }
+  if ($span.Hours -gt 0) { return ("{0}h {1}m {2}s" -f $span.Hours, $span.Minutes, $span.Seconds) }
+  return ("{0}m {1}s" -f $span.Minutes, $span.Seconds)
+}
+
+function Update-TotalTimingEvidence {
+  $timing = [ordered]@{
+    startedAt = $RunnerState.startedAt
+    finishedAt = $RunnerState.finishedAt
+    totalElapsedMs = $RunnerState.totalElapsedMs
+    totalElapsedFormatted = $RunnerState.totalElapsedFormatted
+  }
+  Get-ChildItem -LiteralPath $RunDir -File -Filter '86chaos-play-store-release-gate-summary-*.json' -ErrorAction SilentlyContinue | ForEach-Object {
+    try {
+      $summary = Get-Content -Raw -LiteralPath $_.FullName | ConvertFrom-Json
+      foreach ($key in $timing.Keys) { $summary | Add-Member -NotePropertyName $key -NotePropertyValue $timing[$key] -Force }
+      $summary | ConvertTo-Json -Depth 100 | Set-Content -LiteralPath $_.FullName
+    } catch { throw "Could not add total release-gate timing to $($_.FullName): $($_.Exception.Message)" }
+  }
+  $testSummary = Join-Path $RunDir 'TEST-SUMMARY.txt'
+  if (Test-Path $testSummary) {
+    Add-Content -LiteralPath $testSummary -Value "`nTOTAL RELEASE-GATE TIMING`nStarted: $($RunnerState.startedAt)`nFinished: $($RunnerState.finishedAt)`nTOTAL ELAPSED TIME: $($RunnerState.totalElapsedFormatted)"
+  }
 }
 
 function Write-RunnerSummary {
@@ -293,6 +332,10 @@ function Write-RunnerSummary {
     "APP_URL: $env:APP_URL",
     "CHAOS_BASE_URL: $env:CHAOS_BASE_URL",
     "CHAOS_EXPECTED_VERSION: $env:CHAOS_EXPECTED_VERSION",
+    "Started: $($RunnerState.startedAt)",
+    "Finished: $($RunnerState.finishedAt)",
+    "Total elapsed milliseconds: $($RunnerState.totalElapsedMs)",
+    "TOTAL ELAPSED TIME: $($RunnerState.totalElapsedFormatted)",
     "Primary blocking reason: $($RunnerState.blockingReason)",
     "Original blocking failures: $($countedFailures.Count)",
     "All failed steps including collector: $($failed.Count)",
@@ -313,7 +356,7 @@ function Write-RunnerSummary {
     }
   }
   $lines | Set-Content $summaryPath
-  @{ runId = $RunId; runDir = $RunDir; mode = 'full'; blockingReason = $RunnerState.blockingReason; steps = $StepResults; generatedAt = (Get-Date -Format o) } | ConvertTo-Json -Depth 12 | Set-Content $jsonPath
+  @{ runId = $RunId; runDir = $RunDir; mode = 'full'; blockingReason = $RunnerState.blockingReason; steps = $StepResults; generatedAt = (Get-Date -Format o); startedAt = $RunnerState.startedAt; finishedAt = $RunnerState.finishedAt; totalElapsedMs = $RunnerState.totalElapsedMs; totalElapsedFormatted = $RunnerState.totalElapsedFormatted } | ConvertTo-Json -Depth 12 | Set-Content $jsonPath
 }
 
 function Stop-BeforePlaywright {
@@ -563,13 +606,23 @@ if (Test-Path $CleanupPath) {
 
 Set-RunnerPhase 'report-collection'
 if ($RunnerState.blockingReason -and $RunnerState.playwrightStarted -ne $true) { $RunnerState.blockedBeforeTestExecution = $true }
-$RunnerState.finishedAt = (Get-Date -Format o)
 if ($RunnerState.blockingReason) { $RunnerState.status = 'blocked' } elseif ([int]$env:CHAOS_RELEASE_GATE_STEP_FAILURES -gt 0) { $RunnerState.status = 'failed' } else { $RunnerState.status = 'passed' }
 if ([int]$env:CHAOS_RELEASE_GATE_STEP_FAILURES -gt 0 -or $RunnerState.blockingReason) { $RunnerState.finalExitCode = 1 } else { $RunnerState.finalExitCode = 0 }
 Save-RunnerState
 Run-CollectorStep "Collect report" "node scripts/86chaos-release-gate/collect-release-gate-report.cjs"
 $RunnerState.updatedAt = (Get-Date -Format o)
 Save-RunnerState
+New-Slim-ReleaseGateReport -SourceDir $RunDir -DestinationDir $SlimDir -ZipPath $SlimZipPath
+
+# The first completed slim export closes the measured release-gate wall clock.
+# Timing is then injected and the same ZIP is deterministically rebuilt so the
+# uploaded evidence contains its own start/finish/duration record.
+$GateFinishedAt = Get-Date
+$RunnerState.finishedAt = $GateFinishedAt.ToString('o')
+$RunnerState.totalElapsedMs = [long]($GateFinishedAt - $GateStartedAt).TotalMilliseconds
+$RunnerState.totalElapsedFormatted = Format-TotalElapsed $RunnerState.totalElapsedMs
+Save-RunnerState
+Update-TotalTimingEvidence
 Write-RunnerSummary
 New-Slim-ReleaseGateReport -SourceDir $RunDir -DestinationDir $SlimDir -ZipPath $SlimZipPath
 
@@ -592,8 +645,14 @@ Save-RunnerState
 if ([int]$env:CHAOS_RELEASE_GATE_STEP_FAILURES -gt 0 -or $RunnerState.blockingReason) {
   Write-Host ""
   Write-Host "Release gate finished with failures. Upload 86chaos-release-gate-SLIM-UPLOAD-ME.zip." -ForegroundColor Red
+  Write-Host "Exported:" -ForegroundColor Cyan
+  Write-Host $SlimZipPath -ForegroundColor Cyan
+  Write-Host "TOTAL ELAPSED TIME: $($RunnerState.totalElapsedFormatted)"
   exit 1
 }
 Write-Host ""
 Write-Host "Release gate passed." -ForegroundColor Green
+Write-Host "Exported:" -ForegroundColor Cyan
+Write-Host $SlimZipPath -ForegroundColor Cyan
+Write-Host "TOTAL ELAPSED TIME: $($RunnerState.totalElapsedFormatted)"
 exit 0

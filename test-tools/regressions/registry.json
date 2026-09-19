@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "release": "17.0.10",
+  "release": "17.0.11",
   "defects": [
     {
       "defectId": "RG-API-WRAPPER-FIDELITY",
@@ -373,6 +373,45 @@
       "fidelity": "PLAYWRIGHT UI",
       "fixedVersion": "17.0.9",
       "mandatoryGroup": "schedule-publish"
+    },
+    {
+      "defectId": "SCHEDULE-BUILDER-LEGACY-EVENT-DATE-1711",
+      "origin": "real-device 17.0.10 recovery report 9GSrUJyUTkm8vOmUdO4z and source reproduction",
+      "affectedInvariant": "Malformed legacy schedule event rows are normalized before Schedule Builder month filtering, navigation, and rendering",
+      "reproducer": "src/features/scheduleRuntimeSafety.test.jsx",
+      "permanentTestIds": [
+        "Schedule Builder renders and navigates months with malformed legacy event rows"
+      ],
+      "fidelity": "ACTUAL REACT COMPONENT / MOBILE-SHAPED DATA",
+      "fixedVersion": "17.0.11",
+      "mandatoryGroup": "schedule-publish"
+    },
+    {
+      "defectId": "RG-FIREBASE-AUTH-REFERRER-SEPARATION-1711",
+      "origin": "17.0.10 full release-gate preflight",
+      "affectedInvariant": "Firebase Auth uses the stable approved testing referrer while application certification remains pinned to the exact immutable deployment and production Firebase is refused",
+      "reproducer": "firebase-auth-referrer-17-0-11.test.cjs",
+      "permanentTestIds": [
+        "17.0.11 keeps immutable app identity separate from the approved Firebase Auth referrer",
+        "17.0.11 rejects production, wildcard, and immutable Firebase Auth referrer configurations"
+      ],
+      "fidelity": "ACTUAL MODULE / HTTP TRANSPORT FIXTURE",
+      "fixedVersion": "17.0.11",
+      "mandatoryGroup": "hostile-contracts"
+    },
+    {
+      "defectId": "RG-AUTOMATED-WORKFLOW-PROGRESS-TIMING-1711",
+      "origin": "17.0.10 operator workflow and blocked full gate",
+      "affectedInvariant": "Release installation is non-destructive, pager-free, retry-safe, visibly progressing, and preserves complete wall-clock and per-test timing evidence",
+      "reproducer": "release-workflow-17-0-11.test.cjs and playwright-progress-17-0-11.test.cjs",
+      "permanentTestIds": [
+        "17.0.11 automatic workflow forbids destructive Git and pager behavior and runs only the full user gate",
+        "17.0.11 retries do not double-count final Playwright progress and duration evidence preserves attempts",
+        "17.0.11 release gate persists total timing into slim evidence and prints elapsed time last"
+      ],
+      "fidelity": "ACTUAL MODULE / WORKFLOW CONTRACT",
+      "fixedVersion": "17.0.11",
+      "mandatoryGroup": "hostile-contracts"
     }
   ]
 }

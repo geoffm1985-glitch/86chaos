@@ -49,6 +49,7 @@ function statusLabel(status = '') {
   if (normalized === 'skipped') return 'SKIP';
   if (normalized === 'timedOut') return 'TIMEOUT';
   if (normalized === 'interrupted') return 'INTERRUPTED';
+  if (normalized === 'retrying') return 'RETRY';
   return 'FAIL';
 }
 
@@ -60,6 +61,30 @@ function formatDuration(ms = 0) {
   const minutes = Math.floor(seconds / 60);
   const remainder = Math.round(seconds % 60);
   return `${minutes}m ${String(remainder).padStart(2, '0')}s`;
+}
+
+function progressBar(value = 0, maximum = 1, width = 24) {
+  const max = Math.max(1, Number(maximum) || 1);
+  const ratio = Math.max(0, Math.min(1, (Number(value) || 0) / max));
+  const filled = Math.round(ratio * width);
+  return `[${'#'.repeat(filled)}${'-'.repeat(Math.max(0, width - filled))}]`;
+}
+
+function overallProgressLines({ completed = 0, total = 0, counts = {}, elapsedMs = 0, title = '', project = '', attempt = 1 } = {}) {
+  const safeTotal = Math.max(0, Number(total) || 0);
+  const safeCompleted = Math.max(0, Number(completed) || 0);
+  const percentage = safeTotal ? Math.min(100, Math.round((safeCompleted / safeTotal) * 100)) : 0;
+  return [
+    `OVERALL ${progressBar(safeCompleted, safeTotal || 1)} ${percentage}% | ${safeCompleted} / ${safeTotal} tests complete`,
+    `PASS: ${counts.passed || 0} | FAIL: ${counts.failed || 0} | SKIP: ${counts.skipped || 0} | TIMEOUT: ${counts.timedOut || 0} | Elapsed: ${formatDuration(elapsedMs)}`,
+    `CURRENT TEST: ${title || 'waiting'} | Project: ${project || 'unknown'} | Attempt: ${attempt}`,
+  ].map(ascii);
+}
+
+function individualProgressLine({ elapsedMs = 0, timeoutMs = 0, title = '', project = '', attempt = 1 } = {}) {
+  const timeout = Math.max(1, Number(timeoutMs) || 1);
+  const elapsed = Math.max(0, Number(elapsedMs) || 0);
+  return ascii(`ELAPSED VS TIMEOUT ${progressBar(elapsed, timeout)} ${formatDuration(elapsed)} / ${formatDuration(timeout)} | ${project || 'unknown'} | attempt ${attempt} | ${title || 'untitled'}`);
 }
 
 function countByStatus(results = []) {
@@ -335,10 +360,47 @@ class ChaosReleaseGateReporter {
     this.completed = 0;
     this.manifestPrinted = false;
     this.progressJournal = null;
+    this.startedAtMs = 0;
+    this.currentTest = null;
+    this.currentTimer = null;
+    this.heartbeatMs = Number.isFinite(Number(options.heartbeatMs)) ? Number(options.heartbeatMs) : 15000;
+    this.interactive = options.interactive === true || (options.interactive !== false && !options.output && Boolean(process.stdout.isTTY));
+    this.finalByTestId = new Map();
+    this.durationEvidence = new Map();
   }
 
   emit(line = '') {
     this.output(ascii(line));
+  }
+
+  testIdentity(test = {}) {
+    return String(test.id || `${testProjectName(test)}|${test.location?.file || ''}|${humanTestTitle(test)}`);
+  }
+
+  clearCurrentTimer() {
+    if (this.currentTimer) clearInterval(this.currentTimer);
+    this.currentTimer = null;
+  }
+
+  emitLiveProgress() {
+    if (!this.currentTest) return;
+    const elapsedMs = Date.now() - this.currentTest.startedAtMs;
+    const line = individualProgressLine({
+      elapsedMs,
+      timeoutMs: this.currentTest.timeoutMs,
+      title: this.currentTest.title,
+      project: this.currentTest.project,
+      attempt: this.currentTest.attempt,
+    });
+    if (this.interactive) {
+      process.stdout.write(`\r${line.padEnd(140).slice(0, 140)}`);
+    } else {
+      this.emit(line);
+    }
+  }
+
+  finishInteractiveLine() {
+    if (this.interactive) process.stdout.write('\n');
   }
 
   onBegin(config, suite) {
@@ -346,6 +408,7 @@ class ChaosReleaseGateReporter {
     this.manifestPrinted = true;
     const tests = suite && typeof suite.allTests === 'function' ? suite.allTests() : [];
     this.total = tests.length || Number(this.selection?.totalSelected || 0);
+    this.startedAtMs = Date.now();
     try {
       this.progressJournal = createProgressJournal({ root: this.root, runDir: this.runDir, tests, mode: this.mode });
     } catch (error) {
@@ -376,36 +439,70 @@ class ChaosReleaseGateReporter {
 
   onTestBegin(test, result) {
     this.recordProgress('start', test, result);
+    this.clearCurrentTimer();
+    const project = testProjectName(test, result?.projectName || 'unknown');
+    const title = humanTestTitle(test);
+    const attempt = Number(result?.retry || 0) + 1;
+    const timeoutMs = Number(test?.timeout || this.options.defaultTimeoutMs || 0);
+    this.currentTest = { id: this.testIdentity(test), project, title, attempt, timeoutMs, startedAtMs: Date.now() };
+    overallProgressLines({ completed: this.completed, total: this.total, counts: this.counts, elapsedMs: Date.now() - this.startedAtMs, title, project, attempt }).forEach(line => this.emit(line));
+    this.emitLiveProgress();
+    if (this.heartbeatMs > 0) this.currentTimer = setInterval(() => this.emitLiveProgress(), this.interactive ? 1000 : this.heartbeatMs);
   }
 
   onTestEnd(test, result) {
+    this.clearCurrentTimer();
+    this.finishInteractiveLine();
     this.recordProgress('end', test, result);
     const status = normalizeStatus(result?.status || 'failed');
-    this.completed += 1;
-    if (status === 'passed') this.counts.passed += 1;
-    else if (status === 'skipped') this.counts.skipped += 1;
-    else if (status === 'timedOut') this.counts.timedOut += 1;
-    else if (status === 'interrupted') this.counts.interrupted += 1;
-    else this.counts.failed += 1;
     const project = testProjectName(test, result?.projectName || 'unknown');
     const title = humanTestTitle(test);
+    const testId = this.testIdentity(test);
+    const retry = Number(result?.retry || 0);
+    const configuredRetries = Number(test?.retries || 0);
+    const finalAttempt = ['passed', 'skipped'].includes(status) || retry >= configuredRetries;
     const row = {
+      testId,
       project,
       projectName: project,
       title,
       file: test?.location?.file || test?.file || test?.spec || '',
       status,
       duration: result?.duration || 0,
+      retry,
+      attempt: retry + 1,
+      timeout: Number(test?.timeout || this.options.defaultTimeoutMs || 0),
       error: result?.error?.message || '',
     };
-    this.results.push(row);
-    this.emit(createResultLine({ status, current: this.completed, total: this.total || this.completed, project, title, duration: result?.duration || 0, counts: this.counts }));
+    const durationEntry = this.durationEvidence.get(testId) || { testId, project, title, file: row.file, attempts: [] };
+    durationEntry.attempts.push({ attempt: retry + 1, status, durationMs: row.duration, timeoutMs: row.timeout });
+    durationEntry.finalStatus = finalAttempt ? status : 'retrying';
+    durationEntry.totalDurationMs = durationEntry.attempts.reduce((sum, attemptRow) => sum + Number(attemptRow.durationMs || 0), 0);
+    this.durationEvidence.set(testId, durationEntry);
+
+    if (finalAttempt && !this.finalByTestId.has(testId)) {
+      this.finalByTestId.set(testId, row);
+      this.results.push(row);
+      this.completed += 1;
+      if (status === 'passed') this.counts.passed += 1;
+      else if (status === 'skipped') this.counts.skipped += 1;
+      else if (status === 'timedOut') this.counts.timedOut += 1;
+      else if (status === 'interrupted') this.counts.interrupted += 1;
+      else this.counts.failed += 1;
+    }
+    const displayedStatus = finalAttempt ? status : 'retrying';
+    this.emit(createResultLine({ status: displayedStatus, current: this.completed, total: this.total || this.completed, project, title, duration: result?.duration || 0, counts: this.counts }));
+    if (!finalAttempt) this.emit(`Retry scheduled: attempt ${retry + 2} of ${configuredRetries + 1}. Final counters are unchanged.`);
     if (!['passed', 'skipped'].includes(status)) {
       createFailureBlock({ project, spec: row.file, title, error: result?.error || {}, artifact: attachmentPath(result || {}) }).forEach(line => this.emit(line));
     }
+    overallProgressLines({ completed: this.completed, total: this.total, counts: this.counts, elapsedMs: Date.now() - this.startedAtMs, title, project, attempt: retry + 1 }).forEach(line => this.emit(line));
+    this.currentTest = null;
   }
 
   onEnd(result = {}) {
+    this.clearCurrentTimer();
+    this.finishInteractiveLine();
     const status = normalizeStatus(result.status || '');
     if (this.progressJournal) {
       try { this.progressJournal.finish(status); }
@@ -427,6 +524,16 @@ class ChaosReleaseGateReporter {
         fs.mkdirSync(this.runDir, { recursive: true });
         fs.writeFileSync(path.join(this.runDir, 'TEST-SUMMARY.txt'), summaryLines.join('\n'));
         fs.writeFileSync(path.join(this.runDir, 'FAILED-TESTS.txt'), failedLines.join('\n'));
+        fs.writeFileSync(path.join(this.runDir, 'playwright-duration-evidence.json'), `${JSON.stringify({
+          schemaVersion: 1,
+          startedAt: this.startedAtMs ? new Date(this.startedAtMs).toISOString() : '',
+          finishedAt: new Date().toISOString(),
+          playwrightElapsedMs: this.startedAtMs ? Date.now() - this.startedAtMs : 0,
+          totalDiscovered: this.total,
+          totalCompleted: this.completed,
+          counts: this.counts,
+          tests: Array.from(this.durationEvidence.values()),
+        }, null, 2)}\n`);
       } catch (_) {}
     }
   }
@@ -436,6 +543,9 @@ module.exports = ChaosReleaseGateReporter;
 module.exports.ascii = ascii;
 module.exports.statusLabel = statusLabel;
 module.exports.formatDuration = formatDuration;
+module.exports.progressBar = progressBar;
+module.exports.overallProgressLines = overallProgressLines;
+module.exports.individualProgressLine = individualProgressLine;
 module.exports.countByStatus = countByStatus;
 module.exports.humanTestTitle = humanTestTitle;
 module.exports.manifestRowTitle = manifestRowTitle;

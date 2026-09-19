@@ -7,6 +7,7 @@ const { readFirebaseConfig } = require('./firebase-client.cjs');
 const { ensureRunDir, getSeedReportPath, getCleanupReportPath, getSetupStatePath, readJsonIfExists, writeJson } = require('../86chaos-release-gate/run-context.cjs');
 const { resolveQaWorkspaceName, validateQaWorkspaceName } = require('../86chaos-release-gate/qa-workspace.cjs');
 const { assertMutationSafety } = require('../86chaos-release-gate/mutation-safety.cjs');
+const { buildFirebaseAuthReferrerHeaders } = require('../86chaos-release-gate/firebase-auth-referrer.cjs');
 
 loadEnv(process.cwd());
 
@@ -45,18 +46,7 @@ async function deleteGhostTargetAuthAccount(projectId) {
 }
 
 function buildFirebaseAuthRequestHeaders() {
-  const headers = { 'Content-Type': 'application/json' };
-  const base = process.env.APP_URL || process.env.CHAOS_BASE_URL || process.env.PLAYWRIGHT_BASE_URL || process.env.BASE_URL || '';
-  if (base) {
-    try {
-      const origin = new URL(base).origin;
-      headers.Origin = origin;
-      headers.Referer = `${origin}/`;
-    } catch (_) {
-      headers.Referer = String(base);
-    }
-  }
-  return headers;
+  return buildFirebaseAuthReferrerHeaders({ 'Content-Type': 'application/json' });
 }
 
 function writeReport(report) {

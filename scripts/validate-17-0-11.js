@@ -1,0 +1,41 @@
+#!/usr/bin/env node
+'use strict';
+const fs = require('node:fs');
+const assert = require('node:assert/strict');
+const read = file => fs.readFileSync(file, 'utf8');
+const json = file => JSON.parse(read(file));
+const pkg = json('package.json');
+const lock = json('package-lock.json');
+const version = json('public/version.json');
+
+assert.equal(pkg.scripts['test:source'], 'node scripts/validate-17-0-11.js');
+assert.equal(pkg.version, '17.0.11');
+assert.equal(lock.version, pkg.version);
+assert.equal(lock.packages[''].version, pkg.version);
+assert.equal(version.version, pkg.version);
+assert.equal(version.releaseTitle, 'Schedule Builder Runtime, Firebase Gate Referrer, and Automated Release Workflow Repair');
+for (const file of ['src/core/appCore.js', 'api/_version.js', 'api/_pos-bridge-config.js']) assert(read(file).includes("'17.0.11'"));
+for (const directory of ['src', 'api', 'scripts', 'test-tools', 'tests']) assert(fs.statSync(directory).isDirectory(), `${directory} is required`);
+for (const file of ['firebase.json', 'vercel.json', 'firestore.rules', 'storage.rules', 'RUN_86CHAOS_PLAY_STORE_RELEASE_GATE.ps1', 'RUN_86CHAOS_UPDATE_TEST_DEPLOY.ps1', 'RELEASE_TEST_POLICY.md', '.gitignore', 'release-source-manifest.json']) assert(fs.statSync(file).isFile(), `${file} is required`);
+assert.equal(json('test-tools/certification/groups.json').release, pkg.version);
+assert.equal(json('test-tools/regressions/registry.json').release, pkg.version);
+assert.equal(json('test-tools/certification/cost-performance-baselines.json').release, pkg.version);
+
+const schedule = read('src/features/schedule.jsx');
+assert(schedule.includes('safeScheduleEventRows(rawEvents)'));
+assert(schedule.includes("events.filter(e => e.type === 'special_event' && e.date?.startsWith(eventsCalMonth))"));
+const referrer = read('scripts/86chaos-release-gate/firebase-auth-referrer.cjs');
+assert(referrer.includes('CHAOS_FIREBASE_AUTH_REFERRER_URL'));
+assert(referrer.includes('86chaos-git-testing-cheers-portal-s-projects.vercel.app'));
+assert(referrer.includes('chaos-test-d1601'));
+assert(referrer.includes('cheers-34b8d'));
+const runner = read('RUN_86CHAOS_PLAY_STORE_RELEASE_GATE.ps1');
+assert(runner.includes('TOTAL ELAPSED TIME:'));
+assert(runner.includes('Update-TotalTimingEvidence'));
+assert(runner.lastIndexOf('TOTAL ELAPSED TIME:') > runner.lastIndexOf('Exported:'));
+const safety = read('scripts/verify-repository-safety.cjs');
+assert(safety.includes("allowedTrackedExclusions=new Set(['release-source-manifest.json'])"));
+assert(pkg.scripts['test:repair:17.0.11'].includes('api/firebase-auth-referrer-17-0-11.test.cjs'));
+assert(pkg.scripts['test:repair:17.0.11'].includes('api/playwright-progress-17-0-11.test.cjs'));
+assert(pkg.scripts['test:repair:17.0.11'].includes('api/release-workflow-17-0-11.test.cjs'));
+console.log('17.0.11 source validation passed; this does not certify the release.');

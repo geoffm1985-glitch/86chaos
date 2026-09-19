@@ -1,16 +1,17 @@
 {
-  "version": "17.0.10",
-  "name": "86 Chaos 17.0.10",
-  "build": "17.0.10",
-  "label": "86 Chaos 17.0.10",
-  "releasedAt": "2026-09-19T05:00:00.000Z",
-  "releaseTitle": "Repository Safety Manifest Repair",
+  "version": "17.0.11",
+  "name": "86 Chaos 17.0.11",
+  "build": "17.0.11",
+  "label": "86 Chaos 17.0.11",
+  "releasedAt": "2026-09-19T12:00:00.000Z",
+  "releaseTitle": "Schedule Builder Runtime, Firebase Gate Referrer, and Automated Release Workflow Repair",
   "notes": [
-    "Allows the required committed release-source-manifest.json through repository safety checks while continuing to exclude it from the manifest hash itself.",
-    "Keeps generated build identity, environment files, release artifacts, secrets, build outputs, reports, and caches forbidden from tracked source.",
-    "Preserves all 17.0.9 Request Off runtime hardening, Vercel protected-config identity behavior, and mobile microphone placement unchanged."
+    "Normalizes malformed legacy Schedule Builder event rows before month filtering and date rendering, preventing the confirmed missing-date render crash on mobile and desktop.",
+    "Separates immutable application deployment identity from the stable approved Firebase Auth browser Origin and Referer without broadening API-key restrictions.",
+    "Adds a checked-in one-paste update, validation, testing-branch deployment, identity verification, and complete Play Store release-gate workflow with no-pager output.",
+    "Adds retry-safe live Playwright progress, per-test duration evidence, and full release-gate wall-clock timing to the slim review artifact while preserving the 17.0.10 repository manifest safety repair."
   ],
-  "title": "86 Chaos 17.0.10",
-  "summary": "Surgical release-gate safety repair that allows the required committed release source manifest while preserving generated-file and secret protections.",
-  "description": "Preserves the 17.0.9 Request Off, microphone, and Vercel identity repairs and fixes the repository safety validator contradiction that blocked the release workflow."
+  "title": "86 Chaos 17.0.11",
+  "summary": "Repairs the Schedule Builder legacy-event render path, separates Firebase Auth referrer identity from immutable deployment certification, and automates the safe full testing release workflow.",
+  "description": "Preserves the 17.0.10 repository safety manifest repair while adding evidence-backed Schedule Builder stability, stable Firebase Auth referrer security, live progress and duration evidence, and a non-destructive one-paste deployment and full-gate workflow."
 }

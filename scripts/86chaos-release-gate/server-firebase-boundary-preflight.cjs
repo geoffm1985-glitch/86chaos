@@ -9,6 +9,7 @@ const {
   readConfiguredAccounts,
   buildFirebaseAuthFetchOptions,
 } = require('./verify-role-accounts.cjs');
+const { firebaseAuthReferrerUrl } = require('./firebase-auth-referrer.cjs');
 
 const PRODUCTION_FIREBASE_PROJECT = 'cheers-34b8d';
 const SERVER_BOUNDARY_REPORT = 'server-firebase-boundary-preflight.json';
@@ -116,6 +117,7 @@ function classifyWhoamiBoundary({ appUrlValue = '', expectedProject = EXPECTED_F
     appUrl: appUrlValue,
     vercelEnvironment: process.env.VERCEL_ENV || 'preview',
     expectedFirebaseProjectId: expectedProject,
+    firebaseAuthReferrerUrl: firebaseAuthReferrerUrl(),
     clientFirebaseProjectId: clientProjectId || '',
     deployedServerFirebaseProjectId: serverFirebaseProjectId || '',
     credentialSourceName: credentialSourceName || '',
@@ -192,6 +194,7 @@ async function runServerFirebaseBoundaryPreflight(options = {}) {
         errors: baseErrors,
         appUrl: appUrlValue,
         expectedFirebaseProjectId: expectedProject,
+        firebaseAuthReferrerUrl: firebaseAuthReferrerUrl(),
         clientFirebaseProjectId: config?.projectId || '',
         deployedServerFirebaseProjectId: '',
         credentialSourceName: '',
@@ -204,7 +207,7 @@ async function runServerFirebaseBoundaryPreflight(options = {}) {
 
     const signed = await signInAccount(account, config, fetchImpl);
     const whoamiUrl = new URL('/api/whoami', appUrlValue).toString();
-    const { response, text, data } = await fetchDetailedJson(whoamiUrl, buildFirebaseAuthFetchOptions({ method: 'GET', headers: { Authorization: `Bearer ${signed.idToken}` } }), fetchImpl);
+    const { response, text, data } = await fetchDetailedJson(whoamiUrl, { method: 'GET', headers: { Authorization: `Bearer ${signed.idToken}` } }, fetchImpl);
     const classified = classifyWhoamiBoundary({
       appUrlValue,
       expectedProject,
@@ -244,6 +247,7 @@ async function runServerFirebaseBoundaryPreflight(options = {}) {
         : `Preview server Firebase identity preflight failed before mutation: ${message}`],
       appUrl: appUrlValue,
       expectedFirebaseProjectId: expectedProject,
+      firebaseAuthReferrerUrl: firebaseAuthReferrerUrl(),
       clientFirebaseProjectId: config?.projectId || '',
       deployedServerFirebaseProjectId: '',
       credentialSourceName: '',

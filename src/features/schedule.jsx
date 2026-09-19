@@ -27,6 +27,7 @@ import { createSchedulePublishGuard, makeSchedulePublishProgress } from '../core
 import { activeRosterRoles, resolveShiftRosterRole, copyRosterRoleFields } from '../core/rosterRoleIdentity';
 import { buildSchedulePublicationPlan, buildConfirmedShiftEvidence, digestSchedulePublicationPlan } from '../core/schedulePublicationPlan';
 import { requestOffDateKey, normalizeRequestOffRuntimeRow, safeRequestOffRows } from '../core/requestOffRuntimeSafety';
+import { safeScheduleObjectRows, safeScheduleEventRows } from '../core/scheduleRuntimeSafety';
 import { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, MapClickListener, SmartEmptyState, MiniProblemCard, getHomeProfile, calculatePunchHours, getWeekStart, roleMatches, toLocalTimeInput, makeLocalIso, PunchTable, FriendlyEmpty, GlobalSearchModal, QuickActionDock, KitchenTVMode, ChangeLogModal, UndoBar } from '../components/common';
 
 
@@ -1795,7 +1796,13 @@ const handleOfferSwap = async (shift) => {
   );
 };
 
-const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, timePunches = [], addToast, appUser, clientData = null, initialSubTab = 'schedule', hideSubTabs = false, availabilityRecords = [], schedulePeriodContext = null, reviewPublishRequest = 0 }) => {
+const TabSchedule = ({ currentDate, users: rawUsers, shifts: rawShifts, events: rawEvents, timeOffRequests: rawTimeOffRequests, timePunches: rawTimePunches = [], addToast, appUser, clientData = null, initialSubTab = 'schedule', hideSubTabs = false, availabilityRecords: rawAvailabilityRecords = [], schedulePeriodContext = null, reviewPublishRequest = 0 }) => {
+  const users = safeScheduleObjectRows(rawUsers);
+  const shifts = safeScheduleObjectRows(rawShifts);
+  const events = safeScheduleEventRows(rawEvents);
+  const timeOffRequests = mergeRequestOffWorkflowRows(rawTimeOffRequests);
+  const timePunches = safeScheduleObjectRows(rawTimePunches);
+  const availabilityRecords = safeScheduleObjectRows(rawAvailabilityRecords);
   const [subTab, setSubTab] = useState(initialSubTab); 
   const [selectedEmp, setSelectedEmp] = useState(''); 
   const [assignDates, setAssignDates] = useState([]); 

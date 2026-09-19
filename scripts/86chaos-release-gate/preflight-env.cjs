@@ -10,6 +10,7 @@ const {
   inspectReleaseTargetEnvConflicts,
   validateReleaseTarget,
 } = require('./vercel-targets.cjs');
+const { validateFirebaseAuthReferrer, firebaseAuthReferrerUrl } = require('./firebase-auth-referrer.cjs');
 
 const { root, runId, runDir } = ensureRunDir();
 const errors = [];
@@ -246,6 +247,8 @@ async function main() {
       errors.push(`Mutation testing refuses the known production Firebase project: ${config.projectId}.`);
     }
     if (boolEnv('CHAOS_QA_USE_PROD_FIREBASE')) errors.push('CHAOS_QA_USE_PROD_FIREBASE must not be true for the full mutation release gate.');
+    const authReferrerValidation = validateFirebaseAuthReferrer({ firebaseProjectId: config.projectId || '' });
+    if (!authReferrerValidation.ok) errors.push(...authReferrerValidation.errors);
   } catch (error) {
     errors.push(`Firebase TEST client config could not be resolved: ${error.message}`);
   }
@@ -294,6 +297,7 @@ async function main() {
     visibleVersion,
     htmlVersion,
     firebaseProjectId,
+    firebaseAuthReferrerUrl: firebaseAuthReferrerUrl(),
     envFilesLoaded: loaded,
     accounts: accounts.map(a => ({ prefix: a.prefix, emailPresent: Boolean(a.email), passwordPresent: a.passwordPresent })),
     firebaseConfigResolved: Boolean(present.FIREBASE_CLIENT_CONFIG),
