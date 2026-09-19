@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "release": "17.0.8",
+  "release": "17.0.10",
   "defects": [
     {
       "defectId": "RG-API-WRAPPER-FIDELITY",
@@ -333,6 +333,45 @@
       ],
       "fidelity": "ACTUAL MODULE / FIREBASE EMULATOR",
       "fixedVersion": "17.0.5",
+      "mandatoryGroup": "schedule-publish"
+    },
+    {
+      "defectId": "RG-VERCEL-PROTECTED-CONFIG-1709",
+      "origin": "17.0.8 full release-gate preflight",
+      "affectedInvariant": "Protected configuration evidence on Vercel is bound to committed release-manifest bytes instead of platform-normalized temporary workspace bytes",
+      "reproducer": "vercel-protected-config-17-0-9.test.cjs",
+      "permanentTestIds": [
+        "17.0.9 Vercel protected config hashes come from committed manifest, not transformed workspace bytes",
+        "17.0.9 local protected config evidence still hashes actual local source"
+      ],
+      "fidelity": "ACTUAL MODULE",
+      "fixedVersion": "17.0.9",
+      "mandatoryGroup": "hostile-contracts"
+    },
+    {
+      "defectId": "SCHEDULE-REQUEST-OFF-RUNTIME-1709",
+      "origin": "real-device 17.0.8 recovery report correlated with Request Off API traffic",
+      "affectedInvariant": "Malformed or legacy Request Off records are normalized before render and cannot collapse the Schedule / Request Off surface",
+      "reproducer": "request-off-runtime-safety-17-0-9.test.cjs",
+      "permanentTestIds": [
+        "17.0.9 Request Off runtime normalizes legacy dates and Firestore-like timestamps without throwing",
+        "17.0.9 Request Off runtime drops non-record rows and survives hostile scalar conversion",
+        "17.0.9 Schedule Request Off surface uses runtime-safe rows before rendering"
+      ],
+      "fidelity": "ACTUAL MODULE / SOURCE INTEGRATION",
+      "fixedVersion": "17.0.9",
+      "mandatoryGroup": "hostile-contracts"
+    },
+    {
+      "defectId": "UI-MOBILE-VOICE-MIDPOINT-1709",
+      "origin": "real-device 17.0.8 feedback",
+      "affectedInvariant": "Mobile 86Voice dock remains above the bottom safe area without returning to the former high 80px position or covering schedule controls",
+      "reproducer": "tests/layout/mobile-voice-17-0-5.spec.cjs",
+      "permanentTestIds": [
+        "mobile voice CSS layout uses 44px bottom clearance and schedule scroll reservation"
+      ],
+      "fidelity": "PLAYWRIGHT UI",
+      "fixedVersion": "17.0.9",
       "mandatoryGroup": "schedule-publish"
     }
   ]

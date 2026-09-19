@@ -145,7 +145,7 @@ const hardRecoverRuntimeSection = async (reason = 'manual') => {
 
 const getRuntimeReportContext = (error, extra = {}, kind = 'section-runtime-error') => {
   const route = typeof window !== 'undefined' ? `${window.location.pathname}${window.location.search}` : '';
-  const activeTab = typeof window !== 'undefined' ? (new URLSearchParams(window.location.search).get('tab') || '') : '';
+  const activeTab = String(extra.activeTab || (typeof window !== 'undefined' ? (new URLSearchParams(window.location.search).get('tab') || '') : '')).slice(0, 120);
   const viewport = typeof window !== 'undefined' ? `${window.innerWidth}x${window.innerHeight}` : '';
   const deployedVersion = typeof window !== 'undefined' ? (window.__CHAOS_VISIBLE_VERSION || window.__CHAOS_DEPLOYED_VERSION || '') : '';
   return {
@@ -525,7 +525,7 @@ class AppSurfaceErrorBoundary extends React.Component {
     const fallbackReportId = createFallbackReportId(chunkProblem ? 'chunk' : 'section');
     this.setState({ fallbackReportId, reportId: fallbackReportId });
     const reporter = chunkProblem ? reportRuntimeChunkFailure : reportRuntimeSectionError;
-    reporter(error, { source: chunkProblem ? 'react_error_boundary_chunk' : 'react_error_boundary', componentStack: info?.componentStack || '', fallbackReportId }).then(reportId => {
+    reporter(error, { source: chunkProblem ? 'react_error_boundary_chunk' : 'react_error_boundary', componentStack: info?.componentStack || '', fallbackReportId, activeTab: this.props.surfaceContext || '' }).then(reportId => {
       if (reportId) this.setState({ reportId });
     });
   }
@@ -3677,6 +3677,7 @@ return (
           key={`${activeTabState}-${liveAppUser?.restaurantId || 'no-restaurant'}`}
           resetKey={`${activeTabState}-${liveAppUser?.restaurantId || 'no-restaurant'}-${CURRENT_VERSION}-${surfaceRetryKey}`}
           onRetry={() => setSurfaceRetryKey(value => value + 1)}
+          surfaceContext={`${activeTabState}${['schedule','published'].includes(activeTabState) ? `/${activeScheduleSubTab}` : ''}`}
         >
           <React.Suspense fallback={<RouteLoading />} >
             <React.Fragment key={`${activeTabState}-${liveAppUser?.restaurantId || 'no-restaurant'}-${surfaceRetryKey}`}>

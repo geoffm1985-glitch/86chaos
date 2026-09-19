@@ -32,5 +32,6 @@ module.exports = function buildIdentity(req, res) {
     rulesHash: stamped.rulesHash || null,
     firebaseConfigHash: stamped.firebaseConfigHash || null,
     vercelConfigHash: stamped.vercelConfigHash || null,
+    protectedConfigEvidence: stamped.protectedConfigEvidence || null,
   });
 };

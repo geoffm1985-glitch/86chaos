@@ -2,7 +2,7 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
-const { captureBuildSourceIdentity, sourceBytes } = require('./86chaos-release-gate/source-identity.cjs');
+const { captureBuildSourceIdentity, sourceBytes, readBundledSourceManifest } = require('./86chaos-release-gate/source-identity.cjs');
 
 function readJson(file, fallback = {}) {
   try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch (_) { return fallback; }
@@ -10,6 +10,22 @@ function readJson(file, fallback = {}) {
 function safeHash(file) {
   try { return crypto.createHash('sha256').update(sourceBytes(file, fs.readFileSync(file))).digest('hex'); } catch (_) { return null; }
 }
+
+function manifestSourceHash(root, file) {
+  try {
+    const manifest = readBundledSourceManifest(root);
+    const row = manifest?.files?.find(entry => entry.file === file);
+    return row?.sha256 || null;
+  } catch (_) { return null; }
+}
+function protectedSourceHash(root, file) {
+  // Vercel may materialize/normalize configuration files in its temporary build
+  // workspace. Certification is bound to the committed release manifest, so use
+  // that source-of-truth on Vercel and actual local bytes everywhere else.
+  if (process.env.VERCEL) return manifestSourceHash(root, file);
+  return safeHash(path.join(root, file));
+}
+
 function fallbackIdentity(root, error) {
   const pkg = readJson(path.join(root, 'package.json'));
   return {
@@ -63,9 +79,10 @@ function buildIdentityPayload(root = process.cwd()) {
     expectedBranch: process.env.CHAOS_EXPECTED_BRANCH || 'testing',
     immutableVercelDeploymentId: process.env.VERCEL_DEPLOYMENT_ID || process.env.CHAOS_VERCEL_DEPLOYMENT_ID || null,
     firebaseTestingProject,
-    rulesHash: safeHash(inRoot('firestore.rules')),
-    firebaseConfigHash: safeHash(inRoot('firebase.json')),
-    vercelConfigHash: safeHash(inRoot('vercel.json')),
+    rulesHash: protectedSourceHash(root, 'firestore.rules'),
+    firebaseConfigHash: protectedSourceHash(root, 'firebase.json'),
+    vercelConfigHash: protectedSourceHash(root, 'vercel.json'),
+    protectedConfigEvidence: process.env.VERCEL ? 'bundled-manifest' : 'workspace-source',
     clientVersion: version.version || identity.version || null,
     serverVersion: version.version || identity.version || null,
     releaseTitle: version.releaseTitle || null,

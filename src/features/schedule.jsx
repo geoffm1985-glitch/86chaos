@@ -26,6 +26,7 @@ import { deliverSchedulePdf } from '../core/schedulePdfDelivery';
 import { createSchedulePublishGuard, makeSchedulePublishProgress } from '../core/schedulePublishProgress';
 import { activeRosterRoles, resolveShiftRosterRole, copyRosterRoleFields } from '../core/rosterRoleIdentity';
 import { buildSchedulePublicationPlan, buildConfirmedShiftEvidence, digestSchedulePublicationPlan } from '../core/schedulePublicationPlan';
+import { requestOffDateKey, normalizeRequestOffRuntimeRow, safeRequestOffRows } from '../core/requestOffRuntimeSafety';
 import { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, MapClickListener, SmartEmptyState, MiniProblemCard, getHomeProfile, calculatePunchHours, getWeekStart, roleMatches, toLocalTimeInput, makeLocalIso, PunchTable, FriendlyEmpty, GlobalSearchModal, QuickActionDock, KitchenTVMode, ChangeLogModal, UndoBar } from '../components/common';
 
 
@@ -209,19 +210,11 @@ const requestOffPersonKey = (request = {}) => {
   return normalizeScheduleName(request.userName || request.employeeName || request.name || 'unknown');
 };
 
-const requestOffDateKey = (request = {}) => {
-  const raw = String(request?.date || request?.requestDate || request?.requestedDate || request?.startDate || request?.dateKey || request?.day || request?.requestedDay || request?.scheduleDateKey || '').trim();
-  return /^\d{4}-\d{2}-\d{2}$/.test(raw) ? raw : '';
-};
-
-const normalizeRequestOffWorkflowRow = (request = {}) => {
-  const date = requestOffDateKey(request);
-  return date && request.date !== date ? { ...request, date } : request;
-};
+const normalizeRequestOffWorkflowRow = (request = {}) => normalizeRequestOffRuntimeRow(request);
 
 const mergeRequestOffWorkflowRows = (...lists) => {
   const byKey = new Map();
-  lists.flat().filter(Boolean).map(normalizeRequestOffWorkflowRow).forEach(row => {
+  safeRequestOffRows(...lists).map(normalizeRequestOffWorkflowRow).filter(Boolean).forEach(row => {
     const key = row.id || `${requestOffDateKey(row) || 'no-date'}|${requestOffPersonKey(row)}|${row.requestedAt || row.submittedAt || row.createdAt || row.requestTimestamp || ''}`;
     if (key && !byKey.has(key)) byKey.set(key, row);
   });
@@ -5208,7 +5201,7 @@ const TabTimeOff = ({ timeOffRequests, appUser, users, addToast, events = [], sh
   const postPublishedTimeOffAllowed = schedulePublishingSettings.allowPostPublishedTimeOff;
   const monthDays = Array.from({length: getDaysInMonth(calMonth)}).map((_, i) => `${calMonth}-${String(i+1).padStart(2, '0')}`);
   const firstDayOffset = new Date(calMonth+'-01T12:00:00').getDay();
-  const monthEvents = events.filter(e => e.type === 'special_event' && e.date?.startsWith(calMonth));
+  const monthEvents = (Array.isArray(events) ? events : []).filter(e => e && typeof e === 'object' && e.type === 'special_event' && String(e.date || '').startsWith(calMonth));
   const isArchivedRequest = (r = {}) => r.archived === true || r.processed === true || ['archived','processed','cancelled','canceled'].includes(String(r.status || '').toLowerCase());
   const normalizeStatus = (r = {}) => String(r.status || 'pending').toLowerCase();
   const visibleRequests = (timeOffRequestRows || []).filter(r => canManage || timeOffMatchesPerson(r, schedulePerson) || timeOffMatchesPerson(r, appUser));
