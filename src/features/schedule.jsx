@@ -1017,13 +1017,9 @@ const normalizeTipAmount = (value) => {
 };
 
 const TabMasterSchedule = ({ currentDate, setCurrentDate = null, onSubTabChange = null, appUser, users, shifts, shiftSwaps, timeOffRequests, events, addToast, initialSubTab = 'my-schedule', voiceScheduleSubTabTarget = null, scheduleBuilderProps = null, clientData = null }) => {
-  // Normalize legacy/restored schedule data at the route boundary so one malformed roster, shift, event,
-  // or Request Off record cannot crash Schedule Builder or Request Off before their own controls render.
-  users = safeScheduleRosterRows(users);
-  shifts = safeScheduleShiftRows(shifts);
-  events = safeScheduleEventRows(events);
-  timeOffRequests = mergeRequestOffWorkflowRows(timeOffRequests);
-  shiftSwaps = safeScheduleObjectRows(shiftSwaps);
+  // Keep the parent Time Clock & Schedule route on the known-good 16.0.227 boundary: do not
+  // eagerly run Schedule Builder / Request Off sanitizers before the active subtab is known.
+  // Defensive normalization is applied only inside the subtabs that need it below.
   const [rosterFilterDate, setRosterFilterDate] = useState('');
   const [isFullSchedulePickerOpen, setIsFullSchedulePickerOpen] = useState(false);
   const [fullSchedulePickerMonth, setFullSchedulePickerMonth] = useState(getMonthStr(currentDate));
@@ -1055,7 +1051,7 @@ const TabMasterSchedule = ({ currentDate, setCurrentDate = null, onSubTabChange 
   const availabilityWhereClauses = canViewTeamAvailability ? [] : [['scheduleUserId', '==', scheduleIdentity.scheduleUserId || '__none__']];
   const availabilityLimit = canViewTeamAvailability ? 220 : 25;
   const availabilityRecordsState = useLiveCollectionState('availabilityRecords', appUser?.restaurantId, { enabled: !!appUser?.restaurantId && (subTab === 'availability' || subTab === 'schedule-builder'), whereClauses: availabilityWhereClauses, orderByField: canViewTeamAvailability ? 'employeeName' : null, orderDirection: 'asc', limitCount: availabilityLimit, fallbackLimitCount: canViewTeamAvailability ? 80 : 25, debugLabel: `schedule:${subTab}:availability` });
-  const availabilityRecords = safeScheduleAvailabilityRows(availabilityRecordsState.data || []);
+  const availabilityRecords = Array.isArray(availabilityRecordsState.data) ? availabilityRecordsState.data : [];
 
   useEffect(() => { onSubTabChange?.(subTab); }, [subTab, onSubTabChange]);
 
@@ -1572,7 +1568,7 @@ const handleOfferSwap = async (shift) => {
 
       {subTab === 'schedule-builder' && scheduleBuilderProps && (
         <div className="animate-[slideIn_0.2s_ease-out]">
-          <TabScheduleWorkbench {...scheduleBuilderProps} users={safeScheduleRosterRows(scheduleBuilderProps?.users || users)} shifts={safeScheduleShiftRows(scheduleBuilderProps?.shifts || shifts)} events={safeScheduleEventRows(scheduleBuilderProps?.events || events)} timeOffRequests={mergeRequestOffWorkflowRows(scheduleBuilderProps?.timeOffRequests || timeOffRequests)} availabilityRecords={availabilityRecords} availabilityDataState={{ ...availabilityRecordsState, count: availabilityRecords.length, limit: availabilityLimit, workspaceId: appUser?.restaurantId || '' }} />
+          <TabScheduleWorkbench {...scheduleBuilderProps} users={safeScheduleRosterRows(scheduleBuilderProps?.users || users)} shifts={safeScheduleShiftRows(scheduleBuilderProps?.shifts || shifts)} events={safeScheduleEventRows(scheduleBuilderProps?.events || events)} timeOffRequests={mergeRequestOffWorkflowRows(scheduleBuilderProps?.timeOffRequests || timeOffRequests)} availabilityRecords={safeScheduleAvailabilityRows(availabilityRecords)} availabilityDataState={{ ...availabilityRecordsState, count: safeScheduleAvailabilityRows(availabilityRecords).length, limit: availabilityLimit, workspaceId: appUser?.restaurantId || '' }} />
         </div>
       )}
 
@@ -1799,8 +1795,8 @@ const handleOfferSwap = async (shift) => {
       })()}
 
       {subTab === 'month-view' && <div className="animate-[slideIn_0.2s_ease-out]"><TabMonth currentDate={currentDate} users={users} shifts={shifts} appUser={appUser} /></div>}
-      {subTab === 'time-off' && <div className="animate-[slideIn_0.2s_ease-out]"><TabTimeOff timeOffRequests={timeOffRequests} appUser={appUser} users={users} addToast={addToast} events={events} shifts={shifts} clientData={clientData} /></div>}
-      {subTab === 'availability' && <div className="animate-[slideIn_0.2s_ease-out]"><TabAvailability availabilityRecords={availabilityRecords} appUser={appUser} users={users} addToast={addToast} clientData={clientData} /></div>}  
+      {subTab === 'time-off' && <div className="animate-[slideIn_0.2s_ease-out]"><TabTimeOff timeOffRequests={mergeRequestOffWorkflowRows(timeOffRequests)} appUser={appUser} users={safeScheduleRosterRows(users)} addToast={addToast} events={safeScheduleEventRows(events)} shifts={safeScheduleShiftRows(shifts)} clientData={clientData} /></div>}
+      {subTab === 'availability' && <div className="animate-[slideIn_0.2s_ease-out]"><TabAvailability availabilityRecords={safeScheduleAvailabilityRows(availabilityRecords)} appUser={appUser} users={safeScheduleRosterRows(users)} addToast={addToast} clientData={clientData} /></div>}  
     </div>
   );
 };

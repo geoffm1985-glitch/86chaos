@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
   [string]$ReleaseZip,
-  [string]$ExpectedVersion = '17.0.28',
+  [string]$ExpectedVersion = '17.0.29',
   [string]$Repository = 'C:\Users\geoff\Documents\GitHub\86chaos'
 )
 
@@ -163,10 +163,10 @@ try {
     }
     Write-Host 'Cleared stale release-gate run state and deployed identity from the local regression environment. Full-gate identity will be configured only after the exact deployment is verified.' -ForegroundColor Green
   }
-  Invoke-Stage 'current release regression tests' { Invoke-Checked 'npm' @('run', "test:repair:$ExpectedVersion"); Invoke-Checked 'npm' @('run', 'test:schedule-runtime:17.0.28') }
+  Invoke-Stage 'targeted Time Clock and Schedule regression tests' { Invoke-Checked 'npm' @('run', "test:repair:$ExpectedVersion"); Invoke-Checked 'npm' @('run', 'test:time-clock-schedule-parent:17.0.29') }
   $env:NODE_OPTIONS = '--max-old-space-size=4096'
   $env:GENERATE_SOURCEMAP = 'false'
-  Invoke-Stage 'production build' { Invoke-Checked 'npm' @('run', 'build'); Invoke-Checked 'npm' @('run', 'test:schedule-runtime:bundle') }
+  Invoke-Stage 'production build' { Invoke-Checked 'npm' @('run', 'build') }
   Invoke-Stage 'repository safety after build' { Invoke-Checked 'npm' @('run', 'git:safety') }
 
   Invoke-Stage 'stage release' {
@@ -200,7 +200,7 @@ try {
 
   Invoke-Stage 'commit and push testing' {
     if (-not $script:ResumeExistingCommit) {
-      Invoke-Git @('commit', '-m', "Release ${ExpectedVersion}: schedule runtime export contract and recovery repair")
+      Invoke-Git @('commit', '-m', "Release ${ExpectedVersion}: restore Time Clock and Schedule parent route")
     } else {
       Write-Host "Resume mode: reusing the verified existing $ExpectedVersion commit." -ForegroundColor Yellow
     }
@@ -251,7 +251,7 @@ try {
     Write-Host "Exact deployment: $script:ImmutableDeploymentUrl" -ForegroundColor Green
   }
 
-  Invoke-Stage 'configure full release gate' {
+  Invoke-Stage 'configure targeted deployed browser test' {
     $env:APP_URL = $StableTestingAlias
     $env:CHAOS_BASE_URL = $StableTestingAlias
     $env:CHAOS_FIREBASE_AUTH_REFERRER_URL = $StableTestingAlias
@@ -266,12 +266,11 @@ try {
     $env:CHAOS_RELEASE_CHECK_HEARTBEAT_MS = '15000'
   }
 
-  Invoke-Stage 'full Play Store release gate' {
-    $script:PlayStoreStarted = $true
-    Invoke-Checked 'npm' @('run', 'test:play-store')
+  Invoke-Stage 'targeted deployed Time Clock and Schedule mobile browser test' {
+    Invoke-Checked 'npm' @('run', 'test:targeted:time-clock-schedule-browser:17.0.29')
   }
 
-  Write-Host "`n86 Chaos $ExpectedVersion workflow completed. The full gate evidence must still be reviewed before certification." -ForegroundColor Green
+  Write-Host "`n86 Chaos $ExpectedVersion targeted workflow completed. The 282-test Play Store gate was NOT run. Confirm Time Clock & Schedule on the real device before any full certification run." -ForegroundColor Green
 }
 catch {
   Write-Host "`nAUTOMATION STOPPED SAFELY" -ForegroundColor Red
@@ -281,7 +280,7 @@ catch {
   Write-Host "Not completed: all stages after '$script:Stage'"
   Write-Host "Pushed: $script:Pushed"
   Write-Host "Vercel deployment started: $script:DeploymentStarted"
-  Write-Host "Play Store testing started: $script:PlayStoreStarted"
+  Write-Host "Full Play Store testing started: $script:PlayStoreStarted"
   exit 1
 }
 finally {

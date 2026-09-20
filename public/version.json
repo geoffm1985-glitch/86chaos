@@ -1,16 +1,16 @@
 {
-  "version": "17.0.28",
-  "name": "86 Chaos 17.0.28",
-  "build": "17.0.28",
-  "label": "86 Chaos 17.0.28",
-  "releasedAt": "2026-09-20T04:45:00.000Z",
-  "releaseTitle": "Time Clock and Schedule Roster Role Runtime Repair",
+  "version": "17.0.29",
+  "name": "86 Chaos 17.0.29",
+  "build": "17.0.29",
+  "label": "86 Chaos 17.0.29",
+  "releasedAt": "2026-09-20T05:30:00.000Z",
+  "releaseTitle": "Time Clock and Schedule Parent Route Recovery",
   "notes": [
-    "Repairs the remaining production Time Clock and Schedule crash by preventing rosterRoleIdentityCore.cjs from being treated as a static media URL by CRA/Webpack.",
-    "Preserves the same roster-role identity implementation for browser, API, schedule publishing, and Node tests through a shared JavaScript source plus CommonJS proxy.",
-    "Extends the production-bundle contract so schedule runtime certification fails if rosterRoleIdentityCore is ever emitted as .cjs media again."
+    "Restores the Time Clock & Schedule parent render boundary to the known-good 16.0.227 pattern.",
+    "Removes eager Schedule Builder / Request Off sanitization from the parent route so a subtab helper cannot crash My Schedule / Time Clock.",
+    "Adds one dedicated source regression and one dedicated deployed mobile-browser test for this exact screen. The updater does not run the 282-test Play Store gate."
   ],
-  "title": "86 Chaos 17.0.28",
-  "summary": "Repairs the remaining production-only Time Clock and Schedule crash caused by rosterRoleIdentityCore.cjs being emitted as a static media URL.",
-  "description": "Moves roster-role identity logic to a browser-bundled shared JavaScript module while preserving the CommonJS API surface for server and test consumers."
+  "title": "86 Chaos 17.0.29",
+  "summary": "Restores the Time Clock & Schedule parent route to the known-good 16.0.227/17.0.24 boundary by removing eager subtab sanitization from parent render.",
+  "description": "Schedule Builder and Request Off safety remains localized to those subtabs; the default Time Clock / My Schedule route no longer executes their sanitizers before the active subtab is known."
 }
