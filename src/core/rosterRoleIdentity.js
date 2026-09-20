@@ -1,4 +1,4 @@
-import rosterRoleCore from './rosterRoleIdentityCore.cjs';
+const rosterRoleCore = require('./rosterRoleIdentity.shared.js');
 const { cleanRoleName, roleNameKey, normalizeRosterRole, activeRosterRoles, resolveShiftRosterRole, copyRosterRoleFields } = rosterRoleCore;
 export { normalizeRosterRole, activeRosterRoles, resolveShiftRosterRole, copyRosterRoleFields };
 

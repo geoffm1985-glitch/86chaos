@@ -1,16 +1,16 @@
 {
-  "version": "17.0.27",
-  "name": "86 Chaos 17.0.27",
-  "build": "17.0.27",
-  "label": "86 Chaos 17.0.27",
-  "releasedAt": "2026-09-20T04:00:00.000Z",
-  "releaseTitle": "Time Clock and Schedule Runtime Recovery Repair",
+  "version": "17.0.28",
+  "name": "86 Chaos 17.0.28",
+  "build": "17.0.28",
+  "label": "86 Chaos 17.0.28",
+  "releasedAt": "2026-09-20T04:45:00.000Z",
+  "releaseTitle": "Time Clock and Schedule Roster Role Runtime Repair",
   "notes": [
-    "Repairs production browser loading for the shared Time Clock and Schedule safety helpers by keeping .cjs files out of CRA static media.",
-    "Adds a production-bundle contract and parent-route regression across My Schedule, Month View, Request Off, Availability, and Schedule Builder.",
-    "Carries forward the stable Firebase-approved testing alias and immutable deployment-identity certification flow without weakening security controls."
+    "Repairs the remaining production Time Clock and Schedule crash by preventing rosterRoleIdentityCore.cjs from being treated as a static media URL by CRA/Webpack.",
+    "Preserves the same roster-role identity implementation for browser, API, schedule publishing, and Node tests through a shared JavaScript source plus CommonJS proxy.",
+    "Extends the production-bundle contract so schedule runtime certification fails if rosterRoleIdentityCore is ever emitted as .cjs media again."
   ],
-  "title": "86 Chaos 17.0.27",
-  "summary": "Repairs the production-only Time Clock and Schedule runtime failure caused by .cjs safety modules being emitted as asset URLs.",
-  "description": "Loads the schedule and Request Off safety implementations as executable browser JavaScript, verifies the production bundle, and exercises the complete schedule parent route with hostile legacy data."
+  "title": "86 Chaos 17.0.28",
+  "summary": "Repairs the remaining production-only Time Clock and Schedule crash caused by rosterRoleIdentityCore.cjs being emitted as a static media URL.",
+  "description": "Moves roster-role identity logic to a browser-bundled shared JavaScript module while preserving the CommonJS API surface for server and test consumers."
 }
