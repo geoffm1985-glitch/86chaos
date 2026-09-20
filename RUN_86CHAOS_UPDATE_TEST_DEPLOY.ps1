@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
   [string]$ReleaseZip,
-  [string]$ExpectedVersion = '17.0.26',
+  [string]$ExpectedVersion = '17.0.27',
   [string]$Repository = 'C:\Users\geoff\Documents\GitHub\86chaos'
 )
 
@@ -163,10 +163,10 @@ try {
     }
     Write-Host 'Cleared stale release-gate run state and deployed identity from the local regression environment. Full-gate identity will be configured only after the exact deployment is verified.' -ForegroundColor Green
   }
-  Invoke-Stage 'current release regression tests' { Invoke-Checked 'npm' @('run', "test:repair:$ExpectedVersion"); Invoke-Checked 'npm' @('run', 'test:schedule-runtime:17.0.11') }
+  Invoke-Stage 'current release regression tests' { Invoke-Checked 'npm' @('run', "test:repair:$ExpectedVersion"); Invoke-Checked 'npm' @('run', 'test:schedule-runtime:17.0.27') }
   $env:NODE_OPTIONS = '--max-old-space-size=4096'
   $env:GENERATE_SOURCEMAP = 'false'
-  Invoke-Stage 'production build' { Invoke-Checked 'npm' @('run', 'build') }
+  Invoke-Stage 'production build' { Invoke-Checked 'npm' @('run', 'build'); Invoke-Checked 'npm' @('run', 'test:schedule-runtime:bundle') }
   Invoke-Stage 'repository safety after build' { Invoke-Checked 'npm' @('run', 'git:safety') }
 
   Invoke-Stage 'stage release' {

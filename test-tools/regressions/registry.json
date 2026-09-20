@@ -1,7 +1,23 @@
 {
   "schemaVersion": 1,
-  "release": "17.0.26",
+  "release": "17.0.27",
   "defects": [
+    {
+      "defectId": "SCHEDULE-RUNTIME-CJS-STATIC-MEDIA-1727",
+      "origin": "17.0.26 production bundle emitted scheduleRuntimeSafety.cjs and requestOffRuntimeSafety.cjs as static-media URLs instead of executable modules",
+      "affectedInvariant": "Time Clock and Schedule browser code must receive callable runtime safety helpers in production builds",
+      "reproducer": "api/schedule-runtime-browser-contract-17-0-27.test.cjs",
+      "permanentTestIds": [
+        "17.0.27 browser wrappers import JavaScript modules instead of CRA static-media cjs assets",
+        "17.0.27 Node proxies and browser sources expose the exact same runtime implementations",
+        "17.0.27 parent-route regression covers Time Clock and Schedule subtab navigation behind a recovery boundary",
+        "17.0.27 production-build verification rejects runtime safety modules emitted as media",
+        "top-level Time Clock and Schedule route survives hostile legacy data across every schedule subtab"
+      ],
+      "fidelity": "ACTUAL BROWSER WRAPPERS / ACTUAL SHARED RUNTIME IMPLEMENTATIONS / ACTUAL PARENT ROUTE / PRODUCTION BUNDLE CONTRACT",
+      "fixedVersion": "17.0.27",
+      "mandatoryGroup": "hostile-contracts"
+    },
     {
       "defectId": "RG-API-WRAPPER-FIDELITY",
       "origin": "release gate",

@@ -1143,7 +1143,9 @@ const TabMasterSchedule = ({ currentDate, setCurrentDate = null, onSubTabChange 
       console.warn('Active punch listener fell back safely:', err?.message || err);
       addToast('Clock Sync Warning', 'Clock-in status could not sync yet. Your schedule is still available. Try again in a minute or tell a manager.');
     });
-    return () => unsub();
+    return () => {
+      if (typeof unsub === 'function') unsub();
+    };
   }, [subTab, appUser?.id, appUser?.restaurantId, appUser?.scheduleUserId, appUser?.employeeId, appUser?.userId, appUser?.rosterUserId]);
 
 

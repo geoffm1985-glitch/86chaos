@@ -1,4 +1,4 @@
-import safety from './requestOffRuntimeSafety.cjs';
+const safety = require('./requestOffRuntimeSafety.shared.js');
 
 export const requestOffDateKey = safety.requestOffDateKey;
 export const normalizeRequestOffRuntimeRow = safety.normalizeRequestOffRuntimeRow;

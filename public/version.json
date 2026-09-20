@@ -1,16 +1,16 @@
 {
-  "version": "17.0.26",
-  "name": "86 Chaos 17.0.26",
-  "build": "17.0.26",
-  "label": "86 Chaos 17.0.26",
-  "releasedAt": "2026-09-20T03:00:00.000Z",
-  "releaseTitle": "Schedule Runtime Export Contract and Recovery Repair",
+  "version": "17.0.27",
+  "name": "86 Chaos 17.0.27",
+  "build": "17.0.27",
+  "label": "86 Chaos 17.0.27",
+  "releasedAt": "2026-09-20T04:00:00.000Z",
+  "releaseTitle": "Time Clock and Schedule Runtime Recovery Repair",
   "notes": [
-    "Repairs the schedule runtime ES-module wrapper so every sanitizer consumed by Schedule Builder and Request Off is actually exported and callable.",
-    "Adds a permanent export-contract regression plus hostile Request Off rendering coverage so missing wrapper exports and malformed legacy schedule data cannot silently re-enter the release line.",
-    "Carries forward the 17.0.25 verified stable-alias Firebase Auth release-gate design without weakening immutable deployment pinning or security controls."
+    "Repairs production browser loading for the shared Time Clock and Schedule safety helpers by keeping .cjs files out of CRA static media.",
+    "Adds a production-bundle contract and parent-route regression across My Schedule, Month View, Request Off, Availability, and Schedule Builder.",
+    "Carries forward the stable Firebase-approved testing alias and immutable deployment-identity certification flow without weakening security controls."
   ],
-  "title": "86 Chaos 17.0.26",
-  "summary": "Repairs the schedule safety module export contract that blocked 17.0.25 regression testing and strengthens Schedule Builder / Request Off runtime recovery coverage.",
-  "description": "Completes the schedule runtime safety boundary by forwarding the availability sanitizer through the ES-module wrapper, adds contract and hostile-render regressions, and preserves the Firebase-compatible stable-alias certification flow."
+  "title": "86 Chaos 17.0.27",
+  "summary": "Repairs the production-only Time Clock and Schedule runtime failure caused by .cjs safety modules being emitted as asset URLs.",
+  "description": "Loads the schedule and Request Off safety implementations as executable browser JavaScript, verifies the production bundle, and exercises the complete schedule parent route with hostile legacy data."
 }

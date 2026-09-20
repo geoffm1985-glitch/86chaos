@@ -1,4 +1,4 @@
-import safety from './scheduleRuntimeSafety.cjs';
+const safety = require('./scheduleRuntimeSafety.shared.js');
 
 export const safeScheduleObjectRows = safety.safeScheduleObjectRows;
 export const normalizeScheduleEventRow = safety.normalizeScheduleEventRow;

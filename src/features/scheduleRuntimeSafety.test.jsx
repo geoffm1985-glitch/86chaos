@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, waitFor } from '@testing-library/react';
+import { fireEvent, render, waitFor } from '@testing-library/react';
 
 jest.mock('react-leaflet', () => ({
   MapContainer: ({ children }) => <div>{children}</div>,
@@ -65,7 +65,19 @@ jest.mock('../core/appCore', () => {
 });
 
 const scheduleRuntimeSafety = require('../core/scheduleRuntimeSafety');
-const { TabSchedule, TabTimeOff } = require('./schedule');
+const { TabMasterSchedule, TabSchedule, TabTimeOff } = require('./schedule');
+
+class RecoveryBoundaryProbe extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { error: null };
+  }
+  static getDerivedStateFromError(error) { return { error }; }
+  render() {
+    if (this.state.error) return <div>This section hit a snag</div>;
+    return this.props.children;
+  }
+}
 
 const appUser = {
   id: 'manager-1', name: 'Manager QA', email: 'manager@example.test', restaurantId: 'qa-restaurant', isAdmin: true,
@@ -132,4 +144,20 @@ test('Request Off renders with mixed malformed legacy schedule data without trip
 
   await waitFor(() => expect(container.textContent).toContain('Request Off'));
   expect(container.textContent).toContain('Cook QA');
+});
+
+test('top-level Time Clock and Schedule route survives hostile legacy data across every schedule subtab', async () => {
+  const malformedUsers = [null, { ...users[0], systemSettings: { scheduleMode: 'monthly', scheduleWeekStart: 'Monday' } }, { id: 'legacy-user', name: { legacy: true }, role: ['bad'], isActive: true }];
+  const malformedShifts = [null, { id: 'shift-1', restaurantId: appUser.restaurantId, date: '2026-09-23', startTime: { legacy: true }, endTime: ['bad'], employeeId: 'staff-1', role: { legacy: true }, status: 'published' }];
+  const malformedRequests = [null, { id: 'request-valid', startDate: '2026-09-23', userId: 'staff-1', userName: 'Cook QA', status: 'pending' }, { id: 'request-bad-end', date: '2026-09-24', endDate: { legacy: true }, employeeName: { legacy: true }, userId: 'staff-1', status: 'approved' }];
+  const scheduleBuilderProps = { currentDate: '2026-09-01', users: malformedUsers, shifts: malformedShifts, events: malformedEvents, timeOffRequests: malformedRequests, timePunches: [], addToast: jest.fn(), appUser, clientData: {} };
+  const { container, getByRole } = render(
+    <RecoveryBoundaryProbe><TabMasterSchedule currentDate="2026-09-01" appUser={appUser} users={malformedUsers} shifts={malformedShifts} shiftSwaps={[]} timeOffRequests={malformedRequests} events={malformedEvents} addToast={jest.fn()} scheduleBuilderProps={scheduleBuilderProps} clientData={{}} /></RecoveryBoundaryProbe>
+  );
+  await waitFor(() => expect(getByRole('button', { name: /clock in/i })).toBeTruthy());
+  for (const name of [/month view/i, /schedule request off/i, /availability/i, /schedule builder/i]) {
+    fireEvent.click(getByRole('button', { name }));
+    await waitFor(() => expect(container.textContent).not.toContain('This section hit a snag'));
+  }
+  await waitFor(() => expect(container.querySelector('.schedule-builder-control-deck')).toBeTruthy());
 });
