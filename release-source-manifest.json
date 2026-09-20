@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "sourceHash": "2bb2658183c781fdfd7f0f8b809563de9d5d61bf7048c2f044ba565ab28014b2",
+  "sourceHash": "aad660221e7773c132b93900a17922bdd6c6a8586c8341e5f07bdee7a6c182d1",
   "files": [
     {
       "file": ".gitattributes",
@@ -72,7 +72,7 @@
     },
     {
       "file": "RUN_86CHAOS_PLAY_STORE_RELEASE_GATE.ps1",
-      "sha256": "612ca710316967d04a5d6924222f30505bf3a6ec9e0c05a622fbc1ad0f794852"
+      "sha256": "62fddff8432c9835e540a50e10c4b3fa3d69737ae876fa857d1ecea10302639d"
     },
     {
       "file": "api/_ai-policy.js",
@@ -1632,7 +1632,7 @@
     },
     {
       "file": "scripts/86chaos-release-gate/preflight-and-start.cjs",
-      "sha256": "e535efd369820205218220318371c9b028328359d2310fb55c3f661f10d0ac11"
+      "sha256": "2511e57328551caffe9e5dbe7a14b709f96f2424bce17a2e679b1102891449d8"
     },
     {
       "file": "scripts/86chaos-release-gate/preflight-env.cjs",
@@ -3380,7 +3380,7 @@
     },
     {
       "file": "tests/86chaos-release-gate/test-harness-lifecycle.test.cjs",
-      "sha256": "73fb1b63800c61e8ec7203bbb366369a469f49c28da1da85f707cb6b5230138d"
+      "sha256": "be682027ce0bc9d95e5c0de5f2c12d9f272fee38bef785ea5b2fe4b2623eda1b"
     },
     {
       "file": "tests/86chaos-release-gate/utils/exhaustive-ui-helpers.cjs",

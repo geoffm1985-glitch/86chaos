@@ -79,6 +79,7 @@ $EnvLocal = Read-EnvFileMap (Join-Path $Root '.env.local')
 Assert-NoReleaseTargetConflicts $EnvTestLocal $EnvLocal
 Import-EnvFile $EnvTestLocal
 Import-EnvFile $EnvLocal
+$ReleaseGateTargetUrl = if ($env:APP_URL) { $env:APP_URL.TrimEnd('/') } else { $env:CHAOS_BASE_URL.TrimEnd('/') }
 $env:CHAOS_CERTIFICATION_MODE = 'true'
 if (-not $env:CHAOS_EXPECTED_VERCEL_PROJECT_SLUG) { $env:CHAOS_EXPECTED_VERCEL_PROJECT_SLUG = $CanonicalVercelProjectSlug }
 Write-Host "Release-gate target:" -ForegroundColor Cyan
@@ -355,9 +356,11 @@ if ($PreflightExit -ne 0) {
   $PreflightReport = Get-Content $PreflightReportPath -Raw | ConvertFrom-Json
   $PinnedDeploymentUrl = [string]$PreflightReport.resolvedImmutableDeploymentUrl
   if (-not $PinnedDeploymentUrl) { throw 'Preflight passed without an immutable deployment URL; refusing to run deployed tests against a mutable alias.' }
-  $env:APP_URL = $PinnedDeploymentUrl.TrimEnd('/')
-  $env:CHAOS_BASE_URL = $env:APP_URL
-  Write-Host "Pinned release-gate deployment: $env:APP_URL" -ForegroundColor Green
+  $env:CHAOS_VERIFIED_IMMUTABLE_DEPLOYMENT_URL = $PinnedDeploymentUrl.TrimEnd('/')
+  $env:APP_URL = $ReleaseGateTargetUrl
+  $env:CHAOS_BASE_URL = $ReleaseGateTargetUrl
+  Write-Host "Verified immutable release-gate deployment: $env:CHAOS_VERIFIED_IMMUTABLE_DEPLOYMENT_URL" -ForegroundColor Green
+  Write-Host "Testing through Firebase-authorized target: $env:APP_URL" -ForegroundColor Green
   Set-RunnerPhase 'node-version'
   $NodeExit = Run-Step "Node version" "npm run node:check --if-present"
   if ($NodeExit -ne 0) {

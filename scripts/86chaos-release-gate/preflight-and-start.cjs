@@ -9,7 +9,8 @@ function start() {
   const {runDir}=require('./run-context.cjs').ensureRunDir();
   const report=JSON.parse(fs.readFileSync(path.join(runDir,'environment-preflight.json'),'utf8'));
   if(!report.ok || !report.resolvedImmutableDeploymentUrl) throw new Error('Preflight did not prove an immutable deployment.');
-  const env={...process.env,APP_URL:report.resolvedImmutableDeploymentUrl,CHAOS_BASE_URL:report.resolvedImmutableDeploymentUrl};
+  const target=process.env.APP_URL || process.env.CHAOS_BASE_URL;
+  const env={...process.env,APP_URL:target,CHAOS_BASE_URL:target,CHAOS_VERIFIED_IMMUTABLE_DEPLOYMENT_URL:report.resolvedImmutableDeploymentUrl};
   // This dependency-free mandatory group executes immediately after preflight.
   // Later local checks record it again in the canonical certification evidence.
   console.log('[release-check] source validator: npm run test:source');
