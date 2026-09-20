@@ -5,7 +5,7 @@ const path = require('node:path');
 const cp = require('node:child_process');
 const crypto = require('node:crypto');
 
-const FORBIDDEN_PARTS = new Set(['.git', '.vercel', '.firebase', 'node_modules', 'build', 'coverage', 'playwright-report', 'test-results', 'release-evidence']);
+const FORBIDDEN_PARTS = new Set(['.git', '.vercel', '.firebase', 'node_modules', 'build', 'coverage', 'playwright-report', 'test-results', 'release-evidence', '__pycache__', 'dist', '.cache']);
 const REQUIRED_PATHS = ['package.json', 'package-lock.json', 'src', 'api', 'scripts', 'test-tools', 'tests', 'release-source-manifest.json', 'RUN_86CHAOS_PLAY_STORE_RELEASE_GATE.ps1'];
 const TEXT_EXTENSIONS = /\.(?:js|jsx|cjs|mjs|json|css|html|md|txt|ps1|cmd|yml|yaml|rules|py|toml|sh)$/i;
 
@@ -22,8 +22,9 @@ function forbiddenSourcePath(relative = '') {
   const parts = file.split('/');
   const base = parts.at(-1) || '';
   return parts.some(part => FORBIDDEN_PARTS.has(part))
+    || file === 'public/build-identity.json'
     || base.startsWith('.env')
-    || /\.(?:zip|log|pem|p12|pfx|key)$/i.test(base)
+    || /\.(?:zip|log|pem|p12|pfx|key|pyc)$/i.test(base)
     || /(?:service[-_]?account|credentials|private[-_]?key).*\.json$/i.test(base);
 }
 
@@ -83,8 +84,13 @@ function validateExtractedApplication(sourceRoot, expectedVersion) {
   const unsafe = listTree(sourceRoot).filter(row => row.symlink || forbiddenSourcePath(row.relative));
   if (unsafe.length) throw new Error(`Extracted ZIP contains forbidden content: ${unsafe.map(row => row.relative).join(', ')}`);
   const manifest = readReleaseManifest(sourceRoot);
+  const forbiddenManifestRows = manifest.files.filter(row => forbiddenSourcePath(row.file) || row.file === 'release-source-manifest.json');
+  if (forbiddenManifestRows.length) throw new Error(`release-source-manifest.json contains forbidden source paths: ${forbiddenManifestRows.slice(0, 10).map(row => row.file).join(', ')}`);
   const snapshot = verifyManifestSnapshot(sourceRoot, manifest);
   if (!snapshot.ok) throw new Error(`Extracted ZIP does not match its release manifest: ${snapshot.mismatches.slice(0, 10).map(row => `${row.file} (${row.reason})`).join(', ')}`);
+  const manifestedFiles = new Set(manifest.files.map(row => row.file));
+  const unmanifested = listTree(sourceRoot).filter(row => row.file && row.relative !== 'release-source-manifest.json' && !manifestedFiles.has(row.relative));
+  if (unmanifested.length) throw new Error(`Extracted ZIP contains unmanifested content: ${unmanifested.slice(0, 10).map(row => row.relative).join(', ')}`);
   return { version, files: listTree(sourceRoot).filter(row => row.file).length, sourceHash: manifest.sourceHash };
 }
 

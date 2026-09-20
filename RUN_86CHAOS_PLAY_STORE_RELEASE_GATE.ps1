@@ -145,6 +145,8 @@ $RunnerState = [ordered]@{
   rolePreflightStarted = $false
   rolePreflightPassed = $false
   playwrightStarted = $false
+  postPlaywrightChecksStarted = $false
+  postPlaywrightChecksPassed = $false
   globalSetupStarted = $false
   qaSeedProcessStarted = $false
   qaDataWritesStarted = $false
@@ -309,6 +311,11 @@ function Update-TotalTimingEvidence {
     try {
       $summary = Get-Content -Raw -LiteralPath $_.FullName | ConvertFrom-Json
       foreach ($key in $timing.Keys) { $summary | Add-Member -NotePropertyName $key -NotePropertyValue $timing[$key] -Force }
+      if ($summary.runnerState) {
+        $summary.runnerState | Add-Member -NotePropertyName status -NotePropertyValue $RunnerState.status -Force
+        $summary.runnerState | Add-Member -NotePropertyName finalExitCode -NotePropertyValue $RunnerState.finalExitCode -Force
+        $summary.runnerState | Add-Member -NotePropertyName finishedAt -NotePropertyValue $RunnerState.finishedAt -Force
+      }
       $summary | ConvertTo-Json -Depth 100 | Set-Content -LiteralPath $_.FullName
     } catch { throw "Could not add total release-gate timing to $($_.FullName): $($_.Exception.Message)" }
   }
@@ -505,22 +512,27 @@ if ($PreflightExit -ne 0) {
                   }
                   Stop-BeforePlaywright $RoleReason
                 } else {
-                  Set-RunnerPhase 'java-prerequisite'
-                  $JavaExit = Run-Step "Java prerequisite" "node scripts/86chaos-release-gate/check-java-prerequisite.cjs"
-                  if ($JavaExit -ne 0) {
-                    Stop-BeforePlaywright "Release gate BLOCKED BEFORE PLAYWRIGHT because Java is required for emulator rules validation. See java-prerequisite.json."
+                  Set-RunnerPhase 'pre-playwright-source-readiness'
+                  $LocalChecksExit = Run-Step "Pre-Playwright source readiness" "node scripts/86chaos-release-gate/run-node-release-checks.cjs --phase pre"
+                  if ($LocalChecksExit -ne 0) {
+                    Stop-BeforePlaywright "Release gate BLOCKED BEFORE PLAYWRIGHT because bounded source readiness failed. See node-test-live-summary.json."
                   } else {
-                    Set-RunnerPhase 'local-release-checks'
-                    $LocalChecksExit = Run-Step "Local release readiness checks" "node scripts/86chaos-release-gate/run-node-release-checks.cjs"
-                    if ($LocalChecksExit -ne 0) {
-                      Stop-BeforePlaywright "Release gate BLOCKED BEFORE PLAYWRIGHT because required local source/unit/build/rules checks failed or were blocked. See node-test-live-summary.json."
-                    } else {
-                      Set-RunnerPhase 'playwright'
-                      $PlaywrightConfig = ".\playwright.play-store-release.config.cjs"
-                      $RunnerState.playwrightStarted = $true
-                      Save-RunnerState
-                      Run-LiveStep "Playwright release gate" "& '$PlaywrightExe' test --config '$PlaywrightConfig'"
-                    }
+                    Set-RunnerPhase 'playwright'
+                    $PlaywrightConfig = ".\playwright.play-store-release.config.cjs"
+                    $RunnerState.playwrightStarted = $true
+                    Save-RunnerState
+                    $PlaywrightExit = Run-LiveStep "Playwright release gate" "node scripts/86chaos-release-gate/run-observable-command.cjs --label 'Playwright release gate' --heartbeat 30 --timeout 21600 -- '$PlaywrightExe' test --config '$PlaywrightConfig'"
+
+                    # Heavy certification checks intentionally execute AFTER the
+                    # exact-deployment browser universe. They remain mandatory for
+                    # certification, but cannot turn a real browser run into another
+                    # misleading zero-test BLOCKED BEFORE TEST EXECUTION result.
+                    Set-RunnerPhase 'post-playwright-certification-checks'
+                    $RunnerState.postPlaywrightChecksStarted = $true
+                    Save-RunnerState
+                    $PostChecksExit = Run-Step "Post-Playwright certification checks" "node scripts/86chaos-release-gate/run-node-release-checks.cjs --phase post"
+                    $RunnerState.postPlaywrightChecksPassed = ($PostChecksExit -eq 0)
+                    Save-RunnerState
                   }
                 }
               }
@@ -606,10 +618,56 @@ if (Test-Path $CleanupPath) {
 
 Set-RunnerPhase 'report-collection'
 if ($RunnerState.blockingReason -and $RunnerState.playwrightStarted -ne $true) { $RunnerState.blockedBeforeTestExecution = $true }
-if ($RunnerState.blockingReason) { $RunnerState.status = 'blocked' } elseif ([int]$env:CHAOS_RELEASE_GATE_STEP_FAILURES -gt 0) { $RunnerState.status = 'failed' } else { $RunnerState.status = 'passed' }
-if ([int]$env:CHAOS_RELEASE_GATE_STEP_FAILURES -gt 0 -or $RunnerState.blockingReason) { $RunnerState.finalExitCode = 1 } else { $RunnerState.finalExitCode = 0 }
 Save-RunnerState
-Run-CollectorStep "Collect report" "node scripts/86chaos-release-gate/collect-release-gate-report.cjs"
+$CollectorExit = Run-CollectorStep "Collect report" "node scripts/86chaos-release-gate/collect-release-gate-report.cjs"
+
+$CollectorSummary = $null
+$CollectorSummaryPath = $null
+$CollectorVerdictValid = $false
+$CollectorFailureReason = ''
+$summaryCandidates = @(Get-ChildItem -LiteralPath $RunDir -File -Filter '86chaos-play-store-release-gate-summary-*.json' -ErrorAction SilentlyContinue | Sort-Object LastWriteTimeUtc -Descending)
+if ($summaryCandidates.Count -lt 1) {
+  $CollectorFailureReason = 'Collector did not create the current structured summary.'
+} else {
+  $CollectorSummaryPath = $summaryCandidates[0].FullName
+  try {
+    $CollectorSummary = Get-Content -Raw -LiteralPath $CollectorSummaryPath | ConvertFrom-Json
+    if ($null -eq $CollectorSummary.PSObject.Properties['ok']) {
+      $CollectorFailureReason = 'Collector summary is malformed because the required ok verdict is missing.'
+    } elseif ($CollectorSummary.ok -ne $true) {
+      $CollectorFailureReason = if ($CollectorSummary.primaryBlockingFailure) { [string]$CollectorSummary.primaryBlockingFailure } else { 'Collector verdict is not green.' }
+    } elseif ($CollectorExit -ne 0) {
+      $CollectorFailureReason = "Collector exited $CollectorExit despite a green summary."
+    } else {
+      $CollectorVerdictValid = $true
+    }
+  } catch {
+    $CollectorFailureReason = "Collector summary could not be parsed: $($_.Exception.Message)"
+  }
+}
+if ($CollectorExit -ne 0 -and -not $CollectorFailureReason) {
+  $CollectorFailureReason = "Collector execution failed with exit code $CollectorExit."
+}
+if (-not $CollectorVerdictValid -and $CollectorExit -eq 0) {
+  $existingFailures = 0
+  [int]::TryParse($env:CHAOS_RELEASE_GATE_STEP_FAILURES, [ref]$existingFailures) | Out-Null
+  $countVerdictFailure = ($existingFailures -eq 0)
+  $collectorLog = ($StepResults | Where-Object { $_.name -eq 'Collect report' } | Select-Object -Last 1).logPath
+  Add-StepResult -Name 'Validate collector verdict' -ExitCode 1 -LogPath $collectorLog -CountsAsFailure:$countVerdictFailure
+}
+if ($CollectorFailureReason -and -not $RunnerState.blockingReason) {
+  $RunnerState.blockingReason = $CollectorFailureReason
+}
+$finalStepFailures = 0
+[int]::TryParse($env:CHAOS_RELEASE_GATE_STEP_FAILURES, [ref]$finalStepFailures) | Out-Null
+if ($RunnerState.blockedBeforeTestExecution -and $RunnerState.playwrightStarted -ne $true) {
+  $RunnerState.status = 'blocked'
+} elseif (-not $CollectorVerdictValid -or $finalStepFailures -gt 0) {
+  $RunnerState.status = 'failed'
+} else {
+  $RunnerState.status = 'passed'
+}
+$RunnerState.finalExitCode = if ($RunnerState.status -eq 'passed') { 0 } else { 1 }
 $RunnerState.updatedAt = (Get-Date -Format o)
 Save-RunnerState
 New-Slim-ReleaseGateReport -SourceDir $RunDir -DestinationDir $SlimDir -ZipPath $SlimZipPath
@@ -642,9 +700,10 @@ try {
 } catch {}
 Save-RunnerState
 
-if ([int]$env:CHAOS_RELEASE_GATE_STEP_FAILURES -gt 0 -or $RunnerState.blockingReason) {
+if ([int]$RunnerState.finalExitCode -ne 0) {
   Write-Host ""
   Write-Host "Release gate finished with failures. Upload 86chaos-release-gate-SLIM-UPLOAD-ME.zip." -ForegroundColor Red
+  if ($CollectorFailureReason) { Write-Host "Final collector verdict: $CollectorFailureReason" -ForegroundColor Red }
   Write-Host "Exported:" -ForegroundColor Cyan
   Write-Host $SlimZipPath -ForegroundColor Cyan
   Write-Host "TOTAL ELAPSED TIME: $($RunnerState.totalElapsedFormatted)"

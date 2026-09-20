@@ -1,17 +1,16 @@
 {
-  "version": "17.0.17",
-  "name": "86 Chaos 17.0.17",
-  "build": "17.0.17",
-  "label": "86 Chaos 17.0.17",
-  "releasedAt": "2026-09-19T21:30:00.000Z",
-  "releaseTitle": "Bounded Git Status Recovery Repair",
+  "version": "17.0.24",
+  "name": "86 Chaos 17.0.24",
+  "build": "17.0.24",
+  "label": "86 Chaos 17.0.24",
+  "releasedAt": "2026-09-20T00:00:00.000Z",
+  "releaseTitle": "App-Only Package Preflight and Installer Integrity Repair",
   "notes": [
-    "Prevents damaged-checkout recovery from recursively enumerating every untracked dependency file when .gitignore is missing.",
-    "Uses directory-level untracked Git status reporting so generated trees such as node_modules are classified without overflowing child-process output buffers.",
-    "Still detects real untracked source files inside tracked source directories and refuses meaningful source edits before overlay.",
-    "Preserves automatic ZIP extraction, self-heal recovery, streamed release checks, bounded timeouts, process-tree cleanup, immutable deployment verification, and the full Play Store gate."
+    "Adds a deep app-only package preflight before any repository mutation so forbidden generated artifacts cannot reach the installer stage.",
+    "Requires every packaged source file to be represented by the release source manifest and rejects generated, cache, build-identity, credential-like, log, archive, and test-result contamination.",
+    "Preserves reporter-agnostic Node 24 regression behavior and hermetic local regression isolation from 17.0.23 and 17.0.22."
   ],
-  "title": "86 Chaos 17.0.17",
-  "summary": "Repairs the automatic installer failure caused by git status recursively dumping a large untracked node_modules tree when .gitignore is missing.",
-  "description": "Makes repository safety inspection bounded and generated-artifact aware so the validated app-only ZIP can actually overlay and restore a damaged checkout without weakening source-edit protection."
+  "title": "86 Chaos 17.0.24",
+  "summary": "Makes app-only release packaging fail closed before repository mutation and enforces manifest-complete package contents.",
+  "description": "Repairs the 17.0.23 packaging failure by adding a deep package preflight to the one-paste updater and strengthening installer validation so generated artifacts or unmanifested files cannot be installed. Production restaurant behavior is unchanged."
 }

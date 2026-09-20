@@ -114,3 +114,21 @@ test('node failure extractor reports real process fatal errors before tests', ()
   const failure = firstUsefulFailureFromOutput({ status: 1, stdout: '', stderr: output });
   assert.match(failure, /SyntaxError: Unexpected token/);
 });
+
+
+test('17.0.18 failure extractor prefers the real assertion over a long trailing manifest dump', () => {
+  const manifestNoise = JSON.stringify({ files: Array.from({ length: 900 }, (_, i) => ({ file: `RELEASE_${i}.md`, sha256: 'a'.repeat(64) })) }, null, 2);
+  const output = [
+    'TAP version 13',
+    '✖ failing tests:',
+    'test at api\\release-gate-execution-17-0-5.test.cjs:25:1',
+    '✖ 17.0.5 actual preflight pins immutable identity and executes mandatory source tests; mismatches execute zero tests',
+    'AssertionError [ERR_ASSERTION]: The input did not match the regular expression /17\\.0\\.11 source validation passed/.',
+    manifestNoise,
+  ].join('\n');
+  const failure = firstUsefulFailureFromOutput({ status: 1, stdout: output, stderr: '' });
+  assert.ok(failure.includes('release-gate-execution-17-0-5.test.cjs'));
+  assert.match(failure, /actual preflight pins immutable identity/);
+  assert.match(failure, /AssertionError/);
+  assert.doesNotMatch(failure, /RELEASE_899/);
+});

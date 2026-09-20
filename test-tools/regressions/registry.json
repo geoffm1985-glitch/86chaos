@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "release": "17.0.17",
+  "release": "17.0.24",
   "defects": [
     {
       "defectId": "RG-API-WRAPPER-FIDELITY",
@@ -494,6 +494,118 @@
       ],
       "fidelity": "ACTUAL MODULE / TEMPORARY GIT FIXTURE / >1 MIB UNTRACKED DEPENDENCY STATUS",
       "fixedVersion": "17.0.17",
+      "mandatoryGroup": "hostile-contracts"
+    },
+    {
+      "defectId": "RG-PLAYWRIGHT-START-BASELINE-RESTORATION-1718",
+      "origin": "17.0.17 full gate spent 32m37s in pre-Playwright local checks, failed a stale hardcoded 17.0.11 assertion, then timed out in a duplicate standalone layout Playwright process; the actual full Playwright gate never started",
+      "affectedInvariant": "A full release gate must start the exact-deployment Playwright universe after bounded source/environment readiness, while heavy duplicate/specialized certification checks remain mandatory post-Playwright and cannot masquerade as zero-test preflight blockers",
+      "reproducer": "api/release-gate-playwright-start-17-0-18.test.cjs",
+      "permanentTestIds": [
+        "17.0.18 pre-Playwright phase contains only bounded source readiness checks and heavy certification groups run post-Playwright",
+        "17.0.18 main Playwright universe owns the mobile voice layout regression and schedule publish no longer starts a second Playwright process",
+        "17.0.18 historical release-gate execution assertion follows current package version instead of hardcoding 17.0.11",
+        "17.0.18 release-gate PowerShell starts Playwright before post-Playwright certification checks"
+      ],
+      "fidelity": "ACTUAL RELEASE-GATE SOURCE / ACTUAL HISTORICAL REGRESSION / PHASE-ORDER CONTRACT",
+      "fixedVersion": "17.0.18",
+      "mandatoryGroup": "hostile-contracts"
+    },
+    {
+      "defectId": "RG-CERTIFICATION-INTEGRITY-FULL-UNIVERSE-1719",
+      "origin": "17.0.18 Astra hostile review found stale current-metadata assertions, collector zero-exit false greens, incomplete full-universe reconciliation, broken same-version commit resume, lossy streamed failure evidence, and retry double counting",
+      "affectedInvariant": "Only a complete unique unfocused Playwright universe plus all mandatory post-Playwright evidence may certify; final process status, runner state, collector verdict, resume behavior, diagnostics, and retry counts must remain truthful",
+      "reproducer": "api/release-gate-certification-integrity-17-0-19.test.cjs",
+      "permanentTestIds": [
+        "17.0.19 collector accepts a complete unique full universe and exits zero",
+        "17.0.19 collector rejects an incomplete full Playwright universe and exits nonzero without erasing executed counts",
+        "17.0.19 collector fails closed for cleanup failure and source drift while preserving browser results",
+        "17.0.19 retry accounting counts one test identity and preserves attempt history",
+        "17.0.19 release inventory source scan rejects real .only while ignoring comments and strings",
+        "17.0.19 streamed failure evidence survives more than 512 KiB of later output and chunk boundaries",
+        "17.0.19 collector rejects extra and duplicate full-universe executions",
+        "17.0.19 actual collector counts a retry sequence as one final test outcome",
+        "17.0.19 Playwright final failure blocks certification even when post-check evidence passes",
+        "17.0.19 Playwright timeout blocks certification without turning an executed run into TOTAL 0",
+        "17.0.19 named timed-out and interrupted post-check evidence remains actionable in the collector",
+        "17.0.19 one-paste workflow reuses a verified same-version commit instead of creating an empty commit",
+        "17.0.19 PowerShell final success is gated by a parseable green collector verdict"
+      ],
+      "fidelity": "ACTUAL COLLECTOR / ACTUAL STREAMED CHILD PROCESS / PLAYWRIGHT-SHAPED JSON / WORKFLOW CONTRACT",
+      "fixedVersion": "17.0.19",
+      "mandatoryGroup": "hostile-contracts"
+    },
+    {
+      "defectId": "RG-FAILURE-EVIDENCE-BOUNDED-PRIORITY-1720",
+      "origin": "17.0.19 Astra hostile review found expected Firebase denial diagnostics could saturate the actionable-failure window and that pending/deduplication state could grow without bound",
+      "affectedInvariant": "Release-check failure capture must retain the real actionable assertion or fatal failure under noisy diagnostics while all retained streaming state remains bounded and chunk-safe",
+      "reproducer": "api/failure-extractor-bounded-17-0-20.test.cjs",
+      "permanentTestIds": [
+        "17.0.20 expected permission-denied diagnostics cannot saturate away a later real assertion",
+        "17.0.20 actionable capture bounds newline-free retained state and keeps chunk-boundary recognition",
+        "17.0.20 actionable capture bounds evidence, context, and deduplication under many unique error lines",
+        "17.0.20 nonzero Firebase permission denial remains actionable when no stronger failure exists",
+        "17.0.20 successful commands retain empty firstUsefulFailure even with expected-denial diagnostics"
+      ],
+      "fidelity": "ACTUAL STREAMED CHILD PROCESS / BOUNDED CAPTURE STATE / FIREBASE-DIAGNOSTIC SATURATION",
+      "fixedVersion": "17.0.20",
+      "mandatoryGroup": "hostile-contracts"
+    },
+    {
+      "defectId": "RG-HARNESS-AMBIENT-ENV-ISOLATION-1721",
+      "origin": "17.0.20 Windows Node 24 repair run failed a synthetic provisioning-block collector fixture because real updater release identity leaked into the fixture",
+      "affectedInvariant": "Synthetic collector lifecycle fixtures must model only their explicit artifacts and must not inherit ambient deployment/version/certification identity from the outer release workflow",
+      "reproducer": "api/release-gate-harness-env-isolation-17-0-21.test.cjs",
+      "permanentTestIds": [
+        "17.0.21 synthetic collector fixture ignores ambient release identity from the real updater",
+        "17.0.21 synthetic collector helper restores the ambient release environment after collection",
+        "17.0.21 updater clears stale deployed-gate identity before local repair tests and reconfigures it only after deployment"
+      ],
+      "fidelity": "ACTUAL NODE TEST CHILD / ACTUAL COLLECTOR / POLLUTED REAL-WORKFLOW ENVIRONMENT",
+      "fixedVersion": "17.0.21",
+      "mandatoryGroup": "hostile-contracts"
+    },
+    {
+      "defectId": "RG-LOCAL-REGRESSION-AMBIENT-STATE-ISOLATION-1722",
+      "origin": "17.0.21 one-paste updater stopped at current release regression tests after prior release-gate state remained available to the local Node test universe",
+      "affectedInvariant": "Current-release regression tests must be deterministic and independent of inherited release-gate, QA, Vercel, Firebase-test, and diagnostic process state",
+      "reproducer": "api/release-gate-local-regression-env-isolation-17-0-22.test.cjs",
+      "permanentTestIds": [
+        "17.0.22 hermetic repair runner strips polluted release workflow state but preserves normal OS environment",
+        "17.0.22 updater clears stale run-state and Vercel diagnostic variables before current release regressions",
+        "17.0.22 package repair command routes the full regression universe through the hermetic runner"
+      ],
+      "fidelity": "ACTUAL CHILD NODE PROCESS / POLLUTED RELEASE-WORKFLOW ENVIRONMENT / ACTUAL PACKAGE COMMAND WIRING",
+      "fixedVersion": "17.0.22",
+      "mandatoryGroup": "hostile-contracts"
+    },
+    {
+      "defectId": "RG-NODE-TEST-REPORTER-COMPATIBILITY-1723",
+      "origin": "17.0.22 Windows Node 24 repair run passed nested child tests but the outer regression assertions falsely failed because they required TAP text such as ok 1 - while Node emitted the spec reporter checkmark form",
+      "affectedInvariant": "Nested Node test regressions must judge success from child exit status and semantic test identity, not from a specific human-readable node:test reporter prefix",
+      "reproducer": "api/release-gate-node-test-reporter-compatibility-17-0-23.test.cjs",
+      "permanentTestIds": [
+        "17.0.23 nested node:test success detection is reporter-agnostic",
+        "17.0.23 historical nested-child regressions do not require TAP ok/not ok prefixes",
+        "17.0.23 current repair command includes reporter compatibility before historical environment regressions"
+      ],
+      "fidelity": "ACTUAL NODE TEST CHILD / DEFAULT NODE REPORTER / HISTORICAL REGRESSION SOURCE CONTRACT",
+      "fixedVersion": "17.0.23",
+      "mandatoryGroup": "hostile-contracts"
+    },
+    {
+      "defectId": "RG-APP-ONLY-PACKAGE-PREFLIGHT-1724",
+      "origin": "17.0.23 app-only ZIP accidentally included generated test-results output; the outer updater accepted the archive and the stricter installer rejected it only after entering the repository-install stage",
+      "affectedInvariant": "An app-only release archive must be deeply validated for forbidden/generated content and complete manifest membership before any repository mutation is attempted",
+      "reproducer": "api/release-workflow-package-preflight-17-0-24.test.cjs",
+      "permanentTestIds": [
+        "17.0.24 package preflight accepts a clean manifest-complete app-only source",
+        "17.0.24 package preflight rejects generated test-results before repository installation",
+        "17.0.24 package preflight rejects unmanifested stray source files",
+        "17.0.24 one-paste updater performs deep app-only preflight before repository verification or installation"
+      ],
+      "fidelity": "ACTUAL APP-ONLY VALIDATOR / SYNTHETIC MANIFEST-COMPLETE PACKAGE / ACTUAL ONE-PASTE WORKFLOW CONTRACT",
+      "fixedVersion": "17.0.24",
       "mandatoryGroup": "hostile-contracts"
     }
   ]

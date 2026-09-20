@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
   [string]$ReleaseZip,
-  [string]$ExpectedVersion = '17.0.17',
+  [string]$ExpectedVersion = '17.0.24',
   [string]$Repository = 'C:\Users\geoff\Documents\GitHub\86chaos'
 )
 
@@ -20,6 +20,9 @@ $script:SourceRoot = $null
 $script:HeadSha = $null
 $script:SourceManifestHash = $null
 $script:ImmutableDeploymentUrl = $null
+$script:SameVersionResume = $false
+$script:ResumeExistingCommit = $false
+$script:IncomingSourceManifestHash = $null
 $StableTestingAlias = 'https://86chaos-git-testing-cheers-portal-s-projects.vercel.app'
 $CanonicalVercelProjectId = 'prj_ObkHZiwik2abld9OkwUMbmJ9wN54'
 $CanonicalFirebaseTestProject = 'chaos-test-d1601'
@@ -73,9 +76,11 @@ try {
     New-Item -ItemType Directory -Path $script:TempDirectory | Out-Null
     Expand-Archive -LiteralPath $script:ReleaseZipPath -DestinationPath $script:TempDirectory
     $script:SourceRoot = Get-ApplicationRoot $script:TempDirectory
+    Invoke-Checked 'node' @((Join-Path $script:SourceRoot 'scripts\86chaos-release-workflow\validate-app-only.cjs'), '--source', $script:SourceRoot, '--expected-version', $ExpectedVersion)
     $sourcePackage = Get-Content -Raw -LiteralPath (Join-Path $script:SourceRoot 'package.json') | ConvertFrom-Json
     if ([string]$sourcePackage.version -ne $ExpectedVersion) { throw "Extracted package version is $($sourcePackage.version); expected $ExpectedVersion." }
     $sourceManifest = Get-SourceManifestHash $script:SourceRoot
+    $script:IncomingSourceManifestHash = $sourceManifest
     Write-Host "Validated incoming ZIP: version=$ExpectedVersion source=$sourceManifest" -ForegroundColor Green
   }
 
@@ -109,6 +114,7 @@ try {
     }
     if ($currentParts[2] -gt $expectedParts[2]) { throw "Repository version $currentVersion is newer than requested release $ExpectedVersion; refusing downgrade." }
     if ($currentVersion -eq $ExpectedVersion) {
+      $script:SameVersionResume = $true
       Write-Host "Resume mode: repository baseline already reports $ExpectedVersion ($versionSource). The installer will verify/rebuild the working tree from the release ZIP." -ForegroundColor Yellow
     }
     elseif (($expectedParts[2] - $currentParts[2]) -eq 1) {
@@ -132,6 +138,31 @@ try {
   Invoke-Stage 'repository safety before dependencies' { Invoke-Checked 'npm' @('run', 'git:safety') }
   Invoke-Stage 'install locked dependencies' { Invoke-Checked 'npm' @('ci') }
   Invoke-Stage 'version and source validation' { Invoke-Checked 'npm' @('run', "validate:$ExpectedVersion") }
+  Invoke-Stage 'isolate local release validation environment' {
+    $localValidationReleaseKeys = @(
+      'APP_URL', 'BASE_URL', 'PLAYWRIGHT_BASE_URL', 'CHAOS_BASE_URL',
+      'CHAOS_EXPECTED_VERSION', 'CHAOS_EXPECTED_GIT_COMMIT', 'CHAOS_EXPECTED_BRANCH',
+      'CHAOS_SOURCE_MANIFEST_HASH', 'CHAOS_SOURCE_ARCHIVE_SHA256',
+      'CHAOS_EXPECTED_VERCEL_PROJECT_SLUG', 'CHAOS_EXPECTED_VERCEL_PROJECT_ID',
+      'CHAOS_EXPECTED_TEST_FIREBASE_PROJECT_ID', 'CHAOS_FIREBASE_TEST_PROJECT',
+      'CHAOS_FIREBASE_AUTH_REFERRER_URL', 'CHAOS_CERTIFICATION_MODE',
+      'CHAOS_RELEASE_GATE_SELECTION_MODE', 'CHAOS_FAILED_ONLY_RELEASE_GATE',
+      'CHAOS_FAILED_AND_NEW_RELEASE_GATE', 'CHAOS_AUTOMATED_RELEASE_WORKFLOW',
+      'CHAOS_IMMUTABLE_VERCEL_URL', 'CHAOS_IMMUTABLE_VERCEL_DEPLOYMENT_ID',
+      'CHAOS_RELEASE_GATE_RUN_ID', 'CHAOS_FULL_AUDIT_RUN_ID', 'CHAOS_RELEASE_GATE_RUN_DIR',
+      'CHAOS_RELEASE_GATE_STEP_FAILURES', 'CHAOS_PARTIAL_RESUME_RUN_DIR',
+      'CHAOS_RELEASE_GATE_TEST_MODE', 'CHAOS_ALLOW_MUTATION',
+      'CHAOS_QA_AUTO_PROVISION_TEST_USERS', 'CHAOS_QA_ALLOW_MUTATING_ROLE_ACCOUNTS',
+      'CHAOS_STRICT_VERCEL_BUILD_WORKSPACE',
+      'VERCEL', 'VERCEL_ENV', 'VERCEL_GIT_COMMIT_SHA', 'VERCEL_GIT_COMMIT_REF',
+      'VERCEL_PROJECT_ID', 'VERCEL_URL',
+      'NODE_OPTIONS', 'GATE_HTTP_FIXTURE', 'GATE_HTTP_TRACE', 'ORPHAN_MARKER'
+    )
+    foreach ($key in $localValidationReleaseKeys) {
+      [Environment]::SetEnvironmentVariable($key, $null, 'Process')
+    }
+    Write-Host 'Cleared stale release-gate run state and deployed identity from the local regression environment. Full-gate identity will be configured only after the exact deployment is verified.' -ForegroundColor Green
+  }
   Invoke-Stage 'current release regression tests' { Invoke-Checked 'npm' @('run', "test:repair:$ExpectedVersion"); Invoke-Checked 'npm' @('run', 'test:schedule-runtime:17.0.11') }
   $env:NODE_OPTIONS = '--max-old-space-size=4096'
   $env:GENERATE_SOURCEMAP = 'false'
@@ -143,20 +174,54 @@ try {
     Invoke-Checked 'node' @('scripts/verify-repository-safety.cjs', '--staged')
     Invoke-Git @('diff', '--cached', '--stat')
     Invoke-Git @('diff', '--cached', '--name-only')
-    $staged = (& git --no-pager diff --cached --name-only)
-    if ($LASTEXITCODE -ne 0 -or -not $staged) { throw 'No staged release changes were found.' }
+    $staged = @(& git --no-pager diff --cached --name-only)
+    if ($LASTEXITCODE -ne 0) { throw 'Could not inspect staged release changes.' }
+    if ($staged.Count -eq 0) {
+      if (-not $script:SameVersionResume) { throw 'No staged release changes were found for an upgrade release.' }
+      & git --no-pager diff --quiet
+      if ($LASTEXITCODE -ne 0) { throw 'Same-version resume has unstaged tracked changes after release overlay.' }
+      & git --no-pager diff --cached --quiet
+      if ($LASTEXITCODE -ne 0) { throw 'Same-version resume unexpectedly has staged changes.' }
+      $headPackageText = ((& git --no-pager show 'HEAD:package.json') -join "`n")
+      if ($LASTEXITCODE -ne 0 -or -not $headPackageText) { throw 'Same-version resume cannot verify package.json from HEAD.' }
+      $headVersion = [string]($headPackageText | ConvertFrom-Json).version
+      if ($headVersion -ne $ExpectedVersion) { throw "Same-version resume HEAD reports $headVersion; expected $ExpectedVersion." }
+      $headManifestText = ((& git --no-pager show 'HEAD:release-source-manifest.json') -join "`n")
+      if ($LASTEXITCODE -ne 0 -or -not $headManifestText) { throw 'Same-version resume cannot verify release-source-manifest.json from HEAD.' }
+      $headManifestHash = [string]($headManifestText | ConvertFrom-Json).sourceHash
+      $workingManifestHash = Get-SourceManifestHash $Repository
+      if ($headManifestHash -ne $workingManifestHash -or $workingManifestHash -ne $script:IncomingSourceManifestHash) {
+        throw "Same-version resume source manifest mismatch. HEAD=$headManifestHash working=$workingManifestHash incoming=$($script:IncomingSourceManifestHash)."
+      }
+      $script:ResumeExistingCommit = $true
+      Write-Host "Verified clean already-committed $ExpectedVersion candidate. Empty commit will not be created." -ForegroundColor Green
+    }
   }
 
   Invoke-Stage 'commit and push testing' {
-    Invoke-Git @('commit', '-m', "Release ${ExpectedVersion}: generated artifact-aware checkout recovery repair")
+    if (-not $script:ResumeExistingCommit) {
+      Invoke-Git @('commit', '-m', "Release ${ExpectedVersion}: app-only package preflight and installer integrity repair")
+    } else {
+      Write-Host "Resume mode: reusing the verified existing $ExpectedVersion commit." -ForegroundColor Yellow
+    }
     $script:HeadSha = (& git --no-pager rev-parse HEAD).Trim()
     if ($LASTEXITCODE -ne 0) { throw 'Could not read the release commit SHA.' }
-    $script:DeploymentStarted = $true
-    Invoke-Git @('push', 'origin', 'HEAD:testing')
-    $script:Pushed = $true
     Invoke-Git @('fetch', 'origin', 'testing')
     $RemoteSha = (& git --no-pager rev-parse origin/testing).Trim()
-    if ($LASTEXITCODE -ne 0 -or $script:HeadSha -ne $RemoteSha) { throw "Local HEAD $script:HeadSha does not match origin/testing $RemoteSha." }
+    if ($LASTEXITCODE -ne 0) { throw 'Could not read origin/testing after fetch.' }
+    if ($RemoteSha -eq $script:HeadSha) {
+      Write-Host "origin/testing already points to $script:HeadSha; push is not repeated." -ForegroundColor Green
+    } else {
+      & git --no-pager merge-base --is-ancestor origin/testing HEAD
+      if ($LASTEXITCODE -ne 0) { throw "origin/testing $RemoteSha is not an ancestor of local HEAD $script:HeadSha; refusing non-fast-forward automated push." }
+      Invoke-Git @('push', 'origin', 'HEAD:testing')
+      $script:Pushed = $true
+      Invoke-Git @('fetch', 'origin', 'testing')
+      $RemoteSha = (& git --no-pager rev-parse origin/testing).Trim()
+      if ($LASTEXITCODE -ne 0) { throw 'Could not re-read origin/testing after push.' }
+    }
+    if ($script:HeadSha -ne $RemoteSha) { throw "Local HEAD $script:HeadSha does not match origin/testing $RemoteSha." }
+    $script:DeploymentStarted = $true
   }
 
   Invoke-Stage 'wait for exact Vercel deployment' {

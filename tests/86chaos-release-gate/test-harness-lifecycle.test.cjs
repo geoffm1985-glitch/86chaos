@@ -15,6 +15,56 @@ function freshRequire(file) {
   delete require.cache[require.resolve(file)];
   return require(file);
 }
+
+const SYNTHETIC_COLLECTOR_AMBIENT_ENV_KEYS = [
+  'APP_URL',
+  'BASE_URL',
+  'PLAYWRIGHT_BASE_URL',
+  'CHAOS_BASE_URL',
+  'CHAOS_EXPECTED_VERSION',
+  'CHAOS_EXPECTED_GIT_COMMIT',
+  'CHAOS_EXPECTED_BRANCH',
+  'CHAOS_SOURCE_MANIFEST_HASH',
+  'CHAOS_SOURCE_ARCHIVE_SHA256',
+  'CHAOS_EXPECTED_VERCEL_PROJECT_SLUG',
+  'CHAOS_EXPECTED_VERCEL_PROJECT_ID',
+  'CHAOS_CERTIFICATION_MODE',
+  'CHAOS_RELEASE_GATE_SELECTION_MODE',
+  'CHAOS_FAILED_ONLY_RELEASE_GATE',
+  'CHAOS_FAILED_AND_NEW_RELEASE_GATE',
+  'VERCEL',
+  'VERCEL_ENV',
+  'VERCEL_GIT_COMMIT_SHA',
+  'VERCEL_GIT_COMMIT_REF',
+  'VERCEL_PROJECT_ID',
+  'VERCEL_URL',
+];
+
+function withIsolatedSyntheticCollectorEnv(fn) {
+  const snapshot = new Map(
+    SYNTHETIC_COLLECTOR_AMBIENT_ENV_KEYS.map(key => [
+      key,
+      Object.prototype.hasOwnProperty.call(process.env, key) ? process.env[key] : undefined,
+    ])
+  );
+  for (const key of SYNTHETIC_COLLECTOR_AMBIENT_ENV_KEYS) delete process.env[key];
+  const oldExitCode = process.exitCode;
+  process.exitCode = 0;
+  try {
+    return fn();
+  } finally {
+    process.exitCode = oldExitCode;
+    for (const [key, value] of snapshot) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+}
+
+function runSyntheticCollector() {
+  const collectorPath = path.resolve(__dirname, '../../scripts/86chaos-release-gate/collect-release-gate-report.cjs');
+  return withIsolatedSyntheticCollectorEnv(() => freshRequire(collectorPath));
+}
 function withTempCwd(fn) {
   const oldCwd = process.cwd();
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), '86chaos-harness-'));
@@ -160,13 +210,18 @@ test('remaining current-run records make cleanup evidence fail', async () => {
   assert.equal(result.remaining.tasks, 1);
 });
 
-test('failed-only manifest has exact titles and refuses a zero-test diagnostic gate', () => {
-  const { FAILED_ONLY_TESTS, specsFromManifest, grepFromManifest } = freshRequire(failedManifestPath);
-  assert.ok(FAILED_ONLY_TESTS.length > 0);
-  assert.ok(specsFromManifest().every(spec => spec.endsWith('.spec.cjs')));
-  const grep = grepFromManifest();
-  assert.equal(grep.test('01 auth and every-route health > owner-like account logs in and every major route renders without fatal UI, NaN, Invalid Date, or 5xx'), true);
-  assert.equal(grepFromManifest([]).test('anything'), false);
+test('failed-only manifest helpers preserve exact selected titles and refuse a zero-test diagnostic gate', () => {
+  const { specsFromManifest, grepForProject } = freshRequire(failedManifestPath);
+  const selected = [{
+    specPath: 'tests/86chaos-release-gate/01-auth-route-health.spec.cjs',
+    project: 'chromium',
+    fullTitle: '01 auth and every-route health > owner-like account logs in and every major route renders without fatal UI, NaN, Invalid Date, or 5xx',
+  }];
+  const specs = specsFromManifest(selected);
+  assert.deepEqual(specs, ['**/86chaos-release-gate/01-auth-route-health.spec.cjs']);
+  const grep = grepForProject(selected, 'chromium');
+  assert.equal(grep.test(selected[0].fullTitle), true);
+  assert.equal(grepForProject([], 'chromium').test('anything'), false);
 });
 
 test('collector reports duplicate role preflight as environment blocker without pretending seed or cleanup failed', () => withTempCwd((dir) => {
@@ -192,10 +247,7 @@ test('collector reports duplicate role preflight as environment blocker without 
     blockingReason: 'Release gate blocked before dependency installation because environment/deployment preflight failed.',
     steps: [{ name: 'Environment preflight', exitCode: 1, passed: false }],
   }, null, 2));
-  const oldExit = process.exitCode;
-  process.exitCode = 0;
-  const collectorPath = path.resolve(__dirname, '../../scripts/86chaos-release-gate/collect-release-gate-report.cjs');
-  freshRequire(collectorPath);
+  runSyntheticCollector();
   const summaryFile = fs.readdirSync(runDir).find(name => name.startsWith('86chaos-play-store-release-gate-summary-') && name.endsWith('.json'));
   assert.ok(summaryFile);
   const summary = JSON.parse(fs.readFileSync(path.join(runDir, summaryFile), 'utf8'));
@@ -206,11 +258,10 @@ test('collector reports duplicate role preflight as environment blocker without 
   assert.ok(summary.artifactsSkippedByPreflight.includes('86chaos-full-audit-seed-report.json'));
   assert.equal(summary.failureGroups.some(group => group.group === 'environment-preflight'), true);
   assert.equal(summary.failureGroups.some(group => group.group === 'harness-seed-cleanup'), false);
-  process.exitCode = oldExit;
 }));
 
 test('PowerShell runners keep step command output out of assigned exit-code variables', () => {
-  for (const file of ['RUN_86CHAOS_FAILED_ONLY_RELEASE_GATE.ps1', 'RUN_86CHAOS_PLAY_STORE_RELEASE_GATE.ps1']) {
+  for (const file of ['RUN_86CHAOS_FAILED_AND_NEW_RELEASE_GATE.ps1', 'RUN_86CHAOS_PLAY_STORE_RELEASE_GATE.ps1']) {
     const source = fs.readFileSync(path.resolve(__dirname, '../..', file), 'utf8');
     assert.match(source, /Tee-Object -FilePath \$LogPath -Append \| Out-Host/, `${file} Run-Step must send command output to host, not the function success stream`);
     assert.match(source, /ForEach-Object \{ Add-Content -Path \$LogPath -Value \$_; Write-Host \$_ \}/, `${file} Run-LiveStep must log live output without returning it as function output`);
@@ -286,10 +337,7 @@ test('collector classifies dependency installation block as pre-Playwright, not 
     visibleVersion: '16.0.53',
     firebaseProjectId: 'chaos-test-d1601',
   }, null, 2));
-  const oldExit = process.exitCode;
-  process.exitCode = 0;
-  const collectorPath = path.resolve(__dirname, '../../scripts/86chaos-release-gate/collect-release-gate-report.cjs');
-  freshRequire(collectorPath);
+  runSyntheticCollector();
   const summaryFile = fs.readdirSync(runDir).find(name => name.startsWith('86chaos-play-store-release-gate-summary-') && name.endsWith('.json'));
   const summary = JSON.parse(fs.readFileSync(path.join(runDir, summaryFile), 'utf8'));
   assert.equal(summary.ok, false);
@@ -301,36 +349,38 @@ test('collector classifies dependency installation block as pre-Playwright, not 
   assert.equal(summary.cleanupFailures.length, 0);
   assert.ok(summary.artifactsSkippedByRunnerBlock.some(item => item.artifact === '86chaos-full-audit-cleanup-report.json'));
   assert.equal(summary.failureGroups.some(group => group.group === 'dependency-preflight'), true);
-  process.exitCode = oldExit;
 }));
 
 test('PowerShell runners install locked dev dependencies before inventory or Playwright and never use npx downloads', () => {
-  for (const file of ['RUN_86CHAOS_FAILED_ONLY_RELEASE_GATE.ps1', 'RUN_86CHAOS_PLAY_STORE_RELEASE_GATE.ps1']) {
+  for (const file of ['RUN_86CHAOS_FAILED_AND_NEW_RELEASE_GATE.ps1', 'RUN_86CHAOS_PLAY_STORE_RELEASE_GATE.ps1']) {
     const source = fs.readFileSync(path.resolve(__dirname, '../..', file), 'utf8');
     assert.match(source, /Install locked test dependencies/);
     assert.match(source, /npm ci --include=dev --no-audit --no-fund/);
     assert.match(source, /Dependency preflight/);
     assert.match(source, /dependency-preflight\.cjs/);
-    assert.match(source, /Install Chromium browser/);
+    const browserInstallLabel = source.includes('Install Chromium browser') ? 'Install Chromium browser' : 'Install Playwright browsers';
+    assert.ok(source.includes(browserInstallLabel), `${file} must install local Playwright browsers before starting tests`);
     assert.match(source, /node_modules\\\.bin\\playwright\.cmd/);
-    assert.match(source, /& '\$PlaywrightExe' test --config/);
+    assert.match(source, /\$PlaywrightExe/);
+    assert.match(source, /test --config/);
     assert.doesNotMatch(source, /npx\s+playwright|npx\s+--no-install\s+playwright|Ok to proceed\? \(y\)|Need to install/);
     assert.ok(source.indexOf('Install locked test dependencies') < source.indexOf('Source inventory'));
     assert.ok(source.indexOf('Dependency preflight') < source.indexOf('Source inventory'));
-    assert.ok(source.indexOf('Source inventory') < source.indexOf('Install Chromium browser'));
-    assert.ok(source.indexOf('Install Chromium browser') < source.indexOf('$RunnerState.playwrightStarted = $true'));
+    assert.ok(source.indexOf('Source inventory') < source.indexOf(browserInstallLabel));
+    assert.ok(source.indexOf(browserInstallLabel) < source.indexOf('$RunnerState.playwrightStarted = $true'));
   }
 });
 
 test('PowerShell runners stop before Playwright for npm, dependency, source inventory, or browser failures', () => {
-  for (const file of ['RUN_86CHAOS_FAILED_ONLY_RELEASE_GATE.ps1', 'RUN_86CHAOS_PLAY_STORE_RELEASE_GATE.ps1']) {
+  for (const file of ['RUN_86CHAOS_FAILED_AND_NEW_RELEASE_GATE.ps1', 'RUN_86CHAOS_PLAY_STORE_RELEASE_GATE.ps1']) {
     const source = fs.readFileSync(path.resolve(__dirname, '../..', file), 'utf8');
     assert.match(source, /locked development dependencies were not installed/);
     assert.match(source, /required local test modules or the local Playwright executable were missing/);
     assert.match(source, /source inventory failed/);
     assert.match(source, /Chromium browser installation failed/);
     assert.match(source, /\$RunnerState\.playwrightStarted = \$true/);
-    assert.ok(source.indexOf('$RunnerState.playwrightStarted = $true') > source.indexOf('Install Chromium browser'));
+    const browserInstallLabel = source.includes('Install Chromium browser') ? 'Install Chromium browser' : 'Install Playwright browsers';
+    assert.ok(source.indexOf('$RunnerState.playwrightStarted = $true') > source.indexOf(browserInstallLabel));
   }
 });
 
@@ -454,10 +504,7 @@ test('collector classifies failed role preflight as test-account configuration w
   fs.writeFileSync(path.join(runDir, 'source-inventory.json'), JSON.stringify({ ok: true, runId: 'role-block-unit', packageVersion: '16.0.53' }, null, 2));
   fs.writeFileSync(path.join(runDir, 'test-account-provisioning.json'), JSON.stringify({ ok: true, skipped: true, runId: 'role-block-unit' }, null, 2));
   fs.writeFileSync(path.join(runDir, 'role-identity-verification.json'), JSON.stringify({ ok: false, runId: 'role-block-unit', firebaseProjectId: 'chaos-test-d1601', errors: ['MANAGER_EMAIL resolves to a System Administrator account. Configure MANAGER_EMAIL with a dedicated non-System-Administrator manager testing account.'], accounts: roleRows({ manager: { superAdmin: true, customClaimSuperAdmin: true } }) }, null, 2));
-  const oldExit = process.exitCode;
-  process.exitCode = 0;
-  const collectorPath = path.resolve(__dirname, '../../scripts/86chaos-release-gate/collect-release-gate-report.cjs');
-  freshRequire(collectorPath);
+  runSyntheticCollector();
   const summaryFile = fs.readdirSync(runDir).find(name => name.startsWith('86chaos-play-store-release-gate-summary-') && name.endsWith('.json'));
   const summary = JSON.parse(fs.readFileSync(path.join(runDir, summaryFile), 'utf8'));
   assert.equal(summary.ok, false);
@@ -470,11 +517,10 @@ test('collector classifies failed role preflight as test-account configuration w
   assert.equal(summary.cleanupFailures.length, 0);
   assert.ok(summary.artifactsSkippedByRunnerBlock.some(item => item.artifact === '86chaos-full-audit-cleanup-report.json'));
   assert.equal(summary.failureGroups.some(group => group.group === 'test-account-configuration'), true);
-  process.exitCode = oldExit;
 }));
 
 test('PowerShell runners verify role accounts after Chromium and before Playwright', () => {
-  for (const file of ['RUN_86CHAOS_FAILED_ONLY_RELEASE_GATE.ps1', 'RUN_86CHAOS_PLAY_STORE_RELEASE_GATE.ps1']) {
+  for (const file of ['RUN_86CHAOS_FAILED_AND_NEW_RELEASE_GATE.ps1', 'RUN_86CHAOS_PLAY_STORE_RELEASE_GATE.ps1']) {
     const source = fs.readFileSync(path.resolve(__dirname, '../..', file), 'utf8');
     assert.match(source, /Verify release-gate role accounts/);
     assert.match(source, /verify-role-accounts\.cjs/);
@@ -599,7 +645,7 @@ test('temporary account provisioning can create four distinct mocked Firebase Au
 }));
 
 test('PowerShell runners provision temporary accounts before role preflight and before Playwright', () => {
-  for (const file of ['RUN_86CHAOS_FAILED_ONLY_RELEASE_GATE.ps1', 'RUN_86CHAOS_PLAY_STORE_RELEASE_GATE.ps1']) {
+  for (const file of ['RUN_86CHAOS_FAILED_AND_NEW_RELEASE_GATE.ps1', 'RUN_86CHAOS_PLAY_STORE_RELEASE_GATE.ps1']) {
     const source = fs.readFileSync(path.resolve(__dirname, '../..', file), 'utf8');
     assert.match(source, /Provision temporary release-gate test accounts/);
     assert.match(source, /provision-test-accounts\.cjs/);
@@ -637,10 +683,7 @@ test('collector reports account provisioning failure before Playwright without s
   fs.writeFileSync(path.join(runDir, 'dependency-preflight.json'), JSON.stringify({ ok: true, runId: 'provision-block-unit' }, null, 2));
   fs.writeFileSync(path.join(runDir, 'source-inventory.json'), JSON.stringify({ ok: true, runId: 'provision-block-unit', packageVersion: '16.0.55' }, null, 2));
   fs.writeFileSync(path.join(runDir, 'test-account-provisioning.json'), JSON.stringify({ ok: false, runId: 'provision-block-unit', errors: ['Testing Firebase Admin credentials are required to auto-provision release-gate users.'] }, null, 2));
-  const oldExit = process.exitCode;
-  process.exitCode = 0;
-  const collectorPath = path.resolve(__dirname, '../../scripts/86chaos-release-gate/collect-release-gate-report.cjs');
-  freshRequire(collectorPath);
+  runSyntheticCollector();
   const summaryFile = fs.readdirSync(runDir).find(name => name.startsWith('86chaos-play-store-release-gate-summary-') && name.endsWith('.json'));
   const summary = JSON.parse(fs.readFileSync(path.join(runDir, summaryFile), 'utf8'));
   assert.equal(summary.ok, false);
@@ -651,7 +694,6 @@ test('collector reports account provisioning failure before Playwright without s
   assert.equal(summary.setupFailures.length, 0);
   assert.equal(summary.cleanupFailures.length, 0);
   assert.equal(summary.failureGroups.some(group => group.group === 'test-account-provisioning'), true);
-  process.exitCode = oldExit;
 }));
 
 
@@ -670,10 +712,9 @@ test('collector keeps node summary expected-skipped when provisioning blocks bef
   fs.writeFileSync(path.join(runDir, 'environment-preflight.json'), JSON.stringify({ ok: true, runId: 'provision-node-skip-unit', appUrl: 'https://preview.example.test/', expectedVersion: '16.0.95', sourceVersion: '16.0.95', deployedVersion: '16.0.95', visibleVersion: '16.0.95', firebaseProjectId: 'chaos-test-d1601' }, null, 2));
   fs.writeFileSync(path.join(runDir, 'dependency-preflight.json'), JSON.stringify({ ok: true, runId: 'provision-node-skip-unit' }, null, 2));
   fs.writeFileSync(path.join(runDir, 'source-inventory.json'), JSON.stringify({ ok: true, runId: 'provision-node-skip-unit', packageVersion: '16.0.95' }, null, 2));
+  fs.writeFileSync(path.join(runDir, 'server-firebase-boundary-preflight.json'), JSON.stringify({ ok: true, runId: 'provision-node-skip-unit', projectId: 'chaos-test-d1601' }, null, 2));
   fs.writeFileSync(path.join(runDir, 'test-account-provisioning.json'), JSON.stringify({ ok: false, runId: 'provision-node-skip-unit', errors: ['INVALID_LOGIN_CREDENTIALS were repaired unsuccessfully because Admin credentials are missing.'] }, null, 2));
-  const oldExit = process.exitCode;
-  process.exitCode = 0;
-  freshRequire(path.resolve(__dirname, '../../scripts/86chaos-release-gate/collect-release-gate-report.cjs'));
+  runSyntheticCollector();
   const summaryFile = fs.readdirSync(runDir).find(name => name.startsWith('86chaos-play-store-release-gate-summary-') && name.endsWith('.json'));
   const summary = JSON.parse(fs.readFileSync(path.join(runDir, summaryFile), 'utf8'));
   assert.equal(summary.playwright.status, 'BLOCKED BEFORE TEST EXECUTION');
@@ -683,7 +724,6 @@ test('collector keeps node summary expected-skipped when provisioning blocks bef
   assert.ok(summary.expectedSkippedArtifacts.includes('node-test-live-summary.json'));
   assert.equal(summary.missingArtifacts.includes('node-test-live-summary.json'), false);
   assert.deepEqual(summary.playwright.failedTests || [], []);
-  process.exitCode = oldExit;
 }));
 
 test('PowerShell release gate enables safe auto provisioning and unique QA restaurant by default', () => {

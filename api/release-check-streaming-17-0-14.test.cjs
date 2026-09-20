@@ -78,7 +78,7 @@ test('17.0.14 hostile release checks are bounded, visible, controlled-concurrenc
   assert.match(runner, /runStreamedCommand/);
   assert.match(runner, /STILL RUNNING/);
   assert.match(runner, /timedOut/);
-  assert.match(runner, /STOPPING remaining local release checks/);
+  assert.match(runner, /STOPPING remaining .* checks/);
   assert.doesNotMatch(runner, /spawnSync\(row\.command/);
   assert.match(helper, /taskkill/);
   assert.match(helper, /'\/T', '\/F'/);

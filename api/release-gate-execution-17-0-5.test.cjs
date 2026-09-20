@@ -22,7 +22,7 @@ test('17.0.5 actual preflight pins immutable identity and executes mandatory sou
  const run=(id,observed)=>{fs.writeFileSync(fixture,JSON.stringify(observed));const runDir=path.join(repo,'test-results',id);const result=cp.spawnSync(process.execPath,['scripts/86chaos-release-gate/preflight-and-start.cjs'],{cwd:repo,env:{...env,CHAOS_RELEASE_GATE_RUN_ID:id,CHAOS_RELEASE_GATE_RUN_DIR:runDir},encoding:'utf8',maxBuffer:10*1024*1024});return{result,runDir};};
  const bad=run('bad-source',{client,server:{...server,sourceManifestHash:'0'.repeat(64)}});assert.notEqual(bad.result.status,0);assert.equal(fs.existsSync(path.join(bad.runDir,'preflight-test-start.json')),false);
  const good=run('good-source',{client,server});assert.equal(good.result.status,0,good.result.stdout+'\n'+good.result.stderr);
- const started=JSON.parse(fs.readFileSync(path.join(good.runDir,'preflight-test-start.json'),'utf8'));assert.equal(started.started,true);assert.equal(started.exitCode,0);assert.equal(started.appUrl,pinned);assert.equal(started.certified,false);assert.match(good.result.stdout,/17\.0\.11 source validation passed/);
+ const started=JSON.parse(fs.readFileSync(path.join(good.runDir,'preflight-test-start.json'),'utf8'));assert.equal(started.started,true);assert.equal(started.exitCode,0);assert.equal(started.appUrl,pinned);assert.equal(started.certified,false);assert.ok(good.result.stdout.includes(`${local.version} source validation passed`), `expected current source validator success for ${local.version}`);
  const trace=fs.readFileSync(env.GATE_HTTP_TRACE,'utf8');assert(trace.includes(pinned+'/api/build-identity'));assert(trace.includes(pinned+'/build-identity.json'));
  }finally{fs.rmSync(temp,{recursive:true,force:true});}
 });

@@ -6,6 +6,7 @@ const RELEASE_TEST_MATCH = Object.freeze([
   'e2e/**/*.spec.cjs',
   '86chaos-cross-browser/**/*.spec.cjs',
   '86chaos-new-implementations/**/*.spec.cjs',
+  'layout/**/*.spec.cjs',
 ]);
 
 const RELEASE_CRITICAL_SPECS = Object.freeze([

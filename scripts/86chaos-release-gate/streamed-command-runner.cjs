@@ -1,6 +1,7 @@
 'use strict';
 
 const cp = require('child_process');
+const { createActionableFailureCapture } = require('./failure-extractor.cjs');
 
 function positiveInteger(value, fallback) {
   const parsed = Number(value);
@@ -63,7 +64,8 @@ function runStreamedCommand(options = {}) {
   const onStdout = typeof options.onStdout === 'function' ? options.onStdout : chunk => process.stdout.write(chunk);
   const onStderr = typeof options.onStderr === 'function' ? options.onStderr : chunk => process.stderr.write(chunk);
   const onHeartbeat = typeof options.onHeartbeat === 'function' ? options.onHeartbeat : () => {};
-  const tailLimit = positiveInteger(options.tailLimit, 5000);
+  const tailLimit = positiveInteger(options.tailLimit, 512 * 1024);
+  const failureCapture = createActionableFailureCapture({ maxChars: positiveInteger(options.failureEvidenceLimit, 64 * 1024) });
 
   return new Promise(resolve => {
     const startedAt = Date.now();
@@ -104,22 +106,27 @@ function runStreamedCommand(options = {}) {
         stderr: stderrTail,
         pid: child.pid || null,
         lastOutputAt,
+        failureEvidence: failureCapture.finish(),
       });
     };
 
     child.stdout?.on('data', chunk => {
       lastOutputAt = Date.now();
       stdoutTail = appendTail(stdoutTail, chunk, tailLimit);
+      failureCapture.feed(chunk);
       onStdout(chunk);
     });
     child.stderr?.on('data', chunk => {
       lastOutputAt = Date.now();
       stderrTail = appendTail(stderrTail, chunk, tailLimit);
+      failureCapture.feed(chunk);
       onStderr(chunk);
     });
     child.once('error', error => {
       spawnError = error;
-      stderrTail = appendTail(stderrTail, `${error.stack || error.message || error}\n`, tailLimit);
+      const errorText = `${error.stack || error.message || error}\n`;
+      stderrTail = appendTail(stderrTail, errorText, tailLimit);
+      failureCapture.feed(errorText);
     });
     child.once('close', finish);
 
@@ -141,6 +148,7 @@ function runStreamedCommand(options = {}) {
       const kill = killProcessTree(child.pid);
       const message = `Command timed out after ${formatDuration(timeoutMs)}. Process-tree cleanup: ${kill.ok ? 'ok' : 'FAILED'}${kill.detail ? ` (${kill.detail})` : ''}.\n`;
       stderrTail = appendTail(stderrTail, message, tailLimit);
+      failureCapture.feed(message);
       onStderr(message);
       // If a platform fails to emit close after cleanup, do not leave the release
       // gate waiting forever. The child tree has already been force-killed above.

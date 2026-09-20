@@ -201,7 +201,7 @@ test('collect report classifies server-boundary blocks separately from role acco
   writeJson(path.join(runDir, 'failed-only-test-manifest.json'), { totalSelected: 1, selected: [{ stableKey: 'a', project: 'chromium' }] });
   const script = path.join(__dirname, '..', 'scripts', '86chaos-release-gate', 'collect-release-gate-report.cjs');
   const result = spawnSync(process.execPath, [script], { cwd: dir, env: collectorFixtureEnv(runId), encoding: 'utf8' });
-  assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+  assert.notEqual(result.status, 0, `blocked collector verdict must exit nonzero\n${result.stdout}\n${result.stderr}`);
   const summaryFile = fs.readdirSync(runDir).find(name => /^86chaos-play-store-release-gate-summary-.*\.json$/.test(name));
   assert.ok(summaryFile, `nested collector should write a summary inside its temporary run directory: ${runDir}`);
   const summary = JSON.parse(fs.readFileSync(path.join(runDir, summaryFile), 'utf8'));

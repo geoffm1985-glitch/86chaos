@@ -125,7 +125,7 @@ module.exports = defineConfig({
   expect: { timeout: 12_000 },
   fullyParallel: false,
   workers: 1,
-  forbidOnly: !!process.env.CI,
+  forbidOnly: true,
   retries: process.env.CI ? 1 : 0,
   globalSetup: require.resolve('./tests/86chaos-release-gate/global-setup.cjs'),
   globalTeardown: require.resolve('./tests/86chaos-release-gate/global-teardown.cjs'),

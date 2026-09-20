@@ -11,10 +11,20 @@ const root = path.resolve(__dirname, '..');
 
 function git(cwd, args) { const result = cp.spawnSync('git', args, { cwd, encoding: 'utf8' }); assert.equal(result.status, 0, result.stderr); return result.stdout; }
 function writeFixtureManifest(root) {
-  const rows = [
-    { file: 'package.json', sha256: crypto.createHash('sha256').update(fs.readFileSync(path.join(root, 'package.json'))).digest('hex') },
-    { file: 'src/marker.js', sha256: crypto.createHash('sha256').update(fs.readFileSync(path.join(root, 'src', 'marker.js'))).digest('hex') },
-  ].sort((a,b)=>a.file.localeCompare(b.file));
+  const files = [];
+  const walk = current => {
+    for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
+      const absolute = path.join(current, entry.name);
+      const relative = path.relative(root, absolute).replace(/\\/g, '/');
+      if (entry.isDirectory()) walk(absolute);
+      else if (entry.isFile() && relative !== 'release-source-manifest.json') files.push(relative);
+    }
+  };
+  walk(root);
+  const rows = files.sort().map(file => ({
+    file,
+    sha256: crypto.createHash('sha256').update(fs.readFileSync(path.join(root, file)).toString('utf8').replace(/\r\n/g, '\n')).digest('hex'),
+  }));
   fs.writeFileSync(path.join(root, 'release-source-manifest.json'), JSON.stringify({ schemaVersion:1, sourceHash:crypto.createHash('sha256').update(JSON.stringify(rows)).digest('hex'), files:rows }, null, 2)+'\n');
 }
 function createFixture() {
