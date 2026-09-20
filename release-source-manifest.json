@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "sourceHash": "cdc255e72cb9b27acf30b5ee0d40efa38d4422dd12ae8524ebe5109c88be601b",
+  "sourceHash": "6e1c4f8d101756a6c89cf525c86f25d842cdf6b2a10c2fb389468d5921ea3a26",
   "files": [
     {
       "file": ".gitattributes",
@@ -240,7 +240,7 @@
     },
     {
       "file": "api/_schedule-publish-core.cjs",
-      "sha256": "e9a1d046494d91f3c7f46a38a767e6c63d402f8de8a3a97a951032ca0af9549c"
+      "sha256": "edafcd408de9525192286c2f6b48947dfecf6a353a202fe95fcf69106e108e43"
     },
     {
       "file": "api/_schedule-publish-service.cjs",
@@ -1020,7 +1020,7 @@
     },
     {
       "file": "api/schedule-publish-17-0-0.test.cjs",
-      "sha256": "8b4f4207e3310f5a188e0f980706e2391615234d82f336f6a90847ec34df7004"
+      "sha256": "8886fd83d0462dd8d0548663a6d5efedfcd0180e12d6019a5bb144f234248249"
     },
     {
       "file": "api/schedule-publish-emulator-17-0-0.test.cjs",
