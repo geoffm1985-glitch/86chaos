@@ -9,7 +9,7 @@ async function login(page, email, password) {
 }
 
 test('lazy chunk failure reports once, avoids a reload loop, and recovers without losing auth', async ({ page }, testInfo) => {
-  const base = process.env.APP_URL || process.env.CHAOS_E2E_BASE_URL || '';
+  const base = process.env.CHAOS_BROWSER_BASE_URL || process.env.PLAYWRIGHT_BASE_URL || process.env.APP_URL || process.env.CHAOS_E2E_BASE_URL || '';
   if (/app\.86chaos\.com/i.test(base)) throw new Error('Chunk interception is blocked on production.');
   const email = process.env.OWNER_EMAIL || (!releaseGate ? process.env.TEST_EMAIL : '');
   const password = process.env.OWNER_PASSWORD || (!releaseGate ? process.env.TEST_PASSWORD : '');

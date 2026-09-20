@@ -1,7 +1,7 @@
 const { defineConfig, devices } = require('@playwright/test');
 const { RELEASE_TEST_MATCH, PWA_SPEC_PATTERN } = require('./scripts/86chaos-release-gate/release-test-universe.cjs');
 
-const baseURL = process.env.APP_URL || process.env.CHAOS_BASE_URL || process.env.PLAYWRIGHT_BASE_URL || process.env.BASE_URL || 'http://127.0.0.1:3000';
+const baseURL = process.env.CHAOS_BROWSER_BASE_URL || process.env.PLAYWRIGHT_BASE_URL || process.env.APP_URL || process.env.CHAOS_BASE_URL || process.env.BASE_URL || 'http://127.0.0.1:3000';
 
 module.exports = defineConfig({
   testDir: './tests',

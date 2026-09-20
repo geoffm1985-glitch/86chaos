@@ -19,7 +19,7 @@ if (-not (Test-Path ".\package-lock.json")) {
   throw "package-lock.json was not found. The release gate requires the committed lockfile."
 }
 
-$ReleaseTargetKeys = @('APP_URL', 'CHAOS_BASE_URL', 'CHAOS_EXPECTED_VERSION', 'CHAOS_EXPECTED_VERCEL_PROJECT_SLUG', 'CHAOS_FIREBASE_AUTH_REFERRER_URL')
+$ReleaseTargetKeys = @('APP_URL', 'CHAOS_BASE_URL', 'CHAOS_BROWSER_BASE_URL', 'CHAOS_EXPECTED_VERSION', 'CHAOS_EXPECTED_VERCEL_PROJECT_SLUG', 'CHAOS_FIREBASE_AUTH_REFERRER_URL')
 $CanonicalVercelProjectSlug = '86chaos'
 $CanonicalFirebaseAuthReferrerUrl = 'https://86chaos-git-testing-cheers-portal-s-projects.vercel.app'
 
@@ -404,10 +404,16 @@ if ($PreflightExit -ne 0) {
   $PreflightReportPath = Join-Path $RunDir 'environment-preflight.json'
   $PreflightReport = Get-Content $PreflightReportPath -Raw | ConvertFrom-Json
   $PinnedDeploymentUrl = [string]$PreflightReport.resolvedImmutableDeploymentUrl
-  if (-not $PinnedDeploymentUrl) { throw 'Preflight passed without an immutable deployment URL; refusing to run deployed tests against a mutable alias.' }
-  $env:APP_URL = $PinnedDeploymentUrl.TrimEnd('/')
-  $env:CHAOS_BASE_URL = $env:APP_URL
-  Write-Host "Pinned release-gate deployment: $env:APP_URL" -ForegroundColor Green
+  $BrowserTestUrl = [string]$PreflightReport.resolvedBrowserTestUrl
+  if (-not $PinnedDeploymentUrl) { throw 'Preflight passed without an immutable deployment URL; refusing release certification.' }
+  if (-not $BrowserTestUrl -or -not $PreflightReport.browserAliasIdentityVerified) { throw 'Preflight passed without a verified Firebase/Auth-compatible browser alias; refusing to start Playwright.' }
+  $env:CHAOS_IMMUTABLE_VERCEL_URL = $PinnedDeploymentUrl.TrimEnd('/')
+  $env:APP_URL = $env:CHAOS_IMMUTABLE_VERCEL_URL
+  $env:CHAOS_BASE_URL = $env:CHAOS_IMMUTABLE_VERCEL_URL
+  $env:CHAOS_BROWSER_BASE_URL = $BrowserTestUrl.TrimEnd('/')
+  $env:PLAYWRIGHT_BASE_URL = $env:CHAOS_BROWSER_BASE_URL
+  Write-Host "Pinned immutable certification deployment: $env:APP_URL" -ForegroundColor Green
+  Write-Host "Verified browser/Firebase Auth test alias: $env:CHAOS_BROWSER_BASE_URL" -ForegroundColor Green
   Set-RunnerPhase 'node-version'
   $NodeExit = Run-Step "Node version" "npm run node:check --if-present"
   if ($NodeExit -ne 0) {

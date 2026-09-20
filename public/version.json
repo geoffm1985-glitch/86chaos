@@ -1,16 +1,16 @@
 {
-  "version": "17.0.24",
-  "name": "86 Chaos 17.0.24",
-  "build": "17.0.24",
-  "label": "86 Chaos 17.0.24",
-  "releasedAt": "2026-09-20T00:00:00.000Z",
-  "releaseTitle": "App-Only Package Preflight and Installer Integrity Repair",
+  "version": "17.0.26",
+  "name": "86 Chaos 17.0.26",
+  "build": "17.0.26",
+  "label": "86 Chaos 17.0.26",
+  "releasedAt": "2026-09-20T03:00:00.000Z",
+  "releaseTitle": "Schedule Runtime Export Contract and Recovery Repair",
   "notes": [
-    "Adds a deep app-only package preflight before any repository mutation so forbidden generated artifacts cannot reach the installer stage.",
-    "Requires every packaged source file to be represented by the release source manifest and rejects generated, cache, build-identity, credential-like, log, archive, and test-result contamination.",
-    "Preserves reporter-agnostic Node 24 regression behavior and hermetic local regression isolation from 17.0.23 and 17.0.22."
+    "Repairs the schedule runtime ES-module wrapper so every sanitizer consumed by Schedule Builder and Request Off is actually exported and callable.",
+    "Adds a permanent export-contract regression plus hostile Request Off rendering coverage so missing wrapper exports and malformed legacy schedule data cannot silently re-enter the release line.",
+    "Carries forward the 17.0.25 verified stable-alias Firebase Auth release-gate design without weakening immutable deployment pinning or security controls."
   ],
-  "title": "86 Chaos 17.0.24",
-  "summary": "Makes app-only release packaging fail closed before repository mutation and enforces manifest-complete package contents.",
-  "description": "Repairs the 17.0.23 packaging failure by adding a deep package preflight to the one-paste updater and strengthening installer validation so generated artifacts or unmanifested files cannot be installed. Production restaurant behavior is unchanged."
+  "title": "86 Chaos 17.0.26",
+  "summary": "Repairs the schedule safety module export contract that blocked 17.0.25 regression testing and strengthens Schedule Builder / Request Off runtime recovery coverage.",
+  "description": "Completes the schedule runtime safety boundary by forwarding the availability sanitizer through the ES-module wrapper, adds contract and hostile-render regressions, and preserves the Firebase-compatible stable-alias certification flow."
 }

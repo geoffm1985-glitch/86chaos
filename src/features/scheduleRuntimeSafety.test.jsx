@@ -64,7 +64,8 @@ jest.mock('../core/appCore', () => {
   };
 });
 
-const { TabSchedule } = require('./schedule');
+const scheduleRuntimeSafety = require('../core/scheduleRuntimeSafety');
+const { TabSchedule, TabTimeOff } = require('./schedule');
 
 const appUser = {
   id: 'manager-1', name: 'Manager QA', email: 'manager@example.test', restaurantId: 'qa-restaurant', isAdmin: true,
@@ -78,6 +79,14 @@ const malformedEvents = [
   { id: 'valid', type: 'special_event', title: 'September event', date: '2026-09-22' },
 ];
 
+test('schedule runtime ES-module wrapper exposes every helper consumed by schedule.jsx', () => {
+  expect(typeof scheduleRuntimeSafety.safeScheduleObjectRows).toBe('function');
+  expect(typeof scheduleRuntimeSafety.safeScheduleRosterRows).toBe('function');
+  expect(typeof scheduleRuntimeSafety.safeScheduleShiftRows).toBe('function');
+  expect(typeof scheduleRuntimeSafety.safeScheduleAvailabilityRows).toBe('function');
+  expect(typeof scheduleRuntimeSafety.safeScheduleEventRows).toBe('function');
+});
+
 test('Schedule Builder renders and navigates months with malformed legacy event rows', async () => {
   const props = { users, shifts: [], events: malformedEvents, timeOffRequests: [], timePunches: [], addToast: jest.fn(), appUser, clientData: {}, initialSubTab: 'schedule' };
   const { container, rerender } = render(<TabSchedule {...props} currentDate="2026-09-01" />);
@@ -90,4 +99,37 @@ test('Schedule Builder renders and navigates months with malformed legacy event 
 
   rerender(<TabSchedule {...props} currentDate="2026-09-01" />);
   await waitFor(() => expect(container.textContent).toContain('September event'));
+});
+
+
+test('Request Off renders with mixed malformed legacy schedule data without tripping the section boundary', async () => {
+  const malformedUsers = [
+    null,
+    { id: 'staff-1', name: 'Cook QA', role: 'Kitchen', isActive: true },
+    { id: 'legacy-user', name: { legacy: true }, role: { legacy: true }, isActive: true },
+  ];
+  const malformedShifts = [
+    null,
+    { id: 'shift-1', date: '2026-09-23', startTime: { legacy: true }, endTime: ['bad'], employeeId: 'staff-1', role: { legacy: true } },
+  ];
+  const malformedRequests = [
+    null,
+    { id: 'request-valid', startDate: '2026-09-23', userId: 'staff-1', userName: 'Cook QA', status: 'pending' },
+    { id: 'request-bad-end', date: '2026-09-24', endDate: { legacy: true }, employeeName: { legacy: true }, userId: 'staff-1', status: 'approved' },
+  ];
+
+  const { container } = render(
+    <TabTimeOff
+      timeOffRequests={malformedRequests}
+      appUser={appUser}
+      users={malformedUsers}
+      shifts={malformedShifts}
+      events={malformedEvents}
+      addToast={jest.fn()}
+      clientData={{}}
+    />
+  );
+
+  await waitFor(() => expect(container.textContent).toContain('Request Off'));
+  expect(container.textContent).toContain('Cook QA');
 });

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "sourceHash": "24149ad35a3d04d3a72fb69878696696400176f190ef70455cb4e277019b5386",
+  "sourceHash": "979a7a5060953198adad87ad25c73f43ce551b1a9737294bcf327b3e0a64c159",
   "files": [
     {
       "file": ".gitattributes",
@@ -87,6 +87,14 @@
       "sha256": "deaf6cec2de2eb413c527552047a63b946f589e80ba2b88746fd52f6afa6ea66"
     },
     {
+      "file": "RELEASE_17_0_25.md",
+      "sha256": "06d28e5da5c07cbea98eddecbe72d391a9b322d702fecdd832e767da7c9c6b23"
+    },
+    {
+      "file": "RELEASE_17_0_26.md",
+      "sha256": "9b8b5c5c6e9c97161643fb2637c900807f2c47e11bfab2774168770c17cda920"
+    },
+    {
       "file": "RELEASE_17_0_5.md",
       "sha256": "5b70523b930597b5f29524911ae93e7235be86a973a6de04a89f0a37753cafe7"
     },
@@ -108,7 +116,7 @@
     },
     {
       "file": "RUN_86CHAOS_FAILED_AND_NEW_RELEASE_GATE.ps1",
-      "sha256": "6cd9a9d2c0ebe338905ecd3d5decbdc354936b593c2ddce0055ba285a477ab9b"
+      "sha256": "92a89dd6fb7fca245f4f79520e84f37e9e57e20bc264fd34595a60723fd63521"
     },
     {
       "file": "RUN_86CHAOS_FAILED_ONLY_RELEASE_GATE.ps1",
@@ -128,11 +136,11 @@
     },
     {
       "file": "RUN_86CHAOS_PLAY_STORE_RELEASE_GATE.ps1",
-      "sha256": "b492cdf9e3a55214a369bc636b2e2baedfaa9a51e87f211d953c16980577b124"
+      "sha256": "730aba0c19e0eba781afbc794180dec92117ff841fe1b056b558f59600d4a7fe"
     },
     {
       "file": "RUN_86CHAOS_UPDATE_TEST_DEPLOY.ps1",
-      "sha256": "566dc364c1f9c2fe82dd012544c1aad8ce36ffd1f84cef90034d564244f7ef2c"
+      "sha256": "3f02696501792f0ca23117f14d02686dceabfc073de9cb7a687c2fa8b3d980b4"
     },
     {
       "file": "api/_ai-policy.js",
@@ -216,7 +224,7 @@
     },
     {
       "file": "api/_pos-bridge-config.js",
-      "sha256": "f37f052285559618d80083eda1680f69cab36f937933c9e55d04332f8358a37e"
+      "sha256": "54a41e6747feeb275ea122fc04a91186a93f73620e75bc595a4c6d3fb4424672"
     },
     {
       "file": "api/_pos-bridge-events.js",
@@ -344,7 +352,7 @@
     },
     {
       "file": "api/_version.js",
-      "sha256": "6145023b9adbc1b822654d8a6196c596ee0dcf90dc99fb1795701789148d04da"
+      "sha256": "4397d8c3776b2f8fac7c9c21c56bc07639aa076e889e590a913446016bb301be"
     },
     {
       "file": "api/account-deletion-request.js",
@@ -907,6 +915,10 @@
       "sha256": "5a8fb216fc5b6c2877f20b6b529a95a4a448377e7a01d00ce91a27a367520f92"
     },
     {
+      "file": "api/release-gate-browser-auth-alias-17-0-25.test.cjs",
+      "sha256": "25e6195577aa9250b908c0be47240061af5f04242a1e22bc001f9a455611bcdb"
+    },
+    {
       "file": "api/release-gate-browser-reliability.test.cjs",
       "sha256": "962fbe1c5fdd2061e920b3834fdd35d745cd1938803de40838cc4d7a400d34a9"
     },
@@ -1153,6 +1165,14 @@
     {
       "file": "api/schedule-restore-utils.js",
       "sha256": "e58754832b3a4ef279589f92c8e09a3607c4889c17dc5080b4b676eb47b5781c"
+    },
+    {
+      "file": "api/schedule-route-runtime-safety-17-0-25.test.cjs",
+      "sha256": "29accd5c86140328c904ab6b0f4c65f6f8d92e3136d151362dd5db90973bc759"
+    },
+    {
+      "file": "api/schedule-runtime-module-contract-17-0-26.test.cjs",
+      "sha256": "53813f3608205d1de7fe507ff94919fdaa416b215b2fbf7320ab5bbda004c1ec"
     },
     {
       "file": "api/schedule-tools-period-awareness-16-0-233.test.cjs",
@@ -1444,23 +1464,23 @@
     },
     {
       "file": "package-lock.json",
-      "sha256": "2a29c42c539d57a39549a10c779e77c4171391fc81c3bf03210c81af271653fd"
+      "sha256": "e5aa1de586fc9ac46ed8d7c599fc3bbad92db902402b318dad62d1a30cd0560b"
     },
     {
       "file": "package.json",
-      "sha256": "37d40889ee322d93550582c9100b07cf32eac50e40cd2a3fa875230d2c916258"
+      "sha256": "19ce051af5a5703b84ced6ac2a2255bb645f140728d4704f34892683a36fc30a"
     },
     {
       "file": "playwright.config.js",
-      "sha256": "6a1e2744def71ba5e7ff4bce15adafff50b07ac0e568a4803d75cfe541ac54d0"
+      "sha256": "9a5969ed74cc270b91577278ba6756dcc1177bdc7b35038fd1f0bfe2810bc49c"
     },
     {
       "file": "playwright.failed-release.config.cjs",
-      "sha256": "67f4c882c700da452374c075276f56f98ecc3d3dc258a830d9f468df6072300a"
+      "sha256": "ffdfbaf4c4b6d7a8410946b142e567700cf769eeaaa8ebb03e4ce7de4b04ce62"
     },
     {
       "file": "playwright.inventory.config.cjs",
-      "sha256": "905ee01f6943f17e5596a470bdd242a607bc0db36aa0ed161bec309081e077a3"
+      "sha256": "397bf87ad33f3ac82cbc0b1d5c67df7fc0ae38d9683df5b68c275eca94f29669"
     },
     {
       "file": "playwright.layout.config.cjs",
@@ -1468,7 +1488,7 @@
     },
     {
       "file": "playwright.play-store-release.config.cjs",
-      "sha256": "1faf438d39d2099b227645fb68cdf0a9a05ed7bd03f335f9579df75286305155"
+      "sha256": "382f6900664f551103d0fa4938197c210862b3ca62509eb2cd02a27017435f80"
     },
     {
       "file": "public/6139.png",
@@ -1664,7 +1684,7 @@
     },
     {
       "file": "public/version.json",
-      "sha256": "2458c971a7bdd9eea5c15ebbea0a4837a913ef785aa825074dc356e22a394789"
+      "sha256": "2875028f1c5f36459ee4e75f7670cd9f6be29072c0499ca688d21302a631c26a"
     },
     {
       "file": "public/wisco.png",
@@ -1772,7 +1792,7 @@
     },
     {
       "file": "scripts/86chaos-release-gate/preflight-env.cjs",
-      "sha256": "3f61e4e710e7f8cbfb07695f3f4cc7a4ff3cc9b603e5b206edcf011ed35e2973"
+      "sha256": "a11c908d09ea0b9011b376aa2fec3ec1747fcaa8c6962a92cb9149a152a6ce60"
     },
     {
       "file": "scripts/86chaos-release-gate/prepare-failed-only-manifest.cjs",
@@ -2683,6 +2703,14 @@
       "sha256": "a883a30e6d1321ffa981fda80b4c766beacb9d387651871d6c1a49a1f31f88ac"
     },
     {
+      "file": "scripts/validate-17-0-25.js",
+      "sha256": "64e36610ae772f159670f4ec96ae669ce509c345e7048643e33a4157bab954e4"
+    },
+    {
+      "file": "scripts/validate-17-0-26.js",
+      "sha256": "f0aa868fd2f01ead3001c72d12dd23a39aa52a0857c3c250963ac3865ee0d91a"
+    },
+    {
       "file": "scripts/validate-17-0-3.js",
       "sha256": "ed687d89450d5630398558da0858ce1a853a5d7f2f52e68fa4975b8d946c6b81"
     },
@@ -2872,7 +2900,7 @@
     },
     {
       "file": "src/core/appCore.js",
-      "sha256": "ed6043a0c8e3905bd21d82af86811077b38dfaadb056c94a478e7e8b88afce73"
+      "sha256": "86f7f670a3274150c211481ea56552c003fae9bf06c59829d16908e0f3f102da"
     },
     {
       "file": "src/core/csvSafety.test.js",
@@ -3104,11 +3132,11 @@
     },
     {
       "file": "src/core/scheduleRuntimeSafety.cjs",
-      "sha256": "41b16f473fa87040e08e94162365216806401cb609c0e86bfd210ec63e7bf29c"
+      "sha256": "e72ddb223d02ba3fb2d1886dc7ad679990879c3c36301dc507f755baeb5e7b7a"
     },
     {
       "file": "src/core/scheduleRuntimeSafety.js",
-      "sha256": "e93305270acdf9f6b38cc11a2d4ac2b98d9c66ce3be4a71fa55a6188ff64edfd"
+      "sha256": "3ddc9aa970f164d0db674309e870403b63a81eaf3e2ada9f641874cf5a032a8f"
     },
     {
       "file": "src/core/scheduleToolsPeriod.cjs",
@@ -3200,11 +3228,11 @@
     },
     {
       "file": "src/features/schedule.jsx",
-      "sha256": "4f264aa25c6da5402c6423065c51e356607ddec22ffd4c96a05f37355d3f9e47"
+      "sha256": "6336df602d9933110fb85607fb4c983900395d1266de40e8f6936b9426343877"
     },
     {
       "file": "src/features/scheduleRuntimeSafety.test.jsx",
-      "sha256": "15d02dd9eba1b0a28d600e71d5e0e07e5bfbf534ec7e6a0943e3a5d9bf00d2e4"
+      "sha256": "2385c731658900436b9bb40eb447e47304bb20509fe0f9013ca63203525adfed"
     },
     {
       "file": "src/features/trainingManual.js",
@@ -3260,11 +3288,11 @@
     },
     {
       "file": "test-tools/certification/cost-performance-baselines.json",
-      "sha256": "4c168bef0fee7f59eeaa5c0c28b2ffa0c4c200024a3c28496cb3a5b366a072b5"
+      "sha256": "cbaaf75cf910ff47ba09870627039f70e81a32a4a60e75b1f3b6f5c1f6cf1a9b"
     },
     {
       "file": "test-tools/certification/groups.json",
-      "sha256": "bc2bdfaec43d8ff9cb7995f7b13b035c367c5ad71a8c2b25e1350d2c21dcd92b"
+      "sha256": "a343873743e2c62dae06ae604a2c8e22786b4220490933b8cdfe023f4c86c29b"
     },
     {
       "file": "test-tools/certification/permission-matrix.json",
@@ -3312,7 +3340,7 @@
     },
     {
       "file": "test-tools/regressions/registry.json",
-      "sha256": "9dde70d63be233614eaac174ba0a908c83e4ce44bc843087b793e29acd0dc726"
+      "sha256": "90709b51c80026a1b993dcdf81a4718fd9caad66fa69e762ab566bae6b6b7dfa"
     },
     {
       "file": "test-tools/reporters/chaos-release-gate-reporter.cjs",
@@ -3428,7 +3456,7 @@
     },
     {
       "file": "tests/86chaos-full-audit/utils/audit-helpers.cjs",
-      "sha256": "2724892df0b0c32489c4a83aaf3ff8675c95133facd0966a3ee7f41410bf5f26"
+      "sha256": "cb37c028ca4f1e6659a5caf3bfc80d0d835fe42dfd3151391a7fe3e538fef0b3"
     },
     {
       "file": "tests/86chaos-full-audit/utils/fake-restaurant-profile.cjs",
@@ -3608,7 +3636,7 @@
     },
     {
       "file": "tests/e2e/chunk-recovery.spec.cjs",
-      "sha256": "44be6d7687b28b5694264926017cb74d5ee6d9c3bdb264303356daae2459a3fd"
+      "sha256": "eedbc7e9254c1aa2541c3aede31fdcbb50e1e985314bbe78881315b4d47c2d21"
     },
     {
       "file": "tests/e2e/compact-ui-layout.spec.cjs",

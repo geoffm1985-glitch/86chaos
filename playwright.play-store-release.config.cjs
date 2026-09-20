@@ -9,7 +9,7 @@ const { ensureRunDir } = require('./scripts/86chaos-release-gate/run-context.cjs
 const { runDir, runId } = ensureRunDir();
 const { generatePlaywrightInventory } = require('./scripts/86chaos-release-gate/playwright-inventory.cjs');
 const { buildCriticalInventory } = require('./scripts/86chaos-release-gate/critical-test-inventory.cjs');
-const baseURL = process.env.APP_URL || process.env.CHAOS_BASE_URL || process.env.PLAYWRIGHT_BASE_URL || process.env.BASE_URL || 'http://127.0.0.1:3000';
+const baseURL = process.env.CHAOS_BROWSER_BASE_URL || process.env.PLAYWRIGHT_BASE_URL || process.env.APP_URL || process.env.CHAOS_BASE_URL || process.env.BASE_URL || 'http://127.0.0.1:3000';
 const resultsRoot = runDir;
 fs.mkdirSync(resultsRoot, { recursive: true });
 if (process.env.CHAOS_INVENTORY_DISCOVERY !== '1') {

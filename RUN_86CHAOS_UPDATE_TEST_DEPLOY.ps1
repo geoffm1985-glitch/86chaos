@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
   [string]$ReleaseZip,
-  [string]$ExpectedVersion = '17.0.24',
+  [string]$ExpectedVersion = '17.0.26',
   [string]$Repository = 'C:\Users\geoff\Documents\GitHub\86chaos'
 )
 
@@ -200,7 +200,7 @@ try {
 
   Invoke-Stage 'commit and push testing' {
     if (-not $script:ResumeExistingCommit) {
-      Invoke-Git @('commit', '-m', "Release ${ExpectedVersion}: app-only package preflight and installer integrity repair")
+      Invoke-Git @('commit', '-m', "Release ${ExpectedVersion}: schedule runtime export contract and recovery repair")
     } else {
       Write-Host "Resume mode: reusing the verified existing $ExpectedVersion commit." -ForegroundColor Yellow
     }

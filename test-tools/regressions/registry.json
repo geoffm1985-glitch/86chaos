@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "release": "17.0.24",
+  "release": "17.0.26",
   "defects": [
     {
       "defectId": "RG-API-WRAPPER-FIDELITY",
@@ -606,6 +606,52 @@
       ],
       "fidelity": "ACTUAL APP-ONLY VALIDATOR / SYNTHETIC MANIFEST-COMPLETE PACKAGE / ACTUAL ONE-PASTE WORKFLOW CONTRACT",
       "fixedVersion": "17.0.24",
+      "mandatoryGroup": "hostile-contracts"
+    },
+    {
+      "defectId": "SCHEDULE-SURFACE-RUNTIME-RECOVERY-1725",
+      "origin": "17.0.24 real-device Schedule Builder and Request Off tabs entered the section recovery boundary with legacy/restored schedule data",
+      "affectedInvariant": "Schedule Builder and Request Off must normalize untrusted historical roster, shift, event, availability, and Request Off fields before sorting, comparing, or rendering them",
+      "reproducer": "api/schedule-route-runtime-safety-17-0-25.test.cjs",
+      "permanentTestIds": [
+        "17.0.25 normalizes malformed legacy roster values before schedule surfaces sort or render them",
+        "17.0.25 normalizes malformed legacy shift fields used by Schedule Builder",
+        "17.0.25 normalizes malformed availability records before Schedule Builder consumes them",
+        "17.0.25 wires route-boundary normalization into both Schedule Builder and Request Off"
+      ],
+      "fidelity": "ACTUAL SCHEDULE RUNTIME SAFETY HELPERS / ACTUAL ROUTE SOURCE CONTRACT / MALFORMED LEGACY DATA FIXTURES",
+      "fixedVersion": "17.0.25",
+      "mandatoryGroup": "hostile-contracts"
+    },
+    {
+      "defectId": "RG-BROWSER-FIREBASE-AUTH-ALIAS-1725",
+      "origin": "17.0.24 Playwright used the immutable Vercel deployment hostname as browser origin; Firebase Auth API-key referrer restrictions rejected that hostname and caused a cascading UI failure universe",
+      "affectedInvariant": "Playwright must use the approved stable testing alias for browser authentication while certification separately pins and verifies the exact immutable deployment",
+      "reproducer": "api/release-gate-browser-auth-alias-17-0-25.test.cjs",
+      "permanentTestIds": [
+        "17.0.25 release preflight verifies the stable Firebase/Auth browser alias against the immutable deployment",
+        "17.0.25 keeps immutable certification URL separate from the Firebase-approved browser URL",
+        "17.0.25 browser-facing Playwright helpers prefer the stable auth alias over immutable APP_URL",
+        "17.0.25 failed-only runner also pins browser navigation to the approved testing alias"
+      ],
+      "fidelity": "ACTUAL RELEASE-GATE POWERSHELL / ACTUAL DEPLOYMENT-IDENTITY PREFLIGHT / STABLE ALIAS CONTRACT",
+      "fixedVersion": "17.0.25",
+      "mandatoryGroup": "hostile-contracts"
+    },
+    {
+      "defectId": "SCHEDULE-RUNTIME-ESM-EXPORT-CONTRACT-1726",
+      "origin": "17.0.25 current-release Jest regression reached Schedule Builder and threw TypeError because scheduleRuntimeSafety.cjs defined safeScheduleAvailabilityRows but scheduleRuntimeSafety.js failed to re-export it",
+      "affectedInvariant": "Every schedule runtime safety helper imported by schedule.jsx must be exported through the ES-module wrapper and remain callable in the React/Jest bundle path",
+      "reproducer": "api/schedule-runtime-module-contract-17-0-26.test.cjs",
+      "permanentTestIds": [
+        "17.0.26 CommonJS schedule safety module exposes every route-boundary sanitizer",
+        "17.0.26 ES-module wrapper re-exports every schedule safety helper consumed by schedule.jsx",
+        "17.0.26 hostile availability values are normalized without throwing",
+        "schedule runtime ES-module wrapper exposes every helper consumed by schedule.jsx",
+        "Request Off renders with mixed malformed legacy schedule data without tripping the section boundary"
+      ],
+      "fidelity": "ACTUAL CJS SAFETY MODULE / ACTUAL ESM WRAPPER / ACTUAL SCHEDULE.JSX CONSUMER / REACT HOSTILE-DATA RENDER REGRESSION",
+      "fixedVersion": "17.0.26",
       "mandatoryGroup": "hostile-contracts"
     }
   ]

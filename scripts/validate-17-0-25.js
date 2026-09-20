@@ -1,0 +1,21 @@
+#!/usr/bin/env node
+'use strict';
+const fs=require('node:fs');
+const assert=require('node:assert/strict');
+const {validateCurrentReleaseMetadata}=require('./86chaos-release-gate/current-release-metadata.cjs');
+const read=f=>fs.readFileSync(f,'utf8'); const json=f=>JSON.parse(read(f));
+const expected='17.0.25'; const title='Schedule Surface Runtime Recovery and Firebase Auth Gate Repair';
+const pkg=json('package.json'), lock=json('package-lock.json'), version=json('public/version.json');
+assert.equal(pkg.version,expected); assert.equal(lock.version,expected); assert.equal(lock.packages[''].version,expected); assert.equal(version.version,expected); assert.equal(version.build,expected); assert.equal(version.releaseTitle,title);
+assert.equal(pkg.scripts['test:source'],'node scripts/validate-17-0-25.js');
+for(const file of ['src/core/appCore.js','api/_version.js','api/_pos-bridge-config.js']) assert(read(file).includes("'17.0.25'"),file);
+for(const file of ['RELEASE_17_0_25.md','RUN_86CHAOS_PLAY_STORE_RELEASE_GATE.ps1','RUN_86CHAOS_UPDATE_TEST_DEPLOY.ps1','release-source-manifest.json']) assert(fs.statSync(file).isFile(),file);
+for(const file of ['test-tools/certification/groups.json','test-tools/regressions/registry.json','test-tools/certification/cost-performance-baselines.json']) assert.equal(json(file).release,expected,file);
+const metadata=validateCurrentReleaseMetadata(process.cwd()); assert.equal(metadata.ok,true,metadata.errors.join('\n'));
+const schedule=read('src/features/schedule.jsx'); assert(schedule.includes('users = safeScheduleRosterRows(users);')); assert(schedule.includes('shifts = safeScheduleShiftRows(shifts);')); assert(schedule.includes('safeScheduleAvailabilityRows')); assert(!schedule.includes('a.name.localeCompare(b.name)'));
+const gate=read('RUN_86CHAOS_PLAY_STORE_RELEASE_GATE.ps1'); assert(gate.includes('$BrowserTestUrl = [string]$PreflightReport.resolvedBrowserTestUrl')); assert(gate.includes('$env:CHAOS_IMMUTABLE_VERCEL_URL = $PinnedDeploymentUrl.TrimEnd')); assert(gate.includes('$env:APP_URL = $env:CHAOS_IMMUTABLE_VERCEL_URL')); assert(gate.includes('$env:CHAOS_BROWSER_BASE_URL = $BrowserTestUrl.TrimEnd')); assert(gate.includes('$env:PLAYWRIGHT_BASE_URL = $env:CHAOS_BROWSER_BASE_URL'));
+const preflight=read('scripts/86chaos-release-gate/preflight-env.cjs'); assert(preflight.includes('browserAliasIdentityVerified')); assert(preflight.includes('aliasServer.vercelDeploymentId')); assert(preflight.includes("resolvedBrowserTestUrl: browserAliasIdentityVerified ? approvedBrowserTestUrl : ''"));
+assert(pkg.scripts['test:repair:17.0.25'].includes('api/schedule-route-runtime-safety-17-0-25.test.cjs')); assert(pkg.scripts['test:repair:17.0.25'].includes('api/release-gate-browser-auth-alias-17-0-25.test.cjs')); assert(pkg.scripts['test:repair:17.0.25'].includes('api/release-workflow-package-preflight-17-0-24.test.cjs'));
+const defects=json('test-tools/regressions/registry.json').defects; assert(defects.some(x=>x.defectId==='SCHEDULE-SURFACE-RUNTIME-RECOVERY-1725'&&x.fixedVersion===expected)); assert(defects.some(x=>x.defectId==='RG-BROWSER-FIREBASE-AUTH-ALIAS-1725'&&x.fixedVersion===expected));
+const updater=read('RUN_86CHAOS_UPDATE_TEST_DEPLOY.ps1'); assert(updater.includes("[string]$ExpectedVersion = '17.0.25'")); assert(updater.includes('@(\'run\', "test:repair:$ExpectedVersion")'));
+console.log('17.0.25 source validation passed; this does not certify the release.');

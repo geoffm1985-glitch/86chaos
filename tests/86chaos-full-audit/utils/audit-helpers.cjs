@@ -85,7 +85,7 @@ function hasFeature(featureKey) {
 }
 
 const RUN_ID = envValue('CHAOS_FULL_AUDIT_RUN_ID') || `${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
-const BASE_URL = envValue('APP_URL', 'CHAOS_BASE_URL', 'PLAYWRIGHT_BASE_URL', 'BASE_URL').replace(/\/$/, '');
+const BASE_URL = envValue('CHAOS_BROWSER_BASE_URL', 'PLAYWRIGHT_BASE_URL', 'APP_URL', 'CHAOS_BASE_URL', 'BASE_URL').replace(/\/$/, '');
 const EXPECTED_VERSION = envValue('CHAOS_EXPECTED_VERSION') || readVersionFromDisk() || '16.0.32';
 const QA_WORKSPACE_NAME = process.env.CHAOS_QA_WORKSPACE_NAME || `86 Chaos Release Gate QA ${RUN_ID}`;
 const SAFE_TESTING_URL_RE = /localhost|127\.0\.0\.1|vercel\.app|testing|test|preview/i;
