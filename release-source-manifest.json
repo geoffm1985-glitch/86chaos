@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "sourceHash": "aad660221e7773c132b93900a17922bdd6c6a8586c8341e5f07bdee7a6c182d1",
+  "sourceHash": "a16d84a28f51db740fefabd71fb8cb3adce20abb9a4ada4763a6aade45bae11d",
   "files": [
     {
       "file": ".gitattributes",
@@ -1712,7 +1712,7 @@
     },
     {
       "file": "scripts/86chaos-release-gate/run-node-release-checks.cjs",
-      "sha256": "600e01e7f87ce752c816f5372cf8995c1a12c2524cf39af9f6778a8ceb5c58d4"
+      "sha256": "d07bc56105bc570ad76ff93c67b19efd4c4d252264aa2337fc0d2c647e5a7702"
     },
     {
       "file": "scripts/86chaos-release-gate/run-observable-command.cjs",
