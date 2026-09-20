@@ -27,11 +27,11 @@ test('16.0.210 historical maturity assertions coexist with current 17.0.11 versi
   assert.equal(pkg.version, '17.0.11');
   assert.equal(lock.version, '17.0.11');
   assert.equal(lock.packages[''].version, '17.0.11');
-  assert.equal(pkg.scripts['test:source'], 'node scripts/validate-17-0-10.js');
+  assert.equal(pkg.scripts['test:source'], 'node scripts/validate-17-0-11.js');
   assert.equal(version.version, '17.0.11');
   assert.equal(version.build, '17.0.11');
-  assert.equal(version.releaseTitle, 'Repository Safety Manifest Repair');
-  assert.match(appCore, /CURRENT_VERSION = '17\.0\.10'/);
-  assert.match(apiVersion, /APP_VERSION = '17\.0\.10'/);
-  assert.match(apiVersion, /SECURITY_SCHEMA_VERSION = '17\.0\.10'/);
+  assert.equal(version.releaseTitle, 'Schedule Builder Runtime Repair');
+  assert.match(appCore, /CURRENT_VERSION = '17\.0\.11'/);
+  assert.match(apiVersion, /APP_VERSION = '17\.0\.11'/);
+  assert.match(apiVersion, /SECURITY_SCHEMA_VERSION = '17\.0\.11'/);
 });

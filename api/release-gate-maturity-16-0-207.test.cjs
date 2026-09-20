@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
+const { captureSourceIdentity } = require('../scripts/86chaos-release-gate/source-identity.cjs');
 const root = path.resolve(__dirname, '..');
 const read = file => fs.readFileSync(path.join(root, file), 'utf8');
 const writeJson = (file, data) => {
@@ -86,6 +87,7 @@ test('16.0.207 failed-only run with matching selected/executed tests is PASS eve
     errors: [],
     stats: { expected: 1, skipped: 0, unexpected: 0, flaky: 0, duration: 7, startTime: new Date().toISOString() },
   });
+  writeJson(path.join(runDir, 'source-identity-start.json'), captureSourceIdentity(root));
 
   execFileSync(process.execPath, ['scripts/86chaos-release-gate/collect-release-gate-report.cjs'], {
     cwd: root,
@@ -96,6 +98,7 @@ test('16.0.207 failed-only run with matching selected/executed tests is PASS eve
       CHAOS_RELEASE_GATE_SELECTION_MODE: 'reported-failed-only',
       CHAOS_FAILED_ONLY_RELEASE_GATE: 'true',
       CHAOS_EXPECTED_VERSION: '16.0.207',
+      CHAOS_CERTIFICATION_MODE: 'false',
       CHAOS_RELEASE_GATE_STEP_FAILURES: '0',
     },
     stdio: 'pipe',
@@ -154,7 +157,7 @@ test('16.0.208 historical maturity assertions coexist with current 17.0.11 versi
   assert.equal(pkg.version, '17.0.11');
   assert.equal(lock.version, '17.0.11');
   assert.equal(lock.packages[''].version, '17.0.11');
-  assert.equal(pkg.scripts['test:source'], 'node scripts/validate-17-0-10.js');
+  assert.equal(pkg.scripts['test:source'], 'node scripts/validate-17-0-11.js');
   assert.equal(version.version, '17.0.11');
   assert.equal(version.build, '17.0.11');
   assert.match(apiVersion, /APP_VERSION = '17.0.11'/);
