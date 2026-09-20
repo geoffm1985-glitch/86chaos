@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "sourceHash": "4277ad0b1013dd419cea74f05337b1a599cc2384a4f18e6b945550b5ea79d573",
+  "sourceHash": "cdc255e72cb9b27acf30b5ee0d40efa38d4422dd12ae8524ebe5109c88be601b",
   "files": [
     {
       "file": ".gitattributes",
@@ -1308,11 +1308,11 @@
     },
     {
       "file": "functions/src/index.ts",
-      "sha256": "61352b3d7e05938b2f73d7ce4b2c4c6f2ea31e5eee0bff2e84d6c1eb13c75696"
+      "sha256": "dae3be727ac4586adeaa5a298ea3b35a93a2bb2f1ad8239e15228a2e7352aaf1"
     },
     {
       "file": "functions/src/retention.ts",
-      "sha256": "c579b623ea491a15e9a1eb2fa77139afa446ccaa4cf5e7519f9dd20b25aed4a5"
+      "sha256": "45123ca88c0e9af59ec791a3377d2d50fa4139570266b8d092d7ffc129cc47cd"
     },
     {
       "file": "functions/tsconfig.json",
