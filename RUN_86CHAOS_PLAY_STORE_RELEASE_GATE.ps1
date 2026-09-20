@@ -5,9 +5,6 @@ $PSDefaultParameterValues['Out-File:Encoding'] = 'utf8'
 $PSDefaultParameterValues['Set-Content:Encoding'] = 'utf8'
 $PSDefaultParameterValues['Add-Content:Encoding'] = 'utf8'
 $env:PYTHONUTF8 = '1'
-$GateStartedAt = Get-Date
-$env:GIT_PAGER = 'cat'
-$env:PAGER = 'cat'
 
 $Root = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location $Root
@@ -19,9 +16,8 @@ if (-not (Test-Path ".\package-lock.json")) {
   throw "package-lock.json was not found. The release gate requires the committed lockfile."
 }
 
-$ReleaseTargetKeys = @('APP_URL', 'CHAOS_BASE_URL', 'CHAOS_BROWSER_BASE_URL', 'CHAOS_EXPECTED_VERSION', 'CHAOS_EXPECTED_VERCEL_PROJECT_SLUG', 'CHAOS_FIREBASE_AUTH_REFERRER_URL')
+$ReleaseTargetKeys = @('APP_URL', 'CHAOS_BASE_URL', 'CHAOS_EXPECTED_VERSION', 'CHAOS_EXPECTED_VERCEL_PROJECT_SLUG')
 $CanonicalVercelProjectSlug = '86chaos'
-$CanonicalFirebaseAuthReferrerUrl = 'https://86chaos-git-testing-cheers-portal-s-projects.vercel.app'
 
 function Read-EnvFileMap {
   param([string]$Path)
@@ -54,12 +50,6 @@ function Assert-NoReleaseTargetConflicts {
     $values = @()
     $processValue = [Environment]::GetEnvironmentVariable($key, 'Process')
     if ($processValue) { $values += [pscustomobject]@{ Source = 'process environment'; Value = $processValue } }
-    if ($env:CHAOS_AUTOMATED_RELEASE_WORKFLOW -eq 'true' -and $processValue) {
-      # The checked-in release workflow supplies an explicitly validated target
-      # for this child process. Local env files remain untouched and cannot
-      # override it; manual runs retain strict conflict detection below.
-      continue
-    }
     if ($TestEnv.ContainsKey($key) -and $TestEnv[$key]) { $values += [pscustomobject]@{ Source = '.env.test.local'; Value = $TestEnv[$key] } }
     if ($LocalEnv.ContainsKey($key) -and $LocalEnv[$key]) { $values += [pscustomobject]@{ Source = '.env.local'; Value = $LocalEnv[$key] } }
     for ($i = 0; $i -lt $values.Count; $i++) {
@@ -91,13 +81,11 @@ Import-EnvFile $EnvTestLocal
 Import-EnvFile $EnvLocal
 $env:CHAOS_CERTIFICATION_MODE = 'true'
 if (-not $env:CHAOS_EXPECTED_VERCEL_PROJECT_SLUG) { $env:CHAOS_EXPECTED_VERCEL_PROJECT_SLUG = $CanonicalVercelProjectSlug }
-if (-not $env:CHAOS_FIREBASE_AUTH_REFERRER_URL) { $env:CHAOS_FIREBASE_AUTH_REFERRER_URL = $CanonicalFirebaseAuthReferrerUrl }
 Write-Host "Release-gate target:" -ForegroundColor Cyan
 Write-Host "  APP_URL=$env:APP_URL" -ForegroundColor Cyan
 Write-Host "  CHAOS_BASE_URL=$env:CHAOS_BASE_URL" -ForegroundColor Cyan
 Write-Host "  CHAOS_EXPECTED_VERSION=$env:CHAOS_EXPECTED_VERSION" -ForegroundColor Cyan
 Write-Host "  CHAOS_EXPECTED_VERCEL_PROJECT_SLUG=$env:CHAOS_EXPECTED_VERCEL_PROJECT_SLUG" -ForegroundColor Cyan
-Write-Host "  CHAOS_FIREBASE_AUTH_REFERRER_URL=$env:CHAOS_FIREBASE_AUTH_REFERRER_URL" -ForegroundColor Cyan
 
 $RunId = Get-Date -Format "yyyy-MM-ddTHH-mm-ss"
 $env:CHAOS_RELEASE_GATE_RUN_ID = $RunId
@@ -145,8 +133,6 @@ $RunnerState = [ordered]@{
   rolePreflightStarted = $false
   rolePreflightPassed = $false
   playwrightStarted = $false
-  postPlaywrightChecksStarted = $false
-  postPlaywrightChecksPassed = $false
   globalSetupStarted = $false
   qaSeedProcessStarted = $false
   qaDataWritesStarted = $false
@@ -160,8 +146,6 @@ $RunnerState = [ordered]@{
   status = 'running'
   startedAt = (Get-Date -Format o)
   finishedAt = ''
-  totalElapsedMs = $null
-  totalElapsedFormatted = ''
   lastCompletedStep = ''
   anyTestsRan = $false
   blockedBeforeTestExecution = $false
@@ -290,39 +274,9 @@ function New-Slim-ReleaseGateReport {
   $copiedCount = (Get-ChildItem $DestinationDir -Recurse -File -ErrorAction SilentlyContinue | Measure-Object).Count
   if ($copiedCount -eq 0) { Set-Content (Join-Path $DestinationDir 'release-gate-empty-report.txt') "No current-run report files were copied." }
   Compress-Archive -Path "$DestinationDir\*" -DestinationPath $ZipPath -Force
-}
-
-function Format-TotalElapsed {
-  param([long]$Milliseconds)
-  $span = [TimeSpan]::FromMilliseconds([Math]::Max(0, $Milliseconds))
-  if ($span.Days -gt 0) { return ("{0}d {1}h {2}m {3}s" -f $span.Days, $span.Hours, $span.Minutes, $span.Seconds) }
-  if ($span.Hours -gt 0) { return ("{0}h {1}m {2}s" -f $span.Hours, $span.Minutes, $span.Seconds) }
-  return ("{0}m {1}s" -f $span.Minutes, $span.Seconds)
-}
-
-function Update-TotalTimingEvidence {
-  $timing = [ordered]@{
-    startedAt = $RunnerState.startedAt
-    finishedAt = $RunnerState.finishedAt
-    totalElapsedMs = $RunnerState.totalElapsedMs
-    totalElapsedFormatted = $RunnerState.totalElapsedFormatted
-  }
-  Get-ChildItem -LiteralPath $RunDir -File -Filter '86chaos-play-store-release-gate-summary-*.json' -ErrorAction SilentlyContinue | ForEach-Object {
-    try {
-      $summary = Get-Content -Raw -LiteralPath $_.FullName | ConvertFrom-Json
-      foreach ($key in $timing.Keys) { $summary | Add-Member -NotePropertyName $key -NotePropertyValue $timing[$key] -Force }
-      if ($summary.runnerState) {
-        $summary.runnerState | Add-Member -NotePropertyName status -NotePropertyValue $RunnerState.status -Force
-        $summary.runnerState | Add-Member -NotePropertyName finalExitCode -NotePropertyValue $RunnerState.finalExitCode -Force
-        $summary.runnerState | Add-Member -NotePropertyName finishedAt -NotePropertyValue $RunnerState.finishedAt -Force
-      }
-      $summary | ConvertTo-Json -Depth 100 | Set-Content -LiteralPath $_.FullName
-    } catch { throw "Could not add total release-gate timing to $($_.FullName): $($_.Exception.Message)" }
-  }
-  $testSummary = Join-Path $RunDir 'TEST-SUMMARY.txt'
-  if (Test-Path $testSummary) {
-    Add-Content -LiteralPath $testSummary -Value "`nTOTAL RELEASE-GATE TIMING`nStarted: $($RunnerState.startedAt)`nFinished: $($RunnerState.finishedAt)`nTOTAL ELAPSED TIME: $($RunnerState.totalElapsedFormatted)"
-  }
+  Write-Host ""
+  Write-Host "Slim release-gate upload ZIP created:" -ForegroundColor Cyan
+  Write-Host $ZipPath -ForegroundColor Cyan
 }
 
 function Write-RunnerSummary {
@@ -339,10 +293,6 @@ function Write-RunnerSummary {
     "APP_URL: $env:APP_URL",
     "CHAOS_BASE_URL: $env:CHAOS_BASE_URL",
     "CHAOS_EXPECTED_VERSION: $env:CHAOS_EXPECTED_VERSION",
-    "Started: $($RunnerState.startedAt)",
-    "Finished: $($RunnerState.finishedAt)",
-    "Total elapsed milliseconds: $($RunnerState.totalElapsedMs)",
-    "TOTAL ELAPSED TIME: $($RunnerState.totalElapsedFormatted)",
     "Primary blocking reason: $($RunnerState.blockingReason)",
     "Original blocking failures: $($countedFailures.Count)",
     "All failed steps including collector: $($failed.Count)",
@@ -363,7 +313,7 @@ function Write-RunnerSummary {
     }
   }
   $lines | Set-Content $summaryPath
-  @{ runId = $RunId; runDir = $RunDir; mode = 'full'; blockingReason = $RunnerState.blockingReason; steps = $StepResults; generatedAt = (Get-Date -Format o); startedAt = $RunnerState.startedAt; finishedAt = $RunnerState.finishedAt; totalElapsedMs = $RunnerState.totalElapsedMs; totalElapsedFormatted = $RunnerState.totalElapsedFormatted } | ConvertTo-Json -Depth 12 | Set-Content $jsonPath
+  @{ runId = $RunId; runDir = $RunDir; mode = 'full'; blockingReason = $RunnerState.blockingReason; steps = $StepResults; generatedAt = (Get-Date -Format o) } | ConvertTo-Json -Depth 12 | Set-Content $jsonPath
 }
 
 function Stop-BeforePlaywright {
@@ -404,16 +354,10 @@ if ($PreflightExit -ne 0) {
   $PreflightReportPath = Join-Path $RunDir 'environment-preflight.json'
   $PreflightReport = Get-Content $PreflightReportPath -Raw | ConvertFrom-Json
   $PinnedDeploymentUrl = [string]$PreflightReport.resolvedImmutableDeploymentUrl
-  $BrowserTestUrl = [string]$PreflightReport.resolvedBrowserTestUrl
-  if (-not $PinnedDeploymentUrl) { throw 'Preflight passed without an immutable deployment URL; refusing release certification.' }
-  if (-not $BrowserTestUrl -or -not $PreflightReport.browserAliasIdentityVerified) { throw 'Preflight passed without a verified Firebase/Auth-compatible browser alias; refusing to start Playwright.' }
-  $env:CHAOS_IMMUTABLE_VERCEL_URL = $PinnedDeploymentUrl.TrimEnd('/')
-  $env:APP_URL = $env:CHAOS_IMMUTABLE_VERCEL_URL
-  $env:CHAOS_BASE_URL = $env:CHAOS_IMMUTABLE_VERCEL_URL
-  $env:CHAOS_BROWSER_BASE_URL = $BrowserTestUrl.TrimEnd('/')
-  $env:PLAYWRIGHT_BASE_URL = $env:CHAOS_BROWSER_BASE_URL
-  Write-Host "Pinned immutable certification deployment: $env:APP_URL" -ForegroundColor Green
-  Write-Host "Verified browser/Firebase Auth test alias: $env:CHAOS_BROWSER_BASE_URL" -ForegroundColor Green
+  if (-not $PinnedDeploymentUrl) { throw 'Preflight passed without an immutable deployment URL; refusing to run deployed tests against a mutable alias.' }
+  $env:APP_URL = $PinnedDeploymentUrl.TrimEnd('/')
+  $env:CHAOS_BASE_URL = $env:APP_URL
+  Write-Host "Pinned release-gate deployment: $env:APP_URL" -ForegroundColor Green
   Set-RunnerPhase 'node-version'
   $NodeExit = Run-Step "Node version" "npm run node:check --if-present"
   if ($NodeExit -ne 0) {
@@ -518,27 +462,22 @@ if ($PreflightExit -ne 0) {
                   }
                   Stop-BeforePlaywright $RoleReason
                 } else {
-                  Set-RunnerPhase 'pre-playwright-source-readiness'
-                  $LocalChecksExit = Run-Step "Pre-Playwright source readiness" "node scripts/86chaos-release-gate/run-node-release-checks.cjs --phase pre"
-                  if ($LocalChecksExit -ne 0) {
-                    Stop-BeforePlaywright "Release gate BLOCKED BEFORE PLAYWRIGHT because bounded source readiness failed. See node-test-live-summary.json."
+                  Set-RunnerPhase 'java-prerequisite'
+                  $JavaExit = Run-Step "Java prerequisite" "node scripts/86chaos-release-gate/check-java-prerequisite.cjs"
+                  if ($JavaExit -ne 0) {
+                    Stop-BeforePlaywright "Release gate BLOCKED BEFORE PLAYWRIGHT because Java is required for emulator rules validation. See java-prerequisite.json."
                   } else {
-                    Set-RunnerPhase 'playwright'
-                    $PlaywrightConfig = ".\playwright.play-store-release.config.cjs"
-                    $RunnerState.playwrightStarted = $true
-                    Save-RunnerState
-                    $PlaywrightExit = Run-LiveStep "Playwright release gate" "node scripts/86chaos-release-gate/run-observable-command.cjs --label 'Playwright release gate' --heartbeat 30 --timeout 21600 -- '$PlaywrightExe' test --config '$PlaywrightConfig'"
-
-                    # Heavy certification checks intentionally execute AFTER the
-                    # exact-deployment browser universe. They remain mandatory for
-                    # certification, but cannot turn a real browser run into another
-                    # misleading zero-test BLOCKED BEFORE TEST EXECUTION result.
-                    Set-RunnerPhase 'post-playwright-certification-checks'
-                    $RunnerState.postPlaywrightChecksStarted = $true
-                    Save-RunnerState
-                    $PostChecksExit = Run-Step "Post-Playwright certification checks" "node scripts/86chaos-release-gate/run-node-release-checks.cjs --phase post"
-                    $RunnerState.postPlaywrightChecksPassed = ($PostChecksExit -eq 0)
-                    Save-RunnerState
+                    Set-RunnerPhase 'local-release-checks'
+                    $LocalChecksExit = Run-Step "Local release readiness checks" "node scripts/86chaos-release-gate/run-node-release-checks.cjs"
+                    if ($LocalChecksExit -ne 0) {
+                      Stop-BeforePlaywright "Release gate BLOCKED BEFORE PLAYWRIGHT because required local source/unit/build/rules checks failed or were blocked. See node-test-live-summary.json."
+                    } else {
+                      Set-RunnerPhase 'playwright'
+                      $PlaywrightConfig = ".\playwright.play-store-release.config.cjs"
+                      $RunnerState.playwrightStarted = $true
+                      Save-RunnerState
+                      Run-LiveStep "Playwright release gate" "& '$PlaywrightExe' test --config '$PlaywrightConfig'"
+                    }
                   }
                 }
               }
@@ -624,69 +563,13 @@ if (Test-Path $CleanupPath) {
 
 Set-RunnerPhase 'report-collection'
 if ($RunnerState.blockingReason -and $RunnerState.playwrightStarted -ne $true) { $RunnerState.blockedBeforeTestExecution = $true }
+$RunnerState.finishedAt = (Get-Date -Format o)
+if ($RunnerState.blockingReason) { $RunnerState.status = 'blocked' } elseif ([int]$env:CHAOS_RELEASE_GATE_STEP_FAILURES -gt 0) { $RunnerState.status = 'failed' } else { $RunnerState.status = 'passed' }
+if ([int]$env:CHAOS_RELEASE_GATE_STEP_FAILURES -gt 0 -or $RunnerState.blockingReason) { $RunnerState.finalExitCode = 1 } else { $RunnerState.finalExitCode = 0 }
 Save-RunnerState
-$CollectorExit = Run-CollectorStep "Collect report" "node scripts/86chaos-release-gate/collect-release-gate-report.cjs"
-
-$CollectorSummary = $null
-$CollectorSummaryPath = $null
-$CollectorVerdictValid = $false
-$CollectorFailureReason = ''
-$summaryCandidates = @(Get-ChildItem -LiteralPath $RunDir -File -Filter '86chaos-play-store-release-gate-summary-*.json' -ErrorAction SilentlyContinue | Sort-Object LastWriteTimeUtc -Descending)
-if ($summaryCandidates.Count -lt 1) {
-  $CollectorFailureReason = 'Collector did not create the current structured summary.'
-} else {
-  $CollectorSummaryPath = $summaryCandidates[0].FullName
-  try {
-    $CollectorSummary = Get-Content -Raw -LiteralPath $CollectorSummaryPath | ConvertFrom-Json
-    if ($null -eq $CollectorSummary.PSObject.Properties['ok']) {
-      $CollectorFailureReason = 'Collector summary is malformed because the required ok verdict is missing.'
-    } elseif ($CollectorSummary.ok -ne $true) {
-      $CollectorFailureReason = if ($CollectorSummary.primaryBlockingFailure) { [string]$CollectorSummary.primaryBlockingFailure } else { 'Collector verdict is not green.' }
-    } elseif ($CollectorExit -ne 0) {
-      $CollectorFailureReason = "Collector exited $CollectorExit despite a green summary."
-    } else {
-      $CollectorVerdictValid = $true
-    }
-  } catch {
-    $CollectorFailureReason = "Collector summary could not be parsed: $($_.Exception.Message)"
-  }
-}
-if ($CollectorExit -ne 0 -and -not $CollectorFailureReason) {
-  $CollectorFailureReason = "Collector execution failed with exit code $CollectorExit."
-}
-if (-not $CollectorVerdictValid -and $CollectorExit -eq 0) {
-  $existingFailures = 0
-  [int]::TryParse($env:CHAOS_RELEASE_GATE_STEP_FAILURES, [ref]$existingFailures) | Out-Null
-  $countVerdictFailure = ($existingFailures -eq 0)
-  $collectorLog = ($StepResults | Where-Object { $_.name -eq 'Collect report' } | Select-Object -Last 1).logPath
-  Add-StepResult -Name 'Validate collector verdict' -ExitCode 1 -LogPath $collectorLog -CountsAsFailure:$countVerdictFailure
-}
-if ($CollectorFailureReason -and -not $RunnerState.blockingReason) {
-  $RunnerState.blockingReason = $CollectorFailureReason
-}
-$finalStepFailures = 0
-[int]::TryParse($env:CHAOS_RELEASE_GATE_STEP_FAILURES, [ref]$finalStepFailures) | Out-Null
-if ($RunnerState.blockedBeforeTestExecution -and $RunnerState.playwrightStarted -ne $true) {
-  $RunnerState.status = 'blocked'
-} elseif (-not $CollectorVerdictValid -or $finalStepFailures -gt 0) {
-  $RunnerState.status = 'failed'
-} else {
-  $RunnerState.status = 'passed'
-}
-$RunnerState.finalExitCode = if ($RunnerState.status -eq 'passed') { 0 } else { 1 }
+Run-CollectorStep "Collect report" "node scripts/86chaos-release-gate/collect-release-gate-report.cjs"
 $RunnerState.updatedAt = (Get-Date -Format o)
 Save-RunnerState
-New-Slim-ReleaseGateReport -SourceDir $RunDir -DestinationDir $SlimDir -ZipPath $SlimZipPath
-
-# The first completed slim export closes the measured release-gate wall clock.
-# Timing is then injected and the same ZIP is deterministically rebuilt so the
-# uploaded evidence contains its own start/finish/duration record.
-$GateFinishedAt = Get-Date
-$RunnerState.finishedAt = $GateFinishedAt.ToString('o')
-$RunnerState.totalElapsedMs = [long]($GateFinishedAt - $GateStartedAt).TotalMilliseconds
-$RunnerState.totalElapsedFormatted = Format-TotalElapsed $RunnerState.totalElapsedMs
-Save-RunnerState
-Update-TotalTimingEvidence
 Write-RunnerSummary
 New-Slim-ReleaseGateReport -SourceDir $RunDir -DestinationDir $SlimDir -ZipPath $SlimZipPath
 
@@ -706,18 +589,11 @@ try {
 } catch {}
 Save-RunnerState
 
-if ([int]$RunnerState.finalExitCode -ne 0) {
+if ([int]$env:CHAOS_RELEASE_GATE_STEP_FAILURES -gt 0 -or $RunnerState.blockingReason) {
   Write-Host ""
   Write-Host "Release gate finished with failures. Upload 86chaos-release-gate-SLIM-UPLOAD-ME.zip." -ForegroundColor Red
-  if ($CollectorFailureReason) { Write-Host "Final collector verdict: $CollectorFailureReason" -ForegroundColor Red }
-  Write-Host "Exported:" -ForegroundColor Cyan
-  Write-Host $SlimZipPath -ForegroundColor Cyan
-  Write-Host "TOTAL ELAPSED TIME: $($RunnerState.totalElapsedFormatted)"
   exit 1
 }
 Write-Host ""
 Write-Host "Release gate passed." -ForegroundColor Green
-Write-Host "Exported:" -ForegroundColor Cyan
-Write-Host $SlimZipPath -ForegroundColor Cyan
-Write-Host "TOTAL ELAPSED TIME: $($RunnerState.totalElapsedFormatted)"
 exit 0

@@ -67,20 +67,16 @@ test('observable dependency wrapper avoids shell true and direct npm.cmd process
   assert.match(source, /PROCESS_ERROR_META/);
 });
 
-test('PowerShell runner collects status, exports, persists whole-run timing, and rebuilds slim evidence', () => {
+test('PowerShell runner saves final state before creating slim upload zip', () => {
   const ps1 = fs.readFileSync(path.join(root, 'RUN_86CHAOS_PLAY_STORE_RELEASE_GATE.ps1'), 'utf8');
-  const statusIndex = ps1.indexOf("$RunnerState.status = 'blocked'");
-  const collectIndex = ps1.indexOf('Run-CollectorStep "Collect report"', statusIndex);
-  const firstZipIndex = ps1.indexOf('New-Slim-ReleaseGateReport', collectIndex);
-  const finalIndex = ps1.indexOf('$RunnerState.finishedAt =', firstZipIndex);
-  const timingIndex = ps1.indexOf('Update-TotalTimingEvidence', finalIndex);
-  const finalZipIndex = ps1.indexOf('New-Slim-ReleaseGateReport', timingIndex);
-  assert.ok(statusIndex >= 0, 'final result status block exists');
-  assert.ok(collectIndex > statusIndex, 'collector sees the result status');
-  assert.ok(firstZipIndex > collectIndex, 'initial slim export follows report collection');
-  assert.ok(finalIndex > firstZipIndex, 'whole-run timing closes after the initial export');
-  assert.ok(timingIndex > finalIndex, 'timing evidence is persisted after the clock closes');
-  assert.ok(finalZipIndex > timingIndex, 'slim artifact is rebuilt with timing evidence');
+  const finalIndex = ps1.indexOf('$RunnerState.finishedAt =');
+  const saveIndex = ps1.indexOf('Save-RunnerState', finalIndex);
+  const collectIndex = ps1.indexOf('Run-CollectorStep "Collect report"', finalIndex);
+  const zipIndex = ps1.indexOf('New-Slim-ReleaseGateReport', finalIndex);
+  assert.ok(finalIndex >= 0, 'final status block exists');
+  assert.ok(saveIndex > finalIndex, 'final status is saved');
+  assert.ok(collectIndex > saveIndex, 'report collection sees finalized state');
+  assert.ok(zipIndex > collectIndex, 'slim zip is created after final state and collector');
   assert.match(ps1, /\$RunnerState\.finalExitCode = 1/);
 });
 

@@ -1,16 +1,16 @@
 {
-  "version": "17.0.29",
-  "name": "86 Chaos 17.0.29",
-  "build": "17.0.29",
-  "label": "86 Chaos 17.0.29",
-  "releasedAt": "2026-09-20T05:30:00.000Z",
-  "releaseTitle": "Time Clock and Schedule Parent Route Recovery",
+  "version": "17.0.11",
+  "name": "86 Chaos 17.0.11",
+  "build": "17.0.11",
+  "label": "86 Chaos 17.0.11",
+  "releasedAt": "2026-09-20T05:00:00.000Z",
+  "releaseTitle": "Schedule Builder Runtime Repair",
   "notes": [
-    "Restores the Time Clock & Schedule parent render boundary to the known-good 16.0.227 pattern.",
-    "Removes eager Schedule Builder / Request Off sanitization from the parent route so a subtab helper cannot crash My Schedule / Time Clock.",
-    "Adds one dedicated source regression and one dedicated deployed mobile-browser test for this exact screen. The updater does not run the 282-test Play Store gate."
+    "Normalizes Schedule Builder special-event dates before filtering, sorting, or display so Firestore Timestamp-like, ISO, null, and malformed legacy values cannot collapse the route.",
+    "Keeps Schedule Builder input hardening local to the builder runtime and uses normal browser ESM without CommonJS or global browser bridges.",
+    "Preserves schedule publishing, canonical schedule writes, Schedule Tools period behavior, schedule PDF/printing, mobile PDF delivery, POS foundation, security boundaries, and all unrelated product areas."
   ],
-  "title": "86 Chaos 17.0.29",
-  "summary": "Restores the Time Clock & Schedule parent route to the known-good 16.0.227/17.0.24 boundary by removing eager subtab sanitization from parent render.",
-  "description": "Schedule Builder and Request Off safety remains localized to those subtabs; the default Time Clock / My Schedule route no longer executes their sanitizers before the active subtab is known."
+  "title": "86 Chaos 17.0.11",
+  "summary": "Targeted Schedule Builder render repair for legacy and malformed event-date values.",
+  "description": "Normalizes Schedule Builder event dates at its local runtime boundary while preserving publishing, PDFs, printing, POS integrations, and unrelated application behavior."
 }

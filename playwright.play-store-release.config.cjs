@@ -9,7 +9,7 @@ const { ensureRunDir } = require('./scripts/86chaos-release-gate/run-context.cjs
 const { runDir, runId } = ensureRunDir();
 const { generatePlaywrightInventory } = require('./scripts/86chaos-release-gate/playwright-inventory.cjs');
 const { buildCriticalInventory } = require('./scripts/86chaos-release-gate/critical-test-inventory.cjs');
-const baseURL = process.env.CHAOS_BROWSER_BASE_URL || process.env.PLAYWRIGHT_BASE_URL || process.env.APP_URL || process.env.CHAOS_BASE_URL || process.env.BASE_URL || 'http://127.0.0.1:3000';
+const baseURL = process.env.APP_URL || process.env.CHAOS_BASE_URL || process.env.PLAYWRIGHT_BASE_URL || process.env.BASE_URL || 'http://127.0.0.1:3000';
 const resultsRoot = runDir;
 fs.mkdirSync(resultsRoot, { recursive: true });
 if (process.env.CHAOS_INVENTORY_DISCOVERY !== '1') {
@@ -26,7 +26,7 @@ module.exports = defineConfig({
   expect: { timeout: 12_000 },
   fullyParallel: false,
   workers: 1,
-  forbidOnly: true,
+  forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
   globalSetup: require.resolve('./tests/86chaos-release-gate/global-setup.cjs'),
   globalTeardown: require.resolve('./tests/86chaos-release-gate/global-teardown.cjs'),
@@ -44,7 +44,7 @@ module.exports = defineConfig({
   },
   projects: [
     { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
-    { name: 'mobile-chromium', use: { ...devices['Pixel 5'] }, testIgnore: /21-runtime-code-coverage\.spec\.cjs|[\\/]layout[\\/]/ },
+    { name: 'mobile-chromium', use: { ...devices['Pixel 5'] }, testIgnore: /21-runtime-code-coverage\.spec\.cjs/ },
     { name: 'edge-pwa', testMatch: PWA_SPEC_PATTERN, use: { ...devices['Desktop Edge'], channel: 'msedge' } },
     { name: 'firefox-pwa', testMatch: PWA_SPEC_PATTERN, use: { ...devices['Desktop Firefox'] } },
     { name: 'webkit-pwa', testMatch: PWA_SPEC_PATTERN, use: { ...devices['Desktop Safari'] } },

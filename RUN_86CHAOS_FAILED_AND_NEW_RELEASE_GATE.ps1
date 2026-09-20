@@ -4,8 +4,6 @@ param(
 )
 
 $ErrorActionPreference = 'Continue'
-$env:GIT_PAGER = 'cat'
-$env:PAGER = 'cat'
 
 $Root = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location $Root
@@ -17,9 +15,8 @@ if (-not (Test-Path ".\package-lock.json")) {
   throw "package-lock.json was not found. The release gate requires the committed lockfile."
 }
 
-$ReleaseTargetKeys = @('APP_URL', 'CHAOS_BASE_URL', 'CHAOS_BROWSER_BASE_URL', 'CHAOS_EXPECTED_VERSION', 'CHAOS_EXPECTED_VERCEL_PROJECT_SLUG', 'CHAOS_FIREBASE_AUTH_REFERRER_URL')
+$ReleaseTargetKeys = @('APP_URL', 'CHAOS_BASE_URL', 'CHAOS_EXPECTED_VERSION', 'CHAOS_EXPECTED_VERCEL_PROJECT_SLUG')
 $CanonicalVercelProjectSlug = '86chaos'
-$CanonicalFirebaseAuthReferrerUrl = 'https://86chaos-git-testing-cheers-portal-s-projects.vercel.app'
 
 function Read-EnvFileMap {
   param([string]$Path)
@@ -70,12 +67,6 @@ function Resolve-ReleaseTargetValue {
   }
   if ($Key -eq 'CHAOS_EXPECTED_VERCEL_PROJECT_SLUG') {
     return [pscustomobject]@{ Value = $CanonicalVercelProjectSlug; Source = 'canonical project slug' }
-  }
-  if ($Key -eq 'CHAOS_FIREBASE_AUTH_REFERRER_URL') {
-    return [pscustomobject]@{ Value = $CanonicalFirebaseAuthReferrerUrl; Source = 'approved Firebase Auth testing referrer' }
-  }
-  if ($Key -eq 'CHAOS_BROWSER_BASE_URL') {
-    return [pscustomobject]@{ Value = $CanonicalFirebaseAuthReferrerUrl; Source = 'approved browser Firebase Auth testing alias' }
   }
   if ($Key -eq 'APP_URL' -or $Key -eq 'CHAOS_BASE_URL') {
     $candidates = @($processValue, $testValue, $localValue) | Where-Object { $_ }
@@ -130,15 +121,11 @@ Import-EnvFile $EnvTestLocal
 Import-EnvFile $EnvLocal
 Resolve-ReleaseTargets $EnvTestLocal $EnvLocal
 if (-not $env:CHAOS_EXPECTED_VERCEL_PROJECT_SLUG) { $env:CHAOS_EXPECTED_VERCEL_PROJECT_SLUG = $CanonicalVercelProjectSlug }
-if (-not $env:CHAOS_FIREBASE_AUTH_REFERRER_URL) { $env:CHAOS_FIREBASE_AUTH_REFERRER_URL = $CanonicalFirebaseAuthReferrerUrl }
-if (-not $env:CHAOS_BROWSER_BASE_URL) { $env:CHAOS_BROWSER_BASE_URL = $CanonicalFirebaseAuthReferrerUrl }
 Write-Host "Release-gate target:" -ForegroundColor Cyan
 Write-Host "  APP_URL=$env:APP_URL" -ForegroundColor Cyan
 Write-Host "  CHAOS_BASE_URL=$env:CHAOS_BASE_URL" -ForegroundColor Cyan
 Write-Host "  CHAOS_EXPECTED_VERSION=$env:CHAOS_EXPECTED_VERSION" -ForegroundColor Cyan
 Write-Host "  CHAOS_EXPECTED_VERCEL_PROJECT_SLUG=$env:CHAOS_EXPECTED_VERCEL_PROJECT_SLUG" -ForegroundColor Cyan
-Write-Host "  CHAOS_BROWSER_BASE_URL=$env:CHAOS_BROWSER_BASE_URL" -ForegroundColor Cyan
-Write-Host "  CHAOS_FIREBASE_AUTH_REFERRER_URL=$env:CHAOS_FIREBASE_AUTH_REFERRER_URL" -ForegroundColor Cyan
 
 $RunId = Get-Date -Format "yyyy-MM-ddTHH-mm-ss"
 $env:CHAOS_RELEASE_GATE_RUN_ID = $RunId

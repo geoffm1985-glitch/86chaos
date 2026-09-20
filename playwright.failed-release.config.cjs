@@ -8,7 +8,7 @@ const { ensureRunDir, getFailedOnlyManifestPath } = require('./scripts/86chaos-r
 const { FAILED_ONLY_TESTS, FAILED_ONLY_MANIFEST_ERRORS, FAILED_ONLY_MANIFEST_PATH, specsFromManifest, grepForProject } = require('./tests/86chaos-release-gate/failed-only-manifest.cjs');
 
 const { runDir, runId } = ensureRunDir();
-const baseURL = process.env.CHAOS_BROWSER_BASE_URL || process.env.PLAYWRIGHT_BASE_URL || process.env.APP_URL || process.env.CHAOS_BASE_URL || process.env.BASE_URL || 'http://127.0.0.1:3000';
+const baseURL = process.env.APP_URL || process.env.CHAOS_BASE_URL || process.env.PLAYWRIGHT_BASE_URL || process.env.BASE_URL || 'http://127.0.0.1:3000';
 const resultsRoot = path.join(runDir, 'failed-only');
 fs.mkdirSync(resultsRoot, { recursive: true });
 fs.writeFileSync(
@@ -125,7 +125,7 @@ module.exports = defineConfig({
   expect: { timeout: 12_000 },
   fullyParallel: false,
   workers: 1,
-  forbidOnly: true,
+  forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
   globalSetup: require.resolve('./tests/86chaos-release-gate/global-setup.cjs'),
   globalTeardown: require.resolve('./tests/86chaos-release-gate/global-teardown.cjs'),

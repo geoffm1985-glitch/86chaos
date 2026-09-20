@@ -4,10 +4,9 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const { spawnSync } = require('node:child_process');
+const { execFileSync } = require('node:child_process');
 const { validateReleaseSkips } = require('../scripts/86chaos-release-gate/expected-skips.cjs');
 const { captureSourceIdentity } = require('../scripts/86chaos-release-gate/source-identity.cjs');
-const { stableIdentityKey } = require('../scripts/86chaos-release-gate/playwright-inventory.cjs');
 const evidence = require('../test-tools/fixtures/release-gate-16-0-229-results.json');
 const root = path.resolve(__dirname, '..');
 const version = require('../package.json').version;
@@ -117,21 +116,14 @@ function collectFixture({ results = rows(), staleSource = false, preflightFailed
         }],
       }] })),
     });
-    const inventoryRecords = results.map(row => {
-      const record = { specPath: row.file, suitePathParts: [...row.suitePath], fullSuitePath: row.suitePath.join(' > '), leafTitle: row.leafTitle, exactTestTitle: row.leafTitle, title: row.leafTitle, fullTitle: [...row.suitePath, row.leafTitle].join(' > '), project: row.projectName, sourceFileHash: '0'.repeat(64) };
-      record.stableKey = stableIdentityKey(record);
-      return record;
-    });
-    write('playwright-test-inventory.json', { ok: true, runId, sourceVersion: version, discoveryMode: 'playwright-list', focusedTestCount: 0, duplicateIdentityCount: 0, records: inventoryRecords });
-    const collectorResult = spawnSync(process.execPath, ['scripts/86chaos-release-gate/collect-release-gate-report.cjs'], {
-      cwd: root, stdio: 'pipe', timeout: 20000, encoding: 'utf8',
+    execFileSync(process.execPath, ['scripts/86chaos-release-gate/collect-release-gate-report.cjs'], {
+      cwd: root, stdio: 'pipe', timeout: 20000,
       env: { ...process.env, CHAOS_RELEASE_GATE_RUN_ID: runId, CHAOS_RELEASE_GATE_RUN_DIR: runDir,
         CHAOS_RELEASE_GATE_SELECTION_MODE: 'full', CHAOS_FAILED_ONLY_RELEASE_GATE: 'false', CHAOS_FAILED_AND_NEW_RELEASE_GATE: 'false',
         CHAOS_RELEASE_GATE_STEP_FAILURES: '0', CHAOS_EXPECTED_VERSION: version },
     });
-    const summary = JSON.parse(fs.readFileSync(path.join(runDir, `86chaos-play-store-release-gate-summary-${version}-${runId}.json`), 'utf8'));
-    assert.equal(collectorResult.status, summary.ok ? 0 : 1, collectorResult.stderr || collectorResult.stdout);
-    return { summary, text: fs.readFileSync(path.join(runDir, 'TEST-SUMMARY.txt'), 'utf8'), failures: fs.readFileSync(path.join(runDir, 'FAILED-TESTS.txt'), 'utf8') };
+    return { summary: JSON.parse(fs.readFileSync(path.join(runDir, `86chaos-play-store-release-gate-summary-${version}-${runId}.json`), 'utf8')),
+      text: fs.readFileSync(path.join(runDir, 'TEST-SUMMARY.txt'), 'utf8'), failures: fs.readFileSync(path.join(runDir, 'FAILED-TESTS.txt'), 'utf8') };
   } finally {
     fs.rmSync(runDir, { recursive: true, force: true });
   }

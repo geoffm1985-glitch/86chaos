@@ -4,7 +4,6 @@ const path = require('path');
 const crypto = require('crypto');
 const childProcess = require('child_process');
 const { writeJson } = require('./run-context.cjs');
-const { specIsInReleaseUniverse } = require('./release-test-universe.cjs');
 
 const INVENTORY_SCHEMA_VERSION = 3;
 function normalizeRel(value='') { return String(value || '').replace(/\\/g, '/').replace(/^\.\//, '').replace(/^tests\//, ''); }
@@ -118,59 +117,8 @@ function projectsForSpec(rel) {
   const normalized = normalizeRel(rel);
   if (/86chaos-release-gate\/(26-pwa-icon-source-deployed-parity|27-pwa-browser-icon-matrix)\.spec\.cjs$/.test(normalized)) return [...MAIN_PROJECTS, ...PWA_PROJECTS];
   if (/21-runtime-code-coverage\.spec\.cjs|runtime-code-coverage/i.test(normalized)) return ['chromium'];
-  if (/(^|\/)layout\//i.test(normalized)) return ['chromium'];
   return MAIN_PROJECTS;
 }
-
-function stripStringsAndComments(source = '') {
-  const chars = [...String(source || '')];
-  let state = 'code';
-  let quote = '';
-  for (let i = 0; i < chars.length; i += 1) {
-    const ch = chars[i];
-    const next = chars[i + 1] || '';
-    if (state === 'line-comment') {
-      if (ch === '\n') state = 'code'; else chars[i] = ' ';
-      continue;
-    }
-    if (state === 'block-comment') {
-      if (ch === '*' && next === '/') { chars[i] = chars[i + 1] = ' '; i += 1; state = 'code'; }
-      else if (ch !== '\n') chars[i] = ' ';
-      continue;
-    }
-    if (state === 'string') {
-      if (ch === '\\') { chars[i] = ' '; if (i + 1 < chars.length && chars[i + 1] !== '\n') chars[++i] = ' '; continue; }
-      if (ch === quote) { chars[i] = ' '; state = 'code'; quote = ''; }
-      else if (ch !== '\n') chars[i] = ' ';
-      continue;
-    }
-    if (ch === '/' && next === '/') { chars[i] = chars[i + 1] = ' '; i += 1; state = 'line-comment'; continue; }
-    if (ch === '/' && next === '*') { chars[i] = chars[i + 1] = ' '; i += 1; state = 'block-comment'; continue; }
-    if (ch === "'" || ch === '"' || ch === '`') { quote = ch; chars[i] = ' '; state = 'string'; }
-  }
-  return chars.join('');
-}
-function specMatchesReleaseUniverse(rel = '') {
-  const normalized = normalizeRel(rel);
-  return specIsInReleaseUniverse(`tests/${normalized}`);
-}
-
-function findFocusedTestDeclarations(root = process.cwd()) {
-  const findings = [];
-  for (const file of listSpecFiles(root)) {
-    const rel = normalizeRel(path.relative(path.join(root, 'tests'), file));
-    if (!specMatchesReleaseUniverse(rel)) continue;
-    const code = stripStringsAndComments(fs.readFileSync(file, 'utf8'));
-    const re = /\b(?:test|it|describe)(?:\s*\.\s*describe)?\s*\.\s*only\s*\(/g;
-    let match;
-    while ((match = re.exec(code))) {
-      const line = code.slice(0, match.index).split(/\r?\n/).length;
-      findings.push({ specPath: rel, line, expression: match[0].replace(/\s+/g, '') });
-    }
-  }
-  return findings;
-}
-
 function fallbackStaticInventory({ root = process.cwd() } = {}) {
   const records = [];
   for (const file of listSpecFiles(root)) {
@@ -206,14 +154,6 @@ function validateInventoryRecords(records = []) {
 }
 function generatePlaywrightInventory({ root=process.cwd(), outputPath='', runId='', sourceVersion='', config='playwright.inventory.config.cjs', allowStaticFallback = false, releaseMode = true }={}) {
   const generatedAt = new Date().toISOString();
-  const focusedTests = findFocusedTestDeclarations(root);
-  if (releaseMode && focusedTests.length) {
-    const report = { ok: false, inventorySchemaVersion: INVENTORY_SCHEMA_VERSION, generatedAt, runId, sourceVersion, config, discoveryMode: 'source-focus-scan', discoveryError: `Focused Playwright declarations are forbidden in release mode: ${focusedTests.length}`, focusedTestCount: focusedTests.length, focusedTests, records: [] };
-    if (outputPath) writeJson(outputPath, report);
-    const err = new Error(report.discoveryError);
-    err.report = report;
-    throw err;
-  }
   const discovered = discoverWithPlaywrightList({ root, config });
   let discoveryMode = 'playwright-list';
   let records = discovered.records || [];
@@ -227,7 +167,7 @@ function generatePlaywrightInventory({ root=process.cwd(), outputPath='', runId=
   const unresolvedTemplateRows = titleContainsTemplate(records);
   const validation = validateInventoryRecords(records);
   const ok = validation.ok && records.length > 0 && unresolvedTemplateRows.length === 0 && (discovered.ok || (allowStaticFallback && !releaseMode));
-  const report = { ok, inventorySchemaVersion: INVENTORY_SCHEMA_VERSION, generatedAt, runId, sourceVersion, config, discoveryMode, discoveryError, discoveryDiagnostic: discoveryDiagnosticReport, focusedTestCount: focusedTests.length, focusedTests, count: records.length, discoveredTestCount: validation.discoveredTestCount, perProject: validation.perProject, duplicateIdentityCount: validation.duplicateIdentityCount, unresolvedTemplateTitleCount: unresolvedTemplateRows.length, unresolvedTemplateTitles: unresolvedTemplateRows.slice(0, 25), duplicates: validation.duplicates, records };
+  const report = { ok, inventorySchemaVersion: INVENTORY_SCHEMA_VERSION, generatedAt, runId, sourceVersion, config, discoveryMode, discoveryError, discoveryDiagnostic: discoveryDiagnosticReport, count: records.length, discoveredTestCount: validation.discoveredTestCount, perProject: validation.perProject, duplicateIdentityCount: validation.duplicateIdentityCount, unresolvedTemplateTitleCount: unresolvedTemplateRows.length, unresolvedTemplateTitles: unresolvedTemplateRows.slice(0, 25), duplicates: validation.duplicates, records };
   if (outputPath) writeJson(outputPath, report);
   if (releaseMode && !ok) {
     const err = new Error(`Playwright release inventory discovery failed: ${discoveryError || (unresolvedTemplateRows.length ? 'unresolved template titles' : 'inventory invalid')}`);
@@ -242,4 +182,4 @@ if (require.main === module) {
   console.log(`Wrote Playwright inventory v${INVENTORY_SCHEMA_VERSION}: ${report.count} identities -> ${outputPath}`);
   if (!report.ok) process.exit(1);
 }
-module.exports = { INVENTORY_SCHEMA_VERSION, normalizeRel, stripStringsAndComments, findFocusedTestDeclarations, parsePlaywrightListLine, parsePlaywrightListOutput, discoverWithPlaywrightList, generatePlaywrightInventory, validateInventoryRecords, stableIdentityKey, projectsForSpec, MAIN_PROJECTS, PWA_PROJECTS, titleContainsTemplate, discoveryDiagnostic };
+module.exports = { INVENTORY_SCHEMA_VERSION, normalizeRel, parsePlaywrightListLine, parsePlaywrightListOutput, discoverWithPlaywrightList, generatePlaywrightInventory, validateInventoryRecords, stableIdentityKey, projectsForSpec, MAIN_PROJECTS, PWA_PROJECTS, titleContainsTemplate, discoveryDiagnostic };

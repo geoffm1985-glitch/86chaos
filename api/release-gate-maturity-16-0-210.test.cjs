@@ -4,7 +4,6 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const root = path.resolve(__dirname, '..');
-const { validateCurrentReleaseMetadata } = require('../scripts/86chaos-release-gate/current-release-metadata.cjs');
 const read = rel => fs.readFileSync(path.join(root, rel), 'utf8');
 const json = rel => JSON.parse(read(rel));
 
@@ -19,9 +18,20 @@ test('16.0.210 archive-only Request Off check uses the seeded date and an actual
   assert.match(archiveOnlyBlock, /Bulk archive should show one final summary toast/);
 });
 
-test('16.0.210 historical maturity assertions coexist with authoritative current release metadata', () => {
-  const result = validateCurrentReleaseMetadata(root);
-  assert.equal(result.ok, true, result.errors.join('\\n'));
-  assert.equal(result.version, JSON.parse(read('package.json')).version);
-  assert.equal(result.values.testSource, `node scripts/validate-${result.version.replace(/\./g, '-')}.js`);
+test('16.0.210 historical maturity assertions coexist with current 17.0.11 version metadata', () => {
+  const pkg = json('package.json');
+  const lock = json('package-lock.json');
+  const version = json('public/version.json');
+  const appCore = read('src/core/appCore.js');
+  const apiVersion = read('api/_version.js');
+  assert.equal(pkg.version, '17.0.11');
+  assert.equal(lock.version, '17.0.11');
+  assert.equal(lock.packages[''].version, '17.0.11');
+  assert.equal(pkg.scripts['test:source'], 'node scripts/validate-17-0-10.js');
+  assert.equal(version.version, '17.0.11');
+  assert.equal(version.build, '17.0.11');
+  assert.equal(version.releaseTitle, 'Repository Safety Manifest Repair');
+  assert.match(appCore, /CURRENT_VERSION = '17\.0\.10'/);
+  assert.match(apiVersion, /APP_VERSION = '17\.0\.10'/);
+  assert.match(apiVersion, /SECURITY_SCHEMA_VERSION = '17\.0\.10'/);
 });

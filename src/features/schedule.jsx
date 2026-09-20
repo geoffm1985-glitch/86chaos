@@ -27,7 +27,7 @@ import { createSchedulePublishGuard, makeSchedulePublishProgress } from '../core
 import { activeRosterRoles, resolveShiftRosterRole, copyRosterRoleFields } from '../core/rosterRoleIdentity';
 import { buildSchedulePublicationPlan, buildConfirmedShiftEvidence, digestSchedulePublicationPlan } from '../core/schedulePublicationPlan';
 import { requestOffDateKey, normalizeRequestOffRuntimeRow, safeRequestOffRows } from '../core/requestOffRuntimeSafety';
-import { safeScheduleObjectRows, safeScheduleRosterRows, safeScheduleShiftRows, safeScheduleAvailabilityRows, safeScheduleEventRows } from '../core/scheduleRuntimeSafety';
+import { normalizeScheduleBuilderEvents, safeScheduleBuilderRecords } from '../core/scheduleBuilderRuntime';
 import { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, MapClickListener, SmartEmptyState, MiniProblemCard, getHomeProfile, calculatePunchHours, getWeekStart, roleMatches, toLocalTimeInput, makeLocalIso, PunchTable, FriendlyEmpty, GlobalSearchModal, QuickActionDock, KitchenTVMode, ChangeLogModal, UndoBar } from '../components/common';
 
 
@@ -1017,9 +1017,6 @@ const normalizeTipAmount = (value) => {
 };
 
 const TabMasterSchedule = ({ currentDate, setCurrentDate = null, onSubTabChange = null, appUser, users, shifts, shiftSwaps, timeOffRequests, events, addToast, initialSubTab = 'my-schedule', voiceScheduleSubTabTarget = null, scheduleBuilderProps = null, clientData = null }) => {
-  // Keep the parent Time Clock & Schedule route on the known-good 16.0.227 boundary: do not
-  // eagerly run Schedule Builder / Request Off sanitizers before the active subtab is known.
-  // Defensive normalization is applied only inside the subtabs that need it below.
   const [rosterFilterDate, setRosterFilterDate] = useState('');
   const [isFullSchedulePickerOpen, setIsFullSchedulePickerOpen] = useState(false);
   const [fullSchedulePickerMonth, setFullSchedulePickerMonth] = useState(getMonthStr(currentDate));
@@ -1051,7 +1048,7 @@ const TabMasterSchedule = ({ currentDate, setCurrentDate = null, onSubTabChange 
   const availabilityWhereClauses = canViewTeamAvailability ? [] : [['scheduleUserId', '==', scheduleIdentity.scheduleUserId || '__none__']];
   const availabilityLimit = canViewTeamAvailability ? 220 : 25;
   const availabilityRecordsState = useLiveCollectionState('availabilityRecords', appUser?.restaurantId, { enabled: !!appUser?.restaurantId && (subTab === 'availability' || subTab === 'schedule-builder'), whereClauses: availabilityWhereClauses, orderByField: canViewTeamAvailability ? 'employeeName' : null, orderDirection: 'asc', limitCount: availabilityLimit, fallbackLimitCount: canViewTeamAvailability ? 80 : 25, debugLabel: `schedule:${subTab}:availability` });
-  const availabilityRecords = Array.isArray(availabilityRecordsState.data) ? availabilityRecordsState.data : [];
+  const availabilityRecords = availabilityRecordsState.data || [];
 
   useEffect(() => { onSubTabChange?.(subTab); }, [subTab, onSubTabChange]);
 
@@ -1139,9 +1136,7 @@ const TabMasterSchedule = ({ currentDate, setCurrentDate = null, onSubTabChange 
       console.warn('Active punch listener fell back safely:', err?.message || err);
       addToast('Clock Sync Warning', 'Clock-in status could not sync yet. Your schedule is still available. Try again in a minute or tell a manager.');
     });
-    return () => {
-      if (typeof unsub === 'function') unsub();
-    };
+    return () => unsub();
   }, [subTab, appUser?.id, appUser?.restaurantId, appUser?.scheduleUserId, appUser?.employeeId, appUser?.userId, appUser?.rosterUserId]);
 
 
@@ -1534,7 +1529,7 @@ const handleOfferSwap = async (shift) => {
     .sort(compareShiftsByStartDateTime)[0] || null;
   const activeMonthShifts = dedupePublishedScheduleShiftsForDisplay((shifts || [])
     .filter(s => !isDeletedScheduleShift(s) && getShiftDateKey(s).startsWith(monthStr) && isScheduleShiftPublished(s)), users)
-    .sort((a,b) => getShiftDateKey(a) === getShiftDateKey(b) ? String(a?.startTime || '').localeCompare(String(b?.startTime || '')) : getShiftDateKey(a).localeCompare(getShiftDateKey(b)));
+    .sort((a,b) => getShiftDateKey(a) === getShiftDateKey(b) ? (a.startTime || '').localeCompare(b.startTime || '') : getShiftDateKey(a).localeCompare(getShiftDateKey(b)));
 
   const effectiveActivePunch = clockActionBusy && clockActionType === 'out' ? (clockActionPunch || activePunch) : (activePunch && !(clockActionBusy && clockActionType === 'in') ? activePunch : null);
 
@@ -1568,7 +1563,7 @@ const handleOfferSwap = async (shift) => {
 
       {subTab === 'schedule-builder' && scheduleBuilderProps && (
         <div className="animate-[slideIn_0.2s_ease-out]">
-          <TabScheduleWorkbench {...scheduleBuilderProps} users={safeScheduleRosterRows(scheduleBuilderProps?.users || users)} shifts={safeScheduleShiftRows(scheduleBuilderProps?.shifts || shifts)} events={safeScheduleEventRows(scheduleBuilderProps?.events || events)} timeOffRequests={mergeRequestOffWorkflowRows(scheduleBuilderProps?.timeOffRequests || timeOffRequests)} availabilityRecords={safeScheduleAvailabilityRows(availabilityRecords)} availabilityDataState={{ ...availabilityRecordsState, count: safeScheduleAvailabilityRows(availabilityRecords).length, limit: availabilityLimit, workspaceId: appUser?.restaurantId || '' }} />
+          <TabScheduleWorkbench {...scheduleBuilderProps} availabilityRecords={availabilityRecords} availabilityDataState={{ ...availabilityRecordsState, count: availabilityRecords.length, limit: availabilityLimit, workspaceId: appUser?.restaurantId || '' }} />
         </div>
       )}
 
@@ -1795,19 +1790,18 @@ const handleOfferSwap = async (shift) => {
       })()}
 
       {subTab === 'month-view' && <div className="animate-[slideIn_0.2s_ease-out]"><TabMonth currentDate={currentDate} users={users} shifts={shifts} appUser={appUser} /></div>}
-      {subTab === 'time-off' && <div className="animate-[slideIn_0.2s_ease-out]"><TabTimeOff timeOffRequests={mergeRequestOffWorkflowRows(timeOffRequests)} appUser={appUser} users={safeScheduleRosterRows(users)} addToast={addToast} events={safeScheduleEventRows(events)} shifts={safeScheduleShiftRows(shifts)} clientData={clientData} /></div>}
-      {subTab === 'availability' && <div className="animate-[slideIn_0.2s_ease-out]"><TabAvailability availabilityRecords={safeScheduleAvailabilityRows(availabilityRecords)} appUser={appUser} users={safeScheduleRosterRows(users)} addToast={addToast} clientData={clientData} /></div>}  
+      {subTab === 'time-off' && <div className="animate-[slideIn_0.2s_ease-out]"><TabTimeOff timeOffRequests={timeOffRequests} appUser={appUser} users={users} addToast={addToast} events={events} shifts={shifts} clientData={clientData} /></div>}
+      {subTab === 'availability' && <div className="animate-[slideIn_0.2s_ease-out]"><TabAvailability availabilityRecords={availabilityRecords} appUser={appUser} users={users} addToast={addToast} clientData={clientData} /></div>}  
     </div>
   );
 };
 
-const TabSchedule = ({ currentDate, users: rawUsers, shifts: rawShifts, events: rawEvents, timeOffRequests: rawTimeOffRequests, timePunches: rawTimePunches = [], addToast, appUser, clientData = null, initialSubTab = 'schedule', hideSubTabs = false, availabilityRecords: rawAvailabilityRecords = [], schedulePeriodContext = null, reviewPublishRequest = 0 }) => {
-  const users = safeScheduleRosterRows(rawUsers);
-  const shifts = safeScheduleShiftRows(rawShifts);
-  const events = safeScheduleEventRows(rawEvents);
-  const timeOffRequests = mergeRequestOffWorkflowRows(rawTimeOffRequests);
-  const timePunches = safeScheduleObjectRows(rawTimePunches);
-  const availabilityRecords = safeScheduleAvailabilityRows(rawAvailabilityRecords);
+const TabSchedule = ({ currentDate, users: rawUsers, shifts: rawShifts, events: rawEvents, timeOffRequests: rawTimeOffRequests, timePunches = [], addToast, appUser, clientData = null, initialSubTab = 'schedule', hideSubTabs = false, availabilityRecords: rawAvailabilityRecords = [], schedulePeriodContext = null, reviewPublishRequest = 0 }) => {
+  const users = safeScheduleBuilderRecords(rawUsers);
+  const shifts = safeScheduleBuilderRecords(rawShifts);
+  const events = normalizeScheduleBuilderEvents(rawEvents);
+  const timeOffRequests = safeRequestOffRows(rawTimeOffRequests).map(normalizeRequestOffRuntimeRow).filter(Boolean);
+  const availabilityRecords = safeScheduleBuilderRecords(rawAvailabilityRecords);
   const [subTab, setSubTab] = useState(initialSubTab); 
   const [selectedEmp, setSelectedEmp] = useState(''); 
   const [assignDates, setAssignDates] = useState([]); 
@@ -1978,7 +1972,7 @@ const [eventDate, setEventDate] = useState(getToday());
   const publicationPeriodShifts = publicationSourceShifts.filter(s => { const d = getShiftDateKey(s); return d >= publicationWeekBounds.start && d <= publicationWeekBounds.end; });
   const renderedPublicationPeriodShifts = mergeSchedulePublishCandidates(publicationPeriodShifts, getScheduleBuilderRenderedShiftsForDaySet(new Set(publicationWeekDays)))
     .filter(shift => !isDeletedScheduleShift(shift) && !shiftMatchesLocalDeleteMarkers(shift, activeLocalDeleteKeySet, activeLocalDeleteMarkerMap));
-  const schedulePeriodEvents = events.filter(e => e.type === 'special_event' && e.date >= schedulePeriodBounds.start && e.date <= schedulePeriodBounds.end).sort((a,b) => String(a?.date || '').localeCompare(String(b?.date || '')) || String(a?.time || '').localeCompare(String(b?.time || '')) || String(a?.title || '').localeCompare(String(b?.title || '')));
+  const schedulePeriodEvents = events.filter(e => e.type === 'special_event' && e.date >= schedulePeriodBounds.start && e.date <= schedulePeriodBounds.end).sort((a,b) => String(a.date || '').localeCompare(String(b.date || '')) || String(a.time || '').localeCompare(String(b.time || '')) || String(a.title || '').localeCompare(String(b.title || '')));
   const buildPublishWeekOptionsForDays = (sourceDays = []) => {
     const options = [];
     const sourceDaySet = new Set(sourceDays);
@@ -2157,12 +2151,12 @@ const [eventDate, setEventDate] = useState(getToday());
       event.date ? formatDisplayDate(event.date) : '',
       event.time ? formatShortTime(event.time) : '',
       event.notes ? `Notes: ${event.notes}` : '',
-      event.orderReminder?.enabled ? `Order reminder: ${(event.orderReminder.cutoffDays || []).join(', ') || 'enabled'}` : ''
+      event.orderReminder?.enabled ? `Order reminder: ${Array.isArray(event.orderReminder.cutoffDays) ? event.orderReminder.cutoffDays.join(', ') || 'enabled' : String(event.orderReminder.cutoffDays || 'enabled')}` : ''
     ];
     return parts.filter(Boolean).join(' • ');
   };
   const monthShifts = visibleShifts.filter(s => String(s.date || '').startsWith(monthStr));
-  const monthEvents = events.filter(e => e.type === 'special_event' && e.date.startsWith(monthStr)).sort((a,b) => String(a?.date || '').localeCompare(String(b?.date || '')));
+  const monthEvents = events.filter(e => e.type === 'special_event' && e.date.startsWith(monthStr)).sort((a,b) => (a.date || '').localeCompare(b.date || ''));
 
   // --- CUSTOM DROPDOWN TIME GENERATOR ---
   const TIME_OPTIONS = [];
@@ -2211,7 +2205,7 @@ const [eventDate, setEventDate] = useState(getToday());
       seen.add(key);
       out.push(p);
     }
-    return out.sort((a,b) => String(a?.start || '').localeCompare(String(b?.start || '')) || String(a?.label || '').localeCompare(String(b?.label || '')));
+    return out.sort((a,b) => a.start.localeCompare(b.start) || a.label.localeCompare(b.label));
   };
   const customPresetCacheKey = `customPresets_${appUser?.restaurantId || 'unknown'}`;
   const customPresetMigrationKey = `customPresetsSharedMigration_${appUser?.restaurantId || 'unknown'}`;
@@ -2256,7 +2250,7 @@ const [eventDate, setEventDate] = useState(getToday());
   }, [appUser?.restaurantId]);
 
   const SHIFT_PRESETS = useMemo(() => {
-    const customRows = [...customPresets].sort((a,b) => String(a?.start || '').localeCompare(String(b?.start || '')) || String(a?.label || '').localeCompare(String(b?.label || '')));
+    const customRows = [...customPresets].sort((a,b) => a.start.localeCompare(b.start) || a.label.localeCompare(b.label));
     const customRowsByLabel = new Map();
     for (const preset of customRows) {
       const key = presetLabelKeyClient(preset);
@@ -2392,11 +2386,11 @@ const [eventDate, setEventDate] = useState(getToday());
     const roleB = b.role || 'Unassigned';
     const nameA = a.name || 'Unknown';
     const nameB = b.name || 'Unknown';
-    return String(roleA).localeCompare(String(roleB)) === 0 ? String(nameA).localeCompare(String(nameB)) : String(roleA).localeCompare(String(roleB));
+    return roleA === roleB ? nameA.localeCompare(nameB) : roleA.localeCompare(roleB);
   });
   
   const groupedUsers = activeRoster.reduce((acc, user) => {
-    const role = cleanScheduleRoleName(user.role || user.scheduleRole || user.primaryRole || 'Unassigned') || 'Unassigned';
+    const role = user.role || 'Unassigned';
     if (!acc[role]) acc[role] = [];
     acc[role].push(user);
     return acc;
@@ -3617,7 +3611,7 @@ const handleAddEvent = async (e) => {
       payrollSummary[p.employeeId].pay += (reg * rate) + (ot * rate * 1.5);
   });
   
-  const summaryList = Object.values(payrollSummary).sort((a, b) => String(a?.name || '').localeCompare(String(b?.name || '')));
+  const summaryList = Object.values(payrollSummary).sort((a, b) => a.name.localeCompare(b.name));
   const actualPeriodLabor = summaryList.reduce((acc, s) => acc + s.pay, 0);
 
   const handleForceClockOut = async (punch) => {
@@ -3994,7 +3988,7 @@ const handleExportTimesheets = () => {
               <label className={T.label}>Select Employee</label>
               <select value={editPunchEmpId} onChange={e=>setEditPunchEmpId(e.target.value)} className={T.input} required>
                 <option value="">-- Select Staff Member --</option>
-                {users.filter(u => u?.isActive !== false).sort((a,b) => String(a?.name || '').localeCompare(String(b?.name || ''))).map(u => (
+                {users.filter(u => u.isActive !== false).sort((a,b) => a.name.localeCompare(b.name)).map(u => (
                   <option key={u.id} value={u.id}>{u.name}</option>
                 ))}
               </select>
@@ -4337,7 +4331,7 @@ const handleExportTimesheets = () => {
                           {role}
                         </td>
                       </tr>
-                      {groupedUsers[role].sort((a,b) => String(a?.name || '').localeCompare(String(b?.name || ''))).map(u => (
+                      {groupedUsers[role].sort((a,b) => (a.name||'').localeCompare(b.name||'')).map(u => (
                         <tr key={u.id} className={selectedEmp===u.id?'bg-[#12161A]/50':''}>
                           <td onClick={()=>{setSelectedEmp(u.id);setAssignDates([]);}} className={`px-2 py-1 text-xs font-bold sticky left-0 z-10 border-r border-[#2A353D] cursor-pointer truncate shadow-sm ${selectedEmp===u.id?`${T.grad} text-slate-900`:'bg-[#1A2126] text-white'}`}>{u.name || 'Unnamed'}</td>
                           {schedulePeriodDays.map(d => {
@@ -4483,7 +4477,7 @@ const handleExportTimesheets = () => {
           <div className={`${T.card} overflow-hidden`}>
             <div className={`divide-y ${T.border}`}>
               {eventsCalEvents.length === 0 && <div className={`p-6 text-center text-sm font-bold ${T.muted}`}>No special events scheduled this month.</div>}
-              {eventsCalEvents.sort((a,b) => String(a?.date || '').localeCompare(String(b?.date || ''))).map(ev => (
+              {eventsCalEvents.sort((a,b) => (a.date || '').localeCompare(b.date || '')).map(ev => (
                 <div key={ev.id} className={`${T.row} flex flex-col sm:flex-row justify-between sm:items-center gap-4`}>
                   <div className="flex items-start sm:items-center gap-4">
                     <div className={`bg-[#12161A] border ${T.border} ${T.copper} font-black text-center rounded-xl p-2 w-14 shadow-sm flex-shrink-0`}>
@@ -4613,7 +4607,7 @@ const handleExportTimesheets = () => {
               <input type="date" value={punchFilterDate} onChange={e => setPunchFilterDate(e.target.value)} className={`${T.input} py-1.5 px-2 text-xs w-auto flex-1 sm:flex-none`} />
               <select value={punchFilterEmp} onChange={e => setPunchFilterEmp(e.target.value)} className={`${T.input} py-1.5 px-2 text-xs w-auto flex-1 sm:flex-none`}>
                 <option value="">All Staff</option>
-                {users.filter(u => u?.isActive !== false).sort((a,b) => String(a?.name || '').localeCompare(String(b?.name || ''))).map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                {users.filter(u => u.isActive !== false).sort((a,b) => a.name.localeCompare(b.name)).map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
               </select>
               {(punchFilterDate || punchFilterEmp) && <button onClick={() => { setPunchFilterDate(''); setPunchFilterEmp(''); }} className="p-1.5 text-slate-400 hover:text-red-400 border border-[#2A353D] bg-[#1A2126] rounded-lg transition-colors"><X size={14}/></button>}
             </div>
@@ -4897,8 +4891,6 @@ const TabMonth = ({ currentDate, users, shifts, appUser }) => {
 };
 
 const TabAvailability = ({ availabilityRecords = [], appUser, users = [], addToast, clientData = null }) => {
-  availabilityRecords = safeScheduleAvailabilityRows(availabilityRecords);
-  users = safeScheduleRosterRows(users);
   const [mode, setMode] = useState('mine');
   const [effectiveStartDate, setEffectiveStartDate] = useState(getToday());
   const [effectiveEndDate, setEffectiveEndDate] = useState('');
@@ -5069,10 +5061,6 @@ const normalizeConflictResult = (row = {}, dateKey = '') => ({
 });
 
 const TabTimeOff = ({ timeOffRequests, appUser, users, addToast, events = [], shifts = [], clientData = null }) => {
-  users = safeScheduleRosterRows(users);
-  shifts = safeScheduleShiftRows(shifts);
-  events = safeScheduleEventRows(events);
-  timeOffRequests = mergeRequestOffWorkflowRows(timeOffRequests);
   const [calMonth, setCalMonth] = useState(getToday().substring(0, 7));
   const [selectedDates, setSelectedDates] = useState([]);
   const [isPartial, setIsPartial] = useState(false);
@@ -5200,7 +5188,7 @@ const TabTimeOff = ({ timeOffRequests, appUser, users, addToast, events = [], sh
     }
     return Array.from(byRole.entries())
       .sort(([a], [b]) => a.localeCompare(b))
-      .map(([role, rows]) => ({ role, rows: rows.sort((a, b) => String(a?.label || '').localeCompare(String(b?.label || ''))) }));
+      .map(([role, rows]) => ({ role, rows: rows.sort((a, b) => a.label.localeCompare(b.label)) }));
   }, [users, canManage, timeOffRequestRows]);
   const selectedRequestOffEmployee = useMemo(() => {
     if (!employeeFilter) return null;
@@ -5630,7 +5618,7 @@ const ScheduleCopilot = ({ period, periodLabel = '', users = [], shifts = [], ti
   const copyWeekPeriod = deriveScheduleToolsCopyWeek(activePeriod);
   const copyWeekDates = copyWeekPeriod.dates;
   const safeShifts = Array.isArray(shifts) ? shifts.filter(Boolean) : [];
-  const safeUsers = safeScheduleRosterRows(users);
+  const safeUsers = Array.isArray(users) ? users.filter(Boolean) : [];
   const safeTimeOffRequests = Array.isArray(timeOffRequests) ? timeOffRequests.filter(Boolean) : [];
   const safeTemplates = Array.isArray(templates) ? templates.filter(Boolean) : [];
   const activePeriodShifts = filterScheduleToolsRecords(safeShifts, activePeriod, appUser?.restaurantId).filter(shift => !isDeletedScheduleShift(shift));
@@ -5661,7 +5649,7 @@ const ScheduleCopilot = ({ period, periodLabel = '', users = [], shifts = [], ti
     }));
   }, [firstScheduleRole, scheduleRoleOptions.join('|')]);
 
-  const templateOptions = [...safeTemplates].sort((a,b) => String(a?.name || '').localeCompare(String(b?.name || '')));
+  const templateOptions = [...safeTemplates].sort((a,b) => (a.name || '').localeCompare(b.name || ''));
   const activeTemplate = safeTemplates.find(t => t.id === templateId) || null;
   const draftCount = activePeriodShifts.filter(s => !isScheduleShiftPublished(s)).length;
   const coverageVarianceRows = buildCoverageVarianceRows({ coverageTargets, periodDates: activePeriodDates, periodShifts: activePeriodShifts, roleMatcher: roleMatches, canonicalRole: canonicalScheduleRole });
@@ -5938,7 +5926,7 @@ const ScheduleCopilot = ({ period, periodLabel = '', users = [], shifts = [], ti
       {activeTool === 'targets' && <div className="grid lg:grid-cols-2 gap-4"><form onSubmit={addCoverageTarget} className="bg-[#12161A] border border-[#2A353D] rounded-xl p-3 space-y-2"><h4 className="font-black text-white">Add Coverage Target</h4><p className="text-[10px] font-bold text-slate-400">Choose how many people you need for a role and time. Roles match the Staff Roster and Schedule Builder.</p><div className="grid grid-cols-2 gap-2"><select value={targetForm.dayIndex} onChange={e=>setTargetForm({...targetForm, dayIndex:e.target.value})} className={T.input}>{dayNames.map((d,i)=><option key={d} value={i}>{d}</option>)}</select><select value={targetForm.role} onChange={e=>setTargetForm({...targetForm, role:e.target.value})} className={T.input}>{scheduleRoleOptions.map(r => <option key={r} value={r}>{r}</option>)}</select><input type="time" value={targetForm.startTime} onChange={e=>setTargetForm({...targetForm, startTime:e.target.value})} className={T.input}/><input type="time" value={targetForm.endTime} onChange={e=>setTargetForm({...targetForm, endTime:e.target.value})} className={T.input}/><input type="number" min="1" value={targetForm.count} onChange={e=>setTargetForm({...targetForm, count:e.target.value})} className={T.input}/><button className={`${T.btn} py-2`}>Save Coverage Target</button></div></form><div className="space-y-2">{coverageTargets.length === 0 ? <FriendlyEmpty title="No coverage targets yet" text="Add the staffing level you want for each role and time. Fill Coverage Gaps can then create draft shifts for review."/> : coverageTargets.map(t => <div key={t.id} className="bg-[#12161A] border border-[#2A353D] rounded-xl p-3 flex justify-between items-center"><div><div className="font-black text-white">{dayNames[t.dayIndex]} • {t.role} x{t.count}</div><div className="text-xs text-slate-400 font-bold">{formatShortTime(t.startTime)} - {formatShortTime(t.endTime)}</div></div><button onClick={() => deleteDoc(doc(db,'scheduleCoverageTargets',t.id))} className="p-2 text-slate-400 hover:text-red-400"><Trash2 size={14}/></button></div>)}</div></div>}
       {activeTool === 'templates' && <div className="space-y-3"><div className="flex flex-col md:flex-row gap-2"><select value={templateId} onChange={e => setTemplateId(e.target.value)} className={`${T.input} flex-1`}><option value="">Select template to apply</option>{templateOptions.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}</select><button onClick={applyTemplate} disabled={periodActionBlocked} className={`${T.btn} py-2 disabled:opacity-50`}>{activePeriod.mode === 'weekly' ? 'Apply to Current Week' : 'Apply to Current Period'}</button><button onClick={saveCurrentWeekAsTemplate} className={T.btnAlt}>Save Current Week</button></div>{templateOptions.length === 0 ? <FriendlyEmpty title="No templates yet" text="Create a Normal Week, Packers Sunday, Fish Fry Friday, or Live Music template. Each restaurant gets its own library."/> : templateOptions.map(t => <div key={t.id} className="bg-[#12161A] border border-[#2A353D] rounded-xl p-3 flex justify-between items-center"><div><div className="font-black text-white">{t.name}</div><div className="text-xs text-slate-400 font-bold">{t.description || 'No description'} • {(t.rows || []).length} rules</div></div><div className="flex gap-2"><button onClick={() => editTemplate(t)} className={T.btnAlt}>Edit</button><button onClick={() => deleteTemplate(t)} className="px-3 py-2 rounded-xl bg-red-900/20 text-red-300 border border-red-900/50 text-xs font-black">Delete</button></div></div>)}</div>}
       {activeTool === 'template-editor' && <form onSubmit={saveTemplate} className="space-y-3"><div className="grid md:grid-cols-2 gap-2"><input value={templateName} onChange={e=>setTemplateName(e.target.value)} className={T.input} placeholder="Template name" required/><input value={templateDesc} onChange={e=>setTemplateDesc(e.target.value)} className={T.input} placeholder="Description"/></div><div className="space-y-2">{templateRows.map((r,idx)=><div key={idx} className="grid grid-cols-2 md:grid-cols-6 gap-2 bg-[#12161A] border border-[#2A353D] rounded-xl p-2"><select value={r.dayIndex} onChange={e=>updateTemplateRow(idx,{dayIndex:e.target.value})} className={T.input}>{dayNames.map((d,i)=><option key={d} value={i}>{d}</option>)}</select><select value={r.role} onChange={e=>updateTemplateRow(idx,{role:e.target.value})} className={T.input}>{scheduleRoleOptions.map(roleName => <option key={roleName} value={roleName}>{roleName}</option>)}</select><input type="time" value={r.startTime} onChange={e=>updateTemplateRow(idx,{startTime:e.target.value})} className={T.input}/><input type="time" value={r.endTime} onChange={e=>updateTemplateRow(idx,{endTime:e.target.value})} className={T.input}/><input type="number" min="1" value={r.count} onChange={e=>updateTemplateRow(idx,{count:e.target.value})} className={T.input}/><button type="button" onClick={()=>removeTemplateRow(idx)} className="bg-red-900/20 border border-red-900/50 text-red-300 rounded-xl font-black text-xs">Remove</button></div>)}</div><div className="flex gap-2"><button type="button" onClick={addTemplateRow} className={T.btnAlt}>Add Row</button><button type="submit" className={`${T.btn} py-2`}>{editingTemplateId ? 'Update Template' : 'Create Template'}</button></div></form>}
-      {activeTool === 'drag' && <div className="space-y-3"><p className="text-xs text-slate-400 font-bold">Drag shifts between dates on desktop, or use Move to day on mobile. Quick edits save only actual changes.</p><div className="grid sm:grid-cols-2 xl:grid-cols-7 gap-2">{activePeriodDates.map(date => { const dateDayName = dayNames[new Date(`${date}T12:00:00`).getDay()]; const dateShifts = activePeriodShifts.filter(s => getShiftDateKey(s) === date).sort((a,b)=>String(a?.startTime || '').localeCompare(String(b?.startTime || ''))); return <div key={date} onDragOver={e => e.preventDefault()} onDrop={() => moveShiftToDay(date)} className="min-h-[160px] min-w-0 bg-[#12161A] border border-[#2A353D] rounded-xl p-2"><div className="text-[10px] font-black uppercase tracking-widest text-[#D4A381] mb-2">{dateDayName}<br/><span className="text-slate-500">{date.substring(5)}</span></div>{dateShifts.map(shift => <div key={shift.id} draggable onDragStart={() => setDraggedShiftId(shift.id)} onDragEnd={() => setDraggedShiftId(null)} className={`mb-2 rounded-lg border p-2 cursor-move ${draggedShiftId === shift.id ? 'border-[#D4A381] bg-[#D4A381]/10' : 'border-[#2A353D] bg-[#1A2126]'}`}><div className="font-black text-white text-xs truncate">{shift.employeeName || users.find(u=>u.id===shift.employeeId)?.name || 'Unassigned'}</div><div className="text-[9px] text-slate-400 font-bold uppercase">{shift.role} • {formatShortTime(shift.startTime)}-{formatShortTime(shift.endTime)}</div><div className="grid grid-cols-1 gap-1 mt-2"><select value="" onChange={e=>e.target.value && quickUpdateShift(shift,{date:e.target.value})} className="bg-[#12161A] border border-[#2A353D] rounded-md px-1.5 py-1 text-[10px] text-[#D4A381] outline-none xl:hidden"><option value="">Move to day...</option>{activePeriodDates.map(d=><option key={d} value={d}>{dayNames[new Date(`${d}T12:00:00`).getDay()]} {d.substring(5)}</option>)}</select><select value={shift.employeeId || ''} onChange={e=>quickUpdateShift(shift,{employeeId:e.target.value})} className="bg-[#12161A] border border-[#2A353D] rounded-md px-1.5 py-1 text-[10px] text-white outline-none"><option value="">Unassigned</option>{activeUsers.map(u=><option key={u.id} value={u.id}>{u.name}</option>)}</select><div className="flex gap-1"><input type="time" defaultValue={shift.startTime || '09:00'} onBlur={e=>e.target.value && quickUpdateShift(shift,{startTime:e.target.value})} className="w-full min-w-0 bg-[#12161A] border border-[#2A353D] rounded-md px-1 py-1 text-[10px] text-white"/><input type="time" defaultValue={shift.endTime || '17:00'} onBlur={e=>e.target.value && quickUpdateShift(shift,{endTime:e.target.value})} className="w-full min-w-0 bg-[#12161A] border border-[#2A353D] rounded-md px-1 py-1 text-[10px] text-white"/></div></div></div>)}{dateShifts.length === 0 && <div className="border border-dashed border-[#2A353D] rounded-lg p-3 text-center text-[10px] font-bold text-slate-500">Drop shifts here</div>}</div>; })}</div></div>}
+      {activeTool === 'drag' && <div className="space-y-3"><p className="text-xs text-slate-400 font-bold">Drag shifts between dates on desktop, or use Move to day on mobile. Quick edits save only actual changes.</p><div className="grid sm:grid-cols-2 xl:grid-cols-7 gap-2">{activePeriodDates.map(date => { const dateDayName = dayNames[new Date(`${date}T12:00:00`).getDay()]; const dateShifts = activePeriodShifts.filter(s => getShiftDateKey(s) === date).sort((a,b)=>(a.startTime||'').localeCompare(b.startTime||'')); return <div key={date} onDragOver={e => e.preventDefault()} onDrop={() => moveShiftToDay(date)} className="min-h-[160px] min-w-0 bg-[#12161A] border border-[#2A353D] rounded-xl p-2"><div className="text-[10px] font-black uppercase tracking-widest text-[#D4A381] mb-2">{dateDayName}<br/><span className="text-slate-500">{date.substring(5)}</span></div>{dateShifts.map(shift => <div key={shift.id} draggable onDragStart={() => setDraggedShiftId(shift.id)} onDragEnd={() => setDraggedShiftId(null)} className={`mb-2 rounded-lg border p-2 cursor-move ${draggedShiftId === shift.id ? 'border-[#D4A381] bg-[#D4A381]/10' : 'border-[#2A353D] bg-[#1A2126]'}`}><div className="font-black text-white text-xs truncate">{shift.employeeName || users.find(u=>u.id===shift.employeeId)?.name || 'Unassigned'}</div><div className="text-[9px] text-slate-400 font-bold uppercase">{shift.role} • {formatShortTime(shift.startTime)}-{formatShortTime(shift.endTime)}</div><div className="grid grid-cols-1 gap-1 mt-2"><select value="" onChange={e=>e.target.value && quickUpdateShift(shift,{date:e.target.value})} className="bg-[#12161A] border border-[#2A353D] rounded-md px-1.5 py-1 text-[10px] text-[#D4A381] outline-none xl:hidden"><option value="">Move to day...</option>{activePeriodDates.map(d=><option key={d} value={d}>{dayNames[new Date(`${d}T12:00:00`).getDay()]} {d.substring(5)}</option>)}</select><select value={shift.employeeId || ''} onChange={e=>quickUpdateShift(shift,{employeeId:e.target.value})} className="bg-[#12161A] border border-[#2A353D] rounded-md px-1.5 py-1 text-[10px] text-white outline-none"><option value="">Unassigned</option>{activeUsers.map(u=><option key={u.id} value={u.id}>{u.name}</option>)}</select><div className="flex gap-1"><input type="time" defaultValue={shift.startTime || '09:00'} onBlur={e=>e.target.value && quickUpdateShift(shift,{startTime:e.target.value})} className="w-full min-w-0 bg-[#12161A] border border-[#2A353D] rounded-md px-1 py-1 text-[10px] text-white"/><input type="time" defaultValue={shift.endTime || '17:00'} onBlur={e=>e.target.value && quickUpdateShift(shift,{endTime:e.target.value})} className="w-full min-w-0 bg-[#12161A] border border-[#2A353D] rounded-md px-1 py-1 text-[10px] text-white"/></div></div></div>)}{dateShifts.length === 0 && <div className="border border-dashed border-[#2A353D] rounded-lg p-3 text-center text-[10px] font-bold text-slate-500">Drop shifts here</div>}</div>; })}</div></div>}
       {activeTool === 'warnings' && <div className="grid md:grid-cols-2 gap-3"><div>{coverageWarnings.length === 0 ? (scheduleToolsCompleteness.complete ? <FriendlyEmpty title="Coverage targets met" text={`No target gaps or over-coverage found for ${activePeriodLabel}.`}/> : <FriendlyEmpty title="Coverage check incomplete" text="Wait for the schedule and coverage targets to finish loading."/>) : coverageWarnings.map(w => <ScheduleWarningCard key={w.alertId} warning={w} appUser={appUser} />)}</div><div>{conflictList.length === 0 ? (scheduleToolsCompleteness.complete ? <FriendlyEmpty title="No conflicts found" text={`No schedule conflicts were found for ${activePeriodLabel}.`}/> : <FriendlyEmpty title="Conflict check incomplete" text="Wait for schedule, Request Off, and availability records to finish loading."/>) : conflictList.map(w => <ScheduleWarningCard key={w.alertId} warning={w} appUser={appUser} />)}</div></div>}
       </div>
     </div>

@@ -116,7 +116,7 @@ export async function generateMonthSchedulePdf(model, options = {}) {
   if (!model || model.page?.width !== PAGE_WIDTH || model.page?.height !== PAGE_HEIGHT) throw new Error('The Month Schedule PDF model is invalid.');
   const pdfLib = options.pdfLib || await import('pdf-lib'); const { PDFDocument, rgb } = pdfLib;
   const document = await PDFDocument.create(); const fonts = await embedFontFamilies(document, options);
-  document.setTitle(`86 Chaos Schedule ${model.monthTitle}`); document.setAuthor('86 Chaos'); document.setCreator('86 Chaos'); document.setProducer('86 Chaos 17.0.12');
+  document.setTitle(`86 Chaos Schedule ${model.monthTitle}`); document.setAuthor('86 Chaos'); document.setCreator('86 Chaos'); document.setProducer('86 Chaos 17.0.11');
   document.setKeywords(['86 Chaos', 'schedule', ...model.visibleShifts.map(shift => `shift:${shift.dedupeKey}`)]);
   const fixedDate = new Date('2000-01-01T00:00:00.000Z'); document.setCreationDate(fixedDate); document.setModificationDate(fixedDate);
   const black = rgb(0, 0, 0); const gray = rgb(0.94, 0.95, 0.96); const light = rgb(0.98, 0.98, 0.98); const page = document.addPage([PAGE_WIDTH, PAGE_HEIGHT]);

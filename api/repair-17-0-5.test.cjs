@@ -56,36 +56,9 @@ test('17.0.5 Copy Month retains canonical role across rename and duplicate displ
  const renamed=[{id:'grill',name:'Hot Line',previousNames:['Line']},{id:'other',name:'Line'}];assert.equal(core.resolveRole(copied,renamed).rosterRoleId,'grill');
 });
 function fixture(){const dir=fs.mkdtempSync(path.join(os.tmpdir(),'identity-1705-'));fs.mkdirSync(path.join(dir,'src'));fs.writeFileSync(path.join(dir,'package.json'),'{"version":"17.0.5"}\n');fs.writeFileSync(path.join(dir,'src/app.js'),'let value=1;\n');fs.writeFileSync(path.join(dir,'README.md'),'Source docs\n');const git=args=>{const r=cp.spawnSync('git',args,{cwd:dir,encoding:'utf8'});assert.equal(r.status,0,r.stderr);return r.stdout;};git(['init','-b','testing']);git(['add','.']);git(['-c','user.name=Fixture','-c','user.email=fixture@example.invalid','commit','-m','fixture']);return{dir,git};}
-test('17.0.5 historical build fingerprint follows deployment-safe manifest identity while strict diagnostics catch workspace drift',()=>{
- const {dir}=fixture(),oldVercel=process.env.VERCEL,oldStrict=process.env.CHAOS_STRICT_VERCEL_BUILD_WORKSPACE;
- try{
-  const before=identity.captureSourceIdentity(dir);
-  fs.writeFileSync(path.join(dir,'release-source-manifest.json'),JSON.stringify({schemaVersion:1,sourceHash:before.sourceHash,files:before.files},null,2)+'\n');
-  process.env.VERCEL='1';
-  delete process.env.CHAOS_STRICT_VERCEL_BUILD_WORKSPACE;
-  fs.unlinkSync(path.join(dir,'README.md'));
-  let build=identity.captureBuildSourceIdentity(dir);
-  assert.equal(build.sourceHash,before.sourceHash);
-  assert.equal(build.sourceEvidence,'bundled-manifest');
-  assert.equal(build.workspaceVerification,'vercel-git-metadata');
-  assert.deepEqual(build.buildSourceChanges,[]);
-  fs.writeFileSync(path.join(dir,'src/app.js'),'let value=2;\n');
-  build=identity.captureBuildSourceIdentity(dir);
-  assert.equal(build.sourceHash,before.sourceHash);
-  assert.deepEqual(build.buildSourceChanges,[]);
-  process.env.CHAOS_STRICT_VERCEL_BUILD_WORKSPACE='1';
-  assert.throws(()=>identity.captureBuildSourceIdentity(dir),/Build source differs/);
-  fs.writeFileSync(path.join(dir,'src/app.js'),'let value=1;\n');
-  const strict=identity.captureBuildSourceIdentity(dir);
-  assert.equal(strict.workspaceVerification,'strict-diagnostic');
-  assert.deepEqual(strict.buildSourceChanges,[{file:'README.md',reason:'absent',buildInput:false}]);
-  fs.unlinkSync(path.join(dir,'src/app.js'));
-  assert.throws(()=>identity.captureBuildSourceIdentity(dir),/absent/);
- }finally{
-  if(oldVercel===undefined)delete process.env.VERCEL;else process.env.VERCEL=oldVercel;
-  if(oldStrict===undefined)delete process.env.CHAOS_STRICT_VERCEL_BUILD_WORKSPACE;else process.env.CHAOS_STRICT_VERCEL_BUILD_WORKSPACE=oldStrict;
-  fs.rmSync(dir,{recursive:true,force:true});
- }
+test('17.0.5 build fingerprint survives filtered docs and catches altered or deleted runtime inputs',()=>{
+ const {dir}=fixture(),old=process.env.VERCEL;
+ try{const before=identity.captureSourceIdentity(dir);process.env.VERCEL='1';fs.unlinkSync(path.join(dir,'README.md'));const build=identity.captureBuildSourceIdentity(dir);assert.equal(build.sourceHash,before.sourceHash);assert.deepEqual(build.buildSourceChanges,[{file:'README.md',reason:'absent',buildInput:false}]);fs.writeFileSync(path.join(dir,'src/app.js'),'let value=2;\n');assert.throws(()=>identity.captureBuildSourceIdentity(dir),/Build source differs/);fs.unlinkSync(path.join(dir,'src/app.js'));assert.throws(()=>identity.captureBuildSourceIdentity(dir),/absent/);}finally{if(old===undefined)delete process.env.VERCEL;else process.env.VERCEL=old;fs.rmSync(dir,{recursive:true,force:true});}
 });
 test('17.0.5 CRLF, tracked generated junk and generated ZIPs cannot change source identity',()=>{
  const {dir,git}=fixture();try{

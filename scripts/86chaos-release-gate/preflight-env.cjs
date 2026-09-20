@@ -10,7 +10,6 @@ const {
   inspectReleaseTargetEnvConflicts,
   validateReleaseTarget,
 } = require('./vercel-targets.cjs');
-const { validateFirebaseAuthReferrer, firebaseAuthReferrerUrl } = require('./firebase-auth-referrer.cjs');
 
 const { root, runId, runDir } = ensureRunDir();
 const errors = [];
@@ -215,34 +214,6 @@ async function main() {
       }
     }
   }
-  const approvedBrowserTestUrl = firebaseAuthReferrerUrl();
-  let browserAliasIdentityVerified = false;
-  if (certificationMode && approvedBrowserTestUrl && serverBuildIdentity) {
-    try {
-      const aliasClientResponse = await fetchText(`${approvedBrowserTestUrl}/build-identity.json?releaseGateRun=${encodeURIComponent(runId)}`);
-      const aliasServerResponse = await fetchText(`${approvedBrowserTestUrl}/api/build-identity?releaseGateRun=${encodeURIComponent(runId)}`);
-      if (!aliasClientResponse.ok || !aliasServerResponse.ok) {
-        errors.push(`Approved browser-test alias could not be verified before Playwright: ${approvedBrowserTestUrl}.`);
-      } else {
-        const aliasClient = JSON.parse(aliasClientResponse.text || '{}');
-        const aliasServer = JSON.parse(aliasServerResponse.text || '{}');
-        const aliasManifest = aliasServer.sourceManifestHash || aliasServer.sourceHash || '';
-        const clientManifest = aliasClient.sourceManifestHash || aliasClient.sourceHash || '';
-        const expectedServerManifest = serverBuildIdentity.sourceManifestHash || serverBuildIdentity.sourceHash || '';
-        const sameDeployment = String(aliasServer.vercelDeploymentId || '') === String(serverBuildIdentity.vercelDeploymentId || '');
-        const sameVersion = String(aliasServer.version || '') === String(serverBuildIdentity.version || '') && String(aliasClient.version || '') === String(serverBuildIdentity.version || '');
-        const sameSource = aliasManifest && aliasManifest === expectedServerManifest && clientManifest === expectedServerManifest;
-        if (!sameDeployment || !sameVersion || !sameSource) {
-          errors.push(`Approved Firebase/Auth browser alias ${approvedBrowserTestUrl} does not point to the exact immutable candidate deployment. Refusing to start Playwright.`);
-        } else {
-          browserAliasIdentityVerified = true;
-        }
-      }
-    } catch (error) {
-      errors.push(`Approved browser-test alias identity verification failed: ${error.message}`);
-    }
-  }
-
   visibleVersion = htmlVersion || '';
   targetValidation = validateReleaseTarget({
     appUrl,
@@ -275,8 +246,6 @@ async function main() {
       errors.push(`Mutation testing refuses the known production Firebase project: ${config.projectId}.`);
     }
     if (boolEnv('CHAOS_QA_USE_PROD_FIREBASE')) errors.push('CHAOS_QA_USE_PROD_FIREBASE must not be true for the full mutation release gate.');
-    const authReferrerValidation = validateFirebaseAuthReferrer({ firebaseProjectId: config.projectId || '' });
-    if (!authReferrerValidation.ok) errors.push(...authReferrerValidation.errors);
   } catch (error) {
     errors.push(`Firebase TEST client config could not be resolved: ${error.message}`);
   }
@@ -325,9 +294,6 @@ async function main() {
     visibleVersion,
     htmlVersion,
     firebaseProjectId,
-    firebaseAuthReferrerUrl: approvedBrowserTestUrl,
-    resolvedBrowserTestUrl: browserAliasIdentityVerified ? approvedBrowserTestUrl : '',
-    browserAliasIdentityVerified,
     envFilesLoaded: loaded,
     accounts: accounts.map(a => ({ prefix: a.prefix, emailPresent: Boolean(a.email), passwordPresent: a.passwordPresent })),
     firebaseConfigResolved: Boolean(present.FIREBASE_CLIENT_CONFIG),
