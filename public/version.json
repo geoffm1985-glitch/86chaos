@@ -1,16 +1,16 @@
 {
-  "version": "17.0.16",
-  "name": "86 Chaos 17.0.16",
-  "build": "17.0.16",
-  "label": "86 Chaos 17.0.16",
-  "releasedAt": "2026-09-21T04:20:00.000Z",
-  "releaseTitle": "Schedule Publish Result Accuracy Repair",
+  "version": "17.0.17",
+  "name": "86 Chaos 17.0.17",
+  "build": "17.0.17",
+  "label": "86 Chaos 17.0.17",
+  "releasedAt": "2026-09-21T04:52:00.000Z",
+  "releaseTitle": "Schedule Builder Navigation and Legacy Publish Identity Repair",
   "notes": [
-    "Uses server-authoritative verified-new, verified-repair, already-current, and employee-review counts in the Schedule Builder publish completion message.",
-    "Stops mixing browser preflight estimates with server results, eliminating impossible summaries such as 0 verified with 2 new and 17 repaired.",
-    "Preserves the 17.0.15 schedule publication roster-parity repair and all existing publication safety checks."
+    "Commits top-level tab changes synchronously so leaving Schedule Builder cannot be starved by the heavy schedule render on mobile.",
+    "Mirrors the browser legacy shift-only employee identity fallback on the server using authoritative saved-shift data, allowing legacy scheduled employees to publish instead of being stranded in employee review.",
+    "Preserves inactive and ambiguous roster protections, server-authoritative candidate checks, stale-write fencing, and the 17.0.16 authoritative publish-result summary."
   ],
-  "title": "86 Chaos 17.0.16",
-  "summary": "Precision repair for misleading Schedule Builder publish completion counts.",
-  "description": "Reports only authoritative server publication outcomes after a publish operation, while preserving schedule publishing behavior and safety boundaries."
+  "title": "86 Chaos 17.0.17",
+  "summary": "Precision repair for Schedule Builder top-level navigation and remaining legacy schedule employee-identity publication parity.",
+  "description": "Makes top-level navigation leave Schedule Builder immediately and aligns server publication identity resolution with the Schedule Builder legacy shift roster fallback without weakening publication safety checks."
 }

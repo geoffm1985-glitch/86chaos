@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "release": "17.0.16",
+  "release": "17.0.17",
   "defects": [
     {
       "defectId": "RG-API-WRAPPER-FIDELITY",
@@ -421,6 +421,33 @@
       ],
       "fidelity": "ACTUAL SERVER SERVICE / BROWSER SOURCE CONTRACT",
       "fixedVersion": "17.0.16",
+      "mandatoryGroup": "schedule-publish"
+    },
+    {
+      "defectId": "SCHEDULE-BUILDER-TOP-LEVEL-NAVIGATION-1717",
+      "origin": "17.0.16 real-device report: top-level tabs appear stuck after opening Schedule Builder",
+      "affectedInvariant": "Top-level navigation leaves Schedule Builder synchronously and cannot be deferred behind the heavy schedule render",
+      "reproducer": "api/schedule-builder-route-and-publish-identity-17-0-17.test.cjs",
+      "permanentTestIds": [
+        "top-level navigation leaves Schedule Builder synchronously instead of deferring the route update"
+      ],
+      "fidelity": "ACTUAL APP SHELL SOURCE CONTRACT",
+      "fixedVersion": "17.0.17",
+      "mandatoryGroup": "schedule-publish"
+    },
+    {
+      "defectId": "SCHEDULE-PUBLISH-LEGACY-IDENTITY-PARITY-1717",
+      "origin": "17.0.16 real-device publish result: 19 saved shifts required employee identity review",
+      "affectedInvariant": "Server publication resolves the same authoritative legacy shift-only employee identity fallback that Schedule Builder renders, without overriding real inactive or ambiguous roster identities",
+      "reproducer": "api/schedule-builder-route-and-publish-identity-17-0-17.test.cjs",
+      "permanentTestIds": [
+        "server can publish a confirmed legacy shift using the same shift-only identity fallback the Schedule Builder renders",
+        "legacy shift-only identity fallback does not override a real inactive roster identity",
+        "legacy shift-only identity fallback requires the same named shift identity the browser uses",
+        "nineteen legacy schedule-only employees become publish candidates instead of employee-review rows"
+      ],
+      "fidelity": "ACTUAL SERVER SERVICE / BROWSER LEGACY ROSTER CONTRACT",
+      "fixedVersion": "17.0.17",
       "mandatoryGroup": "schedule-publish"
     }
   ]

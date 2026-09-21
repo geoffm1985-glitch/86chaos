@@ -2025,10 +2025,11 @@ if (liveAppUser && clientData) {
     } else if (normalized === 'published') {
       setActiveScheduleSubTab(defaultScheduleSubTabForTopLevelTab(normalized));
     }
+    // Top-level navigation must commit synchronously. Deferring this state change can
+    // leave the heavy Schedule Builder tree mounted after the drawer closes, making
+    // every subsequent tab tap appear to be ignored on mobile.
     activeTabStateRef.current = normalized;
-    const commit = () => setActiveTabState(normalized);
-    if (typeof React.startTransition === 'function') React.startTransition(commit);
-    else commit();
+    setActiveTabState(normalized);
   }, []);
 
   const disarmPwaBackExit = useCallback(() => {

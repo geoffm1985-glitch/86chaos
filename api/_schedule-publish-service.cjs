@@ -48,9 +48,17 @@ async function loadCandidateShifts(db, restaurantId, dayKeys) {
   }
   return [...byId.values()];
 }
-function identityAliases(value={}) { return unique(['id','uid','authUid','userId','employeeId','rosterUserId','scheduleUserId','accountUserId','membershipId','workspaceMemberId'].map(field=>clean(value[field]))); }
+function identityAliases(value={}) { return unique(['id','uid','authUid','userId','employeeId','rosterUserId','scheduleUserId','accountUserId','assignedUserId','membershipId','workspaceMemberId'].map(field=>clean(value[field]))); }
 function identityEmails(value={}) { return unique(['email','userEmail','employeeEmail','assignedEmail'].map(field=>clean(value[field]).toLowerCase())); }
 function identityNames(value={}) { return unique(['name','displayName','fullName','employeeName','assignedName'].map(field=>clean(value[field]).toLowerCase())); }
+function identityIntersects(shift={},person={}) {
+  const ids=identityAliases(shift),emails=identityEmails(shift),names=identityNames(shift);
+  return Boolean(
+    (ids.length&&identityAliases(person).some(id=>ids.includes(id))) ||
+    (emails.length&&identityEmails(person).some(email=>emails.includes(email))) ||
+    (names.length&&identityNames(person).some(name=>names.includes(name)))
+  );
+}
 function resolveEmployeeForShift(shift, people) {
   const ids=identityAliases(shift),emails=identityEmails(shift),names=identityNames(shift);
   const active=people.filter(row=>!inactive(row));
@@ -60,6 +68,55 @@ function resolveEmployeeForShift(shift, people) {
   if(names.length)return findUnique(row=>identityNames(row).some(name=>names.includes(name)),'employee-name');
   return {ok:false,reason:'missing-employee-reference'};
 }
+function canonicalRosterPerson(member={},accountUser={}) {
+  const membershipId=clean(member.membershipId||member.id);
+  const accountUid=clean(member.authUid||member.uid||member.userId||accountUser.authUid||accountUser.uid||accountUser.userId||accountUser.id);
+  const rosterId=clean(member.scheduleUserId||member.rosterUserId||member.employeeId||membershipId||accountUser.scheduleUserId||accountUser.employeeId||accountUser.rosterUserId);
+  const stableUserId=clean(member.userId||member.uid||accountUser.id||membershipId);
+  const name=clean(member.name||member.displayName||member.fullName||accountUser.name||accountUser.displayName||accountUser.fullName);
+  const email=clean(member.employeeEmail||member.email||member.userEmail||accountUser.employeeEmail||accountUser.email||accountUser.userEmail);
+  return {
+    ...accountUser,...member,
+    id:stableUserId,userId:stableUserId,accountUserId:accountUid||stableUserId,
+    authUid:clean(member.authUid||accountUser.authUid||member.uid||accountUser.uid||member.userId||accountUser.userId||accountUid),
+    uid:clean(member.uid||accountUser.uid||accountUid||stableUserId),
+    membershipId,workspaceMemberId:membershipId,
+    scheduleUserId:clean(member.scheduleUserId||rosterId||stableUserId),
+    employeeId:clean(member.employeeId||rosterId||stableUserId),
+    rosterUserId:clean(member.rosterUserId||membershipId||member.employeeId||accountUser.rosterUserId||rosterId),
+    assignedUserId:clean(member.assignedUserId||accountUser.assignedUserId||member.scheduleUserId||member.employeeId||rosterId||stableUserId),
+    name:name||email||stableUserId,
+    displayName:clean(member.displayName||member.name||accountUser.displayName||accountUser.name||name),
+    fullName:clean(member.fullName||member.name||accountUser.fullName||accountUser.name||name),
+    email,
+    employeeEmail:clean(member.employeeEmail||member.email||accountUser.employeeEmail||accountUser.email||email),
+    assignedEmail:clean(member.assignedEmail||member.employeeEmail||member.email||accountUser.assignedEmail||accountUser.employeeEmail||accountUser.email||email),
+    isActive:member.isActive!==false&&member.deleted!==true&&member.isDeleted!==true&&member.removed!==true&&!['deleted','removed','inactive','disabled','deactivated'].includes(clean(member.status||member.membershipStatus).toLowerCase())&&accountUser.isActive!==false,
+    _source:'canonical'
+  };
+}
+function buildShiftIdentityFallback(shift={}) {
+  const ids=[shift.scheduleUserId,shift.employeeId,shift.rosterUserId,shift.userId,shift.uid,shift.authUid,shift.staffId,shift.accountUserId,shift.assignedUserId].map(clean).filter(Boolean);
+  const name=clean(shift.employeeName||shift.staffName||shift.userName||shift.displayName||shift.fullName||shift.name);
+  const email=clean(shift.employeeEmail||shift.email||shift.emailLower||shift.assignedEmail||shift.userEmail);
+  const primaryId=clean(ids[0]||email||name);
+  if(!primaryId||!name)return null;
+  return {
+    id:primaryId,uid:clean(shift.uid||shift.authUid||shift.userId||primaryId),userId:clean(shift.userId||shift.employeeId||primaryId),
+    scheduleUserId:clean(shift.scheduleUserId||shift.employeeId||primaryId),employeeId:clean(shift.employeeId||primaryId),
+    name:name||email||primaryId,displayName:name||email||primaryId,fullName:name||email||primaryId,email,emailLower:email.toLowerCase(),
+    role:clean(shift.role||shift.position||shift.department||'Scheduled Staff'),department:clean(shift.department||shift.section),
+    restaurantId:clean(shift.restaurantId||shift.workspaceId),isActive:true,scheduleOnly:true,source:'shift-roster-fallback',_source:'shift-identity-fallback'
+  };
+}
+function resolveEmployeeForPublishShift(shift,people=[]) {
+  const resolved=resolveEmployeeForShift(shift,people);
+  if(resolved.ok)return resolved;
+  // Do not synthesize over a real inactive, revoked, or ambiguous roster identity.
+  if((people||[]).some(person=>identityIntersects(shift,person)))return resolved;
+  const fallback=buildShiftIdentityFallback(shift);
+  return fallback?{ok:true,person:fallback,source:'shift-identity-fallback',legacy:true,originalReason:resolved.reason}:resolved;
+}
 async function loadRosterPeople(db, restaurantId) {
   const [users,members]=await Promise.all([
     db.collection('users').where('restaurantId','==',restaurantId).get(),
@@ -68,7 +125,11 @@ async function loadRosterPeople(db, restaurantId) {
   const userRows=users.docs.map(doc=>({id:doc.id,...doc.data(),_source:'user'}));
   const memberRows=members.docs.map(doc=>({id:doc.id,...doc.data(),_source:'workspaceMember'}));
   const claimedUsers=new Set(),people=[];
-  for(const member of memberRows){const match=userRows.find(user=>identityAliases(member).some(alias=>identityAliases(user).includes(alias))||identityEmails(member).some(email=>identityEmails(user).includes(email)));if(match)claimedUsers.add(match.id);people.push({...match,...member,id:clean(member.employeeId||member.rosterUserId||member.scheduleUserId||member.userId||member.uid||member.id),workspaceMemberId:member.id,_source:'canonical'});}
+  for(const member of memberRows){
+    const match=userRows.find(user=>identityAliases(member).some(alias=>identityAliases(user).includes(alias))||identityEmails(member).some(email=>identityEmails(user).includes(email)));
+    if(match)claimedUsers.add(match.id);
+    people.push(canonicalRosterPerson(member,match||{}));
+  }
   for(const user of userRows)if(!claimedUsers.has(user.id))people.push({...user,_source:'user-identity-fallback'});
   return people;
 }
@@ -271,7 +332,7 @@ async function getOperationStatus(db,ctx,{restaurantId,operationId}){
 async function executeSchedulePublish({db,ctx,body,messaging,auth=null,clock=()=>new Date(),reauthorize=null}={}){
   const input=validateRequest(body),intent=requestDigest(body),existingRef=db.collection('schedulePublishOperations').doc(input.operationId),existingSnap=await existingRef.get();let plan;
   if(existingSnap.exists){const current=existingSnap.data()||{};if(current.restaurantId!==input.restaurantId||current.requestDigest!==intent)throw Object.assign(new Error('This operation ID is already bound to a different publication plan.'),{statusCode:409,code:'operation_plan_mismatch'});plan=current.canonicalPlan;if(!plan)throw Object.assign(new Error('Publication operation cannot be resumed safely.'),{statusCode:409,code:'operation_state_invalid'});}
-  else{const [roleConfiguration,shifts,people]=await Promise.all([loadRoleConfiguration(db,input.restaurantId),loadCandidateShifts(db,input.restaurantId,input.dayKeys),loadRosterPeople(db,input.restaurantId)]);for(const shift of shifts)shift._employeeResolution=resolveEmployeeForShift(shift,people);plan=buildCanonicalServerPlan({...body,...input,roles:roleConfiguration.roles,roleConfigurationGeneration:roleConfiguration.generation,shifts,actor:{uid:ctx.uid,email:ctx.email}});}
+  else{const [roleConfiguration,shifts,people]=await Promise.all([loadRoleConfiguration(db,input.restaurantId),loadCandidateShifts(db,input.restaurantId,input.dayKeys),loadRosterPeople(db,input.restaurantId)]);for(const shift of shifts)shift._employeeResolution=resolveEmployeeForPublishShift(shift,people);plan=buildCanonicalServerPlan({...body,...input,roles:roleConfiguration.roles,roleConfigurationGeneration:roleConfiguration.generation,shifts,actor:{uid:ctx.uid,email:ctx.email}});}
   const operation=await acquireOperation(db,ctx,plan,clock,intent);if(operation.terminal)return operation.state;if(operation.joined)throw Object.assign(new Error('This publication is already running for this account.'),{statusCode:409,code:'publish_in_progress'});
   try{
     if(reauthorize)await reauthorize();
@@ -314,4 +375,4 @@ async function reconcileScheduleRoles({db, ctx, body, clock = new Date()}) {
   });
 }
 
-module.exports={reconcileScheduleRoles,LEASE_MS,CHUNK_SIZE,NOTIFICATION_BATCH_SIZE,safeError,requestIntent,requestDigest,validateRequest,loadRoles,loadRoleConfiguration,loadCandidateShifts,loadRosterPeople,resolveEmployeeForShift,assertFenceState,fencedTransaction,acquireOperation,publishedVerificationState,publishedCommitEvidence,publishedStateMatches,commitChunk,verifyCommitted,processTimeOff,collectEligibleRecipients,notifyAffected,buildFinalPublicationCounts,finalizeOperation,getOperationStatus,executeSchedulePublish};
+module.exports={reconcileScheduleRoles,LEASE_MS,CHUNK_SIZE,NOTIFICATION_BATCH_SIZE,safeError,requestIntent,requestDigest,validateRequest,loadRoles,loadRoleConfiguration,loadCandidateShifts,loadRosterPeople,resolveEmployeeForShift,resolveEmployeeForPublishShift,buildShiftIdentityFallback,canonicalRosterPerson,assertFenceState,fencedTransaction,acquireOperation,publishedVerificationState,publishedCommitEvidence,publishedStateMatches,commitChunk,verifyCommitted,processTimeOff,collectEligibleRecipients,notifyAffected,buildFinalPublicationCounts,finalizeOperation,getOperationStatus,executeSchedulePublish};
