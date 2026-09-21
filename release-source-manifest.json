@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "sourceHash": "2e7f396c2418599999d72e7a8ec32a8f5c11e4ab16a01bc143674ed14cfff14f",
+  "sourceHash": "4277ad0b1013dd419cea74f05337b1a599cc2384a4f18e6b945550b5ea79d573",
   "files": [
     {
       "file": ".gitattributes",
@@ -240,7 +240,7 @@
     },
     {
       "file": "api/_schedule-publish-core.cjs",
-      "sha256": "edafcd408de9525192286c2f6b48947dfecf6a353a202fe95fcf69106e108e43"
+      "sha256": "e9a1d046494d91f3c7f46a38a767e6c63d402f8de8a3a97a951032ca0af9549c"
     },
     {
       "file": "api/_schedule-publish-service.cjs",
@@ -1020,7 +1020,7 @@
     },
     {
       "file": "api/schedule-publish-17-0-0.test.cjs",
-      "sha256": "8886fd83d0462dd8d0548663a6d5efedfcd0180e12d6019a5bb144f234248249"
+      "sha256": "8b4f4207e3310f5a188e0f980706e2391615234d82f336f6a90847ec34df7004"
     },
     {
       "file": "api/schedule-publish-emulator-17-0-0.test.cjs",
@@ -1308,11 +1308,11 @@
     },
     {
       "file": "functions/src/index.ts",
-      "sha256": "dae3be727ac4586adeaa5a298ea3b35a93a2bb2f1ad8239e15228a2e7352aaf1"
+      "sha256": "61352b3d7e05938b2f73d7ce4b2c4c6f2ea31e5eee0bff2e84d6c1eb13c75696"
     },
     {
       "file": "functions/src/retention.ts",
-      "sha256": "45123ca88c0e9af59ec791a3377d2d50fa4139570266b8d092d7ffc129cc47cd"
+      "sha256": "c579b623ea491a15e9a1eb2fa77139afa446ccaa4cf5e7519f9dd20b25aed4a5"
     },
     {
       "file": "functions/tsconfig.json",
@@ -1340,7 +1340,7 @@
     },
     {
       "file": "playwright.layout.config.cjs",
-      "sha256": "ab50f5acfe45d108836c989a0c856d7eb64af22980954c16d029e3dfb51ae64f"
+      "sha256": "82a43df56ab099086858739a23542f8bfa0e1be608419fa0ce20160b3b176754"
     },
     {
       "file": "playwright.play-store-release.config.cjs",
@@ -2467,7 +2467,7 @@
       "sha256": "864bdd0e684d2abf902f555695878689171204330a0271c7ab39f3ff1f3fad0a"
     },
     {
-      "file": "scripts/validate-17-0-11.js",
+      "file": "scripts/validate-17-0-12.js",
       "sha256": "73c48bc044ca0d6485fe607ee2b87e8746146acaf0acd8db25e4b2158de94abe"
     },
     {

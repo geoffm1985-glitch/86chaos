@@ -1,16 +1,16 @@
 {
-  "version": "17.0.11",
-  "name": "86 Chaos 17.0.11",
-  "build": "17.0.11",
-  "label": "86 Chaos 17.0.11",
-  "releasedAt": "2026-09-20T05:00:00.000Z",
-  "releaseTitle": "Schedule Builder Runtime Repair",
+  "version": "17.0.12",
+  "name": "86 Chaos 17.0.12",
+  "build": "17.0.12",
+  "label": "86 Chaos 17.0.12",
+  "releasedAt": "2026-09-21T01:10:00.000Z",
+  "releaseTitle": "Schedule Publish Candidate Repair and PWA Gate Hardening",
   "notes": [
-    "Normalizes Schedule Builder special-event dates before filtering, sorting, or display so Firestore Timestamp-like, ISO, null, and malformed legacy values cannot collapse the route.",
-    "Keeps Schedule Builder input hardening local to the builder runtime and uses normal browser ESM without CommonJS or global browser bridges.",
-    "Preserves schedule publishing, canonical schedule writes, Schedule Tools period behavior, schedule PDF/printing, mobile PDF delivery, POS foundation, security boundaries, and all unrelated product areas."
+    "Loads Schedule Publish candidates from authoritative Firestore server reads before composing confirmed shift evidence, so local-only echoes or stale mobile cache rows cannot create a client/server candidate mismatch.",
+    "Keeps explicit open shifts publishable without forcing an employee match while maintaining the server closed-world candidate and fingerprint checks.",
+    "Changes the PWA browser icon matrix to validate app-shell HTML, manifest metadata, and icon bytes through Playwright request fixtures so an optional Firefox launch failure cannot block a metadata-only release-gate check."
   ],
-  "title": "86 Chaos 17.0.11",
-  "summary": "Targeted Schedule Builder render repair for legacy and malformed event-date values.",
-  "description": "Normalizes Schedule Builder event dates at its local runtime boundary while preserving publishing, PDFs, printing, POS integrations, and unrelated application behavior."
+  "title": "86 Chaos 17.0.12",
+  "summary": "Targeted repair for schedule publishing candidate confirmation plus a request-only PWA icon metadata gate.",
+  "description": "Uses server-authoritative schedule publish candidates before confirmation, preserves intentional open-shift publishing, and keeps the PWA metadata gate from failing on an optional browser launch defect."
 }

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "release": "17.0.11",
+  "release": "17.0.12",
   "defects": [
     {
       "defectId": "RG-API-WRAPPER-FIDELITY",
@@ -385,6 +385,30 @@
       "fidelity": "ACTUAL BROWSER ESM MODULE / SOURCE INTEGRATION",
       "fixedVersion": "17.0.11",
       "mandatoryGroup": "schedule-publish"
+    },
+    {
+      "defectId": "SCHEDULE-PUBLISH-AUTHORITATIVE-CANDIDATES-1712",
+      "origin": "17.0.11 production mobile Schedule Publish candidate_set_changed report",
+      "affectedInvariant": "Schedule Publish confirmation evidence is composed only from authoritative saved shift documents for the selected days",
+      "reproducer": "scripts/validate-17-0-12.js and src/features/schedule.jsx source guard",
+      "permanentTestIds": [
+        "17.0.12 source validation confirms server-authoritative publish candidate reads"
+      ],
+      "fidelity": "SOURCE INTEGRATION / PRODUCTION DEFECT GUARD",
+      "fixedVersion": "17.0.12",
+      "mandatoryGroup": "schedule-publish"
+    },
+    {
+      "defectId": "PWA-METADATA-NO-BROWSER-LAUNCH-1712",
+      "origin": "17.0.11 full release gate firefox-pwa browserType.launch exit 255 on metadata-only icon matrix",
+      "affectedInvariant": "PWA metadata and icon bytes are validated without launching an optional browser page fixture",
+      "reproducer": "tests/86chaos-release-gate/27-pwa-browser-icon-matrix.spec.cjs",
+      "permanentTestIds": [
+        "PWA icon metadata matrix is coherent for this browser engine"
+      ],
+      "fidelity": "PLAYWRIGHT REQUEST / RELEASE-GATE INFRASTRUCTURE",
+      "fixedVersion": "17.0.12",
+      "mandatoryGroup": "pwa"
     }
   ]
 }

@@ -32,11 +32,9 @@ function canonicalEmployeeIdentity(person = {}, evidence = {}) {
   return { scheduleUserId,employeeId,rosterUserId,userId,authUid,accountUserId,assignedUserId,employeeName:name,assignedName:name,employeeEmail:email,assignedEmail:email };
 }
 function identityMatches(shift = {}, desired = {}) {
-  const requiredFields = ['scheduleUserId','employeeId','rosterUserId','employeeName','assignedName'];
-  if (requiredFields.some(field => !clean(shift[field]))) return false;
   for (const field of ['scheduleUserId','employeeId','rosterUserId','userId','authUid','assignedUserId']) {
     const wanted=clean(desired[field]), actual=clean(shift[field]);
-    if (wanted && actual && actual!==wanted) return false;
+    if (wanted && (!actual || actual!==wanted)) return false;
   }
   const wantedEmail=clean(desired.employeeEmail).toLowerCase(), actualEmail=clean(shift.employeeEmail||shift.assignedEmail||shift.email).toLowerCase();
   return !wantedEmail || !actualEmail || wantedEmail===actualEmail;

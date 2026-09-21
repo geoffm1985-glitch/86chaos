@@ -6,7 +6,7 @@ const shiftId = shift => clean(shift?.id || shift?.shiftId || shift?.documentId)
 const employeeId = shift => clean(shift?.scheduleUserId || shift?.employeeId || shift?.rosterUserId || shift?.userId || shift?.authUid);
 const normalizedTime = value => clean(value).replace(/^([0-9]):/, '0$1:');
 const stable = value => Array.isArray(value) ? value.map(stable) : (!value || typeof value !== 'object' ? value : Object.fromEntries(Object.keys(value).sort().map(key => [key, stable(value[key])])));
-const intentionalOpenShift = shift => shift?.isOpenShift === true || shift?.openShift === true || ['open','unassigned-open'].includes(clean(shift?.assignmentType || shift?.assignmentStatus).toLowerCase());
+export const isIntentionalOpenScheduleShift = shift => shift?.isOpenShift === true || shift?.openShift === true || ['open','unassigned-open'].includes(clean(shift?.assignmentType || shift?.assignmentStatus).toLowerCase());
 
 export function buildSchedulePublicationPlan({ restaurantId, period, selectedWeekKeys = [], selectedRoleIds = [], allRoles = true, candidateShifts = [], rosterRoles = [], actor = {} } = {}) {
   const tenant = clean(restaurantId);
@@ -78,7 +78,7 @@ export async function buildConfirmedShiftEvidence({ shift = {}, resolvedRole = {
     employeeIdentity: desiredEmployeeIdentity || Object.fromEntries(identityFields.map(field => [field, clean(shift[field])])),
     employeeName: ['employeeName','assignedName','name','displayName','fullName'].map(field => clean(shift[field])).find(Boolean) || '',
     employeeEmail: ['employeeEmail','assignedEmail','email','userEmail'].map(field => clean(shift[field])).find(Boolean) || '',
-    intentionalOpen: intentionalOpenShift(shift),
+    intentionalOpen: isIntentionalOpenScheduleShift(shift),
     rosterRoleId: clean(resolvedRole.rosterRoleId || shift.rosterRoleId),
     rosterRoleNameSnapshot: clean(resolvedRole.rosterRoleNameSnapshot || shift.rosterRoleNameSnapshot || shift.role),
     startTime: normalizedTime(shift.startTime || shift.start),
