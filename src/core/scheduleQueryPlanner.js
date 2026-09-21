@@ -284,12 +284,10 @@ export const buildCanonicalScheduleIdentityBlock = (person = {}, evidence = {}) 
 export const scheduleIdentityBlockMatchesPerson = (shift = {}, person = {}) => {
   const desired = buildCanonicalScheduleIdentityBlock(person, shift);
   const idFields = ['scheduleUserId', 'employeeId', 'rosterUserId', 'userId', 'authUid', 'assignedUserId'];
-  const missingRequired = ['scheduleUserId', 'employeeId', 'rosterUserId', 'employeeName', 'assignedName'].some(field => !String(shift?.[field] || '').trim());
-  if (missingRequired) return false;
   const mismatchedIds = idFields.some(field => {
     const wanted = normalizeScheduleAliasValue(desired[field]);
     const actual = normalizeScheduleAliasValue(shift?.[field]);
-    return wanted && actual && wanted !== actual;
+    return wanted && (!actual || wanted !== actual);
   });
   if (mismatchedIds) return false;
   const desiredEmail = normalizeScheduleEmailValue(desired.employeeEmail || desired.assignedEmail || '');

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "release": "17.0.13",
+  "release": "17.0.12",
   "defects": [
     {
       "defectId": "RG-API-WRAPPER-FIDELITY",
@@ -387,28 +387,28 @@
       "mandatoryGroup": "schedule-publish"
     },
     {
-      "defectId": "SCHEDULE-PUBLISH-AUTHORITATIVE-CANDIDATES-1712",
-      "origin": "17.0.11 production mobile Schedule Publish candidate_set_changed report",
-      "affectedInvariant": "Schedule Publish confirmation evidence is composed only from authoritative saved shift documents for the selected days",
-      "reproducer": "scripts/validate-17-0-13.js and src/features/schedule.jsx source guard",
+      "defectId": "SCHEDULE-PUBLISH-CANDIDATE-IDENTITY-PARITY-1712",
+      "origin": "17.0.11 production schedule publish failure",
+      "affectedInvariant": "Browser confirmation and server-authoritative schedule publication select the same saved-shift candidate set",
+      "reproducer": "api/schedule-publish-17-0-12.test.cjs",
       "permanentTestIds": [
-        "17.0.13 source validation confirms server-authoritative publish candidate reads"
+        "published legacy identity repair stays in the confirmed candidate set"
       ],
-      "fidelity": "SOURCE INTEGRATION / PRODUCTION DEFECT GUARD",
-      "fixedVersion": "17.0.13",
+      "fidelity": "ACTUAL SERVER CORE / BROWSER SOURCE CONTRACT",
+      "fixedVersion": "17.0.12",
       "mandatoryGroup": "schedule-publish"
     },
     {
-      "defectId": "PWA-METADATA-NO-BROWSER-LAUNCH-1712",
-      "origin": "17.0.11 full release gate firefox-pwa browserType.launch exit 255 on metadata-only icon matrix",
-      "affectedInvariant": "PWA metadata and icon bytes are validated without launching an optional browser page fixture",
-      "reproducer": "tests/86chaos-release-gate/27-pwa-browser-icon-matrix.spec.cjs",
+      "defectId": "PWA-FIREFOX-LAUNCH-RETRY-1712",
+      "origin": "17.0.11 full release gate",
+      "affectedInvariant": "A single transient Firefox browser-process launch failure does not create a false release failure",
+      "reproducer": "api/pwa-firefox-retry-17-0-12.test.cjs",
       "permanentTestIds": [
-        "PWA icon metadata matrix is coherent for this browser engine"
+        "Firefox PWA project has exactly one bounded retry in full and failed-only configs"
       ],
-      "fidelity": "PLAYWRIGHT REQUEST / RELEASE-GATE INFRASTRUCTURE",
-      "fixedVersion": "17.0.13",
-      "mandatoryGroup": "pwa"
+      "fidelity": "RELEASE-GATE CONFIGURATION",
+      "fixedVersion": "17.0.12",
+      "mandatoryGroup": "playwright"
     }
   ]
 }

@@ -25,7 +25,7 @@ import { generateMonthSchedulePdf } from '../core/schedulePdf';
 import { deliverSchedulePdf } from '../core/schedulePdfDelivery';
 import { createSchedulePublishGuard, makeSchedulePublishProgress } from '../core/schedulePublishProgress';
 import { activeRosterRoles, resolveShiftRosterRole, copyRosterRoleFields } from '../core/rosterRoleIdentity';
-import { buildSchedulePublicationPlan, buildConfirmedShiftEvidence, digestSchedulePublicationPlan, isIntentionalOpenScheduleShift } from '../core/schedulePublicationPlan';
+import { buildSchedulePublicationPlan, buildConfirmedShiftEvidence, digestSchedulePublicationPlan } from '../core/schedulePublicationPlan';
 import { requestOffDateKey, normalizeRequestOffRuntimeRow, safeRequestOffRows } from '../core/requestOffRuntimeSafety';
 import { normalizeScheduleBuilderEvents, safeScheduleBuilderRecords } from '../core/scheduleBuilderRuntime';
 import { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, MapClickListener, SmartEmptyState, MiniProblemCard, getHomeProfile, calculatePunchHours, getWeekStart, roleMatches, toLocalTimeInput, makeLocalIso, PunchTable, FriendlyEmpty, GlobalSearchModal, QuickActionDock, KitchenTVMode, ChangeLogModal, UndoBar } from '../components/common';
@@ -2062,55 +2062,67 @@ const [eventDate, setEventDate] = useState(getToday());
   };
 
   const fetchSchedulePublishCandidatesForDaySet = async (daySet = new Set(), localCandidates = []) => {
-    const localById = new Map();
-    const serverById = new Map();
-    const canUseCandidate = (shift = {}) => {
-      if (!shift || isDeletedScheduleShift(shift)) return false;
+    const byId = new Map();
+    const byIdentity = new Map();
+    const addCandidate = (shift = {}) => {
+      if (!shift || isDeletedScheduleShift(shift)) return;
       const dateKey = getShiftDateKey(shift);
-      if (!dateKey || !daySet.has(dateKey)) return false;
+      if (!dateKey || !daySet.has(dateKey)) return;
       const restaurantId = String(shift.restaurantId || shift.workspaceId || appUser?.restaurantId || '');
-      if (appUser?.restaurantId && restaurantId && restaurantId !== String(appUser.restaurantId)) return false;
-      if (shiftMatchesLocalDeleteMarkers(shift, activeLocalDeleteKeySet, activeLocalDeleteMarkerMap)) return false;
-      return true;
-    };
-    const addLocalCandidate = (shift = {}) => {
-      if (!canUseCandidate(shift)) return;
+      if (appUser?.restaurantId && restaurantId && restaurantId !== String(appUser.restaurantId)) return;
+      if (shiftMatchesLocalDeleteMarkers(shift, activeLocalDeleteKeySet, activeLocalDeleteMarkerMap)) return;
       const id = getShiftWritableDocId(shift);
-      if (id) localById.set(id, { ...shift, id });
-    };
-    const addServerCandidate = (shift = {}) => {
-      if (!canUseCandidate(shift)) return;
-      const id = getShiftWritableDocId(shift);
-      if (!id) return;
-      serverById.set(id, { ...(localById.get(id) || {}), ...shift, id });
+      if (id) {
+        byId.set(id, { ...shift, id });
+        return;
+      }
+      const identity = getShiftPublishIdentity(shift);
+      if (identity) byIdentity.set(identity, shift);
     };
 
-    (localCandidates || []).forEach(addLocalCandidate);
+    (localCandidates || []).forEach(addCandidate);
 
     if (!appUser?.restaurantId || !daySet?.size) {
-      return mergeSchedulePublishCandidates(Array.from(localById.values()));
+      return mergeSchedulePublishCandidates(Array.from(byId.values()), Array.from(byIdentity.values()));
     }
-
-    const fetchAuthoritativeCandidates = async (candidateQuery) => {
-      recordScheduleOperationDiagnostic('sdkReads');
-      const snap = await getDocsFromServer(candidateQuery);
-      recordScheduleOperationDiagnostic('documentsObserved', snap.size);
-      snap.forEach(docSnap => addServerCandidate({ id: docSnap.id, ...docSnap.data() }));
-    };
 
     const days = Array.from(daySet).filter(Boolean).sort();
     for (const day of days) {
       try {
-        await fetchAuthoritativeCandidates(query(collection(db, 'shifts'), where('restaurantId', '==', appUser.restaurantId), where('date', '==', day)));
-        await fetchAuthoritativeCandidates(query(collection(db, 'shifts'), where('restaurantId', '==', appUser.restaurantId), where('scheduleDateKey', '==', day)));
-        await fetchAuthoritativeCandidates(query(collection(db, 'shifts'), where('workspaceId', '==', appUser.restaurantId), where('date', '==', day)));
-        await fetchAuthoritativeCandidates(query(collection(db, 'shifts'), where('workspaceId', '==', appUser.restaurantId), where('scheduleDateKey', '==', day)));
+        recordScheduleOperationDiagnostic('sdkReads');
+        const dateSnap = await getDocs(query(collection(db, 'shifts'), where('restaurantId', '==', appUser.restaurantId), where('date', '==', day)));
+        recordScheduleOperationDiagnostic('documentsObserved', dateSnap.size);
+        dateSnap.forEach(docSnap => addCandidate({ id: docSnap.id, ...docSnap.data() }));
+      } catch (err) {
+        throw new Error(`Publish candidate query failed for ${day}. No shifts were changed. ${err?.message || ''}`.trim());
+      }
+      try {
+        recordScheduleOperationDiagnostic('sdkReads');
+        const scheduleDateSnap = await getDocs(query(collection(db, 'shifts'), where('restaurantId', '==', appUser.restaurantId), where('scheduleDateKey', '==', day)));
+        recordScheduleOperationDiagnostic('documentsObserved', scheduleDateSnap.size);
+        scheduleDateSnap.forEach(docSnap => addCandidate({ id: docSnap.id, ...docSnap.data() }));
+      } catch (err) {
+        throw new Error(`Publish candidate query failed for ${day}. No shifts were changed. ${err?.message || ''}`.trim());
+      }
+      try {
+        recordScheduleOperationDiagnostic('sdkReads');
+        const workspaceDateSnap = await getDocs(query(collection(db, 'shifts'), where('workspaceId', '==', appUser.restaurantId), where('date', '==', day)));
+        recordScheduleOperationDiagnostic('documentsObserved', workspaceDateSnap.size);
+        workspaceDateSnap.forEach(docSnap => addCandidate({ id: docSnap.id, ...docSnap.data() }));
+      } catch (err) {
+        throw new Error(`Publish candidate query failed for ${day}. No shifts were changed. ${err?.message || ''}`.trim());
+      }
+      try {
+        recordScheduleOperationDiagnostic('sdkReads');
+        const workspaceScheduleDateSnap = await getDocs(query(collection(db, 'shifts'), where('workspaceId', '==', appUser.restaurantId), where('scheduleDateKey', '==', day)));
+        recordScheduleOperationDiagnostic('documentsObserved', workspaceScheduleDateSnap.size);
+        workspaceScheduleDateSnap.forEach(docSnap => addCandidate({ id: docSnap.id, ...docSnap.data() }));
       } catch (err) {
         throw new Error(`Publish candidate query failed for ${day}. No shifts were changed. ${err?.message || ''}`.trim());
       }
     }
 
-    return mergeSchedulePublishCandidates(Array.from(serverById.values()));
+    return mergeSchedulePublishCandidates(Array.from(byId.values()), Array.from(byIdentity.values()));
   };
   const eventsByScheduleDay = schedulePeriodDays.reduce((acc, d) => {
     acc[d] = schedulePeriodEvents.filter(e => e.date === d);
@@ -2781,27 +2793,20 @@ const saveReviewedRoles = async () => {
       selectedCandidates.forEach(shift => {
         const shiftDocId = getShiftWritableDocId(shift);
         const dateKey = getShiftDateKey(shift);
-        const intentionalOpen = isIntentionalOpenScheduleShift(shift);
-        const resolved = intentionalOpen ? { ok: true, person: null } : resolveSchedulePersonForShift(shift, users);
-        if (!shiftDocId || !dateKey || (!intentionalOpen && (!resolved.ok || !resolved.person))) {
+        const resolved = resolveSchedulePersonForShift(shift, users);
+        if (!shiftDocId || !dateKey || !resolved.ok || !resolved.person) {
           unresolved.push({ shift, reason: !dateKey ? 'missing date' : (resolved.reason || 'employee not matched') });
           return;
         }
-        const canonical = intentionalOpen ? {} : buildCanonicalScheduleIdentityBlock(resolved.person, shift);
+        const canonical = buildCanonicalScheduleIdentityBlock(resolved.person, shift);
         const isLive = isBuilderShiftPublished(shift);
         const publishedFieldsOk = shift.isPublished === true && shift.published === true && String(shift.status || '').toLowerCase() === 'published' && String(shift.publishStatus || '').toLowerCase() === 'published';
-        const identityOk = intentionalOpen || scheduleIdentityBlockMatchesPerson(shift, resolved.person);
+        const identityOk = scheduleIdentityBlockMatchesPerson(shift, resolved.person);
         const dateOk = String(shift.date || shift.scheduleDateKey || '') === dateKey && String(shift.scheduleDateKey || shift.date || '') === dateKey;
         const resolvedRole = resolveShiftRosterRole(shift, publishRosterRoles);
         const needsWrite = !isLive || !publishedFieldsOk || !identityOk || !dateOk || !shift.scheduleId || resolvedRole.migratable || String(shift.rosterRoleId || '').trim() !== resolvedRole.rosterRoleId;
         if (!needsWrite) {
-          alreadyValid.push({
-            id: shiftDocId,
-            shift,
-            person: resolved.person,
-            intentionalOpen,
-            dateKey
-          });
+          alreadyValid.push(shiftDocId);
           return;
         }
         if (!isLive) draftCount += 1;
@@ -2810,7 +2815,6 @@ const saveReviewedRoles = async () => {
           id: shiftDocId,
           shift,
           person: resolved.person,
-          intentionalOpen,
           dateKey,
           wasPublished: isLive,
           update: {
@@ -2903,16 +2907,12 @@ const saveReviewedRoles = async () => {
       }
 
       const rolePlanById = new Map(rolePlan.shifts.map(row => [row.id, row]));
-      const confirmedEvidenceRows = [
-        ...updatePlan,
-        ...alreadyValid
-      ];
-      const confirmedShiftEvidence = await Promise.all(confirmedEvidenceRows.map(item => {
+      const confirmedShiftEvidence = await Promise.all(updatePlan.map(item => {
         const roleRow = rolePlanById.get(item.id) || {};
         return buildConfirmedShiftEvidence({
           shift: item.shift,
           resolvedRole: roleRow,
-          desiredEmployeeIdentity: item.intentionalOpen ? null : buildCanonicalScheduleIdentityBlock(item.person, item.shift)
+          desiredEmployeeIdentity: buildCanonicalScheduleIdentityBlock(item.person, item.shift)
         });
       }));
       const confirmedClientPlan = {

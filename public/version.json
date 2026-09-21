@@ -1,16 +1,16 @@
 {
-  "version": "17.0.13",
-  "name": "86 Chaos 17.0.13",
-  "build": "17.0.13",
-  "label": "86 Chaos 17.0.13",
-  "releasedAt": "2026-09-21T01:10:00.000Z",
-  "releaseTitle": "Schedule Publish Candidate Repair and PWA Gate Hardening",
+  "version": "17.0.12",
+  "name": "86 Chaos 17.0.12",
+  "build": "17.0.12",
+  "label": "86 Chaos 17.0.12",
+  "releasedAt": "2026-09-21T02:23:00.000Z",
+  "releaseTitle": "Schedule Publish Candidate Parity and Firefox Gate Retry",
   "notes": [
-    "Loads Schedule Publish candidates from authoritative Firestore server reads before composing confirmed shift evidence, so local-only echoes or stale mobile cache rows cannot create a client/server candidate mismatch.",
-    "Keeps explicit open shifts publishable without forcing an employee match while maintaining the server closed-world candidate and fingerprint checks.",
-    "Changes the PWA browser icon matrix to validate app-shell HTML, manifest metadata, and icon bytes through Playwright request fixtures so an optional Firefox launch failure cannot block a metadata-only release-gate check."
+    "Aligns browser schedule-publish employee identity readiness with the server-authoritative candidate rules so legacy published shifts with incomplete canonical IDs no longer trigger a false candidate-set changed error.",
+    "Adds one bounded retry only to the Firefox PWA release-gate project for browser-process launch failures while preserving the same real-browser assertions.",
+    "No other application behavior, data model, schedule UI, POS behavior, permissions, or release-gate projects are changed."
   ],
-  "title": "86 Chaos 17.0.13",
-  "summary": "Targeted repair for schedule publishing candidate confirmation plus a request-only PWA icon metadata gate.",
-  "description": "Uses server-authoritative schedule publish candidates before confirmation, preserves intentional open-shift publishing, and keeps the PWA metadata gate from failing on an optional browser launch defect."
+  "title": "86 Chaos 17.0.12",
+  "summary": "Precision repair for schedule publishing candidate parity and the isolated Firefox PWA launch failure.",
+  "description": "Keeps browser and server schedule-publish candidate identity rules in lockstep and adds a single Firefox PWA project retry for transient browser-process launch failure."
 }

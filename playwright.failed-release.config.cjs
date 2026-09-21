@@ -109,7 +109,7 @@ const allProjects = [
   { name: 'chromium', grep: grepForProject(FAILED_ONLY_TESTS, 'chromium'), use: { ...devices['Desktop Chrome'] } },
   { name: 'mobile-chromium', grep: grepForProject(FAILED_ONLY_TESTS, 'mobile-chromium'), use: { ...devices['Pixel 5'] } },
   { name: 'edge-pwa', grep: grepForProject(FAILED_ONLY_TESTS, 'edge-pwa'), testMatch: PWA_SPEC_PATTERN, use: { ...devices['Desktop Edge'], channel: 'msedge' } },
-  { name: 'firefox-pwa', grep: grepForProject(FAILED_ONLY_TESTS, 'firefox-pwa'), testMatch: PWA_SPEC_PATTERN, use: { ...devices['Desktop Firefox'] } },
+  { name: 'firefox-pwa', retries: 1, grep: grepForProject(FAILED_ONLY_TESTS, 'firefox-pwa'), testMatch: PWA_SPEC_PATTERN, use: { ...devices['Desktop Firefox'] } },
   { name: 'webkit-pwa', grep: grepForProject(FAILED_ONLY_TESTS, 'webkit-pwa'), testMatch: PWA_SPEC_PATTERN, use: { ...devices['Desktop Safari'] } },
   { name: 'mobile-webkit-pwa', grep: grepForProject(FAILED_ONLY_TESTS, 'mobile-webkit-pwa'), testMatch: PWA_SPEC_PATTERN, use: { ...devices['iPhone 13'] } }
 ];
