@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "sourceHash": "f5328a9f8aed053fe36d8a6685b3b1d8e04d02b27d3ce1a9f3c276228bc190f2",
+  "sourceHash": "802d166faabacb62a702e1935cb490296398767e5b60286d930323871038e531",
   "files": [
     {
       "file": ".gitattributes",
@@ -41,6 +41,10 @@
     {
       "file": "RELEASE_17_0_14.md",
       "sha256": "cb3a1d616c0822a37255f30353d05596c1437784aeacfbecc0041a5abf09a79d"
+    },
+    {
+      "file": "RELEASE_17_0_15.md",
+      "sha256": "e2aaa8aca355d6c50b9c78196c9a3ce499cebcf1b8617ff040f6c499e417c097"
     },
     {
       "file": "RELEASE_17_0_5.md",
@@ -164,7 +168,7 @@
     },
     {
       "file": "api/_pos-bridge-config.js",
-      "sha256": "9fcfaf705efcaa5033e20e0735e707e0af3412a8f37896a10932f2b842b3a288"
+      "sha256": "1e33ce387796aca49507873a35d4dc23afaf0a84b76c46a0eaf954e6aab88dea"
     },
     {
       "file": "api/_pos-bridge-events.js",
@@ -248,11 +252,11 @@
     },
     {
       "file": "api/_schedule-publish-core.cjs",
-      "sha256": "43c637348101ea8a271a038a61f2abb147229c28e4e65a8d56d8aa96b0a4c512"
+      "sha256": "7457cc9ccb50ec4b7607782154a8d4ea72c5f8499fa890f2c31c0ecb3eb0ecff"
     },
     {
       "file": "api/_schedule-publish-service.cjs",
-      "sha256": "31b04c96b2b273d84eb87da43ea3f7b845bced475b28740aaca6dd45d77f4855"
+      "sha256": "6b24f1758a8c50ebf9c916ba4b90f5a2fa74971e23ef374603eb66c9248f334e"
     },
     {
       "file": "api/_shift4-authority.js",
@@ -292,7 +296,7 @@
     },
     {
       "file": "api/_version.js",
-      "sha256": "d4ad23efc7581da53791d917aa597ddda7a0a04a62204b2da4c11edd5d9260b7"
+      "sha256": "a84f17f4dd502150d3ed496bd8db5557ff1117c77be026de6de62ba544703ee8"
     },
     {
       "file": "api/account-deletion-request.js",
@@ -412,7 +416,7 @@
     },
     {
       "file": "api/customer-help-intelligence.test.cjs",
-      "sha256": "ffdee638b577bc835b10cf81115838fc0103003f8d2184f493d8cf0e30c6d592"
+      "sha256": "d6df891651cb0513ccca410c2fcffa671284a67805e57610b68f5f2af61e75be"
     },
     {
       "file": "api/daily-close.js",
@@ -884,19 +888,19 @@
     },
     {
       "file": "api/release-gate-maturity-16-0-207.test.cjs",
-      "sha256": "4bf2ea1dac1ae5554738b4dca94eab02215608a13e2095206eae3a14176afd9a"
+      "sha256": "8d314f3213d323ffa30b80ff49507c791f53089282ccb4324014db909e6b6d9a"
     },
     {
       "file": "api/release-gate-maturity-16-0-208.test.cjs",
-      "sha256": "4032cff0055cdb13b30860623d90d70fc2363dd35a9166b03ba3c045d93dcce6"
+      "sha256": "0438e6de6648cbe3aa1e81f895b9f391743e5539a12c94c89ab126f75380125e"
     },
     {
       "file": "api/release-gate-maturity-16-0-209.test.cjs",
-      "sha256": "e04bc48bd686cc6b23d33a6ff5649dc5aa7055806ddf767fbf3f772925d357be"
+      "sha256": "47e8fdf7a2f029a4e5c72635f411300c74de109c18316bdd4952d15eb6623aaf"
     },
     {
       "file": "api/release-gate-maturity-16-0-210.test.cjs",
-      "sha256": "ca6579fca31752ae993e1ef3ebc1fd43444ff84122b7b56f5bda892e77ddd788"
+      "sha256": "1ae195879aac2d5b8bc8fce7b108db05505eb35c6f5e5dd26e5d6de3fe30ec99"
     },
     {
       "file": "api/release-gate-provisioning-report.test.cjs",
@@ -1040,7 +1044,11 @@
     },
     {
       "file": "api/schedule-publish-17-0-14.test.cjs",
-      "sha256": "766463aca9f68135c13b34d68163c82b7d591fb2f9c3edb80b954f3d8ff598bb"
+      "sha256": "7bacb7dd09ffe19b9b343519c3a8d4def0ce93059a0ec56183142af106e71dd7"
+    },
+    {
+      "file": "api/schedule-publish-17-0-15.test.cjs",
+      "sha256": "eab6acd426a0b05fb1eea253cd155f90c0011b8b44da9b8be9ecf7a5bc8da22b"
     },
     {
       "file": "api/schedule-publish-emulator-17-0-0.test.cjs",
@@ -1340,11 +1348,11 @@
     },
     {
       "file": "package-lock.json",
-      "sha256": "c58e2221fe1fcaa4adca5aad78f86dda1c25b5ef21a221a6f15596dab25b9877"
+      "sha256": "3e4e2d124306a82897144290bec00a80d592e15fb182a91ceceb169e9663a88a"
     },
     {
       "file": "package.json",
-      "sha256": "e133eecc6b60e9c8fbe82eb22afb0fa62a56e3085c4413105e8083d8019d83e0"
+      "sha256": "b2c883b18c0228358615e4710c881b22e45f31e02b8db34711a9e92f09c7ab3f"
     },
     {
       "file": "playwright.config.js",
@@ -1560,7 +1568,7 @@
     },
     {
       "file": "public/version.json",
-      "sha256": "99c2cc099cba296d9b04a987e669ec994adb31f8c4197f7bdf49b5be088a0fac"
+      "sha256": "1a2adaf5f19bd1670a061307f64017ea6611744be0290a356a1d4cd3d9ab936f"
     },
     {
       "file": "public/wisco.png",
@@ -2499,6 +2507,10 @@
       "sha256": "9c37adb452ad8670f5371e1ad1962cd90fe40aad7b16a85597e70aa4d6c7a58a"
     },
     {
+      "file": "scripts/validate-17-0-15.js",
+      "sha256": "ac1ccd65d75041b757824f9a1d5f8019ab91a8e251929eb4ac2b270be8c96c95"
+    },
+    {
       "file": "scripts/validate-17-0-2.js",
       "sha256": "ac356c192de89bf6ad11309683f1ac26df397bd8308ac466b742092a723d1f3d"
     },
@@ -2692,7 +2704,7 @@
     },
     {
       "file": "src/core/appCore.js",
-      "sha256": "502730746a16f76ee5c63cd9cbb8b11a52ad7b0a8ec2c090f9c54e7ef1614823"
+      "sha256": "4ee4c03b502522dfb38338b90b42c7a7121ecbb145fd0137e084b805b2f8ed9f"
     },
     {
       "file": "src/core/csvSafety.test.js",
@@ -2700,11 +2712,11 @@
     },
     {
       "file": "src/core/customerHelpKnowledge.cjs",
-      "sha256": "18ca5ac647d1e4a07322ee961769f49bb7a4573ca041333be80b76546225b1ad"
+      "sha256": "2424a219f5bd57f6cf0dca78a88a269043a27958cc3720bf1546f909f11829af"
     },
     {
       "file": "src/core/customerHelpKnowledge.js",
-      "sha256": "dab16527615fbe34ba463b7bbe2e203a07edb053a701f64a89279804b9d2de8a"
+      "sha256": "1bd626ea9b144e999140ab8cb8c170ff05b2a87642ee5bd96161cb3c662b5085"
     },
     {
       "file": "src/core/fileCompression.js",
@@ -2884,7 +2896,7 @@
     },
     {
       "file": "src/core/schedulePdf.js",
-      "sha256": "bdf696908ce4f7a9764b354eef211d1a4aa1299a0edf940a7fd493bd3a9f1fde"
+      "sha256": "620020785dfa80a8adf6fb67f823a152a78a7a2a0ba37c3c809152b64873ed40"
     },
     {
       "file": "src/core/schedulePdf.test.js",
@@ -3076,11 +3088,11 @@
     },
     {
       "file": "test-tools/certification/cost-performance-baselines.json",
-      "sha256": "85e97a65a175f134fabae0c2c654eaae16272bf359f647b620234b7161348e85"
+      "sha256": "d74981884e6e4d9e79087851ef0fb9c71aaaf97ee21080670da629596746ea01"
     },
     {
       "file": "test-tools/certification/groups.json",
-      "sha256": "c7cfa676c078b6d6222fef357fc2fbdc6670c526f1e0c671a265b27f218cc960"
+      "sha256": "56f70695de0fb314de215ca5f0cad2cd36ab03e20a3af857d34decdbf385386f"
     },
     {
       "file": "test-tools/certification/permission-matrix.json",
@@ -3128,7 +3140,7 @@
     },
     {
       "file": "test-tools/regressions/registry.json",
-      "sha256": "6780760d114fd4035fc7cccdfa1fc3b4658f711830b2a8435b73f76b0dea65d0"
+      "sha256": "9092819879233f21440208affec6b44b8b7487d7252cdfb9926d9d824ebd1701"
     },
     {
       "file": "test-tools/reporters/chaos-release-gate-reporter.cjs",

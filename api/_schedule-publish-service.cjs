@@ -69,7 +69,7 @@ async function loadRosterPeople(db, restaurantId) {
   const memberRows=members.docs.map(doc=>({id:doc.id,...doc.data(),_source:'workspaceMember'}));
   const claimedUsers=new Set(),people=[];
   for(const member of memberRows){const match=userRows.find(user=>identityAliases(member).some(alias=>identityAliases(user).includes(alias))||identityEmails(member).some(email=>identityEmails(user).includes(email)));if(match)claimedUsers.add(match.id);people.push({...match,...member,id:clean(member.employeeId||member.rosterUserId||member.scheduleUserId||member.userId||member.uid||member.id),workspaceMemberId:member.id,_source:'canonical'});}
-  for(const user of userRows)if(!claimedUsers.has(user.id)&&user.legacyMembershipFallback===true&&Number(user.membershipMigrationVersion||0)<2)people.push(user);
+  for(const user of userRows)if(!claimedUsers.has(user.id))people.push({...user,_source:'user-identity-fallback'});
   return people;
 }
 function validateRequest(body = {}) {

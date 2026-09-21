@@ -1,16 +1,16 @@
 {
-  "version": "17.0.14",
-  "name": "86 Chaos 17.0.14",
-  "build": "17.0.14",
-  "label": "86 Chaos 17.0.14",
-  "releasedAt": "2026-09-21T03:20:00.000Z",
-  "releaseTitle": "Schedule Publish Authoritative Evidence Repair",
+  "version": "17.0.15",
+  "name": "86 Chaos 17.0.15",
+  "build": "17.0.15",
+  "label": "86 Chaos 17.0.15",
+  "releasedAt": "2026-09-21T03:55:00.000Z",
+  "releaseTitle": "Schedule Publish Canonical Roster Parity Repair",
   "notes": [
-    "Builds schedule-publish confirmation evidence from authoritative Firestore server reads, eliminating stale/local-only candidate mismatches.",
-    "Includes already-valid published shifts as verified evidence while the server writes only shifts that actually require publication or repair.",
-    "Keeps intentional open shifts publishable and makes the PWA icon metadata gate request-only so Firefox process launch failures cannot block a metadata-only assertion."
+    "Allows active tenant users that are not yet represented by workspaceMembers to participate in schedule identity resolution without granting any additional application permissions.",
+    "Treats client-confirmed shifts that the authoritative server will not write as safe no-write evidence instead of failing the entire publish operation with candidate_set_changed.",
+    "Still fails closed if the server intends to write any shift that the client did not confirm."
   ],
-  "title": "86 Chaos 17.0.14",
-  "summary": "Precision repair for schedule publishing candidate evidence and the isolated Firefox PWA metadata gate failure.",
-  "description": "Aligns client/server schedule publish evidence without weakening the closed-world server checks, and removes unnecessary browser launch dependency from the PWA metadata matrix."
+  "title": "86 Chaos 17.0.15",
+  "summary": "Precision repair for the remaining schedule publication candidate mismatch on legacy/canonical roster data.",
+  "description": "Makes the server publication roster resolve the same tenant users the Schedule Builder can resolve, while keeping server-authoritative write selection and stale-write protections intact."
 }

@@ -115,14 +115,14 @@ function buildCanonicalServerPlan({ restaurantId, operationId, dayKeys = [], sel
   const missingEvidenceIds = actualIds.filter(id=>!expectedById.has(id));
   const extraEvidenceIds = expectedIds.filter(id=>!actualIds.includes(id));
   const unavailableEvidenceIds = extraEvidenceIds.filter(id=>!unchangedEvidenceById.has(id));
-  if (missingEvidenceIds.length || unavailableEvidenceIds.length) throw Object.assign(new Error('The saved schedule changed or the candidate query is incomplete. Refresh before publishing.'), { statusCode:409, code:'candidate_set_changed', details:{ actualIds, expectedIds, missingEvidenceIds, unavailableEvidenceIds } });
+  if (missingEvidenceIds.length) throw Object.assign(new Error('The saved schedule changed or the candidate query is incomplete. Refresh before publishing.'), { statusCode:409, code:'candidate_set_changed', details:{ actualIds, expectedIds, missingEvidenceIds, unavailableEvidenceIds } });
   const assertConfirmedEvidenceMatches = (id, currentExpected) => {
     const confirmed=expectedById.get(id);
     const serverState=stable(Object.fromEntries(Object.entries(currentExpected).filter(([key])=>key!=='contentDigest')));
     if(!confirmed?.contentDigest||confirmed.contentDigest!==currentExpected.contentDigest||!confirmed.state||JSON.stringify(confirmed.state)!==JSON.stringify(serverState)) throw Object.assign(new Error('A confirmed shift changed before publication.'),{statusCode:409,code:'confirmed_shift_changed',details:{shiftId:id}});
   };
   for (const candidate of candidates) assertConfirmedEvidenceMatches(candidate.id, candidate.expected);
-  for (const id of extraEvidenceIds) assertConfirmedEvidenceMatches(id, unchangedEvidenceById.get(id).expected);
+  for (const id of extraEvidenceIds) { const unchanged=unchangedEvidenceById.get(id); if (unchanged) assertConfirmedEvidenceMatches(id, unchanged.expected); }
   const digestInput = { restaurantId:tenant, operationId:clean(operationId), dayKeys:days, selectedWeekKeys:[...new Set(selectedWeekKeys.map(clean).filter(Boolean))].sort(), selectedRoleIds:allRoles?[]:[...selectedSet].sort(), allRoles:Boolean(allRoles), roleConfigurationRevision, roleConfigurationGeneration:Number(roleConfigurationGeneration||0), shifts:candidates.map(row=>({id:row.id,contentDigest:row.expected.contentDigest,desiredEmployeeIdentity:row.desiredEmployeeIdentity,rosterRoleId:row.rosterRoleId,date:row.date})) };
   return {
     ...digestInput,

@@ -43,10 +43,11 @@ test('missing evidence for a writable shift still fails closed', () => {
     error?.code === 'candidate_set_changed' && error?.details?.missingEvidenceIds?.includes('draft'));
 });
 
-test('extra evidence must correspond to an authoritative unchanged shift', () => {
+test('extra no-write evidence does not abort the authoritative writable plan', () => {
   const ghost = { ...evidence(published), id:'ghost' };
-  assert.throws(() => plan({ expectedShifts:[evidence(draft), evidence(published), ghost] }), error =>
-    error?.code === 'candidate_set_changed' && error?.details?.unavailableEvidenceIds?.includes('ghost'));
+  const result = plan({ expectedShifts:[evidence(draft), evidence(published), ghost] });
+  assert.deepEqual(result.candidates.map(row=>row.id), ['draft']);
+  assert.deepEqual(result.unchangedShiftIds, ['published']);
 });
 
 test('changed unchanged-shift evidence still fails before publication', () => {
