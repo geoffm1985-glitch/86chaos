@@ -1,4 +1,4 @@
-import { buildSchedulePublicationPlan } from './schedulePublicationPlan';
+import { buildSchedulePublicationPlan, buildConfirmedShiftEvidence, isIntentionalOpenScheduleShift } from './schedulePublicationPlan';
 
 const roles = [{ id: 'grill-id', name: 'Grill', revision: 2 }, { id: 'bar-id', name: 'Bar', revision: 1 }];
 const shifts = [
@@ -19,3 +19,14 @@ test('ambiguous legacy role identity is review-only', () => {
   expect(plan.candidateShiftIds).toEqual([]);
   expect(plan.unresolvedRoles[0].reason).toBe('ambiguous-legacy-role-name');
 });
+
+test('intentional open shift confirmation evidence stays server-compatible', async () => {
+  const openShift = { id: 'open1', restaurantId: 'r', date: '2026-09-18', scheduleDateKey: '2026-09-18', role: 'Grill', startTime: '9:00', endTime: '17:00', isOpenShift: true };
+  expect(isIntentionalOpenScheduleShift(openShift)).toBe(true);
+  const evidence = await buildConfirmedShiftEvidence({ shift: openShift, resolvedRole: { rosterRoleId: 'grill-id', rosterRoleNameSnapshot: 'Grill' }, desiredEmployeeIdentity: null });
+  expect(evidence.id).toBe('open1');
+  expect(evidence.state.intentionalOpen).toBe(true);
+  expect(evidence.state.employeeIdentity).toMatchObject({ scheduleUserId: '', employeeId: '', rosterUserId: '', userId: '', authUid: '', accountUserId: '', assignedUserId: '' });
+  expect(evidence.contentDigest).toBeTruthy();
+});
+

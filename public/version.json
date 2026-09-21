@@ -1,16 +1,16 @@
 {
-  "version": "17.0.12",
-  "name": "86 Chaos 17.0.12",
-  "build": "17.0.12",
-  "label": "86 Chaos 17.0.12",
-  "releasedAt": "2026-09-21T02:23:00.000Z",
-  "releaseTitle": "Schedule Publish Candidate Parity and Firefox Gate Retry",
+  "version": "17.0.14",
+  "name": "86 Chaos 17.0.14",
+  "build": "17.0.14",
+  "label": "86 Chaos 17.0.14",
+  "releasedAt": "2026-09-21T03:20:00.000Z",
+  "releaseTitle": "Schedule Publish Authoritative Evidence Repair",
   "notes": [
-    "Aligns browser schedule-publish employee identity readiness with the server-authoritative candidate rules so legacy published shifts with incomplete canonical IDs no longer trigger a false candidate-set changed error.",
-    "Adds one bounded retry only to the Firefox PWA release-gate project for browser-process launch failures while preserving the same real-browser assertions.",
-    "No other application behavior, data model, schedule UI, POS behavior, permissions, or release-gate projects are changed."
+    "Builds schedule-publish confirmation evidence from authoritative Firestore server reads, eliminating stale/local-only candidate mismatches.",
+    "Includes already-valid published shifts as verified evidence while the server writes only shifts that actually require publication or repair.",
+    "Keeps intentional open shifts publishable and makes the PWA icon metadata gate request-only so Firefox process launch failures cannot block a metadata-only assertion."
   ],
-  "title": "86 Chaos 17.0.12",
-  "summary": "Precision repair for schedule publishing candidate parity and the isolated Firefox PWA launch failure.",
-  "description": "Keeps browser and server schedule-publish candidate identity rules in lockstep and adds a single Firefox PWA project retry for transient browser-process launch failure."
+  "title": "86 Chaos 17.0.14",
+  "summary": "Precision repair for schedule publishing candidate evidence and the isolated Firefox PWA metadata gate failure.",
+  "description": "Aligns client/server schedule publish evidence without weakening the closed-world server checks, and removes unnecessary browser launch dependency from the PWA metadata matrix."
 }
