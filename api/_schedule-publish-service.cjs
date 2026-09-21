@@ -235,11 +235,30 @@ async function notifyAffected(db,messaging,auth,operation,plan,verifiedRows,rest
   }
   return state;
 }
+function buildFinalPublicationCounts(plan = {}, verifiedIds = []) {
+  const verifiedSet = new Set((verifiedIds || []).map(clean).filter(Boolean));
+  const verifiedRows = (plan.candidates || []).filter(row => verifiedSet.has(clean(row.id)));
+  const verifiedNewShiftIds = verifiedRows.filter(row => row.alreadyPublished !== true).map(row => clean(row.id)).filter(Boolean);
+  const verifiedRepairShiftIds = verifiedRows.filter(row => row.alreadyPublished === true).map(row => clean(row.id)).filter(Boolean);
+  const unchangedShiftIds = unique((plan.unchangedShiftIds || []).map(clean));
+  const unresolvedEmployees = Array.isArray(plan.unresolvedEmployees) ? plan.unresolvedEmployees : [];
+  return {
+    verifiedNewShiftIds,
+    verifiedRepairShiftIds,
+    verifiedNewCount: verifiedNewShiftIds.length,
+    verifiedRepairCount: verifiedRepairShiftIds.length,
+    unchangedShiftIds,
+    unchangedCount: unchangedShiftIds.length,
+    unresolvedEmployees,
+    unresolvedEmployeeCount: unresolvedEmployees.length
+  };
+}
 async function finalizeOperation(db,operation,plan,timeOff,notificationState,clock=new Date()){
   const nowIso=asDate(clock).toISOString();
   return fencedTransaction(db,operation,plan,clock,(tx,op)=>{
     const planned=new Set(op.plannedShiftIds||[]),verified=new Set(op.verifiedShiftIds||[]),conflicted=new Set(op.conflictedShiftIds||[]);for(const id of conflicted)verified.delete(id);const remaining=[...planned].filter(id=>!verified.has(id)&&!conflicted.has(id));const timeOffComplete=(op.timeOffState?.status||timeOff?.status)==='complete';const status=remaining.length||!timeOffComplete?'recoverable':conflicted.size?'partial':'complete';
-    const result={operationId:plan.operationId,planDigest:plan.planDigest,status,generation:operation.state.generation,plannedCount:planned.size,committedCount:unique(op.committedShiftIds||[]).length,verifiedCount:verified.size,conflictedCount:conflicted.size,remainingCount:remaining.length,committedShiftIds:unique(op.committedShiftIds||[]),verifiedShiftIds:[...verified],conflictedShiftIds:[...conflicted],remainingShiftIds:remaining,affectedEmployeeIds:unique(plan.candidates.filter(row=>verified.has(row.id)).map(row=>row.employeeId)),affectedDates:unique(plan.candidates.filter(row=>verified.has(row.id)).map(row=>row.date)),affectedRoleIds:unique(plan.candidates.filter(row=>verified.has(row.id)).map(row=>row.rosterRoleId)),timeOff,notificationState,finalizedAt:nowIso,updatedAt:nowIso,leaseExpiresAt:nowIso};
+    const outcomeCounts=buildFinalPublicationCounts(plan,[...verified]);
+    const result={operationId:plan.operationId,planDigest:plan.planDigest,status,generation:operation.state.generation,plannedCount:planned.size,committedCount:unique(op.committedShiftIds||[]).length,verifiedCount:verified.size,conflictedCount:conflicted.size,remainingCount:remaining.length,committedShiftIds:unique(op.committedShiftIds||[]),verifiedShiftIds:[...verified],conflictedShiftIds:[...conflicted],remainingShiftIds:remaining,...outcomeCounts,affectedEmployeeIds:unique(plan.candidates.filter(row=>verified.has(row.id)).map(row=>row.employeeId)),affectedDates:unique(plan.candidates.filter(row=>verified.has(row.id)).map(row=>row.date)),affectedRoleIds:unique(plan.candidates.filter(row=>verified.has(row.id)).map(row=>row.rosterRoleId)),timeOff,notificationState,finalizedAt:nowIso,updatedAt:nowIso,leaseExpiresAt:nowIso};
     tx.set(operation.ref,result,{merge:true});
     tx.set(operation.tenantLeaseRef,{status:'released',leaseExpiresAt:nowIso,releasedByOperationId:plan.operationId,releasedGeneration:operation.state.tenantLeaseGeneration,updatedAt:nowIso},{merge:true});
     return result;
@@ -295,4 +314,4 @@ async function reconcileScheduleRoles({db, ctx, body, clock = new Date()}) {
   });
 }
 
-module.exports={reconcileScheduleRoles,LEASE_MS,CHUNK_SIZE,NOTIFICATION_BATCH_SIZE,safeError,requestIntent,requestDigest,validateRequest,loadRoles,loadRoleConfiguration,loadCandidateShifts,loadRosterPeople,resolveEmployeeForShift,assertFenceState,fencedTransaction,acquireOperation,publishedVerificationState,publishedCommitEvidence,publishedStateMatches,commitChunk,verifyCommitted,processTimeOff,collectEligibleRecipients,notifyAffected,finalizeOperation,getOperationStatus,executeSchedulePublish};
+module.exports={reconcileScheduleRoles,LEASE_MS,CHUNK_SIZE,NOTIFICATION_BATCH_SIZE,safeError,requestIntent,requestDigest,validateRequest,loadRoles,loadRoleConfiguration,loadCandidateShifts,loadRosterPeople,resolveEmployeeForShift,assertFenceState,fencedTransaction,acquireOperation,publishedVerificationState,publishedCommitEvidence,publishedStateMatches,commitChunk,verifyCommitted,processTimeOff,collectEligibleRecipients,notifyAffected,buildFinalPublicationCounts,finalizeOperation,getOperationStatus,executeSchedulePublish};

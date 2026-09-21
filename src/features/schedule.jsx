@@ -2952,16 +2952,41 @@ const saveReviewedRoles = async () => {
       }
       try { sessionStorage.removeItem(operationStorageKey); } catch (_) {}
       const notification = publishResult.notificationState || {};
-      const title = unresolved.length ? 'Published with Employee Review Needed' : (repairCount ? 'Published and Visibility Repaired' : 'Published');
-      const detailParts = [`${publishedShiftIds.length} shift${publishedShiftIds.length === 1 ? '' : 's'} verified for ${publishPeriodLabel}`];
-      if (draftCount) detailParts.push(`${draftCount} new`);
-      if (repairCount) detailParts.push(`${repairCount} employee visibility repaired`);
+      const verifiedCount = Number.isFinite(Number(publishResult.verifiedCount)) ? Number(publishResult.verifiedCount) : publishedShiftIds.length;
+      const verifiedNewCount = Number(publishResult.verifiedNewCount || 0);
+      const verifiedRepairCount = Number(publishResult.verifiedRepairCount || 0);
+      const unchangedCount = Number(publishResult.unchangedCount || 0);
+      const unresolvedServerCount = Number(publishResult.unresolvedEmployeeCount || 0);
+      const serverChangedCount = verifiedNewCount + verifiedRepairCount;
+      const title = unresolvedServerCount > 0 && verifiedCount === 0
+        ? 'Publish Needs Employee Review'
+        : unresolvedServerCount > 0
+          ? 'Published with Employee Review Needed'
+          : verifiedRepairCount > 0
+            ? 'Published and Visibility Repaired'
+            : serverChangedCount > 0
+              ? 'Published'
+              : 'Schedule Already Current';
+      const detailParts = [];
+      if (verifiedNewCount) detailParts.push(`${verifiedNewCount} new shift${verifiedNewCount === 1 ? '' : 's'} published and verified`);
+      if (verifiedRepairCount) detailParts.push(`${verifiedRepairCount} employee visibility repair${verifiedRepairCount === 1 ? '' : 's'} verified`);
+      if (!serverChangedCount && verifiedCount) detailParts.push(`${verifiedCount} shift${verifiedCount === 1 ? '' : 's'} verified`);
+      if (unchangedCount) detailParts.push(`${unchangedCount} already current`);
+      if (unresolvedServerCount) detailParts.push(`${unresolvedServerCount} shift${unresolvedServerCount === 1 ? '' : 's'} not published because employee identity needs review`);
+      if (!detailParts.length) detailParts.push(`No server changes were required for ${publishPeriodLabel}`);
       if (notification.failedCount) detailParts.push(`${notification.failedCount} notification${notification.failedCount === 1 ? '' : 's'} failed and remain eligible for a controlled retry`);
       if (notification.ambiguousCount) detailParts.push(`${notification.ambiguousCount} notification acknowledgement${notification.ambiguousCount === 1 ? '' : 's'} remain unknown and will not be resent automatically`);
       addToast(title, `${detailParts.join('. ')}. Unselected weeks and roles stayed as drafts.`);
-      logAudit(appUser, 'PUBLISH_SCHEDULE', 'Master Roster', `Operation ${operationId} verified ${publishedShiftIds.length}/${updatePlan.length} shifts for ${publishSelectionLabel} and ${roleSelectionLabel}.`);
+      logAudit(appUser, 'PUBLISH_SCHEDULE', 'Master Roster', `Operation ${operationId} verified ${verifiedCount} server shift(s): ${verifiedNewCount} new, ${verifiedRepairCount} repaired, ${unchangedCount} already current, ${unresolvedServerCount} employee-review.`);
 
-      updatePublishProgress('complete', 'Publish complete', `${publishedShiftIds.length} shift${publishedShiftIds.length === 1 ? '' : 's'} published and verified.`, publishedShiftIds.length, publishedShiftIds.length);
+      const progressDetail = unresolvedServerCount
+        ? `${verifiedCount} verified; ${unresolvedServerCount} need employee review.`
+        : serverChangedCount
+          ? `${verifiedNewCount} new and ${verifiedRepairCount} visibility repair${verifiedRepairCount === 1 ? '' : 's'} verified.`
+          : unchangedCount
+            ? `${unchangedCount} selected shift${unchangedCount === 1 ? '' : 's'} already current; no server changes required.`
+            : `No server changes were required for ${publishPeriodLabel}.`;
+      updatePublishProgress('complete', unresolvedServerCount ? 'Publish completed with review needed' : 'Publish complete', progressDetail, verifiedCount, Math.max(verifiedCount, 1));
       publishCompleted = true;
       setSelectedPublishWeekKeys([]);
       setIsPublishPickerOpen(false);

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "release": "17.0.15",
+  "release": "17.0.16",
   "defects": [
     {
       "defectId": "RG-API-WRAPPER-FIDELITY",
@@ -409,6 +409,19 @@
       "fidelity": "RELEASE-GATE CONFIGURATION",
       "fixedVersion": "17.0.14",
       "mandatoryGroup": "playwright"
+    },
+    {
+      "defectId": "SCHEDULE-PUBLISH-RESULT-SUMMARY-1716",
+      "origin": "17.0.15 real-device successful publish toast",
+      "affectedInvariant": "Schedule publish completion messaging reports authoritative server outcomes and never mixes preflight estimates with verified results",
+      "reproducer": "api/schedule-publish-17-0-16.test.cjs",
+      "permanentTestIds": [
+        "authoritative result counts distinguish new publishes, visibility repairs, unchanged rows, and employee-review rows",
+        "completion toast uses server-authoritative outcome counts instead of browser preflight estimates"
+      ],
+      "fidelity": "ACTUAL SERVER SERVICE / BROWSER SOURCE CONTRACT",
+      "fixedVersion": "17.0.16",
+      "mandatoryGroup": "schedule-publish"
     }
   ]
 }

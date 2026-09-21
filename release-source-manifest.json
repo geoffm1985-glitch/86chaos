@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "sourceHash": "802d166faabacb62a702e1935cb490296398767e5b60286d930323871038e531",
+  "sourceHash": "f57174885e36430df634e9031162f01f6de0c6d0e7159af4e5176e9d4ea45749",
   "files": [
     {
       "file": ".gitattributes",
@@ -45,6 +45,10 @@
     {
       "file": "RELEASE_17_0_15.md",
       "sha256": "e2aaa8aca355d6c50b9c78196c9a3ce499cebcf1b8617ff040f6c499e417c097"
+    },
+    {
+      "file": "RELEASE_17_0_16.md",
+      "sha256": "8373c20d025eb0bc40ab1e2c6ad1382ad2f01ce983211eaf66f7d69cc0a3f396"
     },
     {
       "file": "RELEASE_17_0_5.md",
@@ -168,7 +172,7 @@
     },
     {
       "file": "api/_pos-bridge-config.js",
-      "sha256": "1e33ce387796aca49507873a35d4dc23afaf0a84b76c46a0eaf954e6aab88dea"
+      "sha256": "df9ad4c5d81d62165bbbc5663ee9d6a2adf5a04ccc73e6d9950b6a7a3099f87e"
     },
     {
       "file": "api/_pos-bridge-events.js",
@@ -256,7 +260,7 @@
     },
     {
       "file": "api/_schedule-publish-service.cjs",
-      "sha256": "6b24f1758a8c50ebf9c916ba4b90f5a2fa74971e23ef374603eb66c9248f334e"
+      "sha256": "254573a91b9acda6cda7caa962f9b341fda14c80e3b829e57708618e7b2ad25f"
     },
     {
       "file": "api/_shift4-authority.js",
@@ -296,7 +300,7 @@
     },
     {
       "file": "api/_version.js",
-      "sha256": "a84f17f4dd502150d3ed496bd8db5557ff1117c77be026de6de62ba544703ee8"
+      "sha256": "8bd06ae9176dbb1f6c153ca87f35d80ad0ea761f445869dec2ee039e36d56ca6"
     },
     {
       "file": "api/account-deletion-request.js",
@@ -416,7 +420,7 @@
     },
     {
       "file": "api/customer-help-intelligence.test.cjs",
-      "sha256": "d6df891651cb0513ccca410c2fcffa671284a67805e57610b68f5f2af61e75be"
+      "sha256": "6b28e64ab29c9651da73b6b8feb5ee6d8a87d2469369a315bc3c4b751ef0b424"
     },
     {
       "file": "api/daily-close.js",
@@ -888,19 +892,19 @@
     },
     {
       "file": "api/release-gate-maturity-16-0-207.test.cjs",
-      "sha256": "8d314f3213d323ffa30b80ff49507c791f53089282ccb4324014db909e6b6d9a"
+      "sha256": "fb292c51391932c515dc8006dace0647a47f541bd82a418e5b9cbea191c30bbe"
     },
     {
       "file": "api/release-gate-maturity-16-0-208.test.cjs",
-      "sha256": "0438e6de6648cbe3aa1e81f895b9f391743e5539a12c94c89ab126f75380125e"
+      "sha256": "c42ba351634581dab464bd0ac1aa114bc9bbab616485f4502da40cfdf27a04c8"
     },
     {
       "file": "api/release-gate-maturity-16-0-209.test.cjs",
-      "sha256": "47e8fdf7a2f029a4e5c72635f411300c74de109c18316bdd4952d15eb6623aaf"
+      "sha256": "494d97b67fede419234c58def24f243c270a8515a43ff18847d8cd4f1f892123"
     },
     {
       "file": "api/release-gate-maturity-16-0-210.test.cjs",
-      "sha256": "1ae195879aac2d5b8bc8fce7b108db05505eb35c6f5e5dd26e5d6de3fe30ec99"
+      "sha256": "36728d5d03e5a7ddfd733beb880e3a8a96672c1b050a89fc9a4e122ba1d55c87"
     },
     {
       "file": "api/release-gate-provisioning-report.test.cjs",
@@ -1049,6 +1053,10 @@
     {
       "file": "api/schedule-publish-17-0-15.test.cjs",
       "sha256": "eab6acd426a0b05fb1eea253cd155f90c0011b8b44da9b8be9ecf7a5bc8da22b"
+    },
+    {
+      "file": "api/schedule-publish-17-0-16.test.cjs",
+      "sha256": "e8732740e8eb7a1f7f945d0ac5f7b1408444989538d92a167cab7eb9e6b8f34e"
     },
     {
       "file": "api/schedule-publish-emulator-17-0-0.test.cjs",
@@ -1348,11 +1356,11 @@
     },
     {
       "file": "package-lock.json",
-      "sha256": "3e4e2d124306a82897144290bec00a80d592e15fb182a91ceceb169e9663a88a"
+      "sha256": "4be628e7c90dc458bdd384fa67c97d2c73e59d7a800315f59c4c47a6ba7c017d"
     },
     {
       "file": "package.json",
-      "sha256": "b2c883b18c0228358615e4710c881b22e45f31e02b8db34711a9e92f09c7ab3f"
+      "sha256": "c30b95d35cf58c7188c1e79d9ab063cc9292999d8ef159f1e9149900f1f9b736"
     },
     {
       "file": "playwright.config.js",
@@ -1568,7 +1576,7 @@
     },
     {
       "file": "public/version.json",
-      "sha256": "1a2adaf5f19bd1670a061307f64017ea6611744be0290a356a1d4cd3d9ab936f"
+      "sha256": "5abfffaddef52343ce80d054e6f622278061f3dac16ecaaf86fa28bc840d5f09"
     },
     {
       "file": "public/wisco.png",
@@ -2511,6 +2519,10 @@
       "sha256": "ac1ccd65d75041b757824f9a1d5f8019ab91a8e251929eb4ac2b270be8c96c95"
     },
     {
+      "file": "scripts/validate-17-0-16.js",
+      "sha256": "37ccea2dab7e9636fb20993763c4017c6264c85fe8359b61fbeb7365c8d4001d"
+    },
+    {
       "file": "scripts/validate-17-0-2.js",
       "sha256": "ac356c192de89bf6ad11309683f1ac26df397bd8308ac466b742092a723d1f3d"
     },
@@ -2704,7 +2716,7 @@
     },
     {
       "file": "src/core/appCore.js",
-      "sha256": "4ee4c03b502522dfb38338b90b42c7a7121ecbb145fd0137e084b805b2f8ed9f"
+      "sha256": "85a4a57b48cde18bed4fe8e2a461b21e57c65ac92ad9bd90e9c727602ac33cb6"
     },
     {
       "file": "src/core/csvSafety.test.js",
@@ -2712,11 +2724,11 @@
     },
     {
       "file": "src/core/customerHelpKnowledge.cjs",
-      "sha256": "2424a219f5bd57f6cf0dca78a88a269043a27958cc3720bf1546f909f11829af"
+      "sha256": "14ffb1ae3bc71a9719d565c25567c45662e23bc15a4519acd7c2cbbcb3c00f82"
     },
     {
       "file": "src/core/customerHelpKnowledge.js",
-      "sha256": "1bd626ea9b144e999140ab8cb8c170ff05b2a87642ee5bd96161cb3c662b5085"
+      "sha256": "6c90ff49aa48d1ac4ec5f550c907c315c5b0b12cefc894fbc4fb2ae132bc71af"
     },
     {
       "file": "src/core/fileCompression.js",
@@ -2896,7 +2908,7 @@
     },
     {
       "file": "src/core/schedulePdf.js",
-      "sha256": "620020785dfa80a8adf6fb67f823a152a78a7a2a0ba37c3c809152b64873ed40"
+      "sha256": "dacf07825acc8c387cc095710a642feaaf7427dcdb882c188525add994a11e3f"
     },
     {
       "file": "src/core/schedulePdf.test.js",
@@ -3032,7 +3044,7 @@
     },
     {
       "file": "src/features/schedule.jsx",
-      "sha256": "a2484c43c53f59dd262e8349b3ff97893e4b4db0e18ae76811867ca664322c39"
+      "sha256": "ce3ff8747b3f7c3b71ce4414e03b7030a468c142564b683b3d5ad859cc911e2f"
     },
     {
       "file": "src/features/trainingManual.js",
@@ -3088,11 +3100,11 @@
     },
     {
       "file": "test-tools/certification/cost-performance-baselines.json",
-      "sha256": "d74981884e6e4d9e79087851ef0fb9c71aaaf97ee21080670da629596746ea01"
+      "sha256": "99252a91f2e8a31201fbfff3d727217da038f6f65279533444a22e6b15dc984c"
     },
     {
       "file": "test-tools/certification/groups.json",
-      "sha256": "56f70695de0fb314de215ca5f0cad2cd36ab03e20a3af857d34decdbf385386f"
+      "sha256": "6b0aae14ec0c852e8e00543931d29d7a9c44ebef9643a264691e6fa75226a864"
     },
     {
       "file": "test-tools/certification/permission-matrix.json",
@@ -3140,7 +3152,7 @@
     },
     {
       "file": "test-tools/regressions/registry.json",
-      "sha256": "9092819879233f21440208affec6b44b8b7487d7252cdfb9926d9d824ebd1701"
+      "sha256": "3b13e73037e483996be47b7a1a4f133643c2eb2c09c63b35ec4c918c72f4754b"
     },
     {
       "file": "test-tools/reporters/chaos-release-gate-reporter.cjs",
@@ -3460,7 +3472,7 @@
     },
     {
       "file": "vercel.json",
-      "sha256": "3a42afbec525fe1abfe52f28d9b973c9494bdaca6edf3b0ed1a43f30c69db276"
+      "sha256": "e72ac33171a97c4a10cfa2a2d77449fb272b8b4b50b4da81621d185ccde39d8a"
     }
   ]
 }
