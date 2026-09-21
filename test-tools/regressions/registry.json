@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "release": "17.0.17",
+  "release": "17.0.18",
   "defects": [
     {
       "defectId": "RG-API-WRAPPER-FIDELITY",
@@ -449,6 +449,19 @@
       "fidelity": "ACTUAL SERVER SERVICE / BROWSER LEGACY ROSTER CONTRACT",
       "fixedVersion": "17.0.17",
       "mandatoryGroup": "schedule-publish"
+    },
+    {
+      "defectId": "RELEASE-GATE-SCHEDULE-SUBPROCESS-TIMEOUT-1718",
+      "origin": "17.0.17 full Play Store gate run 2026-09-21T01-35-33",
+      "affectedInvariant": "Full release-gate local readiness checks must not nest the mobile-layout Playwright runner inside the schedule publication npm lifecycle, and timeout exit 124 must be reported as the primary blocker",
+      "reproducer": "api/release-gate-schedule-runner-17-0-18.test.cjs",
+      "permanentTestIds": [
+        "full release checks split schedule core tests from mobile layout Playwright",
+        "observable timeout is reported as timeout instead of TAP fail zero"
+      ],
+      "fidelity": "ACTUAL RELEASE-GATE HARNESS / FAILURE EXTRACTOR CONTRACT",
+      "fixedVersion": "17.0.18",
+      "mandatoryGroup": "hostile-contracts"
     }
   ]
 }
