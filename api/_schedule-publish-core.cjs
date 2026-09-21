@@ -86,6 +86,7 @@ function buildCanonicalServerPlan({ restaurantId, operationId, dayKeys = [], sel
   const unresolvedRoles = [];
   const unresolvedEmployees = [];
   const unchangedShiftIds = [];
+  const unchangedEvidenceById = new Map();
   const candidates = [];
   for (const raw of shifts) {
     const id = clean(raw.id);
@@ -101,21 +102,27 @@ function buildCanonicalServerPlan({ restaurantId, operationId, dayKeys = [], sel
     const employee=isOpen?null:employeeResolution.person;
     const desiredIdentity=employee?canonicalEmployeeIdentity(employee,raw):{};
     const needsWrite=!publicationFieldsValid(raw)||role.migratable||clean(raw.rosterRoleId)!==role.rosterRoleId||(employee&&!identityMatches(raw,desiredIdentity))||clean(raw.date)!==date||clean(raw.scheduleDateKey)!==date;
-    if(!needsWrite){unchangedShiftIds.push(id);continue;}
-    candidates.push({ id, date, employeeId:isOpen?'':clean(desiredIdentity.scheduleUserId||shiftEmployeeId(raw)), intentionalOpen:isOpen, desiredEmployeeIdentity:desiredIdentity, rosterRoleId:role.rosterRoleId, rosterRoleNameSnapshot:role.rosterRoleNameSnapshot, migrateRoleIdentity:role.migratable, expected:expectedFingerprint(raw,role,employee), alreadyPublished:raw.isPublished === true && raw.published === true });
+    const currentEvidence = expectedFingerprint(raw,role,employee);
+    if(!needsWrite){unchangedShiftIds.push(id);unchangedEvidenceById.set(id,{expected:currentEvidence});continue;}
+    candidates.push({ id, date, employeeId:isOpen?'':clean(desiredIdentity.scheduleUserId||shiftEmployeeId(raw)), intentionalOpen:isOpen, desiredEmployeeIdentity:desiredIdentity, rosterRoleId:role.rosterRoleId, rosterRoleNameSnapshot:role.rosterRoleNameSnapshot, migrateRoleIdentity:role.migratable, expected:currentEvidence, alreadyPublished:raw.isPublished === true && raw.published === true });
   }
   candidates.sort((a,b)=>a.date.localeCompare(b.date)||a.id.localeCompare(b.id));
   const expected = [...expectedShifts].map(row => {const state=row.state&&typeof row.state==='object'?stable(row.state):null;return { id:clean(row.id), contentDigest:clean(row.contentDigest)||(state?digest(state):''), state };}).filter(row=>row.id).sort((a,b)=>a.id.localeCompare(b.id));
   const actualIds = candidates.map(row=>row.id).sort((a,b)=>a.localeCompare(b));
   const expectedIds = expected.map(row=>row.id);
-  if (unresolvedRoles.length) throw Object.assign(new Error('One or more shifts have unresolved roster-role identity and require review.'), { statusCode:409, code:'unresolved_role_identity', details:unresolvedRoles });
-  if (JSON.stringify(actualIds) !== JSON.stringify(expectedIds)) throw Object.assign(new Error('The saved schedule changed or the candidate query is incomplete. Refresh before publishing.'), { statusCode:409, code:'candidate_set_changed', details:{ actualIds, expectedIds } });
   const expectedById = new Map(expected.map(row=>[row.id,row]));
-  for (const candidate of candidates) {
-    const confirmed=expectedById.get(candidate.id);
-    const serverState=stable(Object.fromEntries(Object.entries(candidate.expected).filter(([key])=>key!=='contentDigest')));
-    if(!confirmed?.contentDigest||confirmed.contentDigest!==candidate.expected.contentDigest||!confirmed.state||JSON.stringify(confirmed.state)!==JSON.stringify(serverState)) throw Object.assign(new Error('A confirmed shift changed before publication.'),{statusCode:409,code:'confirmed_shift_changed',details:{shiftId:candidate.id}});
-  }
+  if (unresolvedRoles.length) throw Object.assign(new Error('One or more shifts have unresolved roster-role identity and require review.'), { statusCode:409, code:'unresolved_role_identity', details:unresolvedRoles });
+  const missingEvidenceIds = actualIds.filter(id=>!expectedById.has(id));
+  const extraEvidenceIds = expectedIds.filter(id=>!actualIds.includes(id));
+  const unavailableEvidenceIds = extraEvidenceIds.filter(id=>!unchangedEvidenceById.has(id));
+  if (missingEvidenceIds.length || unavailableEvidenceIds.length) throw Object.assign(new Error('The saved schedule changed or the candidate query is incomplete. Refresh before publishing.'), { statusCode:409, code:'candidate_set_changed', details:{ actualIds, expectedIds, missingEvidenceIds, unavailableEvidenceIds } });
+  const assertConfirmedEvidenceMatches = (id, currentExpected) => {
+    const confirmed=expectedById.get(id);
+    const serverState=stable(Object.fromEntries(Object.entries(currentExpected).filter(([key])=>key!=='contentDigest')));
+    if(!confirmed?.contentDigest||confirmed.contentDigest!==currentExpected.contentDigest||!confirmed.state||JSON.stringify(confirmed.state)!==JSON.stringify(serverState)) throw Object.assign(new Error('A confirmed shift changed before publication.'),{statusCode:409,code:'confirmed_shift_changed',details:{shiftId:id}});
+  };
+  for (const candidate of candidates) assertConfirmedEvidenceMatches(candidate.id, candidate.expected);
+  for (const id of extraEvidenceIds) assertConfirmedEvidenceMatches(id, unchangedEvidenceById.get(id).expected);
   const digestInput = { restaurantId:tenant, operationId:clean(operationId), dayKeys:days, selectedWeekKeys:[...new Set(selectedWeekKeys.map(clean).filter(Boolean))].sort(), selectedRoleIds:allRoles?[]:[...selectedSet].sort(), allRoles:Boolean(allRoles), roleConfigurationRevision, roleConfigurationGeneration:Number(roleConfigurationGeneration||0), shifts:candidates.map(row=>({id:row.id,contentDigest:row.expected.contentDigest,desiredEmployeeIdentity:row.desiredEmployeeIdentity,rosterRoleId:row.rosterRoleId,date:row.date})) };
   return {
     ...digestInput,

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "release": "17.0.12",
+  "release": "17.0.13",
   "defects": [
     {
       "defectId": "RG-API-WRAPPER-FIDELITY",
@@ -390,12 +390,12 @@
       "defectId": "SCHEDULE-PUBLISH-AUTHORITATIVE-CANDIDATES-1712",
       "origin": "17.0.11 production mobile Schedule Publish candidate_set_changed report",
       "affectedInvariant": "Schedule Publish confirmation evidence is composed only from authoritative saved shift documents for the selected days",
-      "reproducer": "scripts/validate-17-0-12.js and src/features/schedule.jsx source guard",
+      "reproducer": "scripts/validate-17-0-13.js and src/features/schedule.jsx source guard",
       "permanentTestIds": [
-        "17.0.12 source validation confirms server-authoritative publish candidate reads"
+        "17.0.13 source validation confirms server-authoritative publish candidate reads"
       ],
       "fidelity": "SOURCE INTEGRATION / PRODUCTION DEFECT GUARD",
-      "fixedVersion": "17.0.12",
+      "fixedVersion": "17.0.13",
       "mandatoryGroup": "schedule-publish"
     },
     {
@@ -407,7 +407,7 @@
         "PWA icon metadata matrix is coherent for this browser engine"
       ],
       "fidelity": "PLAYWRIGHT REQUEST / RELEASE-GATE INFRASTRUCTURE",
-      "fixedVersion": "17.0.12",
+      "fixedVersion": "17.0.13",
       "mandatoryGroup": "pwa"
     }
   ]

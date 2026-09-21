@@ -2795,7 +2795,13 @@ const saveReviewedRoles = async () => {
         const resolvedRole = resolveShiftRosterRole(shift, publishRosterRoles);
         const needsWrite = !isLive || !publishedFieldsOk || !identityOk || !dateOk || !shift.scheduleId || resolvedRole.migratable || String(shift.rosterRoleId || '').trim() !== resolvedRole.rosterRoleId;
         if (!needsWrite) {
-          alreadyValid.push(shiftDocId);
+          alreadyValid.push({
+            id: shiftDocId,
+            shift,
+            person: resolved.person,
+            intentionalOpen,
+            dateKey
+          });
           return;
         }
         if (!isLive) draftCount += 1;
@@ -2897,7 +2903,11 @@ const saveReviewedRoles = async () => {
       }
 
       const rolePlanById = new Map(rolePlan.shifts.map(row => [row.id, row]));
-      const confirmedShiftEvidence = await Promise.all(updatePlan.map(item => {
+      const confirmedEvidenceRows = [
+        ...updatePlan,
+        ...alreadyValid
+      ];
+      const confirmedShiftEvidence = await Promise.all(confirmedEvidenceRows.map(item => {
         const roleRow = rolePlanById.get(item.id) || {};
         return buildConfirmedShiftEvidence({
           shift: item.shift,

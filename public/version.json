@@ -1,8 +1,8 @@
 {
-  "version": "17.0.12",
-  "name": "86 Chaos 17.0.12",
-  "build": "17.0.12",
-  "label": "86 Chaos 17.0.12",
+  "version": "17.0.13",
+  "name": "86 Chaos 17.0.13",
+  "build": "17.0.13",
+  "label": "86 Chaos 17.0.13",
   "releasedAt": "2026-09-21T01:10:00.000Z",
   "releaseTitle": "Schedule Publish Candidate Repair and PWA Gate Hardening",
   "notes": [
@@ -10,7 +10,7 @@
     "Keeps explicit open shifts publishable without forcing an employee match while maintaining the server closed-world candidate and fingerprint checks.",
     "Changes the PWA browser icon matrix to validate app-shell HTML, manifest metadata, and icon bytes through Playwright request fixtures so an optional Firefox launch failure cannot block a metadata-only release-gate check."
   ],
-  "title": "86 Chaos 17.0.12",
+  "title": "86 Chaos 17.0.13",
   "summary": "Targeted repair for schedule publishing candidate confirmation plus a request-only PWA icon metadata gate.",
   "description": "Uses server-authoritative schedule publish candidates before confirmation, preserves intentional open-shift publishing, and keeps the PWA metadata gate from failing on an optional browser launch defect."
 }
