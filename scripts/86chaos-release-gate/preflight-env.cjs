@@ -7,6 +7,7 @@ const { assertMutationSafety } = require('./mutation-safety.cjs');
 const { captureSourceIdentity, hash, sourceBytes } = require('./source-identity.cjs');
 const {
   CANONICAL_VERCEL_PROJECT_SLUG,
+  TARGET_ENV_KEYS,
   inspectReleaseTargetEnvConflicts,
   validateReleaseTarget,
 } = require('./vercel-targets.cjs');
@@ -14,7 +15,13 @@ const {
 const { root, runId, runDir } = ensureRunDir();
 const errors = [];
 const warnings = [];
-const targetEnvConflicts = inspectReleaseTargetEnvConflicts(root, process.env);
+const certificationMode = boolEnv('CHAOS_CERTIFICATION_MODE');
+// Full certification derives the expected app version from package.json. A persisted
+// CHAOS_EXPECTED_VERSION is therefore not a release-target conflict in certification mode.
+const releaseTargetConflictKeys = certificationMode
+  ? TARGET_ENV_KEYS.filter(key => key !== 'CHAOS_EXPECTED_VERSION')
+  : TARGET_ENV_KEYS;
+const targetEnvConflicts = inspectReleaseTargetEnvConflicts(root, process.env, releaseTargetConflictKeys);
 if (!targetEnvConflicts.ok) errors.push(...targetEnvConflicts.errors);
 const loaded = loadEnv(root);
 const present = {};
@@ -64,8 +71,14 @@ function requirePair(prefix) {
 
 async function main() {
   const appUrl = value('APP_URL', 'CHAOS_BASE_URL', 'BASE_URL');
-  const expectedVersion = sanitizeVersionText(value('CHAOS_EXPECTED_VERSION') || JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')).version);
-  const certificationMode=boolEnv('CHAOS_CERTIFICATION_MODE');
+  const packageVersionFromSource = sanitizeVersionText(JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')).version);
+  const configuredExpectedVersion = sanitizeVersionText(value('CHAOS_EXPECTED_VERSION'));
+  const expectedVersion = certificationMode
+    ? packageVersionFromSource
+    : (configuredExpectedVersion || packageVersionFromSource);
+  if (certificationMode && configuredExpectedVersion && configuredExpectedVersion !== packageVersionFromSource) {
+    warnings.push(`Ignoring stale CHAOS_EXPECTED_VERSION=${configuredExpectedVersion}; full certification is pinned to package.json version ${packageVersionFromSource}.`);
+  }
   const configuredCommit=value('CHAOS_EXPECTED_GIT_COMMIT');
   const expectedBranch=value('CHAOS_EXPECTED_BRANCH')||'testing';
   const configuredManifest=value('CHAOS_SOURCE_MANIFEST_HASH');
@@ -130,13 +143,13 @@ async function main() {
     if (!fs.existsSync(path.join(root, required))) errors.push(`Missing required app file: ${required}`);
   }
 
-  let sourceVersion = '';
-  let packageVersion = '';
+  let sourceVersion = packageVersionFromSource;
+  let packageVersion = packageVersionFromSource;
   try {
     const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
-    packageVersion = pkg.version || '';
+    packageVersion = sanitizeVersionText(pkg.version || '');
     sourceVersion = packageVersion;
-    if (expectedVersion && pkg.version && pkg.version !== expectedVersion) errors.push(`package.json version is ${pkg.version}, but CHAOS_EXPECTED_VERSION is ${expectedVersion}. Refusing to test mismatched expectations.`);
+    if (!certificationMode && expectedVersion && packageVersion && packageVersion !== expectedVersion) errors.push(`package.json version is ${packageVersion}, but CHAOS_EXPECTED_VERSION is ${expectedVersion}. Refusing to test mismatched expectations.`);
   } catch (error) {
     errors.push(`Could not read package.json: ${error.message}`);
   }

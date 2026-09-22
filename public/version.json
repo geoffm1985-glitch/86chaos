@@ -1,16 +1,16 @@
 {
-  "version": "17.0.18",
-  "name": "86 Chaos 17.0.18",
-  "build": "17.0.18",
-  "label": "86 Chaos 17.0.18",
-  "releasedAt": "2026-09-21T14:44:00.000Z",
-  "releaseTitle": "Release Gate Schedule Subprocess Timeout Repair",
+  "version": "17.0.19",
+  "name": "86 Chaos 17.0.19",
+  "build": "17.0.19",
+  "label": "86 Chaos 17.0.19",
+  "releasedAt": "2026-09-22T00:36:00.000Z",
+  "releaseTitle": "Release Gate Expected Version Pinning Repair",
   "notes": [
-    "Separates the local Schedule publication Node/React checks from the mobile layout Playwright smoke inside the full release-gate harness so Playwright is not launched through a second nested npm lifecycle.",
-    "Launches the mobile layout smoke directly through the installed @playwright/test CLI under the observable runner with its own timeout and heartbeat.",
-    "Classifies observable-runner exit code 124 as a timeout before parsing TAP text, so harmless summary lines such as fail 0 can never become the reported blocker."
+    "Pins full Play Store certification to the version in package.json so stale CHAOS_EXPECTED_VERSION values in PowerShell or .env.test.local cannot block the next sequential release.",
+    "Removes CHAOS_EXPECTED_VERSION from full-gate release-target conflict checks while preserving strict URL, project, source-manifest, commit, branch, deployed-version, and Firebase testing-boundary validation.",
+    "Keeps non-certification preflight behavior strict: an explicitly configured expected version can still be used and mismatches still fail outside full certification."
   ],
-  "title": "86 Chaos 17.0.18",
-  "summary": "Surgical release-gate harness repair for the 17.0.17 full-gate schedule-stage timeout.",
-  "description": "Keeps application and schedule behavior unchanged while splitting the nested mobile Playwright subprocess from schedule publication source/UI checks and making timeout reporting authoritative."
+  "title": "86 Chaos 17.0.19",
+  "summary": "Surgical release-gate repair that makes package.json the authoritative expected version during full certification.",
+  "description": "Prevents stale persisted expected-version settings from blocking a valid newly deployed release while retaining all deployment identity and safety checks."
 }

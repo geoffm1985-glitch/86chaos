@@ -16,7 +16,7 @@ if (-not (Test-Path ".\package-lock.json")) {
   throw "package-lock.json was not found. The release gate requires the committed lockfile."
 }
 
-$ReleaseTargetKeys = @('APP_URL', 'CHAOS_BASE_URL', 'CHAOS_EXPECTED_VERSION', 'CHAOS_EXPECTED_VERCEL_PROJECT_SLUG')
+$ReleaseTargetKeys = @('APP_URL', 'CHAOS_BASE_URL', 'CHAOS_EXPECTED_VERCEL_PROJECT_SLUG')
 $CanonicalVercelProjectSlug = '86chaos'
 
 function Read-EnvFileMap {
@@ -79,6 +79,20 @@ $EnvLocal = Read-EnvFileMap (Join-Path $Root '.env.local')
 Assert-NoReleaseTargetConflicts $EnvTestLocal $EnvLocal
 Import-EnvFile $EnvTestLocal
 Import-EnvFile $EnvLocal
+
+# Full certification always targets the version that is actually present in package.json.
+# CHAOS_EXPECTED_VERSION is transient release evidence, not persistent local configuration;
+# a stale value in the shell or .env.test.local must never block the next sequential release.
+$PackageVersion = [string]((Get-Content (Join-Path $Root 'package.json') -Raw | ConvertFrom-Json).version)
+$PackageVersion = $PackageVersion.Trim()
+if (-not $PackageVersion) { throw 'package.json does not contain a valid version.' }
+$ConfiguredExpectedVersion = [string][Environment]::GetEnvironmentVariable('CHAOS_EXPECTED_VERSION', 'Process')
+if ($ConfiguredExpectedVersion -and $ConfiguredExpectedVersion.Trim() -ne $PackageVersion) {
+  Write-Host "Ignoring stale CHAOS_EXPECTED_VERSION=$($ConfiguredExpectedVersion.Trim()); full certification is pinned to package.json version $PackageVersion." -ForegroundColor Yellow
+}
+[Environment]::SetEnvironmentVariable('CHAOS_EXPECTED_VERSION', $PackageVersion, 'Process')
+$env:CHAOS_EXPECTED_VERSION = $PackageVersion
+
 $ReleaseGateTargetUrl = if ($env:APP_URL) { $env:APP_URL.TrimEnd('/') } else { $env:CHAOS_BASE_URL.TrimEnd('/') }
 $env:CHAOS_CERTIFICATION_MODE = 'true'
 if (-not $env:CHAOS_EXPECTED_VERCEL_PROJECT_SLUG) { $env:CHAOS_EXPECTED_VERCEL_PROJECT_SLUG = $CanonicalVercelProjectSlug }
