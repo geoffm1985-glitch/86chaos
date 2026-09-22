@@ -1,16 +1,17 @@
 {
-  "version": "17.0.22",
-  "name": "86 Chaos 17.0.22",
-  "build": "17.0.22",
-  "label": "86 Chaos 17.0.22",
-  "releasedAt": "2026-09-22T06:45:00.000Z",
-  "releaseTitle": "Release Gate Top-Level Layout Smoke Repair",
+  "version": "17.0.23",
+  "name": "86 Chaos 17.0.23",
+  "build": "17.0.23",
+  "label": "86 Chaos 17.0.23",
+  "releasedAt": "2026-09-22T22:20:00.000Z",
+  "releaseTitle": "Request Off Cutoff and Blackout Policy",
   "notes": [
-    "Runs the required five-case mobile layout Playwright smoke from the top-level PowerShell gate instead of from the synchronous Node readiness runner that stalled on Windows.",
-    "Preserves the same five browser assertions, required-gate status, one worker, and a 180-second Playwright global limit.",
-    "No Schedule Builder, publishing, POS Bridge, Firebase rules, permission, or restaurant-data behavior changes."
+    "Adds an owner/admin-only Request Off policy with a configurable cutoff measured in days before the planned schedule release.",
+    "Adds owner/admin-only blackout date ranges with optional reasons; normal employee Request Off submissions are blocked on those dates.",
+    "Monthly workspaces can set the normal release day in the previous month; weekly/biweekly/custom workspaces can set release lead days. These values calculate deadlines only and never auto-publish a schedule.",
+    "Schedule/team/settings permission alone cannot change the Request Off policy. Existing Request Off review permissions and unrelated application behavior are unchanged."
   ],
-  "title": "86 Chaos 17.0.22",
-  "summary": "Surgical release-harness repair that launches the layout smoke through the same top-level Windows path as the main Playwright gate.",
-  "description": "Prevents the synchronous Node readiness runner from trapping the layout Playwright process while retaining the complete browser smoke and leaving application behavior unchanged."
+  "title": "86 Chaos 17.0.23",
+  "summary": "Owner/admin-controlled Request Off cutoff and blackout dates aligned to the schedule release cycle.",
+  "description": "Adds a configurable Request Off deadline before the planned schedule release plus blackout date ranges, with policy configuration restricted to account owners and workspace administrators."
 }

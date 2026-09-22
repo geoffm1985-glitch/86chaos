@@ -2265,6 +2265,11 @@ const VoiceCommandDockBase = ({ appUser, inventoryItems = [], recipes = [], user
       if (actionToRun.intent === 'create_time_off_request') {
         if (!confirmedByUser) { addToast('Request Off Needs Confirmation', 'Confirm before submitting this request off.'); return; }
         if (!actionToRun.date || actionToRun.date < getToday()) { addToast('Past Date Locked', 'Request-off dates must be today or later.'); return; }
+        const policyResponse = await secureFetch('/api/time-off-request', { method:'POST', headers:{ 'Content-Type':'application/json' }, body:JSON.stringify({ action:'policy-check', restaurantId:appUser.restaurantId, dates:[actionToRun.date] }) });
+        const policyPayload = await policyResponse.json().catch(() => ({}));
+        const policyResult = Array.isArray(policyPayload?.results) ? policyPayload.results[0] : null;
+        if (!policyResponse.ok || policyPayload?.ok === false) { addToast('Request Off Unavailable', policyPayload?.error || 'Request Off policy could not be verified.'); return; }
+        if (policyResult?.allowed === false) { addToast(policyResult.code === 'blackout' ? 'Blackout Date' : 'Request Off Closed', policyResult.reason || 'Normal Request Off submissions are closed for this date.'); return; }
         const nowIso = new Date().toISOString();
         const existing = (await getDocs(query(collection(db, 'timeOffRequests'), where('restaurantId', '==', appUser.restaurantId), where('userId', '==', appUser.id || ''), where('date', '==', actionToRun.date)))).docs
           .map(d => ({ id:d.id, ...d.data() }))

@@ -27,6 +27,7 @@ import { createSchedulePublishGuard, makeSchedulePublishProgress } from '../core
 import { activeRosterRoles, resolveShiftRosterRole, copyRosterRoleFields } from '../core/rosterRoleIdentity';
 import { buildSchedulePublicationPlan, buildConfirmedShiftEvidence, digestSchedulePublicationPlan, isIntentionalOpenScheduleShift } from '../core/schedulePublicationPlan';
 import { requestOffDateKey, normalizeRequestOffRuntimeRow, safeRequestOffRows } from '../core/requestOffRuntimeSafety';
+import { normalizeTimeOffPolicy, evaluateTimeOffPolicyDate, timeOffPolicyReleaseDateForRequestDate, timeOffPolicyCutoffDateForRequestDate, canConfigureTimeOffPolicy } from '../core/timeOffPolicy';
 import { normalizeScheduleBuilderEvents, safeScheduleBuilderRecords } from '../core/scheduleBuilderRuntime';
 import { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, MapClickListener, SmartEmptyState, MiniProblemCard, getHomeProfile, calculatePunchHours, getWeekStart, roleMatches, toLocalTimeInput, makeLocalIso, PunchTable, FriendlyEmpty, GlobalSearchModal, QuickActionDock, KitchenTVMode, ChangeLogModal, UndoBar } from '../components/common';
 
@@ -5098,10 +5099,24 @@ const TabTimeOff = ({ timeOffRequests, appUser, users, addToast, events = [], sh
   const [acknowledgedConflicts, setAcknowledgedConflicts] = useState({});
   const conflictCacheRef = useRef(new Map());
   const inFlightConflictRef = useRef(new Map());
+  const [timeOffPolicy, setTimeOffPolicy] = useState(() => normalizeTimeOffPolicy(clientData?.timeOffPolicy || {}));
+  const [timeOffPolicyDraft, setTimeOffPolicyDraft] = useState(() => ({ ...normalizeTimeOffPolicy(clientData?.timeOffPolicy || {}), enabled: clientData?.timeOffPolicy?.enabled === true || !clientData?.timeOffPolicy }));
+  const [policySaving, setPolicySaving] = useState(false);
+  const [blackoutStart, setBlackoutStart] = useState(getToday());
+  const [blackoutEnd, setBlackoutEnd] = useState(getToday());
+  const [blackoutReason, setBlackoutReason] = useState('');
 
   const requestOffGhostMode = isUserLevelGhostTimeOff(appUser);
   const perms = appUser?.permissions || {};
   const canManage = !requestOffGhostMode && !!(appUser?.isSuperAdmin || appUser?.isAdmin || perms.schedule || perms.team);
+  const canConfigureRequestOffPolicy = !requestOffGhostMode && canConfigureTimeOffPolicy(appUser, clientData);
+  const workspaceScheduleSettings = mergeWorkspaceSettings(appUser, clientData);
+  useEffect(() => {
+    const normalized = normalizeTimeOffPolicy(clientData?.timeOffPolicy || {});
+    setTimeOffPolicy(normalized);
+    setTimeOffPolicyDraft({ ...normalized, enabled: clientData?.timeOffPolicy?.enabled === true || !clientData?.timeOffPolicy });
+  }, [clientData?.timeOffPolicy]);
+
   const requestOffApi = useCallback(async (action, payload = {}) => {
     const response = await secureFetch('/api/time-off-request', {
       method: 'POST',
@@ -5289,6 +5304,45 @@ const TabTimeOff = ({ timeOffRequests, appUser, users, addToast, events = [], sh
     return cleanDates.map(dateKey => conflictCacheRef.current.get(requestOffCacheKey(appUser?.restaurantId || '', dateKey, appUser)) || normalizeConflictResult({}, dateKey));
   }, [appUser, requestOffApi]);
 
+  const policyStatusForDate = useCallback((dateKey) => evaluateTimeOffPolicyDate({
+    requestDate: dateKey,
+    today: getToday(),
+    policy: timeOffPolicy,
+    scheduleSettings: workspaceScheduleSettings,
+    canOverride: canConfigureRequestOffPolicy,
+  }), [timeOffPolicy, workspaceScheduleSettings, canConfigureRequestOffPolicy]);
+
+  const addBlackoutDraft = () => {
+    if (!canConfigureRequestOffPolicy) return;
+    if (!blackoutStart || !blackoutEnd) return addToast('Choose Blackout Dates', 'Choose a start and end date.');
+    const startDate = blackoutStart <= blackoutEnd ? blackoutStart : blackoutEnd;
+    const endDate = blackoutStart <= blackoutEnd ? blackoutEnd : blackoutStart;
+    const id = `blackout-${startDate}-${endDate}-${Date.now()}`;
+    setTimeOffPolicyDraft(prev => ({ ...prev, blackouts: [...(prev.blackouts || []), { id, startDate, endDate, reason: blackoutReason.trim() }].slice(0, 100) }));
+    setBlackoutReason('');
+  };
+
+  const removeBlackoutDraft = (id) => {
+    if (!canConfigureRequestOffPolicy) return;
+    setTimeOffPolicyDraft(prev => ({ ...prev, blackouts: (prev.blackouts || []).filter(row => row.id !== id) }));
+  };
+
+  const saveTimeOffPolicy = async () => {
+    if (!canConfigureRequestOffPolicy || policySaving) return;
+    setPolicySaving(true);
+    try {
+      const data = await requestOffApi('policy-save', { policy: timeOffPolicyDraft });
+      const saved = normalizeTimeOffPolicy(data?.policy || timeOffPolicyDraft);
+      setTimeOffPolicy(saved);
+      setTimeOffPolicyDraft(saved);
+      addToast('Request Off Policy Saved', 'Cutoff and blackout rules are now active for this workspace.');
+    } catch (err) {
+      addToast('Policy Not Saved', err?.message || 'Only the account owner or a workspace administrator can change this policy.');
+    } finally {
+      setPolicySaving(false);
+    }
+  };
+
   const changeMonth = (offset) => { const d = new Date(calMonth + '-01T12:00:00'); d.setMonth(d.getMonth() + offset); setCalMonth(d.toISOString().substring(0, 7)); };
   const updateRequest = async (r, update, action = 'TIME_OFF_UPDATED') => {
     await updateDoc(doc(db, 'timeOffRequests', r.id), { ...update, updatedAt: new Date().toISOString(), updatedBy: appUser.id || '' });
@@ -5389,7 +5443,9 @@ const TabTimeOff = ({ timeOffRequests, appUser, users, addToast, events = [], sh
   const handleToggleDate = async (d) => {
     if (checkingDate === d) return;
     if (d < getToday()) return addToast('Locked', 'Cannot request past dates.');
-    if (!postPublishedTimeOffAllowed && !appUser?.isAdmin && isDateInsidePublishedSchedule(d, shifts)) return addToast('Schedule Published', 'This workspace blocks employee time-off requests after that date has already been published. Ask a manager to adjust the schedule.');
+    const policyStatus = policyStatusForDate(d);
+    if (!policyStatus.allowed) return addToast(policyStatus.code === 'blackout' ? 'Blackout Date' : 'Request Off Closed', policyStatus.reason || 'Normal Request Off submissions are closed for this date.');
+    if (!postPublishedTimeOffAllowed && !canConfigureRequestOffPolicy && isDateInsidePublishedSchedule(d, shifts)) return addToast('Schedule Published', 'This workspace blocks employee time-off requests after that date has already been published. Ask an account owner or admin to adjust the schedule.');
     const existingReq = myRequests.find(r => requestOffDateKey(r) === d && isActiveTimeOffRequest(r));
     if (existingReq) { if (window.confirm(`Cancel your time-off request for ${formatDisplayDate(d)}?`)) cancelRequest(existingReq); return; }
     const addingDate = !selectedDates.includes(d);
@@ -5420,10 +5476,16 @@ const TabTimeOff = ({ timeOffRequests, appUser, users, addToast, events = [], sh
     if (isSubmittingTimeOff) return;
     if (selectedDates.length === 0) return addToast('Choose Request-Off Dates', 'Select one or more days on the calendar first.');
     if (isPartial && (!startTime || !endTime)) return addToast('Add Start and End Times', 'Enter the part of the day you need off.');
-    const blockedAfterPublish = selectedDates.filter(d => !postPublishedTimeOffAllowed && !appUser?.isAdmin && isDateInsidePublishedSchedule(d, shifts));
-    if (blockedAfterPublish.length) return addToast('Schedule Published', 'One or more selected dates are already published. Ask a manager to adjust the schedule.');
+    const blockedAfterPublish = selectedDates.filter(d => !postPublishedTimeOffAllowed && !canConfigureRequestOffPolicy && isDateInsidePublishedSchedule(d, shifts));
+    if (blockedAfterPublish.length) return addToast('Schedule Published', 'One or more selected dates are already published. Ask an account owner or admin to adjust the schedule.');
     setIsSubmittingTimeOff(true);
     try {
+      const policyCheck = await requestOffApi('policy-check', { dates: selectedDates });
+      const policyBlocked = (policyCheck?.results || []).find(row => row?.allowed === false);
+      if (policyBlocked) {
+        addToast(policyBlocked.code === 'blackout' ? 'Blackout Date' : 'Request Off Closed', policyBlocked.reason || 'Normal Request Off submissions are closed for one or more selected dates.');
+        return;
+      }
       const latestConflicts = await fetchConflictInfo(selectedDates, { force: true });
       const changedConflicts = latestConflicts.filter(info => {
         const acknowledged = acknowledgedConflicts[info.date] || { count: 0, names: [] };
@@ -5537,21 +5599,40 @@ const TabTimeOff = ({ timeOffRequests, appUser, users, addToast, events = [], sh
               const existingReq = myRequests.find(r => requestOffDateKey(r) === d && isActiveTimeOffRequest(r));
               const priorCount = priorRequestInfoForDate(d).count;
               const isPast = d < getToday();
+              const policyStatus = policyStatusForDate(d);
+              const policyBlocked = policyStatus.blocked && !policyStatus.allowed;
               const holiday = getHoliday(d);
               const dayEvents = monthEvents.filter(e => e.date === d);
-              return <div key={d} onClick={() => !isPast && handleToggleDate(d)} className={`p-1 border-b border-r ${T.border} min-h-[50px] flex flex-col items-center justify-start pt-1 transition-colors ${isPast ? 'bg-[#12161A]/50 opacity-50 cursor-not-allowed' : existingReq ? 'bg-red-900/10 cursor-pointer hover:bg-red-900/20 border border-red-900/30 shadow-inner' : isSelected ? 'bg-[#8F6040]/20 border border-[#C59373] cursor-pointer shadow-inner' : 'hover:bg-[#12161A] cursor-pointer'}`}><span className={`text-xs font-black ${isSelected ? T.copper : existingReq ? 'text-red-400' : 'text-slate-300'}`}>{parseInt(d.split('-')[2])}</span>{holiday && <span className="text-[6px] sm:text-[7px] text-amber-500 font-bold uppercase text-center leading-tight mt-0.5 px-0.5">{holiday}</span>}{dayEvents.map(ev => <span key={ev.id} className="text-[6px] sm:text-[7px] text-blue-400 font-bold uppercase text-center leading-tight mt-0.5 px-0.5 w-full truncate" title={ev.title}>{ev.title}</span>)}{checkingDate === d && <Loader2 size={10} className="mt-auto mb-1 text-amber-300 animate-spin"/>}{checkingDate !== d && priorCount > 0 && !existingReq && !isSelected && <span className="text-[7px] font-black uppercase mt-auto mb-0.5 text-amber-300">{priorCount} req</span>}{checkingDate !== d && existingReq && <span className={`text-[7px] font-black uppercase mt-auto mb-1 ${existingReq.status === 'pending' ? 'text-orange-400' : 'text-red-500'}`}>{existingReq.status === 'pending' ? 'Pend' : 'Off'}</span>}{checkingDate !== d && isSelected && <Check size={10} className={`mt-auto mb-1 ${T.copper}`}/>}</div>;
+              return <div key={d} onClick={() => !isPast && !policyBlocked && handleToggleDate(d)} title={policyStatus.blocked ? policyStatus.reason : ''} className={`p-1 border-b border-r ${T.border} min-h-[50px] flex flex-col items-center justify-start pt-1 transition-colors ${isPast || policyBlocked ? 'bg-[#12161A]/50 opacity-50 cursor-not-allowed' : existingReq ? 'bg-red-900/10 cursor-pointer hover:bg-red-900/20 border border-red-900/30 shadow-inner' : isSelected ? 'bg-[#8F6040]/20 border border-[#C59373] cursor-pointer shadow-inner' : policyStatus.overridden ? 'bg-amber-900/10 cursor-pointer hover:bg-amber-900/20' : 'hover:bg-[#12161A] cursor-pointer'}`}><span className={`text-xs font-black ${isSelected ? T.copper : existingReq ? 'text-red-400' : policyBlocked ? 'text-slate-500' : 'text-slate-300'}`}>{parseInt(d.split('-')[2])}</span>{holiday && <span className="text-[6px] sm:text-[7px] text-amber-500 font-bold uppercase text-center leading-tight mt-0.5 px-0.5">{holiday}</span>}{dayEvents.map(ev => <span key={ev.id} className="text-[6px] sm:text-[7px] text-blue-400 font-bold uppercase text-center leading-tight mt-0.5 px-0.5 w-full truncate" title={ev.title}>{ev.title}</span>)}{policyStatus.blocked && !existingReq && !isSelected && <span className={`text-[7px] font-black uppercase mt-auto mb-0.5 ${policyStatus.overridden ? 'text-amber-300' : 'text-red-300'}`}>{policyStatus.code === 'blackout' ? 'Blackout' : policyStatus.overridden ? 'Override' : 'Closed'}</span>}{checkingDate === d && <Loader2 size={10} className="mt-auto mb-1 text-amber-300 animate-spin"/>}{checkingDate !== d && !policyStatus.blocked && priorCount > 0 && !existingReq && !isSelected && <span className="text-[7px] font-black uppercase mt-auto mb-0.5 text-amber-300">{priorCount} req</span>}{checkingDate !== d && existingReq && <span className={`text-[7px] font-black uppercase mt-auto mb-1 ${existingReq.status === 'pending' ? 'text-orange-400' : 'text-red-500'}`}>{existingReq.status === 'pending' ? 'Pend' : 'Off'}</span>}{checkingDate !== d && isSelected && <Check size={10} className={`mt-auto mb-1 ${T.copper}`}/>}</div>;
             })}
           </div>
         </div>
         <div className={`${T.card} p-4 sm:p-5 h-max`}>
           <h3 className="font-black text-base mb-1 text-white">Request Off</h3>
           <p className={`text-[10px] font-bold ${T.muted} mb-2 leading-tight`}>Tap specific dates to request off. Use Availability for normal weekly schedules.</p>
-          {!postPublishedTimeOffAllowed && !appUser?.isAdmin && <div className="mb-4 bg-amber-900/15 border border-amber-900/40 rounded-xl p-2 text-[10px] font-bold text-amber-200 leading-snug">Time-off requests close once that schedule period has been published.</div>}
+          {!postPublishedTimeOffAllowed && !canConfigureRequestOffPolicy && <div className="mb-4 bg-amber-900/15 border border-amber-900/40 rounded-xl p-2 text-[10px] font-bold text-amber-200 leading-snug">Time-off requests close once that schedule period has been published.</div>}
           {requestOffGhostMode && ghostListStatus === 'loading' && <div className="mb-4 bg-blue-900/15 border border-blue-900/40 rounded-xl p-2 text-[10px] font-bold text-blue-200 leading-snug">Loading this employee’s Request Off records...</div>}
           {requestOffGhostMode && ghostListStatus === 'error' && <div className="mb-4 bg-red-900/15 border border-red-900/40 rounded-xl p-2 text-[10px] font-bold text-red-200 leading-snug">Request Off records could not load. Try refreshing before submitting.</div>}
+          {timeOffPolicy.enabled && (() => {
+            const sampleDate = `${calMonth}-01`;
+            const releaseDate = timeOffPolicyReleaseDateForRequestDate(sampleDate, timeOffPolicy, workspaceScheduleSettings);
+            const cutoffDate = timeOffPolicyCutoffDateForRequestDate(sampleDate, timeOffPolicy, workspaceScheduleSettings);
+            return <div className="mb-4 bg-blue-900/10 border border-blue-900/40 rounded-xl p-2 text-[10px] font-bold text-blue-200 leading-snug">Normal requests for this schedule close after {cutoffDate ? formatDisplayDate(cutoffDate) : 'the configured cutoff'}{releaseDate ? ` • planned release ${formatDisplayDate(releaseDate)}` : ''}. Blackout dates close immediately.</div>;
+          })()}
           <form onSubmit={handleSubmit} className="space-y-4"><label className={`flex items-center gap-2 text-xs font-bold text-slate-300 cursor-pointer p-2.5 bg-[#12161A] rounded-xl border ${T.border}`}><input type="checkbox" checked={isPartial} onChange={e=>setIsPartial(e.target.checked)} className="w-4 h-4 rounded bg-[#1A2126] border-[#2A353D] accent-[#8F6040]" />Only part of each day</label>{isPartial && <div className="grid grid-cols-2 gap-3"><div><label className={T.label}>Start Time</label><input type="time" value={startTime} onChange={e=>setStartTime(e.target.value)} className={T.input} required /></div><div><label className={T.label}>End Time</label><input type="time" value={endTime} onChange={e=>setEndTime(e.target.value)} className={T.input} required /></div></div>}<button type="submit" disabled={selectedDates.length === 0 || isSubmittingTimeOff || !!checkingDate} className={`w-full ${T.btn} disabled:opacity-50 disabled:cursor-not-allowed`}>{isSubmittingTimeOff ? 'Sending Request…' : `Send ${selectedDates.length > 0 ? `${selectedDates.length}-Day ` : ''}Request for Review`}</button></form>
         </div>
       </div>
+      {canConfigureRequestOffPolicy && <div className={`${T.card} p-4 space-y-4`} data-testid="time-off-policy-admin">
+        <div><h3 className="font-black text-white">Request Off Policy</h3><p className={`text-xs font-bold ${T.muted}`}>Only account owners and workspace admins can change these rules. They control normal employee requests and do not auto-publish a schedule.</p></div>
+        <label className="flex items-center gap-2 text-xs font-bold text-slate-300"><input type="checkbox" checked={timeOffPolicyDraft.enabled === true} onChange={e => setTimeOffPolicyDraft(prev => ({ ...prev, enabled: e.target.checked }))} className="accent-[#8F6040]"/>Enable Request Off cutoff and blackout rules</label>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div><label className={T.label}>Cutoff Days Before Release</label><input data-testid="time-off-cutoff-days" type="number" min="0" max="90" value={timeOffPolicyDraft.cutoffDaysBeforeRelease} onChange={e => setTimeOffPolicyDraft(prev => ({ ...prev, cutoffDaysBeforeRelease: e.target.value }))} className={T.input}/><p className={`text-[9px] ${T.muted} mt-1`}>Example: 10 means requests close after the day 10 days before the planned release.</p></div>
+          {schedulePublishingSettings.mode === 'monthly' ? <div><label className={T.label}>Monthly Schedule Release Day</label><input data-testid="time-off-monthly-release-day" type="number" min="1" max="28" value={timeOffPolicyDraft.monthlyReleaseDay} onChange={e => setTimeOffPolicyDraft(prev => ({ ...prev, monthlyReleaseDay: e.target.value }))} className={T.input}/><p className={`text-[9px] ${T.muted} mt-1`}>Day of the previous month the next monthly schedule normally comes out. This does not publish it automatically.</p></div> : <div><label className={T.label}>Schedule Release Lead Days</label><input data-testid="time-off-release-lead-days" type="number" min="0" max="60" value={timeOffPolicyDraft.nonMonthlyReleaseLeadDays} onChange={e => setTimeOffPolicyDraft(prev => ({ ...prev, nonMonthlyReleaseLeadDays: e.target.value }))} className={T.input}/><p className={`text-[9px] ${T.muted} mt-1`}>How many days before the schedule period starts the schedule normally comes out. This does not auto-publish.</p></div>}
+          <div className="rounded-xl border border-[#2A353D] bg-[#12161A] p-3 text-xs font-bold text-slate-300">{(() => { const sample = `${calMonth}-01`; const release = timeOffPolicyReleaseDateForRequestDate(sample, timeOffPolicyDraft, workspaceScheduleSettings); const cutoff = timeOffPolicyCutoffDateForRequestDate(sample, timeOffPolicyDraft, workspaceScheduleSettings); return <><div className="text-white font-black mb-1">{formatDisplayMonth(calMonth)} Preview</div><div>Planned release: {release ? formatDisplayDate(release) : 'Not available'}</div><div>Request cutoff: {cutoff ? formatDisplayDate(cutoff) : 'Not available'}</div></>; })()}</div>
+        </div>
+        <div className="border-t border-[#2A353D] pt-4 space-y-3"><div><div className="text-xs font-black text-white">Blackout Dates</div><div className={`text-[10px] font-bold ${T.muted}`}>Block normal employee Request Off submissions for a single day or a date range.</div></div><div className="grid grid-cols-1 md:grid-cols-4 gap-2"><input type="date" value={blackoutStart} onChange={e=>setBlackoutStart(e.target.value)} className={T.input}/><input type="date" value={blackoutEnd} onChange={e=>setBlackoutEnd(e.target.value)} className={T.input}/><input type="text" value={blackoutReason} onChange={e=>setBlackoutReason(e.target.value)} maxLength={160} className={T.input} placeholder="Reason, optional"/><button type="button" onClick={addBlackoutDraft} className={T.btnAlt}>Add Blackout</button></div><div className="space-y-2">{(timeOffPolicyDraft.blackouts || []).length === 0 && <div className={`text-[10px] font-bold ${T.muted}`}>No blackout dates configured.</div>}{(timeOffPolicyDraft.blackouts || []).map(row => <div key={row.id} className="flex items-center justify-between gap-3 rounded-xl border border-[#2A353D] bg-[#12161A] p-3"><div className="text-xs font-bold text-slate-300"><div className="text-white">{formatDisplayDate(row.startDate)}{row.endDate !== row.startDate ? ` through ${formatDisplayDate(row.endDate)}` : ''}</div>{row.reason && <div className={`text-[10px] ${T.muted} mt-0.5`}>{row.reason}</div>}</div><button type="button" onClick={() => removeBlackoutDraft(row.id)} className="text-slate-400 hover:text-red-400 p-2" aria-label="Remove blackout"><Trash2 size={15}/></button></div>)}</div></div>
+        <button type="button" onClick={saveTimeOffPolicy} disabled={policySaving} className={`${T.btn} disabled:opacity-50`}>{policySaving ? 'Saving Policy…' : 'Save Request Off Policy'}</button>
+      </div>}
       <div className={`${T.card} p-4 request-off-workflow-panel`}>
         <div className="flex flex-col xl:flex-row xl:items-start xl:justify-between gap-3 mb-3"><div><h3 className="font-black text-white">Request-Off Workflow</h3><p className={`text-xs font-bold ${T.muted}`}>Default view only shows items that need attention. Published and archived requests stay searchable.</p>{canManage && workflowApiStatus === 'loading' && <p className="text-[10px] font-bold text-blue-300 mt-1">Checking all workspace Request Off records...</p>}{canManage && workflowApiStatus === 'error' && <p className="text-[10px] font-bold text-amber-300 mt-1">Some legacy Request Off records could not be double-checked. Refresh and try again.</p>}</div>{canManage && <div className="request-off-bulk-grid"><button onClick={approveAllVisible} disabled={!!bulkBusy} className={`${T.btnAlt} disabled:opacity-50`}>Approve All Visible</button><button onClick={archiveAllVisible} disabled={!!bulkBusy} className={`${T.btnAlt} disabled:opacity-50`}>Archive All Visible</button>{selectedRequestIds.length > 0 && <button onClick={archiveSelected} disabled={!!bulkBusy} className={`${T.btnAlt} disabled:opacity-50 request-off-span-all`}>Archive selected ({selectedRequestIds.length})</button>}</div>}</div>
         <div className="request-off-control-group"><div className="request-off-control-label">Status</div><div className="request-off-status-grid">{[['needs-review','Needs Review'],['upcoming-approved','Upcoming Approved'],['archived','Published/Archived'],['all','All']].map(([id,label]) => <button key={id} onClick={() => setViewFilter(id)} className={viewFilter === id ? T.btn : T.btnAlt}>{label}</button>)}</div></div>
