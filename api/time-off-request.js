@@ -152,7 +152,7 @@ function callerHasWorkspaceAccess(user = {}, member = null, restaurantId = '', i
 async function loadCallerContext(app, req, body = {}) {
   const token = bearer(req);
   if (!token) throw Object.assign(new Error('Authentication is required.'), { status: 401, code: 'missing-token' });
-  const decoded = await app.auth().verifyIdToken(token);
+  const decoded = await app.auth().verifyIdToken(token, true);
   const db = app.firestore();
   const restaurantId = cleanString(body.restaurantId || '', 180);
   if (!restaurantId) throw Object.assign(new Error('Workspace is required.'), { status: 400, code: 'missing-workspace' });

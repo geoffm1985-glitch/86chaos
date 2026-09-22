@@ -15,7 +15,7 @@ module.exports = async function handler(req, res) {
     const token = String(req.headers?.authorization || '').replace(/^Bearer\s+/i, '').trim();
     if (!token) return res.status(401).json({ ok: false, error: 'Missing Firebase authorization token.' });
 
-    const decoded = await app.auth().verifyIdToken(token);
+    const decoded = await app.auth().verifyIdToken(token, true);
     const requesterSnap = await app.firestore().collection('users').doc(decoded.uid).get();
     const requester = requesterSnap.exists ? requesterSnap.data() : {};
     const requesterEmail = clean(decoded.email || requester.email).toLowerCase();

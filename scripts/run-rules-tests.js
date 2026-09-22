@@ -112,6 +112,9 @@ async function runFirestoreTests(env) {
   for (const collectionName of ['shift4Credentials', 'shift4OauthStates', 'shift4ConnectionControls', 'posSyncScopes']) {
     await seedDoc(env, collectionName, 'server-only-fixture', { restaurantIdHash: 'hash-only', envelope: { ciphertext: 'server-secret-fixture' } });
   }
+  for (const collectionName of ['posBridgeInstallations', 'posBridgeScopes', 'posBridgeAuthReplays', 'posBridgeControl']) {
+    await seedDoc(env, collectionName, 'server-only-fixture', { restaurantId: tenantA, status: 'active', securityEpoch: 1 });
+  }
 
   const staffA = env.authenticatedContext('staffA', { email: 'staffa@example.com' }).firestore();
   const staffANoEmail = env.authenticatedContext('staffA').firestore();
@@ -129,12 +132,30 @@ async function runFirestoreTests(env) {
   const superAdmin = env.authenticatedContext('superAdmin', { email: 'super@example.com', superAdmin: true }).firestore();
   const anon = env.unauthenticatedContext().firestore();
 
+  setRuleCase('Publication fencing and role lifecycle roots are server-owned');
+  for (const client of [staffA, managerA, ownerA, restaurantAdminA, superAdmin, anon]) {
+    await assertFails(setDoc(doc(client, 'schedulePublishOperations', 'forged'), { restaurantId:tenantA,status:'complete',generation:99 }));
+    await assertFails(setDoc(doc(client, 'schedulePublishLeases', 'forged'), { restaurantId:tenantA,leaseToken:'forged' }));
+    await assertFails(setDoc(doc(client, 'roles', 'client-role'), { restaurantId:tenantA,name:'Forged Role',revision:1 }));
+  }
+
   setRuleCase('Shift4 server-only collections');
   for (const collectionName of ['shift4Credentials', 'shift4OauthStates', 'shift4ConnectionControls', 'posSyncScopes']) {
     await assertFails(getDoc(doc(ownerA, collectionName, 'server-only-fixture')));
     await assertFails(getDoc(doc(superAdmin, collectionName, 'server-only-fixture')));
     await assertFails(getDoc(doc(anon, collectionName, 'server-only-fixture')));
     await assertFails(setDoc(doc(ownerA, collectionName, 'client-write'), { restaurantId: tenantA, accessToken: 'forbidden' }));
+  }
+
+  setRuleCase('POS Bridge roots remain server-only for every human role');
+  const bridgeClients = [staffA, managerA, ownerA, restaurantAdminA, superAdmin, anon];
+  for (const collectionName of ['posBridgeInstallations', 'posBridgeScopes', 'posBridgeAuthReplays', 'posBridgeControl']) {
+    for (const client of bridgeClients) {
+      await assertFails(getDoc(doc(client, collectionName, 'server-only-fixture')));
+      await assertFails(setDoc(doc(client, collectionName, 'client-create'), { restaurantId: tenantA, status: 'active' }));
+      await assertFails(updateDoc(doc(client, collectionName, 'server-only-fixture'), { status: 'revoked' }));
+      await assertFails(deleteDoc(doc(client, collectionName, 'server-only-fixture')));
+    }
   }
 
   setRuleCase('Owner-email authority hardening');

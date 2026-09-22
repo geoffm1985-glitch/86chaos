@@ -23,6 +23,11 @@ import { deriveScheduleToolsPeriod, deriveScheduleToolsCopyWeek, filterScheduleT
 import { buildMonthSchedulePrintModel } from '../core/schedulePrintModel';
 import { generateMonthSchedulePdf } from '../core/schedulePdf';
 import { deliverSchedulePdf } from '../core/schedulePdfDelivery';
+import { createSchedulePublishGuard, makeSchedulePublishProgress } from '../core/schedulePublishProgress';
+import { activeRosterRoles, resolveShiftRosterRole, copyRosterRoleFields } from '../core/rosterRoleIdentity';
+import { buildSchedulePublicationPlan, buildConfirmedShiftEvidence, digestSchedulePublicationPlan, isIntentionalOpenScheduleShift } from '../core/schedulePublicationPlan';
+import { requestOffDateKey, normalizeRequestOffRuntimeRow, safeRequestOffRows } from '../core/requestOffRuntimeSafety';
+import { normalizeScheduleBuilderEvents, safeScheduleBuilderRecords } from '../core/scheduleBuilderRuntime';
 import { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, MapClickListener, SmartEmptyState, MiniProblemCard, getHomeProfile, calculatePunchHours, getWeekStart, roleMatches, toLocalTimeInput, makeLocalIso, PunchTable, FriendlyEmpty, GlobalSearchModal, QuickActionDock, KitchenTVMode, ChangeLogModal, UndoBar } from '../components/common';
 
 
@@ -206,19 +211,11 @@ const requestOffPersonKey = (request = {}) => {
   return normalizeScheduleName(request.userName || request.employeeName || request.name || 'unknown');
 };
 
-const requestOffDateKey = (request = {}) => {
-  const raw = String(request?.date || request?.requestDate || request?.requestedDate || request?.startDate || request?.dateKey || request?.day || request?.requestedDay || request?.scheduleDateKey || '').trim();
-  return /^\d{4}-\d{2}-\d{2}$/.test(raw) ? raw : '';
-};
-
-const normalizeRequestOffWorkflowRow = (request = {}) => {
-  const date = requestOffDateKey(request);
-  return date && request.date !== date ? { ...request, date } : request;
-};
+const normalizeRequestOffWorkflowRow = (request = {}) => normalizeRequestOffRuntimeRow(request);
 
 const mergeRequestOffWorkflowRows = (...lists) => {
   const byKey = new Map();
-  lists.flat().filter(Boolean).map(normalizeRequestOffWorkflowRow).forEach(row => {
+  safeRequestOffRows(...lists).map(normalizeRequestOffWorkflowRow).filter(Boolean).forEach(row => {
     const key = row.id || `${requestOffDateKey(row) || 'no-date'}|${requestOffPersonKey(row)}|${row.requestedAt || row.submittedAt || row.createdAt || row.requestTimestamp || ''}`;
     if (key && !byKey.has(key)) byKey.set(key, row);
   });
@@ -766,6 +763,7 @@ export const buildAutoPopulateShift = (sourceShift = {}, newDate = '', restauran
     ...buildCanonicalScheduleCreateFields(newDate, restaurantId),
     ...buildScheduleIdentityFields(identitySource, sourceShift),
     role: sourceShift.role || resolvedPerson?.role || 'Unassigned',
+    ...copyRosterRoleFields(sourceShift),
     startTime: sourceShift.startTime || '',
     endTime: sourceShift.endTime || '',
     isPublished: false,
@@ -1228,6 +1226,7 @@ const handleClockIn = async () => {
     const executePunch = async () => {
       setClockActionType('in');
       setClockActionBusy(true);
+      let durablePunch = null;
       try {
         const clockInStamp = new Date().toISOString();
         const clockAuthUid = auth?.currentUser?.uid || appUser.authUid || appUser.uid || appUser.id || '';
@@ -1248,20 +1247,32 @@ const handleClockIn = async () => {
           isApproved: !isUnscheduled
         };
         const punchRef = await addDoc(collection(db, "timePunches"), punchData);
-        setActivePunch({ id: punchRef.id, ...punchData, _optimisticUntil: Date.now() + 30000 });
+        durablePunch = { id: punchRef.id, ...punchData, _optimisticUntil: Date.now() + 30000 };
+        setActivePunch(durablePunch);
         
         // Blast the manager alert to the Message Board
         if (isUnscheduled) {
-           await addDoc(collection(db, "events"), { 
-             date: new Date().toISOString(), title: `UNSCHEDULED PUNCH: ${appUser.name.split(' ')[0]} clocked in without a scheduled shift. Please review in Timesheets.`, 
-             type: 'note', author: 'System Alert', isImportant: true, restaurantId: appUser.restaurantId, replies: [] 
-           });
+           try {
+             await addDoc(collection(db, "events"), {
+               date: new Date().toISOString(), title: `UNSCHEDULED PUNCH: ${appUser.name.split(' ')[0]} clocked in without a scheduled shift. Please review in Timesheets.`,
+               type: 'note', author: 'System Alert', isImportant: true, restaurantId: appUser.restaurantId, replies: [], punchId: punchRef.id
+             });
+           } catch (alertError) {
+             console.warn('[86chaos] Punch saved but unscheduled alert failed', alertError?.message || alertError);
+             addToast('Clocked In — Alert Pending', 'Your time punch was saved. The manager alert could not be posted, so please tell a manager.');
+             return;
+           }
         }
         
         addToast('Clocked In', isUnscheduled ? 'Unscheduled shift started. Manager notified.' : 'Shift started successfully.');
       } catch (e) { 
-        setActivePunch(null);
-        addToast('Could Not Clock In', e.message || 'Your clock-in was not saved. Check your connection and try again.'); 
+        if (durablePunch) {
+          setActivePunch(durablePunch);
+          addToast('Clocked In — Follow-up Failed', 'Your time punch was saved, but a secondary step failed. Do not clock in again; tell a manager.');
+        } else {
+          setActivePunch(null);
+          addToast('Could Not Clock In', e.message || 'Your clock-in was not saved. Check your connection and try again.');
+        }
       } finally {
         setClockActionBusy(false);
         setClockActionType(null);
@@ -1785,7 +1796,12 @@ const handleOfferSwap = async (shift) => {
   );
 };
 
-const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, timePunches = [], addToast, appUser, clientData = null, initialSubTab = 'schedule', hideSubTabs = false, availabilityRecords = [], schedulePeriodContext = null, reviewPublishRequest = 0 }) => {
+const TabSchedule = ({ currentDate, users: rawUsers, shifts: rawShifts, events: rawEvents, timeOffRequests: rawTimeOffRequests, timePunches = [], addToast, appUser, clientData = null, initialSubTab = 'schedule', hideSubTabs = false, availabilityRecords: rawAvailabilityRecords = [], schedulePeriodContext = null, reviewPublishRequest = 0 }) => {
+  const users = safeScheduleBuilderRecords(rawUsers);
+  const shifts = safeScheduleBuilderRecords(rawShifts);
+  const events = normalizeScheduleBuilderEvents(rawEvents);
+  const timeOffRequests = safeRequestOffRows(rawTimeOffRequests).map(normalizeRequestOffRuntimeRow).filter(Boolean);
+  const availabilityRecords = safeScheduleBuilderRecords(rawAvailabilityRecords);
   const [subTab, setSubTab] = useState(initialSubTab); 
   const [selectedEmp, setSelectedEmp] = useState(''); 
   const [assignDates, setAssignDates] = useState([]); 
@@ -1840,7 +1856,19 @@ const [eventDate, setEventDate] = useState(getToday());
   const localBuilderDeleteRetryRef = useRef({});
   const [isPublishPickerOpen, setIsPublishPickerOpen] = useState(false);
   const [selectedPublishWeekKeys, setSelectedPublishWeekKeys] = useState([]);
+  const [publishAllRoles, setPublishAllRoles] = useState(true);
+  const [selectedPublishRoleIds, setSelectedPublishRoleIds] = useState([]);
+  const [roleReview, setRoleReview] = useState(null);
+  const [roleReviewBusy, setRoleReviewBusy] = useState(false);
+  const [roleReviewSelections, setRoleReviewSelections] = useState({});
   const [publishPickerSource, setPublishPickerSource] = useState('builder');
+  const publishOperationGuardRef = useRef(null);
+  if (!publishOperationGuardRef.current) publishOperationGuardRef.current = createSchedulePublishGuard();
+  const [publishProgress, setPublishProgress] = useState(() => makeSchedulePublishProgress());
+  const isPublishingSchedule = Boolean(publishProgress.active);
+  const updatePublishProgress = useCallback((phase, label, detail = '', current = 0, total = 0, extra = {}) => {
+    setPublishProgress(makeSchedulePublishProgress({ phase, label, detail, current, total, ...extra }));
+  }, []);
   
   const monthStr = getMonthStr(currentDate); 
   const monthDays = Array.from({length: getDaysInMonth(monthStr)}).map((_, i) => `${monthStr}-${String(i+1).padStart(2, '0')}`);
@@ -1848,6 +1876,13 @@ const [eventDate, setEventDate] = useState(getToday());
   const schedulePublishingSettings = activeSchedulePeriodContext.settings;
   const schedulePerson = getSchedulePersonForAppUser(appUser, users);
   const scheduleRestaurantId = appUser?.restaurantId || '';
+  const publishRosterRoleState = useLiveCollectionState('roles', scheduleRestaurantId, { enabled: Boolean(scheduleRestaurantId), debugLabel: 'schedule:publish:roles-complete' });
+  const publishRosterRoles = publishRosterRoleState.data || [];
+  const publishSelectableRoles = activeRosterRoles(publishRosterRoles);
+  const publishRoleSelected = useCallback((shift = {}) => {
+    const resolved = resolveShiftRosterRole(shift, publishRosterRoles);
+    return resolved.ok && (publishAllRoles || selectedPublishRoleIds.includes(resolved.rosterRoleId));
+  }, [publishRosterRoles, publishAllRoles, selectedPublishRoleIds]);
 
   useEffect(() => {
     if (!scheduleRestaurantId) return;
@@ -1937,7 +1972,7 @@ const [eventDate, setEventDate] = useState(getToday());
   const publicationPeriodShifts = publicationSourceShifts.filter(s => { const d = getShiftDateKey(s); return d >= publicationWeekBounds.start && d <= publicationWeekBounds.end; });
   const renderedPublicationPeriodShifts = mergeSchedulePublishCandidates(publicationPeriodShifts, getScheduleBuilderRenderedShiftsForDaySet(new Set(publicationWeekDays)))
     .filter(shift => !isDeletedScheduleShift(shift) && !shiftMatchesLocalDeleteMarkers(shift, activeLocalDeleteKeySet, activeLocalDeleteMarkerMap));
-  const schedulePeriodEvents = events.filter(e => e.type === 'special_event' && e.date >= schedulePeriodBounds.start && e.date <= schedulePeriodBounds.end).sort((a,b) => (a.date || '').localeCompare(b.date || '') || (a.time || '').localeCompare(b.time || '') || (a.title || '').localeCompare(b.title || ''));
+  const schedulePeriodEvents = events.filter(e => e.type === 'special_event' && e.date >= schedulePeriodBounds.start && e.date <= schedulePeriodBounds.end).sort((a,b) => String(a.date || '').localeCompare(String(b.date || '')) || String(a.time || '').localeCompare(String(b.time || '')) || String(a.title || '').localeCompare(String(b.title || '')));
   const buildPublishWeekOptionsForDays = (sourceDays = []) => {
     const options = [];
     const sourceDaySet = new Set(sourceDays);
@@ -1970,15 +2005,17 @@ const [eventDate, setEventDate] = useState(getToday());
   const selectedPublishWeeks = publishWeekOptions.filter(option => selectedPublishWeekSet.has(option.key));
   const selectedPublishDays = Array.from(new Set(selectedPublishWeeks.flatMap(option => option.days))).sort();
   const selectedPublishDaySet = new Set(selectedPublishDays);
-  const selectedPublishDrafts = renderedPublicationPeriodShifts.filter(shift => getShiftWritableDocId(shift) && !isBuilderShiftPublished(shift) && selectedPublishDaySet.has(getShiftDateKey(shift)));
-  const fullPublishDrafts = renderedPublicationPeriodShifts.filter(shift => getShiftWritableDocId(shift) && !isBuilderShiftPublished(shift) && activePublishDaySet.has(getShiftDateKey(shift)));
-  const selectedPublishCandidateCount = renderedPublicationPeriodShifts.filter(shift => getShiftWritableDocId(shift) && selectedPublishDaySet.has(getShiftDateKey(shift))).length;
-  const fullPublishCandidateCount = renderedPublicationPeriodShifts.filter(shift => getShiftWritableDocId(shift) && activePublishDaySet.has(getShiftDateKey(shift))).length;
+  const selectedPublishDrafts = renderedPublicationPeriodShifts.filter(shift => getShiftWritableDocId(shift) && !isBuilderShiftPublished(shift) && selectedPublishDaySet.has(getShiftDateKey(shift)) && publishRoleSelected(shift));
+  const fullPublishDrafts = renderedPublicationPeriodShifts.filter(shift => getShiftWritableDocId(shift) && !isBuilderShiftPublished(shift) && activePublishDaySet.has(getShiftDateKey(shift)) && publishRoleSelected(shift));
+  const selectedPublishCandidateCount = renderedPublicationPeriodShifts.filter(shift => getShiftWritableDocId(shift) && selectedPublishDaySet.has(getShiftDateKey(shift)) && publishRoleSelected(shift)).length;
+  const fullPublishCandidateCount = renderedPublicationPeriodShifts.filter(shift => getShiftWritableDocId(shift) && activePublishDaySet.has(getShiftDateKey(shift)) && publishRoleSelected(shift)).length;
   const publishDateLabel = (start, end) => start === end ? formatDisplayDate(start) : `${formatDisplayDate(start)} to ${formatDisplayDate(end)}`;
   const selectedPublishLabel = selectedPublishWeeks.length
     ? selectedPublishWeeks.map(option => `${option.label}: ${publishDateLabel(option.start, option.end)}`).join(', ')
     : 'No weeks selected';
   const openPublishPicker = (source = 'builder') => {
+    if (publishOperationGuardRef.current?.isActive()) return;
+    setPublishProgress(makeSchedulePublishProgress());
     const nextSource = source === 'schedule-tools' ? 'schedule-tools' : 'builder';
     const nextDays = nextSource === 'schedule-tools' ? schedulePeriodDays : publicationWeekDays;
     const nextDaySet = new Set(nextDays);
@@ -2005,6 +2042,8 @@ const [eventDate, setEventDate] = useState(getToday());
       return;
     }
     setPublishPickerSource(nextSource);
+    setPublishAllRoles(true);
+    setSelectedPublishRoleIds([]);
     const draftWeekKeys = nextOptions.filter(option => option.draftCount > 0).map(option => option.key);
     setSelectedPublishWeekKeys(draftWeekKeys.length ? draftWeekKeys : nextOptions.map(option => option.key));
     setIsPublishPickerOpen(true);
@@ -2014,71 +2053,64 @@ const [eventDate, setEventDate] = useState(getToday());
     if (reviewPublishRequest > 0) openPublishPicker('schedule-tools');
   }, [reviewPublishRequest]);
   const togglePublishWeek = (key) => {
+    if (publishOperationGuardRef.current?.isActive()) return;
     setSelectedPublishWeekKeys(prev => prev.includes(key) ? prev.filter(item => item !== key) : [...prev, key]);
+  };
+  const togglePublishRole = (roleId) => {
+    if (publishOperationGuardRef.current?.isActive()) return;
+    setSelectedPublishRoleIds(prev => prev.includes(roleId) ? prev.filter(id => id !== roleId) : [...prev, roleId]);
   };
 
   const fetchSchedulePublishCandidatesForDaySet = async (daySet = new Set(), localCandidates = []) => {
-    const byId = new Map();
-    const byIdentity = new Map();
-    const addCandidate = (shift = {}) => {
-      if (!shift || isDeletedScheduleShift(shift)) return;
+    const localById = new Map();
+    const serverById = new Map();
+    const canUseCandidate = (shift = {}) => {
+      if (!shift || isDeletedScheduleShift(shift)) return false;
       const dateKey = getShiftDateKey(shift);
-      if (!dateKey || !daySet.has(dateKey)) return;
+      if (!dateKey || !daySet.has(dateKey)) return false;
       const restaurantId = String(shift.restaurantId || shift.workspaceId || appUser?.restaurantId || '');
-      if (appUser?.restaurantId && restaurantId && restaurantId !== String(appUser.restaurantId)) return;
-      if (shiftMatchesLocalDeleteMarkers(shift, activeLocalDeleteKeySet, activeLocalDeleteMarkerMap)) return;
+      if (appUser?.restaurantId && restaurantId && restaurantId !== String(appUser.restaurantId)) return false;
+      if (shiftMatchesLocalDeleteMarkers(shift, activeLocalDeleteKeySet, activeLocalDeleteMarkerMap)) return false;
+      return true;
+    };
+    const addLocalCandidate = (shift = {}) => {
+      if (!canUseCandidate(shift)) return;
       const id = getShiftWritableDocId(shift);
-      if (id) {
-        byId.set(id, { ...shift, id });
-        return;
-      }
-      const identity = getShiftPublishIdentity(shift);
-      if (identity) byIdentity.set(identity, shift);
+      if (id) localById.set(id, { ...shift, id });
+    };
+    const addServerCandidate = (shift = {}) => {
+      if (!canUseCandidate(shift)) return;
+      const id = getShiftWritableDocId(shift);
+      if (!id) return;
+      serverById.set(id, { ...(localById.get(id) || {}), ...shift, id });
     };
 
-    (localCandidates || []).forEach(addCandidate);
+    (localCandidates || []).forEach(addLocalCandidate);
 
     if (!appUser?.restaurantId || !daySet?.size) {
-      return mergeSchedulePublishCandidates(Array.from(byId.values()), Array.from(byIdentity.values()));
+      return mergeSchedulePublishCandidates(Array.from(localById.values()));
     }
+
+    const fetchAuthoritativeCandidates = async (candidateQuery) => {
+      recordScheduleOperationDiagnostic('sdkReads');
+      const snap = await getDocsFromServer(candidateQuery);
+      recordScheduleOperationDiagnostic('documentsObserved', snap.size);
+      snap.forEach(docSnap => addServerCandidate({ id: docSnap.id, ...docSnap.data() }));
+    };
 
     const days = Array.from(daySet).filter(Boolean).sort();
     for (const day of days) {
       try {
-        recordScheduleOperationDiagnostic('sdkReads');
-        const dateSnap = await getDocs(query(collection(db, 'shifts'), where('restaurantId', '==', appUser.restaurantId), where('date', '==', day)));
-        recordScheduleOperationDiagnostic('documentsObserved', dateSnap.size);
-        dateSnap.forEach(docSnap => addCandidate({ id: docSnap.id, ...docSnap.data() }));
+        await fetchAuthoritativeCandidates(query(collection(db, 'shifts'), where('restaurantId', '==', appUser.restaurantId), where('date', '==', day)));
+        await fetchAuthoritativeCandidates(query(collection(db, 'shifts'), where('restaurantId', '==', appUser.restaurantId), where('scheduleDateKey', '==', day)));
+        await fetchAuthoritativeCandidates(query(collection(db, 'shifts'), where('workspaceId', '==', appUser.restaurantId), where('date', '==', day)));
+        await fetchAuthoritativeCandidates(query(collection(db, 'shifts'), where('workspaceId', '==', appUser.restaurantId), where('scheduleDateKey', '==', day)));
       } catch (err) {
-        console.warn('[86chaos] Publish date lookup failed; using loaded schedule candidates for date', day, err?.message || err);
-      }
-      try {
-        recordScheduleOperationDiagnostic('sdkReads');
-        const scheduleDateSnap = await getDocs(query(collection(db, 'shifts'), where('restaurantId', '==', appUser.restaurantId), where('scheduleDateKey', '==', day)));
-        recordScheduleOperationDiagnostic('documentsObserved', scheduleDateSnap.size);
-        scheduleDateSnap.forEach(docSnap => addCandidate({ id: docSnap.id, ...docSnap.data() }));
-      } catch (err) {
-        console.warn('[86chaos] Publish scheduleDateKey lookup failed; using loaded schedule candidates for date', day, err?.message || err);
-      }
-      try {
-        recordScheduleOperationDiagnostic('sdkReads');
-        const workspaceDateSnap = await getDocs(query(collection(db, 'shifts'), where('workspaceId', '==', appUser.restaurantId), where('date', '==', day)));
-        recordScheduleOperationDiagnostic('documentsObserved', workspaceDateSnap.size);
-        workspaceDateSnap.forEach(docSnap => addCandidate({ id: docSnap.id, ...docSnap.data() }));
-      } catch (err) {
-        console.warn('[86chaos] Publish workspace/date lookup failed; using loaded schedule candidates for date', day, err?.message || err);
-      }
-      try {
-        recordScheduleOperationDiagnostic('sdkReads');
-        const workspaceScheduleDateSnap = await getDocs(query(collection(db, 'shifts'), where('workspaceId', '==', appUser.restaurantId), where('scheduleDateKey', '==', day)));
-        recordScheduleOperationDiagnostic('documentsObserved', workspaceScheduleDateSnap.size);
-        workspaceScheduleDateSnap.forEach(docSnap => addCandidate({ id: docSnap.id, ...docSnap.data() }));
-      } catch (err) {
-        console.warn('[86chaos] Publish workspace/scheduleDateKey lookup failed; using loaded schedule candidates for date', day, err?.message || err);
+        throw new Error(`Publish candidate query failed for ${day}. No shifts were changed. ${err?.message || ''}`.trim());
       }
     }
 
-    return mergeSchedulePublishCandidates(Array.from(byId.values()), Array.from(byIdentity.values()));
+    return mergeSchedulePublishCandidates(Array.from(serverById.values()));
   };
   const eventsByScheduleDay = schedulePeriodDays.reduce((acc, d) => {
     acc[d] = schedulePeriodEvents.filter(e => e.date === d);
@@ -2107,7 +2139,7 @@ const [eventDate, setEventDate] = useState(getToday());
       event.date ? formatDisplayDate(event.date) : '',
       event.time ? formatShortTime(event.time) : '',
       event.notes ? `Notes: ${event.notes}` : '',
-      event.orderReminder?.enabled ? `Order reminder: ${(event.orderReminder.cutoffDays || []).join(', ') || 'enabled'}` : ''
+      event.orderReminder?.enabled ? `Order reminder: ${Array.isArray(event.orderReminder.cutoffDays) ? event.orderReminder.cutoffDays.join(', ') || 'enabled' : String(event.orderReminder.cutoffDays || 'enabled')}` : ''
     ];
     return parts.filter(Boolean).join(' • ');
   };
@@ -2605,10 +2637,13 @@ const [eventDate, setEventDate] = useState(getToday());
         const nowIso = new Date().toISOString();
         const shiftMonth = getMonthStr(d);
         const rescueEdit = canEditRescueMonth(shiftMonth);
+        const assignedRole = resolveShiftRosterRole({ rosterRoleId: emp.rosterRoleId, role: emp.role || 'Unassigned' }, publishRosterRoles);
         const shiftData = {
           ...buildCanonicalScheduleCreateFields(d, appUser.restaurantId),
           ...buildScheduleIdentityFields(emp),
           role: emp.role || 'Unassigned',
+          ...(assignedRole.ok ? { rosterRoleId: assignedRole.rosterRoleId, rosterRoleNameSnapshot: assignedRole.rosterRoleNameSnapshot } : {}),
+          revision: 1,
           startTime: startTime,
           endTime: endTime,
           isPublished: false,
@@ -2651,232 +2686,319 @@ const [eventDate, setEventDate] = useState(getToday());
     }
   };
 
-const handlePublish = async (scope = 'selected-weeks') => { 
-    const publishAll = scope === 'full-period';
-    const selectedWeeksForPublish = publishAll ? publishWeekOptions : selectedPublishWeeks;
-    const publishDays = publishAll ? activePublishDays : selectedPublishDays;
-    const publishDaySet = new Set(publishDays);
-    const localPublishCandidateSources = mergeSchedulePublishCandidates(renderedPublicationPeriodShifts, publicationPeriodShifts, visibleSourceShifts, autoFillVisibleShifts, localBuilderShiftEchoes, getScheduleBuilderRenderedShiftsForDaySet(publishDaySet))
-      .filter(shift => !isDeletedScheduleShift(shift) && !shiftMatchesLocalDeleteMarkers(shift, activeLocalDeleteKeySet, activeLocalDeleteMarkerMap));
-    const publishCandidates = await fetchSchedulePublishCandidatesForDaySet(publishDaySet, localPublishCandidateSources);
-    const selectedCandidates = publishCandidates
-      .filter(shift => getShiftWritableDocId(shift) && !isDeletedScheduleShift(shift) && (publishAll || shiftIsInsideDaySet(shift, publishDaySet)))
-      .filter(shift => publishDaySet.has(getShiftDateKey(shift)));
-    const publishPeriodStart = publishAll ? (publishPickerSource === 'schedule-tools' ? schedulePeriodBounds.start : publicationWeekBounds.start) : (publishDays[0] || schedulePeriodBounds.start);
-    const publishPeriodEnd = publishAll ? (publishPickerSource === 'schedule-tools' ? schedulePeriodBounds.end : publicationWeekBounds.end) : (publishDays[publishDays.length - 1] || schedulePeriodBounds.end);
-    const publishPeriodLabel = publishAll
-      ? schedulePeriodLabel
-      : (selectedWeeksForPublish.length ? selectedWeeksForPublish.map(option => option.label).join(', ') : 'selected weeks');
-    const publishSelectionLabel = publishAll ? schedulePeriodLabel : selectedPublishLabel;
-    const publishedAtIso = new Date().toISOString();
-    const scheduleId = `schedule_${appUser.restaurantId}_${publishPeriodStart}_${publishPeriodEnd}_${Date.now()}`;
-    const publishWeekKeys = selectedWeeksForPublish.map(option => option.key);
+const saveReviewedRoles = async () => {
+    if (roleReviewBusy || !roleReview?.rows?.length) return;
+    setRoleReviewBusy(true);
+    try {
+      const repairs = await Promise.all(roleReview.rows.map(async row => {
+        const evidence = await buildConfirmedShiftEvidence({ shift: row.shift });
+        return { id: row.shiftId, rosterRoleId: roleReviewSelections[row.shiftId], contentDigest: evidence.contentDigest, expectedRoleIdentity: copyRosterRoleFields(row.shift) };
+      }));
+      const response = await secureFetch('/api/schedule-publish', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'reconcile-roles', restaurantId: appUser.restaurantId, repairs }) });
+      const result = await response.json();
+      if (!response.ok || !result.ok) throw new Error(result.error || 'Role review could not be saved.');
+      setRoleReview(null);
+      addToast('Roles Saved', 'The selected shift roles were saved. Tap Publish again to review and publish the schedule.');
+    } catch (error) { addToast('Role Review Not Saved', error.message); }
+    finally { setRoleReviewBusy(false); }
+  };
 
-    if (selectedCandidates.length === 0) {
-      addToast('Nothing to Publish', publishAll ? 'There are no shifts in the current publishing period.' : 'There are no shifts in the selected weeks.');
+  const handlePublish = async (scope = 'selected-weeks') => {
+    const publishGuard = publishOperationGuardRef.current;
+    if (!publishGuard?.begin()) {
+      addToast('Publishing in Progress', 'A schedule publish is already running. Please wait for it to finish.');
       return;
     }
 
-    const unresolved = [];
-    const updatePlan = [];
-    const alreadyValid = [];
-    let draftCount = 0;
-    let repairCount = 0;
+    let publishCompleted = false;
+    updatePublishProgress('preparing', 'Preparing schedule…', 'Locking this publish so it can only run once.');
 
-    selectedCandidates.forEach(shift => {
-      const shiftDocId = getShiftWritableDocId(shift);
-      const dateKey = getShiftDateKey(shift);
-      const resolved = resolveSchedulePersonForShift(shift, users);
-      if (!shiftDocId || !dateKey || !resolved.ok || !resolved.person) {
-        unresolved.push({ shift, reason: !dateKey ? 'missing date' : (resolved.reason || 'employee not matched') });
+    try {
+      const publishAll = scope === 'full-period';
+      const selectedWeeksForPublish = publishAll ? publishWeekOptions : selectedPublishWeeks;
+      const publishDays = publishAll ? activePublishDays : selectedPublishDays;
+      const publishDaySet = new Set(publishDays);
+      const localPublishCandidateSources = mergeSchedulePublishCandidates(renderedPublicationPeriodShifts, publicationPeriodShifts, visibleSourceShifts, autoFillVisibleShifts, localBuilderShiftEchoes, getScheduleBuilderRenderedShiftsForDaySet(publishDaySet))
+        .filter(shift => !isDeletedScheduleShift(shift) && !shiftMatchesLocalDeleteMarkers(shift, activeLocalDeleteKeySet, activeLocalDeleteMarkerMap));
+
+      updatePublishProgress('loading', 'Loading schedule shifts…', 'Finding the exact saved shifts that belong to this publish.');
+      const publishCandidates = await fetchSchedulePublishCandidatesForDaySet(publishDaySet, localPublishCandidateSources);
+      const dateScopedCandidates = publishCandidates
+        .filter(shift => getShiftWritableDocId(shift) && !isDeletedScheduleShift(shift) && (publishAll || shiftIsInsideDaySet(shift, publishDaySet)))
+        .filter(shift => publishDaySet.has(getShiftDateKey(shift)));
+      const publishPeriodStart = publishAll ? (publishPickerSource === 'schedule-tools' ? schedulePeriodBounds.start : publicationWeekBounds.start) : (publishDays[0] || schedulePeriodBounds.start);
+      const publishPeriodEnd = publishAll ? (publishPickerSource === 'schedule-tools' ? schedulePeriodBounds.end : publicationWeekBounds.end) : (publishDays[publishDays.length - 1] || schedulePeriodBounds.end);
+      const publishPeriodLabel = publishAll
+        ? schedulePeriodLabel
+        : (selectedWeeksForPublish.length ? selectedWeeksForPublish.map(option => option.label).join(', ') : 'selected weeks');
+      const publishSelectionLabel = publishAll ? schedulePeriodLabel : selectedPublishLabel;
+      const publishedAtIso = new Date().toISOString();
+      const scheduleId = `schedule_${appUser.restaurantId}_${publishPeriodStart}_${publishPeriodEnd}_${Date.now()}`;
+      const publishWeekKeys = selectedWeeksForPublish.map(option => option.key);
+
+      if (!publishAllRoles && selectedPublishRoleIds.length === 0) {
+        setPublishProgress(makeSchedulePublishProgress());
+        addToast('Choose a Role', 'Select at least one configured Roster Role, or choose All Roles.');
         return;
       }
-      const canonical = buildCanonicalScheduleIdentityBlock(resolved.person, shift);
-      const isLive = isBuilderShiftPublished(shift);
-      const publishedFieldsOk = shift.isPublished === true && shift.published === true && String(shift.status || '').toLowerCase() === 'published' && String(shift.publishStatus || '').toLowerCase() === 'published';
-      const identityOk = scheduleIdentityBlockMatchesPerson(shift, resolved.person);
-      const dateOk = String(shift.date || shift.scheduleDateKey || '') === dateKey && String(shift.scheduleDateKey || shift.date || '') === dateKey;
-      const needsWrite = !isLive || !publishedFieldsOk || !identityOk || !dateOk || !shift.scheduleId;
-      if (!needsWrite) {
-        alreadyValid.push(shiftDocId);
+      if (!publishRosterRoleState.resolved || publishRosterRoleState.error) {
+        throw new Error('Configured Roster Roles could not be loaded completely. Publishing stopped before any write.');
+      }
+      const rolePlan = buildSchedulePublicationPlan({
+        restaurantId: appUser.restaurantId,
+        period: { start: publishPeriodStart, end: publishPeriodEnd },
+        selectedWeekKeys: publishWeekKeys,
+        selectedRoleIds: selectedPublishRoleIds,
+        allRoles: publishAllRoles,
+        candidateShifts: dateScopedCandidates,
+        rosterRoles: publishRosterRoles,
+        actor: { uid: appUser?.id || appUser?.uid, email: appUser?.email }
+      });
+      if (rolePlan.unresolvedRoles.length) {
+        setPublishProgress(makeSchedulePublishProgress());
+        setRoleReviewSelections({});
+        setRoleReview({ revision: rolePlan.roleConfigurationRevision, rows: rolePlan.unresolvedRoles.map(issue => ({ ...issue, shift: dateScopedCandidates.find(shift => getShiftWritableDocId(shift) === issue.shiftId) })) });
+        setIsPublishPickerOpen(false);
+        addToast('Role Review Needed', `${rolePlan.unresolvedRoles.length} shifts need an explicit role selection. Review the listed shifts, save their roles, then publish again.`);
         return;
       }
-      if (!isLive) draftCount += 1;
-      else repairCount += 1;
-      updatePlan.push({
-        id: shiftDocId,
-        shift,
-        person: resolved.person,
-        dateKey,
-        wasPublished: isLive,
-        update: {
-          restaurantId: shift.restaurantId || appUser.restaurantId,
-          workspaceId: shift.workspaceId || shift.restaurantId || appUser.restaurantId,
-          date: dateKey,
-          scheduleDateKey: dateKey,
-          isPublished: true,
-          published: true,
-          status: 'published',
-          publishStatus: 'published',
-          publishState: 'published',
-          schedulePublishStatus: 'published',
-          visibility: 'published',
-          scheduleBuilderDraft: false,
-          readyToPublish: false,
-          draft: false,
-          isDraft: false,
-          publishedAt: isLive && shift.publishedAt ? shift.publishedAt : publishedAtIso,
-          publishedBy: shift.publishedBy || appUser?.id || appUser?.email || 'unknown',
-          publishedByName: shift.publishedByName || appUser?.name || appUser?.email || 'Unknown',
-          scheduleId: isLive && shift.scheduleId ? shift.scheduleId : scheduleId,
-          schedulePeriodStart: shift.schedulePeriodStart || publishPeriodStart,
-          schedulePeriodEnd: shift.schedulePeriodEnd || publishPeriodEnd,
+      const selectedCandidateIds = new Set(rolePlan.candidateShiftIds);
+      const selectedCandidates = dateScopedCandidates.filter(shift => selectedCandidateIds.has(getShiftWritableDocId(shift)));
+
+      if (selectedCandidates.length === 0) {
+        setPublishProgress(makeSchedulePublishProgress());
+        addToast('Nothing to Publish', publishAll ? 'There are no shifts in the current publishing period.' : 'There are no shifts in the selected weeks.');
+        return;
+      }
+
+      updatePublishProgress('planning', 'Checking publish readiness…', `Reviewing ${selectedCandidates.length} shift${selectedCandidates.length === 1 ? '' : 's'} before any writes.`);
+      const unresolved = [];
+      const updatePlan = [];
+      const alreadyValid = [];
+      let draftCount = 0;
+      let repairCount = 0;
+
+      selectedCandidates.forEach(shift => {
+        const shiftDocId = getShiftWritableDocId(shift);
+        const dateKey = getShiftDateKey(shift);
+        const intentionalOpen = isIntentionalOpenScheduleShift(shift);
+        const resolved = intentionalOpen ? { ok: true, person: null } : resolveSchedulePersonForShift(shift, users);
+        if (!shiftDocId || !dateKey || (!intentionalOpen && (!resolved.ok || !resolved.person))) {
+          unresolved.push({ shift, reason: !dateKey ? 'missing date' : (resolved.reason || 'employee not matched') });
+          return;
+        }
+        const canonical = intentionalOpen ? {} : buildCanonicalScheduleIdentityBlock(resolved.person, shift);
+        const isLive = isBuilderShiftPublished(shift);
+        const publishedFieldsOk = shift.isPublished === true && shift.published === true && String(shift.status || '').toLowerCase() === 'published' && String(shift.publishStatus || '').toLowerCase() === 'published';
+        const identityOk = intentionalOpen || scheduleIdentityBlockMatchesPerson(shift, resolved.person);
+        const dateOk = String(shift.date || shift.scheduleDateKey || '') === dateKey && String(shift.scheduleDateKey || shift.date || '') === dateKey;
+        const resolvedRole = resolveShiftRosterRole(shift, publishRosterRoles);
+        const needsWrite = !isLive || !publishedFieldsOk || !identityOk || !dateOk || !shift.scheduleId || resolvedRole.migratable || String(shift.rosterRoleId || '').trim() !== resolvedRole.rosterRoleId;
+        if (!needsWrite) {
+          alreadyValid.push({ id: shiftDocId, shift, person: resolved.person, intentionalOpen, dateKey });
+          return;
+        }
+        if (!isLive) draftCount += 1;
+        else repairCount += 1;
+        updatePlan.push({
+          id: shiftDocId,
+          shift,
+          person: resolved.person,
+          intentionalOpen,
+          dateKey,
+          wasPublished: isLive,
+          update: {
+            restaurantId: shift.restaurantId || appUser.restaurantId,
+            workspaceId: shift.workspaceId || shift.restaurantId || appUser.restaurantId,
+            date: dateKey,
+            scheduleDateKey: dateKey,
+            isPublished: true,
+            published: true,
+            status: 'published',
+            publishStatus: 'published',
+            publishState: 'published',
+            schedulePublishStatus: 'published',
+            visibility: 'published',
+            scheduleBuilderDraft: false,
+            readyToPublish: false,
+            draft: false,
+            isDraft: false,
+            publishedAt: isLive && shift.publishedAt ? shift.publishedAt : publishedAtIso,
+            publishedBy: shift.publishedBy || appUser?.id || appUser?.email || 'unknown',
+            publishedByName: shift.publishedByName || appUser?.name || appUser?.email || 'Unknown',
+            scheduleId: isLive && shift.scheduleId ? shift.scheduleId : scheduleId,
+            schedulePeriodStart: shift.schedulePeriodStart || publishPeriodStart,
+            schedulePeriodEnd: shift.schedulePeriodEnd || publishPeriodEnd,
+            publishScope: publishAll ? 'full-period' : 'selected-weeks',
+            publishWeekKeys,
+            identityVerifiedAt: publishedAtIso,
+            identityVerifiedBy: appUser?.id || appUser?.email || 'unknown',
+            updatedAt: publishedAtIso,
+            ...canonical
+          }
+        });
+      });
+
+      const unresolvedNames = Array.from(new Set(unresolved.map(item => item.shift?.employeeName || item.shift?.assignedName || item.shift?.name || item.shift?.role || 'unknown staff'))).slice(0, 8);
+      if (updatePlan.length === 0) {
+        setPublishProgress(makeSchedulePublishProgress());
+        if (unresolved.length) {
+          addToast('Employee Match Needed', `${unresolved.length} shift${unresolved.length === 1 ? '' : 's'} were not published because their employee accounts could not be matched. Review employee links for ${unresolvedNames.join(', ')}.`);
+          return;
+        }
+        addToast('Already Published', 'Schedule is already published and employee visibility is verified.');
+        setIsPublishPickerOpen(false);
+        return;
+      }
+
+      updatePublishProgress('confirming', 'Ready to publish…', `${updatePlan.length} shift${updatePlan.length === 1 ? '' : 's'} will be written and verified.`);
+      const roleSelectionLabel = publishAllRoles ? 'all configured roles' : publishSelectableRoles.filter(role => selectedPublishRoleIds.includes(role.id)).map(role => role.name).join(', ');
+      const confirmMessage = unresolved.length
+        ? `Publish/repair ${updatePlan.length} shift${updatePlan.length === 1 ? '' : 's'} for ${publishSelectionLabel} and ${roleSelectionLabel}? ${unresolved.length} shift${unresolved.length === 1 ? '' : 's'} will stay draft because employee accounts could not be matched: ${unresolvedNames.join(', ')}.`
+        : `Publish/repair ${updatePlan.length} shift${updatePlan.length === 1 ? '' : 's'} for ${publishSelectionLabel} and ${roleSelectionLabel}? Weeks and roles not selected will stay as drafts.`;
+      if (!window.confirm(confirmMessage)) {
+        setPublishProgress(makeSchedulePublishProgress());
+        return;
+      }
+
+      updatePublishProgress('backup', 'Creating safety backup…', 'Preparing the one local backup download for this publish.');
+      try {
+        const restaurantPrefix = getRestaurantExportPrefix(appUser, appUser?.restaurantId || '86chaos');
+        const now = new Date();
+        const backupPayload = {
+          app: '86chaos',
+          type: 'schedule-publish-backup',
+          version: CURRENT_VERSION,
+          generatedAt: now.toISOString(),
+          restaurantId: appUser?.restaurantId || null,
+          restaurantName: appUser?.restaurantName || appUser?.systemSettings?.restaurantName || null,
           publishScope: publishAll ? 'full-period' : 'selected-weeks',
           publishWeekKeys,
-          identityVerifiedAt: publishedAtIso,
-          identityVerifiedBy: appUser?.id || appUser?.email || 'unknown',
-          updatedAt: publishedAtIso,
-          ...canonical
-        }
-      });
-    });
-
-    const unresolvedNames = Array.from(new Set(unresolved.map(item => item.shift?.employeeName || item.shift?.assignedName || item.shift?.name || item.shift?.role || 'unknown staff'))).slice(0, 8);
-    if (updatePlan.length === 0) {
-      if (unresolved.length) {
-        addToast('Employee Match Needed', `${unresolved.length} shift${unresolved.length === 1 ? '' : 's'} were not published because their employee accounts could not be matched. Review employee links for ${unresolvedNames.join(', ')}.`);
-        return;
-      }
-      addToast('Already Published', 'Schedule is already published and employee visibility is verified.');
-      setIsPublishPickerOpen(false);
-      return;
-    }
-
-    const confirmMessage = unresolved.length
-      ? `Publish/repair ${updatePlan.length} shift${updatePlan.length === 1 ? '' : 's'} for ${publishSelectionLabel}? ${unresolved.length} shift${unresolved.length === 1 ? '' : 's'} will stay draft because employee accounts could not be matched: ${unresolvedNames.join(', ')}.`
-      : `Publish/repair ${updatePlan.length} shift${updatePlan.length === 1 ? '' : 's'} for ${publishSelectionLabel}? Weeks not selected will stay as drafts.`;
-    if (!window.confirm(confirmMessage)) return;
-
-    try {
-      const restaurantPrefix = getRestaurantExportPrefix(appUser, appUser?.restaurantId || '86chaos');
-      const now = new Date();
-      const backupPayload = {
-        app: '86chaos',
-        type: 'schedule-publish-backup',
-        version: CURRENT_VERSION,
-        generatedAt: now.toISOString(),
-        restaurantId: appUser?.restaurantId || null,
-        restaurantName: appUser?.restaurantName || appUser?.systemSettings?.restaurantName || null,
-        publishScope: publishAll ? 'full-period' : 'selected-weeks',
-        publishWeekKeys,
-        publishWeeks: selectedWeeksForPublish.map(option => ({ label: option.label, start: option.start, end: option.end, draftCount: option.draftCount, liveCount: option.liveCount })),
-        publishPeriodStart,
-        publishPeriodEnd,
-        publishPeriodLabel,
-        selectedShiftCount: selectedCandidates.length,
-        updateCount: updatePlan.length,
-        draftCount,
-        repairCount,
-        unresolvedCount: unresolved.length,
-        updateShiftIds: updatePlan.map(item => item.id),
-        selectedShifts: selectedCandidates.map(s => ({ ...s }))
-      };
-      const stamp = now.toISOString().replace(/[:.]/g, '-');
-      downloadTextFile(`${restaurantPrefix}-Schedule-Publish-Backup-${publishPeriodStart}-to-${publishPeriodEnd}-${stamp}.json`, JSON.stringify(backupPayload, null, 2), 'application/json;charset=utf-8;');
-    } catch (backupErr) {
-      console.warn('Schedule publish backup download failed:', backupErr);
-      if (!window.confirm('The local backup download failed. Continue publishing anyway?')) return;
-    }
-
-    addToast('Publishing...', `Verifying and publishing ${updatePlan.length} ${publishPeriodLabel} shift(s). Please wait.`);
-
-    try {
-      for (let i = 0; i < updatePlan.length; i += 450) {
-        const batch = writeBatch(db);
-        const batchItems = updatePlan.slice(i, i + 450);
-        batchItems.forEach(item => batch.update(doc(db, 'shifts', item.id), item.update));
-        await batch.commit();
-        recordScheduleOperationDiagnostic('batchedWriteOperations');
-        recordScheduleOperationDiagnostic('batchedWriteDocuments', batchItems.length);
-        recordScheduleOperationDiagnostic('totalScheduleDocumentsWritten', batchItems.length);
-      }
-
-      const verificationFailures = [];
-      for (const item of updatePlan) {
-        recordScheduleOperationDiagnostic('sdkReads');
-        const snap = await getDoc(doc(db, 'shifts', item.id));
-        if (snap.exists()) recordScheduleOperationDiagnostic('documentsObserved');
-        if (!snap.exists()) {
-          verificationFailures.push({ id: item.id, reason: 'missing after publish' });
-          continue;
-        }
-        const data = { id: snap.id, ...snap.data() };
-        const expectedRestaurantId = String(item.update.restaurantId || appUser.restaurantId || '');
-        const actualRestaurantId = String(data.restaurantId || data.workspaceId || '');
-        const statusOk = data.isPublished === true && data.published === true && String(data.status || '').toLowerCase() === 'published' && String(data.publishStatus || '').toLowerCase() === 'published';
-        const dateOk = getShiftDateKey(data) === item.dateKey;
-        const personOk = shiftMatchesPerson(data, item.person, users) && scheduleIdentityBlockMatchesPerson(data, item.person);
-        const scheduleIdOk = item.wasPublished || Boolean(data.scheduleId);
-        if (actualRestaurantId !== expectedRestaurantId || !statusOk || !dateOk || !personOk || !scheduleIdOk) {
-          verificationFailures.push({ id: item.id, reason: 'published read-back did not match expected fields' });
+          publishWeeks: selectedWeeksForPublish.map(option => ({ label: option.label, start: option.start, end: option.end, draftCount: option.draftCount, liveCount: option.liveCount })),
+          publishPeriodStart,
+          publishPeriodEnd,
+          publishPeriodLabel,
+          selectedShiftCount: updatePlan.length,
+          updateCount: updatePlan.length,
+          draftCount,
+          repairCount,
+          unresolvedCount: unresolved.length,
+          updateShiftIds: updatePlan.map(item => item.id),
+          selectedShifts: updatePlan.map(({ shift }) => ({ ...shift }))
+        };
+        const stamp = now.toISOString().replace(/[:.]/g, '-');
+        downloadTextFile(`${restaurantPrefix}-Schedule-Publish-Backup-${publishPeriodStart}-to-${publishPeriodEnd}-${stamp}.json`, JSON.stringify(backupPayload, null, 2), 'application/json;charset=utf-8;');
+      } catch (backupErr) {
+        console.warn('Schedule publish backup download failed:', backupErr);
+        if (!window.confirm('The local backup download failed. Continue publishing anyway?')) {
+          setPublishProgress(makeSchedulePublishProgress());
+          return;
         }
       }
 
-      if (verificationFailures.length) {
-        console.warn('[86chaos] Schedule publish verification failed', verificationFailures);
-        addToast('Publish Needs Attention', `${verificationFailures.length} shift${verificationFailures.length === 1 ? '' : 's'} did not verify after saving. The publish window stayed open so you can retry.`);
-        return;
-      }
-
-      const publishedShiftIds = updatePlan.map(item => item.id).filter(Boolean);
-      if (publishedShiftIds.length) {
-        setLocalBuilderPublishedShiftIds(prev => Array.from(new Set([...(prev || []), ...publishedShiftIds])).slice(-1000));
-      }
-
-      const inRangeRequests = (timeOffRequests || []).filter(r => publishDaySet.has(String(r?.date || '')) && String(r.restaurantId || r.workspaceId || appUser.restaurantId) === String(appUser.restaurantId));
-      const processedRequests = inRangeRequests.filter(r => ['approved', 'denied'].includes(String(r.status || '').toLowerCase()) && r.archived !== true && r.processed !== true);
-      const pendingPublishedOverlap = inRangeRequests.filter(r => String(r.status || '').toLowerCase() === 'pending');
-      await Promise.all(processedRequests.map(r => updateDoc(doc(db, 'timeOffRequests', r.id), {
-        previousStatus: r.status || '', status: 'processed', processed: true, archived: true,
-        processedAt: publishedAtIso, processedBy: appUser?.id || appUser?.email || '', processedByName: appUser?.name || appUser?.email || '',
-        scheduleId, schedulePeriodStart: publishPeriodStart, schedulePeriodEnd: publishPeriodEnd,
-        publishedAt: publishedAtIso, publishedBy: appUser?.id || appUser?.email || '', publishedByName: appUser?.name || appUser?.email || ''
-      })));
-      await Promise.all(pendingPublishedOverlap.map(r => updateDoc(doc(db, 'timeOffRequests', r.id), {
-        overlapsPublishedSchedule: true, unresolvedPublishedOverlap: true, scheduleId,
-        schedulePeriodStart: publishPeriodStart, schedulePeriodEnd: publishPeriodEnd, updatedAt: publishedAtIso
-      })));
-      if (processedRequests.length) await logAudit(appUser, 'TIME_OFF_AUTO_ARCHIVED_ON_PUBLISH', `${processedRequests.length} request-offs`, scheduleId);
-      if (pendingPublishedOverlap.length) await logAudit(appUser, 'TIME_OFF_PENDING_OVERLAPS_PUBLISHED_SCHEDULE', `${pendingPublishedOverlap.length} pending request-offs`, scheduleId);
-
-      setIsPublishPickerOpen(false);
-      setSelectedPublishWeekKeys([]);
-      const title = unresolved.length ? 'Published with Employee Review Needed' : (repairCount ? 'Published and Visibility Repaired' : 'Published');
-      const detailParts = [`${publishedShiftIds.length} shift${publishedShiftIds.length === 1 ? '' : 's'} verified for ${publishPeriodLabel}`];
-      if (draftCount) detailParts.push(`${draftCount} new`);
-      if (repairCount) detailParts.push(`${repairCount} employee visibility repaired`);
-      if (unresolved.length) detailParts.push(`${unresolved.length} still need employee links`);
-      addToast(title, `${detailParts.join('. ')}. Weeks not selected stayed as drafts.`);
-      logAudit(appUser, 'PUBLISH_SCHEDULE', 'Master Roster', `Verified ${publishedShiftIds.length}/${selectedCandidates.length} shifts for ${publishSelectionLabel}.`);
-
-      try {
-        addToast('Pinging Server', 'Sending schedule update notifications...');
-        const pushRes = await secureFetch('/api/send-schedule-alert', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ restaurantId: appUser.restaurantId, restaurantName: appUser.restaurantName || 'Your restaurant', scheduleId, publishScope: publishAll ? 'full-period' : 'selected-weeks', publishPeriodStart, publishPeriodEnd, publishWeekKeys })
+      const rolePlanById = new Map(rolePlan.shifts.map(row => [row.id, row]));
+      const confirmedEvidenceRows = [...updatePlan, ...alreadyValid];
+      const confirmedShiftEvidence = await Promise.all(confirmedEvidenceRows.map(item => {
+        const roleRow = rolePlanById.get(item.id) || {};
+        return buildConfirmedShiftEvidence({
+          shift: item.shift,
+          resolvedRole: roleRow,
+          desiredEmployeeIdentity: item.intentionalOpen ? null : buildCanonicalScheduleIdentityBlock(item.person, item.shift)
         });
-        const pushData = await pushRes.json();
-        if (pushData.message) addToast('Server Reply', pushData.message);
-        else if (pushData.success) addToast('Alerts Sent!', `Schedule saved. Notifications sent to ${pushData.sentCount} device${pushData.sentCount === 1 ? '' : 's'}.`);
-        else addToast('Notifications Not Sent', pushData.error || 'Schedule published, but notification delivery needs attention.');
-      } catch (pushErr) {
-        console.error('Failed to send schedule push notifications:', pushErr);
-        addToast('Notifications Not Sent', 'Schedule published, but notifications could not be sent.');
+      }));
+      const confirmedClientPlan = {
+        restaurantId: rolePlan.restaurantId,
+        period: rolePlan.period,
+        selectedWeekKeys: rolePlan.selectedWeekKeys,
+        selectedRoleIds: rolePlan.selectedRoleIds,
+        allRoles: rolePlan.allRoles,
+        roleConfigurationRevision: rolePlan.roleConfigurationRevision,
+        confirmedShifts: confirmedShiftEvidence
+      };
+      const clientPlanDigest = await digestSchedulePublicationPlan(confirmedClientPlan);
+      const operationStorageKey = `86chaos:schedule-publish:${appUser.restaurantId}:${clientPlanDigest}`;
+      let operationId = '';
+      try { operationId = sessionStorage.getItem(operationStorageKey) || ''; } catch (_) {}
+      if (!operationId) {
+        operationId = globalThis.crypto?.randomUUID?.() || `publish_${Date.now()}_${Math.random().toString(36).slice(2, 14)}`;
+        try { sessionStorage.setItem(operationStorageKey, operationId); } catch (_) {}
       }
+      addToast('Publishing...', `The server is publishing and verifying ${updatePlan.length} ${publishPeriodLabel} shift(s).`);
+      updatePublishProgress('publishing', 'Publishing schedule…', `Server operation ${operationId.slice(0, 8)} is protected by a durable lease.`, 0, updatePlan.length);
+      const publishResponse = await secureFetch('/api/schedule-publish', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          restaurantId: appUser.restaurantId,
+          restaurantName: appUser.restaurantName || appUser?.systemSettings?.restaurantName || 'Your restaurant',
+          operationId,
+          clientPlanDigest,
+          dayKeys: publishDays,
+          selectedWeekKeys: publishWeekKeys,
+          selectedRoleIds: publishAllRoles ? [] : selectedPublishRoleIds,
+          allRoles: publishAllRoles,
+          roleConfigurationRevision: rolePlan.roleConfigurationRevision,
+          expectedShifts: confirmedShiftEvidence
+        })
+      });
+      const publishResult = await publishResponse.json().catch(() => ({}));
+      if (!publishResponse.ok && publishResult.status !== 'partial') throw new Error(publishResult.error || 'Server publication failed before completion.');
+      const publishedShiftIds = Array.isArray(publishResult.verifiedShiftIds) ? publishResult.verifiedShiftIds : [];
+      if (publishedShiftIds.length) setLocalBuilderPublishedShiftIds(prev => Array.from(new Set([...(prev || []), ...publishedShiftIds])).slice(-1000));
+      if (publishResult.status === 'partial') {
+        setPublishProgress(prev => ({ ...prev, phase: 'error', active: false, label: 'Publish partially completed', detail: `${publishResult.committedCount || 0} committed, ${publishResult.verifiedCount || 0} verified, ${publishResult.conflictedCount || 0} conflicted, ${publishResult.remainingCount || 0} remaining. Retry this operation after reviewing conflicts.` }));
+        addToast('Publish Needs Review', `${publishResult.verifiedCount || 0} verified; ${publishResult.conflictedCount || 0} conflicted. The same operation can be resumed safely.`);
+        return;
+      }
+      try { sessionStorage.removeItem(operationStorageKey); } catch (_) {}
+      const notification = publishResult.notificationState || {};
+      const verifiedCount = Number.isFinite(Number(publishResult.verifiedCount)) ? Number(publishResult.verifiedCount) : publishedShiftIds.length;
+      const verifiedNewCount = Number(publishResult.verifiedNewCount || 0);
+      const verifiedRepairCount = Number(publishResult.verifiedRepairCount || 0);
+      const unchangedCount = Number(publishResult.unchangedCount || 0);
+      const unresolvedServerCount = Number(publishResult.unresolvedEmployeeCount || 0);
+      const serverChangedCount = verifiedNewCount + verifiedRepairCount;
+      const title = unresolvedServerCount > 0 && verifiedCount === 0
+        ? 'Publish Needs Employee Review'
+        : unresolvedServerCount > 0
+          ? 'Published with Employee Review Needed'
+          : verifiedRepairCount > 0
+            ? 'Published and Visibility Repaired'
+            : serverChangedCount > 0
+              ? 'Published'
+              : 'Schedule Already Current';
+      const detailParts = [];
+      if (verifiedNewCount) detailParts.push(`${verifiedNewCount} new shift${verifiedNewCount === 1 ? '' : 's'} published and verified`);
+      if (verifiedRepairCount) detailParts.push(`${verifiedRepairCount} employee visibility repair${verifiedRepairCount === 1 ? '' : 's'} verified`);
+      if (!serverChangedCount && verifiedCount) detailParts.push(`${verifiedCount} shift${verifiedCount === 1 ? '' : 's'} verified`);
+      if (unchangedCount) detailParts.push(`${unchangedCount} already current`);
+      if (unresolvedServerCount) detailParts.push(`${unresolvedServerCount} shift${unresolvedServerCount === 1 ? '' : 's'} not published because employee identity needs review`);
+      if (!detailParts.length) detailParts.push(`No server changes were required for ${publishPeriodLabel}`);
+      if (notification.failedCount) detailParts.push(`${notification.failedCount} notification${notification.failedCount === 1 ? '' : 's'} failed and remain eligible for a controlled retry`);
+      if (notification.ambiguousCount) detailParts.push(`${notification.ambiguousCount} notification acknowledgement${notification.ambiguousCount === 1 ? '' : 's'} remain unknown and will not be resent automatically`);
+      addToast(title, `${detailParts.join('. ')}. Unselected weeks and roles stayed as drafts.`);
+      logAudit(appUser, 'PUBLISH_SCHEDULE', 'Master Roster', `Operation ${operationId} verified ${verifiedCount} server shift(s): ${verifiedNewCount} new, ${verifiedRepairCount} repaired, ${unchangedCount} already current, ${unresolvedServerCount} employee-review.`);
+
+      const progressDetail = unresolvedServerCount
+        ? `${verifiedCount} verified; ${unresolvedServerCount} need employee review.`
+        : serverChangedCount
+          ? `${verifiedNewCount} new and ${verifiedRepairCount} visibility repair${verifiedRepairCount === 1 ? '' : 's'} verified.`
+          : unchangedCount
+            ? `${unchangedCount} selected shift${unchangedCount === 1 ? '' : 's'} already current; no server changes required.`
+            : `No server changes were required for ${publishPeriodLabel}.`;
+      updatePublishProgress('complete', unresolvedServerCount ? 'Publish completed with review needed' : 'Publish complete', progressDetail, verifiedCount, Math.max(verifiedCount, 1));
+      publishCompleted = true;
+      setSelectedPublishWeekKeys([]);
+      setIsPublishPickerOpen(false);
     } catch (err) {
       console.error('[86chaos] Schedule publish failed', err);
+      setPublishProgress(prev => ({ ...prev, phase: 'error', active: false, label: 'Publishing stopped', detail: err?.message || 'Schedule publishing stopped before completion.' }));
       addToast('Publishing Failed', err?.message || 'Schedule publishing failed before every selected shift could be verified.');
+    } finally {
+      publishGuard?.end();
+      if (!publishCompleted) {
+        setPublishProgress(prev => prev.active ? { ...prev, active: false } : prev);
+      }
     }
   };
   
@@ -3969,7 +4091,22 @@ const handleExportTimesheets = () => {
         </div>
       </Modal>
 
-      <Modal isOpen={isPublishPickerOpen} onClose={() => setIsPublishPickerOpen(false)} title="Choose What to Publish" sizeClass="max-w-2xl">
+      <Modal isOpen={Boolean(roleReview)} onClose={() => { if (!roleReviewBusy) setRoleReview(null); }} title="Review Shift Roles" sizeClass="max-w-2xl">
+        <div className="space-y-3">
+          <p className="text-sm text-slate-300">These saved shifts do not identify one configured role. Choose the correct role for each shift. Saving roles does not publish the schedule.</p>
+          {(roleReview?.rows || []).map(row => <label key={row.shiftId} className="block rounded-xl border border-[#2A353D] p-3 space-y-2">
+            <span className="block font-bold">{row.shift?.employeeName || row.shift?.assignedName || 'Unassigned employee'} · {row.shift?.scheduleDateKey || row.shift?.date} · {row.shift?.startTime}–{row.shift?.endTime}</span>
+            <span className="block text-xs text-amber-300">{row.reason === 'missing-role-identity' ? 'No role was saved on this shift.' : row.reason === 'ambiguous-legacy-role-name' ? `More than one role matches “${row.legacyName}”.` : `Saved role “${row.legacyName || row.shift?.rosterRoleId || 'unknown'}” cannot be matched safely.`}</span>
+            <select aria-label={`Role for ${row.shiftId}`} className={T.input} value={roleReviewSelections[row.shiftId] || ''} disabled={roleReviewBusy} onChange={event => setRoleReviewSelections(prev => ({...prev, [row.shiftId]: event.target.value}))}>
+              <option value="">Choose the correct role…</option>
+              {publishSelectableRoles.map(role => <option key={role.id} value={role.id}>{role.name} ({role.id.slice(-6)})</option>)}
+            </select>
+          </label>)}
+          <button type="button" className={`${T.btn} w-full`} disabled={roleReviewBusy || !(roleReview?.rows || []).every(row => roleReviewSelections[row.shiftId])} onClick={saveReviewedRoles}>{roleReviewBusy ? 'Saving…' : 'Save Reviewed Roles'}</button>
+        </div>
+      </Modal>
+
+      <Modal isOpen={isPublishPickerOpen} onClose={() => { if (!isPublishingSchedule) setIsPublishPickerOpen(false); }} title="Choose What to Publish" sizeClass="max-w-2xl">
         <div className="space-y-4">
           <div className="rounded-xl border border-[#2A353D] bg-[#12161A] p-3">
             <div className="text-[10px] font-black uppercase tracking-widest text-[#D4A381]">Publish safely</div>
@@ -3986,7 +4123,7 @@ const handleExportTimesheets = () => {
                   <input
                     type="checkbox"
                     checked={checked}
-                    disabled={disabled}
+                    disabled={disabled || isPublishingSchedule}
                     onChange={() => togglePublishWeek(option.key)}
                     className="h-5 w-5 accent-[#D4A381]"
                   />
@@ -3999,15 +4136,57 @@ const handleExportTimesheets = () => {
             })}
           </div>
 
+          <fieldset className="rounded-xl border border-[#2A353D] bg-[#12161A] p-3" disabled={isPublishingSchedule}>
+            <legend className="px-1 text-[10px] font-black uppercase tracking-widest text-[#D4A381]">Roster roles</legend>
+            <label className="flex min-h-[44px] cursor-pointer items-center gap-3 rounded-lg px-2 py-2 hover:bg-[#1A2126]">
+              <input type="radio" name="schedule-publish-role-mode" checked={publishAllRoles} onChange={() => { setPublishAllRoles(true); setSelectedPublishRoleIds([]); }} className="h-5 w-5 accent-[#D4A381]" />
+              <span><span className="block text-sm font-black text-white">All Roles</span><span className="block text-[11px] font-bold text-slate-400">Publish every shift role in the selected date scope.</span></span>
+            </label>
+            <label className="flex min-h-[44px] cursor-pointer items-center gap-3 rounded-lg px-2 py-2 hover:bg-[#1A2126]">
+              <input type="radio" name="schedule-publish-role-mode" checked={!publishAllRoles} onChange={() => setPublishAllRoles(false)} className="h-5 w-5 accent-[#D4A381]" />
+              <span><span className="block text-sm font-black text-white">Selected Roles</span><span className="block text-[11px] font-bold text-slate-400">Use the configured roles from Settings → Preferences → Roster Roles.</span></span>
+            </label>
+            {!publishAllRoles && (
+              <div className="mt-2 grid gap-2 sm:grid-cols-2" aria-label="Configured roster roles">
+                {publishSelectableRoles.map(role => (
+                  <label key={role.id} className={`flex min-h-[44px] cursor-pointer items-center gap-3 rounded-lg border px-3 py-2 ${selectedPublishRoleIds.includes(role.id) ? 'border-[#D4A381] bg-[#D4A381]/10' : 'border-[#2A353D] bg-[#0B0E11]'}`}>
+                    <input type="checkbox" checked={selectedPublishRoleIds.includes(role.id)} onChange={() => togglePublishRole(role.id)} className="h-5 w-5 accent-[#D4A381]" />
+                    <span className="text-sm font-black text-white">{role.name}</span>
+                  </label>
+                ))}
+                {publishSelectableRoles.length === 0 && <p className="text-xs font-bold text-amber-300">No active configured Roster Roles are available. Add roles in Settings before using Selected Roles.</p>}
+              </div>
+            )}
+          </fieldset>
+
           <div className="rounded-xl border border-[#2A353D] bg-[#0B0E11] p-3 text-xs font-bold text-slate-300">
             Selected: <span className="text-white">{selectedPublishCandidateCount}</span> shift{selectedPublishCandidateCount === 1 ? '' : 's'} to verify/publish
             {selectedPublishWeeks.length > 0 && <span className="block mt-1 text-[11px] text-slate-400">{selectedPublishLabel}</span>}
           </div>
 
+          {publishProgress.phase !== 'idle' && (
+            <div className={`rounded-xl border p-3 ${publishProgress.phase === 'error' ? 'border-red-500/50 bg-red-950/20' : publishProgress.phase === 'complete' ? 'border-emerald-500/50 bg-emerald-950/20' : 'border-[#D4A381]/50 bg-[#D4A381]/10'}`} data-testid="schedule-publish-progress" role="status" aria-live="polite" aria-atomic="true">
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 text-sm font-black text-white">
+                    {isPublishingSchedule && <Loader2 size={16} className="animate-spin text-[#D4A381] shrink-0" />}
+                    <span>{publishProgress.label || 'Publishing schedule…'}</span>
+                  </div>
+                  {publishProgress.detail && <div className="mt-1 text-[11px] font-bold text-slate-300">{publishProgress.detail}</div>}
+                </div>
+                <div className="shrink-0 text-sm font-black text-[#D4A381]" aria-live="polite">{publishProgress.percent}%</div>
+              </div>
+              <div className="mt-3 h-3 overflow-hidden rounded-full border border-[#2A353D] bg-[#090C0F]" role="progressbar" aria-label="Schedule publishing progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow={publishProgress.percent}>
+                <div className="h-full rounded-full bg-gradient-to-r from-[#D4A381] to-[#F1C9AA] transition-[width] duration-300 ease-out" style={{ width: `${publishProgress.percent}%` }} />
+              </div>
+              {isPublishingSchedule && <div className="mt-2 text-[10px] font-bold text-slate-400">Please wait. Publishing is locked so another publish cannot start.</div>}
+            </div>
+          )}
+
           <div className="flex flex-col sm:flex-row gap-2">
-            <button type="button" onClick={() => handlePublish('selected-weeks')} disabled={selectedPublishCandidateCount === 0} className={`${T.btn} flex-1 py-3 disabled:opacity-50`}>Publish Selected Weeks</button>
-            <button type="button" onClick={() => handlePublish('full-period')} disabled={fullPublishCandidateCount === 0} className={`${T.btnAlt} flex-1 py-3`}>{publishPickerSource === 'schedule-tools' ? 'Publish Full Period' : 'Publish Full Schedule'}</button>
-            <button type="button" onClick={() => setIsPublishPickerOpen(false)} className={`${T.btnAlt} flex-1 py-3`}>Cancel</button>
+            <button type="button" onClick={() => handlePublish('selected-weeks')} disabled={selectedPublishCandidateCount === 0 || isPublishingSchedule || (!publishAllRoles && selectedPublishRoleIds.length === 0)} className={`${T.btn} flex-1 py-3 disabled:opacity-50 disabled:cursor-not-allowed`}>{isPublishingSchedule ? 'Publishing…' : 'Publish Selected Weeks'}</button>
+            <button type="button" onClick={() => handlePublish('full-period')} disabled={fullPublishCandidateCount === 0 || isPublishingSchedule || (!publishAllRoles && selectedPublishRoleIds.length === 0)} className={`${T.btnAlt} flex-1 py-3 disabled:opacity-50 disabled:cursor-not-allowed`}>{isPublishingSchedule ? 'Publishing…' : (publishPickerSource === 'schedule-tools' ? 'Publish Full Period' : 'Publish Full Schedule')}</button>
+            <button type="button" onClick={() => { if (!isPublishingSchedule) setIsPublishPickerOpen(false); }} disabled={isPublishingSchedule} className={`${T.btnAlt} flex-1 py-3 disabled:opacity-50 disabled:cursor-not-allowed`}>Cancel</button>
           </div>
         </div>
       </Modal>
@@ -5044,7 +5223,7 @@ const TabTimeOff = ({ timeOffRequests, appUser, users, addToast, events = [], sh
   const postPublishedTimeOffAllowed = schedulePublishingSettings.allowPostPublishedTimeOff;
   const monthDays = Array.from({length: getDaysInMonth(calMonth)}).map((_, i) => `${calMonth}-${String(i+1).padStart(2, '0')}`);
   const firstDayOffset = new Date(calMonth+'-01T12:00:00').getDay();
-  const monthEvents = events.filter(e => e.type === 'special_event' && e.date?.startsWith(calMonth));
+  const monthEvents = (Array.isArray(events) ? events : []).filter(e => e && typeof e === 'object' && e.type === 'special_event' && String(e.date || '').startsWith(calMonth));
   const isArchivedRequest = (r = {}) => r.archived === true || r.processed === true || ['archived','processed','cancelled','canceled'].includes(String(r.status || '').toLowerCase());
   const normalizeStatus = (r = {}) => String(r.status || 'pending').toLowerCase();
   const visibleRequests = (timeOffRequestRows || []).filter(r => canManage || timeOffMatchesPerson(r, schedulePerson) || timeOffMatchesPerson(r, appUser));
@@ -5632,7 +5811,7 @@ const ScheduleCopilot = ({ period, periodLabel = '', users = [], shifts = [], ti
         const canonicalFields = buildCanonicalScheduleCreateFields(date, appUser.restaurantId);
         recordScheduleOperationDiagnostic('canonicalDatePatches');
         const copiedIdentity = buildScheduleIdentityFields(matchedPerson || { ...s, id: '' }, s);
-        await addDoc(collection(db, 'shifts'), { ...canonicalFields, ...copiedIdentity, role: canonicalScheduleRole(s.role || users.find(u => u.id === s.employeeId)?.role || 'Staff'), startTime: s.startTime, endTime: s.endTime, isPublished: false, publishState: 'draft', scheduleBuilderDraft: true, readyToPublish: true, copiedFrom: s.id, createdAt: nowIso, updatedAt: nowIso, createdBy: appUser.id || 'copy-week', updatedBy: appUser.id || 'copy-week', source: 'schedule_copy_week', assignmentSource: 'schedule_copy_week' });
+        await addDoc(collection(db, 'shifts'), { ...canonicalFields, ...copiedIdentity, role: canonicalScheduleRole(s.role || users.find(u => u.id === s.employeeId)?.role || 'Staff'), ...copyRosterRoleFields(s), startTime: s.startTime, endTime: s.endTime, isPublished: false, publishState: 'draft', scheduleBuilderDraft: true, readyToPublish: true, copiedFrom: s.id, createdAt: nowIso, updatedAt: nowIso, createdBy: appUser.id || 'copy-week', updatedBy: appUser.id || 'copy-week', source: 'schedule_copy_week', assignmentSource: 'schedule_copy_week' });
         recordScheduleOperationDiagnostic('directSdkWrites');
         recordScheduleOperationDiagnostic('totalScheduleDocumentsWritten');
         made++;

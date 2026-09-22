@@ -153,6 +153,6 @@ module.exports = async function handler(req, res) {
     return res.status(200).json({ ok: true, usage });
   } catch (error) {
     const status = Number(error.statusCode) || (/authorization|token|login/i.test(error.message || '') ? 401 : 500);
-    return res.status(status).json({ ok: false, error: error.message || 'AI usage request failed.' });
+    return res.status(status).json({ ok: false, error: status < 500 ? 'AI usage authorization failed.' : 'AI usage request failed.' });
   }
 };

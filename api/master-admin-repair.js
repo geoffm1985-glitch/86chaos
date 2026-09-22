@@ -297,7 +297,7 @@ module.exports = async function handler(req, res) {
     const token = String(req.headers.authorization || '').replace('Bearer ', '').trim();
     if (!token) return res.status(401).json({ ok: false, error: 'Missing Firebase authorization token.', runtime });
 
-    const decoded = await authClient.verifyIdToken(token);
+    const decoded = await authClient.verifyIdToken(token, true);
     const callerEmail = norm(decoded.email);
     const masterEmailConfig = parseMasterEmailEnv();
     const configuredMasterEmails = masterEmailConfig.valid;

@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "policySource": "independent-release-policy",
+  "roles": ["staff", "manager", "admin", "owner", "systemAdministrator", "permissionOnly"],
+  "operations": [
+    {"id":"schedule.read","domain":"schedule","allow":["staff","manager","admin","owner","systemAdministrator"]},
+    {"id":"schedule.publish","domain":"schedule","allow":["manager","admin","owner","systemAdministrator"],"permission":"schedule"},
+    {"id":"timeClock.selfPunch","domain":"time-clock","allow":["staff","manager","admin","owner","systemAdministrator"]},
+    {"id":"timeClock.editOthers","domain":"time-clock","allow":["manager","admin","owner","systemAdministrator"],"permission":"laborEdit"},
+    {"id":"timeOff.selfRequest","domain":"time-off","allow":["staff","manager","admin","owner","systemAdministrator"]},
+    {"id":"timeOff.approve","domain":"time-off","allow":["manager","admin","owner","systemAdministrator"],"permission":"schedule"},
+    {"id":"roster.read","domain":"roster","allow":["staff","manager","admin","owner","systemAdministrator"]},
+    {"id":"roster.edit","domain":"roster","allow":["manager","admin","owner","systemAdministrator"],"permission":"team"},
+    {"id":"roster.delete","domain":"roster","allow":["owner","systemAdministrator"]},
+    {"id":"wages.read","domain":"wages","allow":["owner","systemAdministrator"],"permission":"wageView"},
+    {"id":"inventory.edit","domain":"inventory","allow":["manager","admin","owner","systemAdministrator"],"permission":"inventory"},
+    {"id":"invoices.approve","domain":"invoices","allow":["manager","admin","owner","systemAdministrator"],"permission":"inventory"},
+    {"id":"dailyClose.edit","domain":"financial","allow":["manager","admin","owner","systemAdministrator"],"permission":"salesEdit"},
+    {"id":"financial.export","domain":"financial","allow":["owner","systemAdministrator"],"permission":"financialRead"},
+    {"id":"recipes.edit","domain":"recipes","allow":["manager","admin","owner","systemAdministrator"],"permission":"prep"},
+    {"id":"tasks.edit","domain":"tasks","allow":["staff","manager","admin","owner","systemAdministrator"],"permission":"prep"},
+    {"id":"messages.post","domain":"messages","allow":["staff","manager","admin","owner","systemAdministrator"],"permission":"messages"},
+    {"id":"reminders.self","domain":"reminders","allow":["staff","manager","admin","owner","systemAdministrator"]},
+    {"id":"maintenance.edit","domain":"maintenance","allow":["manager","admin","owner","systemAdministrator"],"permission":"team"},
+    {"id":"hr.edit","domain":"hr","allow":["owner","systemAdministrator"],"permission":"team"},
+    {"id":"settings.edit","domain":"settings","allow":["admin","owner","systemAdministrator"],"permission":"settings"},
+    {"id":"integrations.control","domain":"integrations","allow":["owner","systemAdministrator"]},
+    {"id":"backups.run","domain":"backups","allow":["systemAdministrator"]},
+    {"id":"backups.restore","domain":"backups","allow":["systemAdministrator"]},
+    {"id":"platform.operate","domain":"platform","allow":["systemAdministrator"]}
+  ]
+}

@@ -27,7 +27,9 @@ test('active Month View uses a readable vector PDF and legacy TabMonth keeps its
   const pdf = fs.readFileSync(path.join(root, 'src/core/schedulePdf.js'), 'utf8');
   assert.match(pdf, /PAGE_WIDTH = 792/);
   assert.match(pdf, /PAGE_HEIGHT = 612/);
-  assert.match(pdf, /MIN_FONT_SIZE = 8/);
-  assert.match(pdf, /detailPage = document\.addPage/);
+  assert.match(pdf, /MIN_FONT_SIZE = 6\.5/);
+  assert.match(pdf, /candidateSizes = \[8, 7\.5, 7, MIN_FONT_SIZE\]/, 'active PDF prefers readable 8pt text and only shrinks when needed to preserve full shift text');
+  assert.equal((pdf.match(/document\.addPage\(/g) || []).length, 1, 'active Month PDF creates exactly one calendar page');
+  assert.doesNotMatch(pdf, /detailPage\s*=\s*document\.addPage/, 'active Month PDF does not create per-day detail pages');
   assertReadableOnePagePrintCss(tabMonth, 'legacy TabMonth print view');
 });

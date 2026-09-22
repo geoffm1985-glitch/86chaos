@@ -1,0 +1,43 @@
+#!/usr/bin/env node
+'use strict';
+const fs=require('node:fs');
+const assert=require('node:assert/strict');
+const read=f=>fs.readFileSync(f,'utf8');
+const json=f=>JSON.parse(read(f));
+const pkg=json('package.json'),lock=json('package-lock.json'),version=json('public/version.json');
+assert.equal(pkg.version,'17.0.19');
+assert.equal(lock.version,pkg.version);
+assert.equal(lock.packages[''].version,pkg.version);
+assert.equal(version.version,pkg.version);
+assert.equal(version.build,pkg.version);
+assert.equal(version.releaseTitle,'Release Gate Expected Version Pinning Repair');
+assert.equal(pkg.scripts['test:source'],'node scripts/validate-17-0-19.js');
+assert.equal(pkg.scripts['validate:17.0.19'],'node scripts/validate-17-0-19.js');
+assert(pkg.scripts['test:repair:17.0.19']?.includes('release-gate-expected-version-17-0-19.test.cjs'),'17.0.19 repair test is wired');
+assert(pkg.scripts['test:hostile:contracts']?.includes('release-gate-expected-version-17-0-19.test.cjs'),'expected-version regression is permanent hostile coverage');
+const full=read('RUN_86CHAOS_PLAY_STORE_RELEASE_GATE.ps1');
+const keyLine=full.match(/\$ReleaseTargetKeys\s*=\s*@\([^\r\n]+\)/)?.[0]||'';
+assert(keyLine&&!keyLine.includes('CHAOS_EXPECTED_VERSION'),'full gate does not treat persisted expected version as a target conflict');
+assert(full.includes("SetEnvironmentVariable('CHAOS_EXPECTED_VERSION', $PackageVersion, 'Process')"),'full gate pins expected version from package.json');
+assert(full.includes('$env:CHAOS_EXPECTED_VERSION = $PackageVersion'),'PowerShell process sees package version before preflight');
+const preflight=read('scripts/86chaos-release-gate/preflight-env.cjs');
+assert(preflight.includes("TARGET_ENV_KEYS.filter(key => key !== 'CHAOS_EXPECTED_VERSION')"),'certification preflight ignores stale persisted expected-version conflicts');
+assert(/const expectedVersion = certificationMode\s*\? packageVersionFromSource/s.test(preflight),'certification expected version comes from package.json');
+assert(preflight.includes('if (!certificationMode && expectedVersion && packageVersion && packageVersion !== expectedVersion)'),'non-certification version mismatch remains strict');
+// Preserve the 17.0.18 subprocess repair.
+const releaseChecks=read('scripts/86chaos-release-gate/run-node-release-checks.cjs');
+assert(releaseChecks.includes('--timeout 600 -- npm run test:schedule-publish:core'),'schedule core remains separated');
+assert(releaseChecks.includes("group: 'mobile layout Playwright smoke'"),'mobile layout Playwright remains its own observable step');
+assert(releaseChecks.includes('--timeout 180 -- node node_modules/@playwright/test/cli.js test --config=playwright.layout.config.cjs'),'layout smoke still launches local Playwright directly');
+// Preserve the 17.0.17 app repairs.
+const schedule=read('src/features/schedule.jsx');
+assert(schedule.includes('publishResult.verifiedNewCount'),'authoritative publish summary preserved');
+const service=read('api/_schedule-publish-service.cjs');
+assert(service.includes('resolveEmployeeForPublishShift'),'legacy publish identity repair preserved');
+const app=read('src/App.js');
+const navStart=app.indexOf('const transitionActiveTabState = useCallback((nextTab) => {');
+const navEnd=app.indexOf('const disarmPwaBackExit',navStart);
+assert(navStart>=0&&navEnd>navStart&&!app.slice(navStart,navEnd).includes('React.startTransition'),'synchronous top-level navigation preserved');
+for(const file of ['src/core/appCore.js','api/_version.js','api/_pos-bridge-config.js']) assert(read(file).includes("'17.0.19'"),`${file} carries 17.0.19`);
+for(const file of ['test-tools/certification/groups.json','test-tools/regressions/registry.json','test-tools/certification/cost-performance-baselines.json']) assert.equal(json(file).release,pkg.version);
+console.log('17.0.19 expected-version pinning validation passed; this is not full release certification.');

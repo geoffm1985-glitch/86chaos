@@ -18,9 +18,10 @@ test('Request Off workflow date filters load the selected month or custom range 
 
 test('Request Off workflow filters compare normalized request date aliases', () => {
   const schedule = read('src/features/schedule.jsx');
-  assert.match(schedule, /const requestOffDateKey = \(request = \{\}\) => \{/);
-  assert.match(schedule, /request\?\.requestDate/);
-  assert.match(schedule, /request\?\.requestedDate/);
+  const runtime = read('src/core/requestOffRuntimeSafety.js');
+  assert.match(schedule, /import \{ requestOffDateKey, normalizeRequestOffRuntimeRow, safeRequestOffRows \} from '\.\.\/core\/requestOffRuntimeSafety'/);
+  assert.match(runtime, /export const requestOffDateKey = \(request = \{\}\) => \{/);
+  assert.match(runtime, /const DATE_FIELDS = \['date','requestDate','requestedDate','startDate','dateKey'/);
   assert.match(schedule, /const requestDate = requestOffDateKey\(r\);/);
   assert.match(schedule, /requestDate >= range\.start && requestDate <= range\.end/);
   assert.match(schedule, /new Date\(requestOffDateKey\(a\) \|\| 0\)/);

@@ -98,7 +98,7 @@ async function handler(req, res) {
     if (!appCheck.ok) return res.status(appCheck.status || 401).json({ ok: false, code: 'app-check-required', error: appCheck.error || 'App check required.' });
     const token = bearer(req);
     if (!token) return res.status(401).json({ ok: false, code: 'missing-token', error: 'Sign in to use Ask 86.' });
-    const decoded = await app.auth().verifyIdToken(token);
+    const decoded = await app.auth().verifyIdToken(token, true);
     if (!checkRateLimit(rateKey(decoded, req))) return res.status(429).json({ ok: false, code: 'rate-limited', error: 'Ask 86 is taking a quick breather. Try again in a minute.' });
     const body = await readBody(req);
     enforceClientAiSelection({ ...req, body }, resolveAiPolicy({ feature: 'help', route: '/api/help-assistant', provider: 'gemini' }), { uid: decoded.uid });

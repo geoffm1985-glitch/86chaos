@@ -5690,3 +5690,28 @@ span.bg-red-500.text-white,
 @media (prefers-reduced-motion: reduce) {
   .critical-priority-indicator.animate-pulse { animation: none !important; }
 }
+
+/* 17.0.9: keep the mobile voice dock midway between the old 80px and 17.0.5 8px positions. */
+@media (max-width: 720px) {
+  .voice-command-dock.fixed.bottom-5.left-4 {
+    bottom: calc(44px + env(safe-area-inset-bottom, 0px));
+    left: max(12px, env(safe-area-inset-left, 0px));
+  }
+  .voice-command-dock > button { width: 56px; height: 56px; min-width: 56px; min-height: 56px; }
+  .voice-command-dock > .cockpit-panel { max-height: calc(100dvh - 150px); overflow-y: auto; }
+  .desktop-pro-shell[data-active-tab="schedule"]:has(.voice-command-dock) {
+    height: 100dvh;
+    min-height: 0;
+    overflow: hidden;
+    padding-bottom: calc(108px + env(safe-area-inset-bottom, 0px));
+    box-sizing: border-box;
+  }
+  .desktop-pro-shell[data-active-tab="schedule"]:has(.voice-command-dock) > .app-header { flex-shrink: 0; }
+  .desktop-pro-shell[data-active-tab="schedule"]:has(.voice-command-dock) > .app-content-shell {
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
+    padding-bottom: 16px !important;
+    scroll-padding-bottom: 16px;
+  }
+}

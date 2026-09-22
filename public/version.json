@@ -1,17 +1,16 @@
 {
-  "version": "16.0.235",
-  "name": "86 Chaos 16.0.235",
-  "build": "16.0.235",
-  "label": "86 Chaos 16.0.235",
-  "releasedAt": "2026-09-15T00:00:00.000Z",
-  "releaseTitle": "Mobile Schedule PDF Delivery Repair",
+  "version": "17.0.22",
+  "name": "86 Chaos 17.0.22",
+  "build": "17.0.22",
+  "label": "86 Chaos 17.0.22",
+  "releasedAt": "2026-09-22T06:45:00.000Z",
+  "releaseTitle": "Release Gate Top-Level Layout Smoke Repair",
   "notes": [
-    "Repairs Month Schedule PDF delivery on Android/mobile browsers and installed-PWA contexts.",
-    "Mobile printing now prefers native PDF file sharing when supported and otherwise downloads the generated PDF directly.",
-    "Desktop PDF viewing opens the generated Blob URL directly and falls back to download when popups are blocked.",
-    "Adds regression coverage for the real about:blank mobile failure without changing schedule PDF content or Shift4 behavior."
+    "Runs the required five-case mobile layout Playwright smoke from the top-level PowerShell gate instead of from the synchronous Node readiness runner that stalled on Windows.",
+    "Preserves the same five browser assertions, required-gate status, one worker, and a 180-second Playwright global limit.",
+    "No Schedule Builder, publishing, POS Bridge, Firebase rules, permission, or restaurant-data behavior changes."
   ],
-  "title": "86 Chaos 16.0.235",
-  "summary": "Repairs mobile Month Schedule PDF delivery without changing schedule data or PDF layout.",
-  "description": "Replaces the fragile mobile about:blank PDF handoff with reliable file share/download delivery while preserving desktop PDF viewing and zero-write schedule printing."
+  "title": "86 Chaos 17.0.22",
+  "summary": "Surgical release-harness repair that launches the layout smoke through the same top-level Windows path as the main Playwright gate.",
+  "description": "Prevents the synchronous Node readiness runner from trapping the layout Playwright process while retaining the complete browser smoke and leaving application behavior unchanged."
 }

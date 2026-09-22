@@ -3,6 +3,23 @@ const WEEKDAYS = Object.freeze(['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 const clean = value => String(value == null ? '' : value).replace(/\s+/g, ' ').trim();
 const validMonth = value => /^\d{4}-\d{2}$/.test(String(value || ''));
 
+export function formatScheduleTime12Hour(value) {
+  const source = clean(value);
+  if (!source) return '';
+  const twentyFour = source.match(/^([01]?\d|2[0-3]):([0-5]\d)(?::[0-5]\d)?$/);
+  if (twentyFour) {
+    const hour24 = Number(twentyFour[1]);
+    const hour12 = hour24 % 12 || 12;
+    return `${hour12}:${twentyFour[2]} ${hour24 < 12 ? 'AM' : 'PM'}`;
+  }
+  const twelveHour = source.match(/^(\d{1,2})(?::([0-5]\d))?\s*([ap])(?:\.?m\.?)?$/i);
+  if (twelveHour) {
+    const hour = Number(twelveHour[1]);
+    if (hour >= 1 && hour <= 12) return `${hour}:${twelveHour[2] || '00'} ${twelveHour[3].toUpperCase()}M`;
+  }
+  return source;
+}
+
 export function buildMonthSchedulePrintModel({ monthStr, roleFilter = 'All', restaurantName = '', shifts = [], prefiltered = false }) {
   if (!validMonth(monthStr)) throw new Error('A valid schedule month is required for PDF printing.');
   const firstDay = new Date(`${monthStr}-01T12:00:00`).getDay();
@@ -25,14 +42,16 @@ export function buildMonthSchedulePrintModel({ monthStr, roleFilter = 'All', res
   visibleShifts.forEach(shift => {
     if (!shiftsByDate.has(shift.date)) shiftsByDate.set(shift.date, []);
     const employeeName = clean(shift.employeeName) || 'Open Shift';
-    const timeLabel = clean(shift.timeLabel) || [clean(shift.startTime), clean(shift.endTime)].filter(Boolean).join(' – ');
+    const startTime = formatScheduleTime12Hour(shift.startTime);
+    const endTime = formatScheduleTime12Hour(shift.endTime);
+    const timeLabel = [startTime, endTime].filter(Boolean).join(' – ') || clean(shift.timeLabel);
     const role = clean(shift.role);
     shiftsByDate.get(shift.date).push({
       dedupeKey: shift.dedupeKey,
       employeeName, role,
       startTime: clean(shift.startTime), endTime: clean(shift.endTime),
       timeLabel,
-      label: [employeeName, timeLabel, role].filter(Boolean).join(' · ')
+      label: [employeeName, timeLabel].filter(Boolean).join(' · ')
     });
   });
   const totalCells = firstDay + daysInMonth;

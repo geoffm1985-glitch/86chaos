@@ -145,7 +145,7 @@ const hardRecoverRuntimeSection = async (reason = 'manual') => {
 
 const getRuntimeReportContext = (error, extra = {}, kind = 'section-runtime-error') => {
   const route = typeof window !== 'undefined' ? `${window.location.pathname}${window.location.search}` : '';
-  const activeTab = typeof window !== 'undefined' ? (new URLSearchParams(window.location.search).get('tab') || '') : '';
+  const activeTab = String(extra.activeTab || (typeof window !== 'undefined' ? (new URLSearchParams(window.location.search).get('tab') || '') : '')).slice(0, 120);
   const viewport = typeof window !== 'undefined' ? `${window.innerWidth}x${window.innerHeight}` : '';
   const deployedVersion = typeof window !== 'undefined' ? (window.__CHAOS_VISIBLE_VERSION || window.__CHAOS_DEPLOYED_VERSION || '') : '';
   return {
@@ -525,7 +525,7 @@ class AppSurfaceErrorBoundary extends React.Component {
     const fallbackReportId = createFallbackReportId(chunkProblem ? 'chunk' : 'section');
     this.setState({ fallbackReportId, reportId: fallbackReportId });
     const reporter = chunkProblem ? reportRuntimeChunkFailure : reportRuntimeSectionError;
-    reporter(error, { source: chunkProblem ? 'react_error_boundary_chunk' : 'react_error_boundary', componentStack: info?.componentStack || '', fallbackReportId }).then(reportId => {
+    reporter(error, { source: chunkProblem ? 'react_error_boundary_chunk' : 'react_error_boundary', componentStack: info?.componentStack || '', fallbackReportId, activeTab: this.props.surfaceContext || '' }).then(reportId => {
       if (reportId) this.setState({ reportId });
     });
   }
@@ -2025,10 +2025,11 @@ if (liveAppUser && clientData) {
     } else if (normalized === 'published') {
       setActiveScheduleSubTab(defaultScheduleSubTabForTopLevelTab(normalized));
     }
+    // Top-level navigation must commit synchronously. Deferring this state change can
+    // leave the heavy Schedule Builder tree mounted after the drawer closes, making
+    // every subsequent tab tap appear to be ignored on mobile.
     activeTabStateRef.current = normalized;
-    const commit = () => setActiveTabState(normalized);
-    if (typeof React.startTransition === 'function') React.startTransition(commit);
-    else commit();
+    setActiveTabState(normalized);
   }, []);
 
   const disarmPwaBackExit = useCallback(() => {
@@ -3393,7 +3394,7 @@ What I clicked / expected:
   const appThemeStyle = { '--chaos-accent': appAccentColor };
 
 return (
-    <div style={appThemeStyle} onClickCapture={blockDemoMutation} onSubmitCapture={blockDemoMutation} className={`desktop-pro-shell ui-v13-polished ui-v12-compact cockpit-shell ${activeTabState === 'godmode' ? '' : 'non-admin-controls-compact'} kitchen-simple-shell ui-density-${liveAppUser?.preferences?.uiDensity || displayClientData?.systemSettings?.uiDensity || 'compact'} recipe-density-${liveAppUser?.preferences?.recipeDensity || displayClientData?.systemSettings?.recipeCardDensity || 'tight'} motion-${liveAppUser?.preferences?.motionMode || displayClientData?.systemSettings?.cockpitLights || 'normal'} min-h-screen font-sans flex flex-col w-full max-w-[100vw] ${T.bg}`}>
+    <div data-active-tab={activeTabState} style={appThemeStyle} onClickCapture={blockDemoMutation} onSubmitCapture={blockDemoMutation} className={`desktop-pro-shell ui-v13-polished ui-v12-compact cockpit-shell ${activeTabState === 'godmode' ? '' : 'non-admin-controls-compact'} kitchen-simple-shell ui-density-${liveAppUser?.preferences?.uiDensity || displayClientData?.systemSettings?.uiDensity || 'compact'} recipe-density-${liveAppUser?.preferences?.recipeDensity || displayClientData?.systemSettings?.recipeCardDensity || 'tight'} motion-${liveAppUser?.preferences?.motionMode || displayClientData?.systemSettings?.cockpitLights || 'normal'} min-h-screen font-sans flex flex-col w-full max-w-[100vw] ${T.bg}`}>
       
       {/* GHOST / DEMO MODE BANNER */}
       {ghostTenant && (
@@ -3677,6 +3678,7 @@ return (
           key={`${activeTabState}-${liveAppUser?.restaurantId || 'no-restaurant'}`}
           resetKey={`${activeTabState}-${liveAppUser?.restaurantId || 'no-restaurant'}-${CURRENT_VERSION}-${surfaceRetryKey}`}
           onRetry={() => setSurfaceRetryKey(value => value + 1)}
+          surfaceContext={`${activeTabState}${['schedule','published'].includes(activeTabState) ? `/${activeScheduleSubTab}` : ''}`}
         >
           <React.Suspense fallback={<RouteLoading />} >
             <React.Fragment key={`${activeTabState}-${liveAppUser?.restaurantId || 'no-restaurant'}-${surfaceRetryKey}`}>

@@ -124,6 +124,10 @@ function firstUsefulFailureFromOutput(child = {}) {
   const status = typeof child.status === 'number' ? child.status : null;
   if (status === 0) return '';
   const combined = `${child.stderr || ''}\n${child.stdout || ''}`;
+  if (status === 124) {
+    const timeoutLine = String(combined || '').split(/\r?\n/).map(normalizeLine).find(line => /\bTIMED OUT\b/i.test(line));
+    return timeoutLine || 'Command timed out (exit code 124).';
+  }
   const looksLikeNodeTestOutput = /(^|\n)TAP version\s+\d+|(^|\n)# Subtest:|(^|\n)✖\s+failing tests:/i.test(combined);
   if (looksLikeNodeTestOutput) {
     const nodeFailure = extractNodeTestFailure(combined);
