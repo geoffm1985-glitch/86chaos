@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "release": "17.0.23",
+  "release": "17.0.24",
   "sourceIdentityRequired": true,
   "automaticOverwrite": false,
   "regressionPolicy": "Capture fixed-fixture cold and warm samples; block large regressions only after a reviewed baseline exists.",

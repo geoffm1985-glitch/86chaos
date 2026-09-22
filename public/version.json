@@ -1,17 +1,17 @@
 {
-  "version": "17.0.23",
-  "name": "86 Chaos 17.0.23",
-  "build": "17.0.23",
-  "label": "86 Chaos 17.0.23",
-  "releasedAt": "2026-09-22T22:20:00.000Z",
-  "releaseTitle": "Request Off Cutoff and Blackout Policy",
+  "version": "17.0.24",
+  "name": "86 Chaos 17.0.24",
+  "build": "17.0.24",
+  "label": "86 Chaos 17.0.24",
+  "releasedAt": "2026-09-22T23:10:00.000Z",
+  "releaseTitle": "Schedule Builder Clear Month",
   "notes": [
-    "Adds an owner/admin-only Request Off policy with a configurable cutoff measured in days before the planned schedule release.",
-    "Adds owner/admin-only blackout date ranges with optional reasons; normal employee Request Off submissions are blocked on those dates.",
-    "Monthly workspaces can set the normal release day in the previous month; weekly/biweekly/custom workspaces can set release lead days. These values calculate deadlines only and never auto-publish a schedule.",
-    "Schedule/team/settings permission alone cannot change the Request Off policy. Existing Request Off review permissions and unrelated application behavior are unchanged."
+    "Adds a Clear Month action in Schedule Builder that removes every saved shift in the displayed month only after explicit confirmation.",
+    "The confirmation states that both draft and published shifts will be deleted while events and time-off requests remain unchanged.",
+    "The clear operation reloads and verifies the restaurant month from Firestore, retries any remaining shift records once, and reports an error instead of silently leaving a partial clear.",
+    "Preserves the 17.0.23 Request Off cutoff/blackout policy and all unrelated application behavior."
   ],
-  "title": "86 Chaos 17.0.23",
-  "summary": "Owner/admin-controlled Request Off cutoff and blackout dates aligned to the schedule release cycle.",
-  "description": "Adds a configurable Request Off deadline before the planned schedule release plus blackout date ranges, with policy configuration restricted to account owners and workspace administrators."
+  "title": "86 Chaos 17.0.24",
+  "summary": "Schedule Builder can now clear all saved shifts from the displayed month with explicit destructive confirmation.",
+  "description": "Adds a verified Clear Month control to Schedule Builder for deleting all draft and published shifts in the displayed month without deleting events or Request Off records."
 }

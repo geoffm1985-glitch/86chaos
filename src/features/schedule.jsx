@@ -1851,6 +1851,7 @@ const [eventDate, setEventDate] = useState(getToday());
   const [isAutoPopulateModalOpen, setIsAutoPopulateModalOpen] = useState(false);
   const [autoPopSourceMonth, setAutoPopSourceMonth] = useState('');
   const [autoFillVisibleShifts, setAutoFillVisibleShifts] = useState([]);
+  const [isClearingScheduleMonth, setIsClearingScheduleMonth] = useState(false);
   const [localBuilderShiftEchoes, setLocalBuilderShiftEchoes] = useState([]);
   const [localBuilderDeletedShiftMarkers, setLocalBuilderDeletedShiftMarkers] = useState(() => readScheduleDeletedShiftMarkersFromStorage(appUser?.restaurantId));
   const [localBuilderPublishedShiftIds, setLocalBuilderPublishedShiftIds] = useState([]);
@@ -1873,6 +1874,14 @@ const [eventDate, setEventDate] = useState(getToday());
   
   const monthStr = getMonthStr(currentDate); 
   const monthDays = Array.from({length: getDaysInMonth(monthStr)}).map((_, i) => `${monthStr}-${String(i+1).padStart(2, '0')}`);
+  const shiftBelongsToScheduleMonth = (shift = {}, targetMonth = monthStr) => {
+    const cleanMonth = String(targetMonth || '').slice(0, 7);
+    if (!/^\d{4}-\d{2}$/.test(cleanMonth)) return false;
+    const dateKey = getShiftDateKey(shift);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) return dateKey.slice(0, 7) === cleanMonth;
+    return [shift?.scheduleMonth, shift?.month, shift?.sourceMonth, shift?.restoreMonth]
+      .some(value => String(value || '').slice(0, 7) === cleanMonth);
+  };
   const activeSchedulePeriodContext = schedulePeriodContext || getSchedulePeriodContext(currentDate, appUser, clientData);
   const schedulePublishingSettings = activeSchedulePeriodContext.settings;
   const schedulePerson = getSchedulePersonForAppUser(appUser, users);
@@ -2541,6 +2550,75 @@ const [eventDate, setEventDate] = useState(getToday());
     }
     if (failedCount) console.warn('[86chaos] Some schedule delete targets could not be removed', { failedCount, targetList });
     return { targetList, deletedCount: succeededIds.length, failedCount };
+  };
+
+  const fetchSavedScheduleBuilderMonthTargets = async (targetMonth = monthStr) => {
+    const restaurantId = String(appUser?.restaurantId || '').trim();
+    if (!restaurantId) throw new Error('Restaurant workspace is missing. Refresh and try again.');
+    const byId = new Map();
+    const baseCollection = collection(db, 'shifts');
+    const collectSnapshot = (snap) => {
+      snap.forEach(docSnap => {
+        const shift = { id: docSnap.id, ...docSnap.data() };
+        const shiftRestaurantId = String(shift?.restaurantId || shift?.workspaceId || '').trim();
+        if (shiftRestaurantId !== restaurantId || !shiftBelongsToScheduleMonth(shift, targetMonth)) return;
+        byId.set(String(docSnap.id), shift);
+      });
+    };
+    const restaurantSnapshot = await getDocsFromServer(query(baseCollection, where('restaurantId', '==', restaurantId)));
+    collectSnapshot(restaurantSnapshot);
+    return Array.from(byId.values());
+  };
+
+  const handleClearScheduleMonth = async () => {
+    if (isClearingScheduleMonth) return;
+    if (isPublishingSchedule) return addToast('Publishing in Progress', 'Wait for schedule publishing to finish before clearing a month.');
+    if (isAssigningShift) return addToast('Assignment in Progress', 'Wait for the current shift assignment to finish before clearing a month.');
+    const targetMonth = monthStr;
+    const monthLabel = formatDisplayMonth(targetMonth);
+    setIsClearingScheduleMonth(true);
+    try {
+      let targets = await fetchSavedScheduleBuilderMonthTargets(targetMonth);
+      if (!targets.length) {
+        addToast('Month Already Clear', `${monthLabel} has no saved shifts to delete.`);
+        return;
+      }
+      const confirmed = window.confirm(
+        `Delete ALL ${targets.length} saved shift${targets.length === 1 ? '' : 's'} from ${monthLabel}? This includes draft and published shifts. Events and time-off requests will NOT be deleted. This cannot be undone.`
+      );
+      if (!confirmed) return;
+
+      const deletedTargets = [...targets];
+      let result = await tombstoneAndDeleteScheduleBuilderShiftTargets(targets, { scope: 'schedule-builder-clear-month' });
+      let remaining = await fetchSavedScheduleBuilderMonthTargets(targetMonth);
+      if (remaining.length) {
+        const retry = await tombstoneAndDeleteScheduleBuilderShiftTargets(remaining, { scope: 'schedule-builder-clear-month-verification-retry' });
+        result = {
+          targetList: mergeVisibleScheduleShifts(result.targetList, retry.targetList),
+          deletedCount: Number(result.deletedCount || 0) + Number(retry.deletedCount || 0),
+          failedCount: Number(result.failedCount || 0) + Number(retry.failedCount || 0)
+        };
+        deletedTargets.push(...remaining);
+        remaining = await fetchSavedScheduleBuilderMonthTargets(targetMonth);
+      }
+      if (remaining.length) {
+        throw new Error(`${remaining.length} saved shift record${remaining.length === 1 ? '' : 's'} still remain in ${monthLabel}. Refresh before making more schedule changes.`);
+      }
+
+      const markerSource = mergeVisibleScheduleShifts(deletedTargets, result.targetList);
+      const deletedMarkers = buildLocalShiftDeletionMarkers(markerSource);
+      if (deletedMarkers.length) setLocalBuilderDeletedShiftMarkers(prev => mergeLocalShiftDeletionMarkers(prev, deletedMarkers));
+      const deletedIdSet = new Set(markerSource.map(getShiftWritableDocId).filter(Boolean));
+      setLocalBuilderShiftEchoes(prev => prev.filter(shift => !shiftBelongsToScheduleMonth(shift, targetMonth)));
+      setAutoFillVisibleShifts(prev => prev.filter(shift => !shiftBelongsToScheduleMonth(shift, targetMonth)));
+      setLocalBuilderPublishedShiftIds(prev => (prev || []).filter(id => !deletedIdSet.has(id)));
+      setAssignDates([]);
+      addToast('Month Cleared', `${result.deletedCount || targets.length} saved shift record${(result.deletedCount || targets.length) === 1 ? '' : 's'} removed from ${monthLabel}. Events and time-off requests were left unchanged.`);
+    } catch (err) {
+      addToast('Clear Month Failed', err?.message || `Could not clear ${formatDisplayMonth(targetMonth)}.`);
+    } finally {
+      setIsClearingScheduleMonth(false);
+    }
   };
 
   const handleDeleteSpecificShift = async (event, shift, person, dateKey) => {
@@ -4259,19 +4337,32 @@ const handleExportTimesheets = () => {
               </div>
 
               {/* Assign Button */}
-              <button onClick={handleAssign} disabled={isAssigningShift||!selectedEmp||assignDates.length===0} className={`schedule-builder-assign-button w-full xl:w-auto ${T.btn} py-1.5 px-2 text-xs h-9 disabled:opacity-50 flex items-center justify-center shadow-lg shrink-0 whitespace-nowrap`}>{isAssigningShift ? 'Assigning…' : `Assign (${assignDates.length})`}</button>
+              <button onClick={handleAssign} disabled={isClearingScheduleMonth||isAssigningShift||!selectedEmp||assignDates.length===0} className={`schedule-builder-assign-button w-full xl:w-auto ${T.btn} py-1.5 px-2 text-xs h-9 disabled:opacity-50 flex items-center justify-center shadow-lg shrink-0 whitespace-nowrap`}>{isAssigningShift ? 'Assigning…' : `Assign (${assignDates.length})`}</button>
 
             </div>
             
             {/* Action Row */}
-            <div className="schedule-builder-action-row flex w-full lg:w-auto gap-2 items-center pt-1.5 lg:pt-0 border-t lg:border-t-0 border-[#2A353D]">
+            <div className="schedule-builder-action-row flex flex-wrap w-full lg:w-auto gap-2 items-center pt-1.5 lg:pt-0 border-t lg:border-t-0 border-[#2A353D]">
               <div className="schedule-builder-labor-pill hidden sm:flex flex-col items-end mr-2 bg-[#12161A] border border-[#2A353D] px-2 py-1 rounded-xl">
                 <span className="text-[9px] font-black uppercase tracking-widest text-slate-500">Proj. Period Labor</span>
                 <span className="text-emerald-400 font-black text-base">${projectedMonthLabor.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
               </div>
-<button onClick={() => setIsAutoPopulateModalOpen(true)} className={`schedule-builder-action-button flex-1 lg:flex-none ${T.btnAlt} py-1.5 h-9 flex items-center justify-center font-black border-blue-900/50 text-blue-400`}>
+<button onClick={() => setIsAutoPopulateModalOpen(true)} disabled={isClearingScheduleMonth} className={`schedule-builder-action-button flex-1 lg:flex-none ${T.btnAlt} py-1.5 h-9 flex items-center justify-center font-black border-blue-900/50 text-blue-400 disabled:opacity-50`}>
                 <Repeat size={16} className="mr-1"/> <span aria-label="Auto-Fill">Copy Month</span>
-              </button>              <button onClick={() => openPublishPicker('builder')} className={`schedule-builder-action-button flex-1 lg:flex-none ${T.btnAlt} py-1.5 h-9 flex items-center justify-center font-black`}>Publish</button>
+              </button>
+              <button
+                type="button"
+                onClick={handleClearScheduleMonth}
+                disabled={isClearingScheduleMonth || isPublishingSchedule}
+                data-chaos-control-kind="destructive-mutation"
+                data-chaos-workflow-id="schedule-clear-month"
+                className={`schedule-builder-action-button flex-1 lg:flex-none ${T.btnAlt} py-1.5 px-2 h-9 flex items-center justify-center font-black border-red-900/60 text-red-400 hover:text-red-300 disabled:opacity-50`}
+                title={`Delete every saved draft and published shift from ${formatDisplayMonth(monthStr)}`}
+              >
+                {isClearingScheduleMonth ? <Loader2 size={16} className="mr-1 animate-spin"/> : <Trash2 size={16} className="mr-1"/>}
+                {isClearingScheduleMonth ? 'Clearing…' : 'Clear Month'}
+              </button>
+              <button onClick={() => openPublishPicker('builder')} disabled={isClearingScheduleMonth} className={`schedule-builder-action-button flex-1 lg:flex-none ${T.btnAlt} py-1.5 h-9 flex items-center justify-center font-black disabled:opacity-50`}>Publish</button>
               <button onClick={openNewEventModal} className={`schedule-builder-action-button flex-1 lg:flex-none ${T.btnAlt} border-[#D4A381] text-[#D4A381] py-1.5 h-9 flex items-center justify-center font-black`}><Plus size={16} className="mr-1"/> Event</button>
             </div>
           </div>
