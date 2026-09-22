@@ -17,8 +17,21 @@ test('full release checks split schedule core tests from mobile layout Playwrigh
   assert.equal(pkg.scripts['test:schedule-publish'], 'npm run test:schedule-publish:core && npm run test:mobile-voice-layout');
   assert.match(runner, /--timeout 600 -- npm run test:schedule-publish:core/);
   assert.match(runner, /group: 'mobile layout Playwright smoke'/);
-  assert.match(runner, /--timeout 180 -- node node_modules\/@playwright\/test\/cli\.js test --config=playwright\.layout\.config\.cjs/);
+  assert.match(runner, /command: 'node node_modules\/@playwright\/test\/cli\.js test --config=playwright\.layout\.config\.cjs'/);
+  assert.match(runner, /executable: process\.execPath/);
+  assert.match(runner, /args: \[path\.join\('node_modules', '@playwright', 'test', 'cli\.js'\), 'test', '--config=playwright\.layout\.config\.cjs'\]/);
+  assert.match(runner, /timeoutMs: 180_000/);
+  assert.doesNotMatch(runner, /--timeout 180 -- node node_modules\/@playwright\/test\/cli\.js/);
   assert.doesNotMatch(runner, /--timeout 900 -- npm run test:schedule-publish['"]/);
+});
+
+test('mobile layout smoke uses one direct bounded Playwright process', () => {
+  const runner = read('scripts/86chaos-release-gate/run-node-release-checks.cjs');
+  assert.match(runner, /const direct = row\.executable && Array\.isArray\(row\.args\)/);
+  assert.match(runner, /direct \? cp\.spawnSync\(row\.executable, row\.args/);
+  assert.match(runner, /shell: false/);
+  assert.match(runner, /const timedOut = child\.error\?\.code === 'ETIMEDOUT'/);
+  assert.match(runner, /result\.exitCode = timedOut \? 124/);
 });
 
 test('observable timeout is reported as timeout instead of TAP fail zero', () => {

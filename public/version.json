@@ -1,16 +1,16 @@
 {
-  "version": "17.0.20",
-  "name": "86 Chaos 17.0.20",
-  "build": "17.0.20",
-  "label": "86 Chaos 17.0.20",
-  "releasedAt": "2026-09-22T03:00:00.000Z",
-  "releaseTitle": "Release Gate Source Validator Contract Repair",
+  "version": "17.0.21",
+  "name": "86 Chaos 17.0.21",
+  "build": "17.0.21",
+  "label": "86 Chaos 17.0.21",
+  "releasedAt": "2026-09-22T05:30:00.000Z",
+  "releaseTitle": "Release Gate Direct Playwright Process Repair",
   "notes": [
-    "Repairs the hostile release-gate execution regression so it verifies the mandatory source-validator command and structured preflight evidence instead of depending on a specific validator success sentence.",
-    "Preserves the 17.0.19 package.json expected-version pinning repair and the 17.0.18 split schedule/mobile-layout subprocess repair.",
+    "Runs the required five-case mobile layout Playwright smoke directly through the locked local CLI instead of through a second Node watchdog process that stalled on Windows.",
+    "Preserves the same five layout assertions, one-worker Playwright configuration, required-gate status, and 180-second process bound.",
     "No Schedule Builder, publishing, POS Bridge, Firebase rules, permission, or restaurant-data behavior changes."
   ],
-  "title": "86 Chaos 17.0.20",
-  "summary": "Surgical hostile release-gate test repair that removes a stale output-string dependency from mandatory source-validator verification.",
-  "description": "Prevents a valid source validator from failing hostile certification only because its human-readable success wording changed while preserving structured execution and deployment-safety assertions."
+  "title": "86 Chaos 17.0.21",
+  "summary": "Surgical release-harness repair that removes the extra Windows child-process layer from the mobile layout smoke.",
+  "description": "Allows the required Playwright layout smoke to start through the locked local CLI while retaining bounded timeout classification and leaving application behavior unchanged."
 }
