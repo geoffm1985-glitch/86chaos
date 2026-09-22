@@ -489,11 +489,18 @@ if ($PreflightExit -ne 0) {
                     if ($LocalChecksExit -ne 0) {
                       Stop-BeforePlaywright "Release gate BLOCKED BEFORE PLAYWRIGHT because required local source/unit/build/rules checks failed or were blocked. See node-test-live-summary.json."
                     } else {
-                      Set-RunnerPhase 'playwright'
-                      $PlaywrightConfig = ".\playwright.play-store-release.config.cjs"
-                      $RunnerState.playwrightStarted = $true
-                      Save-RunnerState
-                      Run-LiveStep "Playwright release gate" "& '$PlaywrightExe' test --config '$PlaywrightConfig'"
+                      Set-RunnerPhase 'playwright-layout-smoke'
+                      $LayoutSmokeConfig = ".\playwright.layout.config.cjs"
+                      $LayoutSmokeExit = Run-LiveStep "Mobile layout Playwright smoke" "& '$PlaywrightExe' test --config '$LayoutSmokeConfig'"
+                      if ($LayoutSmokeExit -ne 0) {
+                        Stop-BeforePlaywright "Release gate stopped because the required mobile layout Playwright smoke failed. See the current step log."
+                      } else {
+                        Set-RunnerPhase 'playwright'
+                        $PlaywrightConfig = ".\playwright.play-store-release.config.cjs"
+                        $RunnerState.playwrightStarted = $true
+                        Save-RunnerState
+                        Run-LiveStep "Playwright release gate" "& '$PlaywrightExe' test --config '$PlaywrightConfig'"
+                      }
                     }
                   }
                 }

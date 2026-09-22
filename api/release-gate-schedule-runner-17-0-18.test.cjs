@@ -11,27 +11,30 @@ const read = rel => fs.readFileSync(path.join(__dirname, '..', rel), 'utf8');
 test('full release checks split schedule core tests from mobile layout Playwright', () => {
   const pkg = JSON.parse(read('package.json'));
   const runner = read('scripts/86chaos-release-gate/run-node-release-checks.cjs');
+  const full = read('RUN_86CHAOS_PLAY_STORE_RELEASE_GATE.ps1');
+  const layout = read('playwright.layout.config.cjs');
   assert.match(pkg.scripts['test:schedule-publish:core'], /schedule-builder-route-and-publish-identity-17-0-17\.test\.cjs/);
   assert.match(pkg.scripts['test:schedule-publish:core'], /react-scripts test --watchAll=false --runInBand/);
   assert.doesNotMatch(pkg.scripts['test:schedule-publish:core'], /playwright|mobile-voice-layout/);
   assert.equal(pkg.scripts['test:schedule-publish'], 'npm run test:schedule-publish:core && npm run test:mobile-voice-layout');
   assert.match(runner, /--timeout 600 -- npm run test:schedule-publish:core/);
-  assert.match(runner, /group: 'mobile layout Playwright smoke'/);
-  assert.match(runner, /command: 'node node_modules\/@playwright\/test\/cli\.js test --config=playwright\.layout\.config\.cjs'/);
-  assert.match(runner, /executable: process\.execPath/);
-  assert.match(runner, /args: \[path\.join\('node_modules', '@playwright', 'test', 'cli\.js'\), 'test', '--config=playwright\.layout\.config\.cjs'\]/);
-  assert.match(runner, /timeoutMs: 180_000/);
-  assert.doesNotMatch(runner, /--timeout 180 -- node node_modules\/@playwright\/test\/cli\.js/);
+  assert.doesNotMatch(runner, /mobile layout Playwright smoke/i);
+  assert.match(full, /Set-RunnerPhase 'playwright-layout-smoke'/);
+  assert.match(full, /\$LayoutSmokeExit = Run-LiveStep "Mobile layout Playwright smoke" "& '\$PlaywrightExe' test --config '\$LayoutSmokeConfig'"/);
+  assert.match(full, /if \(\$LayoutSmokeExit -ne 0\)/);
+  assert.ok(full.indexOf("Set-RunnerPhase 'playwright-layout-smoke'") < full.indexOf("Set-RunnerPhase 'playwright'", full.indexOf("Set-RunnerPhase 'playwright-layout-smoke'") + 1));
+  assert.match(layout, /globalTimeout:180000/);
+  assert.match(layout, /workers:1/);
   assert.doesNotMatch(runner, /--timeout 900 -- npm run test:schedule-publish['"]/);
 });
 
-test('mobile layout smoke uses one direct bounded Playwright process', () => {
+test('mobile layout smoke runs outside the synchronous Node readiness runner', () => {
   const runner = read('scripts/86chaos-release-gate/run-node-release-checks.cjs');
-  assert.match(runner, /const direct = row\.executable && Array\.isArray\(row\.args\)/);
-  assert.match(runner, /direct \? cp\.spawnSync\(row\.executable, row\.args/);
-  assert.match(runner, /shell: false/);
-  assert.match(runner, /const timedOut = child\.error\?\.code === 'ETIMEDOUT'/);
-  assert.match(runner, /result\.exitCode = timedOut \? 124/);
+  const full = read('RUN_86CHAOS_PLAY_STORE_RELEASE_GATE.ps1');
+  assert.doesNotMatch(runner, /playwright\.layout\.config\.cjs/);
+  assert.doesNotMatch(runner, /executable: process\.execPath/);
+  assert.match(full, /\$LayoutSmokeConfig = "\.\\playwright\.layout\.config\.cjs"/);
+  assert.match(full, /Stop-BeforePlaywright "Release gate stopped because the required mobile layout Playwright smoke failed/);
 });
 
 test('observable timeout is reported as timeout instead of TAP fail zero', () => {

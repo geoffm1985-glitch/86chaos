@@ -19,14 +19,6 @@ const commands = [
   { group: 'POS Bridge Firestore concurrency emulator tests', command: 'npm run test:pos-bridge:emulator', required: true },
   { group: 'hostile certification', command: 'npm run test:release:hostile', required: true },
   { group: 'schedule publication module and UI tests', command: 'node scripts/86chaos-release-gate/run-observable-command.cjs --label "Schedule publication module and UI tests" --heartbeat 20 --timeout 600 -- npm run test:schedule-publish:core', required: true },
-  {
-    group: 'mobile layout Playwright smoke',
-    command: 'node node_modules/@playwright/test/cli.js test --config=playwright.layout.config.cjs',
-    executable: process.execPath,
-    args: [path.join('node_modules', '@playwright', 'test', 'cli.js'), 'test', '--config=playwright.layout.config.cjs'],
-    timeoutMs: 180_000,
-    required: true,
-  },
   { group: 'schedule publication Firestore concurrency', command: 'npm run test:schedule-publish:emulator', required: true },
   { group: 'recovery drill', command: 'npm run test:release:recovery', required: true },
   { group: 'scale and completeness boundaries', command: 'npm run test:release:scale', required: true },
@@ -60,37 +52,24 @@ function runCommand(row) {
     stderrTail: ''
   };
   console.log(`\n[release-check] ${row.group}: ${row.command}`);
-  const direct = row.executable && Array.isArray(row.args);
-  const child = direct ? cp.spawnSync(row.executable, row.args, {
-    shell: false,
-    cwd: process.cwd(),
-    env: process.env,
-    encoding: 'utf8',
-    windowsHide: true,
-    maxBuffer: 1024 * 1024 * 30,
-    timeout: row.timeoutMs,
-  }) : cp.spawnSync(row.command, {
+  const child = cp.spawnSync(row.command, {
     shell: true,
     cwd: process.cwd(),
     env: process.env,
     encoding: 'utf8',
     windowsHide: true,
-    maxBuffer: 1024 * 1024 * 30,
-    timeout: row.timeoutMs,
+    maxBuffer: 1024 * 1024 * 30
   });
   const finishedAt = new Date();
   result.finishedAt = finishedAt.toISOString();
   result.durationMs = finishedAt.getTime() - startedAt.getTime();
-  const timedOut = child.error?.code === 'ETIMEDOUT';
-  result.exitCode = timedOut ? 124 : (typeof child.status === 'number' ? child.status : (child.error ? 1 : 0));
+  result.exitCode = typeof child.status === 'number' ? child.status : (child.error ? 1 : 0);
   result.stdoutTail = String(child.stdout || '').slice(-5000);
   result.stderrTail = String(child.stderr || '').slice(-5000);
   result.status = result.exitCode === 0 ? 'passed' : 'failed';
   result.firstUsefulFailure = result.status === 'passed'
     ? ''
-    : (timedOut
-      ? `TIMED OUT ${row.group} timeout=${Math.round(Number(row.timeoutMs || 0) / 1000)}s`
-      : (structuredFailureFor(row) || firstUsefulFailureFromOutput(child)));
+    : (structuredFailureFor(row) || firstUsefulFailureFromOutput(child));
   if (child.stdout) process.stdout.write(child.stdout);
   if (child.stderr) process.stderr.write(child.stderr);
   console.log(`[release-check] ${result.status.toUpperCase()} ${row.group} (${result.durationMs}ms)`);

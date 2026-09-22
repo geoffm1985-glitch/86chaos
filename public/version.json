@@ -1,16 +1,16 @@
 {
-  "version": "17.0.21",
-  "name": "86 Chaos 17.0.21",
-  "build": "17.0.21",
-  "label": "86 Chaos 17.0.21",
-  "releasedAt": "2026-09-22T05:30:00.000Z",
-  "releaseTitle": "Release Gate Direct Playwright Process Repair",
+  "version": "17.0.22",
+  "name": "86 Chaos 17.0.22",
+  "build": "17.0.22",
+  "label": "86 Chaos 17.0.22",
+  "releasedAt": "2026-09-22T06:45:00.000Z",
+  "releaseTitle": "Release Gate Top-Level Layout Smoke Repair",
   "notes": [
-    "Runs the required five-case mobile layout Playwright smoke directly through the locked local CLI instead of through a second Node watchdog process that stalled on Windows.",
-    "Preserves the same five layout assertions, one-worker Playwright configuration, required-gate status, and 180-second process bound.",
+    "Runs the required five-case mobile layout Playwright smoke from the top-level PowerShell gate instead of from the synchronous Node readiness runner that stalled on Windows.",
+    "Preserves the same five browser assertions, required-gate status, one worker, and a 180-second Playwright global limit.",
     "No Schedule Builder, publishing, POS Bridge, Firebase rules, permission, or restaurant-data behavior changes."
   ],
-  "title": "86 Chaos 17.0.21",
-  "summary": "Surgical release-harness repair that removes the extra Windows child-process layer from the mobile layout smoke.",
-  "description": "Allows the required Playwright layout smoke to start through the locked local CLI while retaining bounded timeout classification and leaving application behavior unchanged."
+  "title": "86 Chaos 17.0.22",
+  "summary": "Surgical release-harness repair that launches the layout smoke through the same top-level Windows path as the main Playwright gate.",
+  "description": "Prevents the synchronous Node readiness runner from trapping the layout Playwright process while retaining the complete browser smoke and leaving application behavior unchanged."
 }
