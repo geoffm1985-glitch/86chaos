@@ -1,16 +1,17 @@
 {
-  "version": "17.0.22",
-  "name": "86 Chaos 17.0.22",
-  "build": "17.0.22",
-  "label": "86 Chaos 17.0.22",
-  "releasedAt": "2026-09-22T06:45:00.000Z",
-  "releaseTitle": "Release Gate Top-Level Layout Smoke Repair",
+  "version": "17.0.24",
+  "name": "86 Chaos 17.0.24",
+  "build": "17.0.24",
+  "label": "86 Chaos 17.0.24",
+  "releasedAt": "2026-09-22T23:10:00.000Z",
+  "releaseTitle": "Schedule Builder Clear Month",
   "notes": [
-    "Runs the required five-case mobile layout Playwright smoke from the top-level PowerShell gate instead of from the synchronous Node readiness runner that stalled on Windows.",
-    "Preserves the same five browser assertions, required-gate status, one worker, and a 180-second Playwright global limit.",
-    "No Schedule Builder, publishing, POS Bridge, Firebase rules, permission, or restaurant-data behavior changes."
+    "Adds a Clear Month action in Schedule Builder that removes every saved shift in the displayed month only after explicit confirmation.",
+    "The confirmation states that both draft and published shifts will be deleted while events and time-off requests remain unchanged.",
+    "The clear operation reloads and verifies the restaurant month from Firestore, retries any remaining shift records once, and reports an error instead of silently leaving a partial clear.",
+    "Preserves the 17.0.23 Request Off cutoff/blackout policy and all unrelated application behavior."
   ],
-  "title": "86 Chaos 17.0.22",
-  "summary": "Surgical release-harness repair that launches the layout smoke through the same top-level Windows path as the main Playwright gate.",
-  "description": "Prevents the synchronous Node readiness runner from trapping the layout Playwright process while retaining the complete browser smoke and leaving application behavior unchanged."
+  "title": "86 Chaos 17.0.24",
+  "summary": "Schedule Builder can now clear all saved shifts from the displayed month with explicit destructive confirmation.",
+  "description": "Adds a verified Clear Month control to Schedule Builder for deleting all draft and published shifts in the displayed month without deleting events or Request Off records."
 }

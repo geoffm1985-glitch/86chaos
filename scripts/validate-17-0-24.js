@@ -1,0 +1,40 @@
+#!/usr/bin/env node
+'use strict';
+const fs=require('node:fs');
+const assert=require('node:assert/strict');
+const read=f=>fs.readFileSync(f,'utf8');
+const json=f=>JSON.parse(read(f));
+const pkg=json('package.json'),lock=json('package-lock.json'),version=json('public/version.json');
+assert.equal(pkg.version,'17.0.24');
+assert.equal(lock.version,pkg.version);
+assert.equal(lock.packages[''].version,pkg.version);
+assert.equal(version.version,pkg.version);
+assert.equal(version.build,pkg.version);
+assert.equal(version.releaseTitle,'Schedule Builder Clear Month');
+assert.equal(pkg.scripts['test:source'],'node scripts/validate-17-0-24.js');
+assert.equal(pkg.scripts['validate:17.0.24'],'node scripts/validate-17-0-24.js');
+assert(pkg.scripts['test:repair:17.0.24']?.includes('schedule-builder-clear-month-17-0-24.test.cjs'),'17.0.24 repair test covers Schedule Builder Clear Month');
+const schedule=read('src/features/schedule.jsx');
+assert(schedule.includes('handleClearScheduleMonth'),'Schedule Builder has Clear Month handler');
+assert(schedule.includes('schedule-clear-month'),'Schedule Builder exposes destructive Clear Month workflow identity');
+assert(schedule.includes('This includes draft and published shifts'),'confirmation explicitly covers draft and published shifts');
+assert(schedule.includes('Events and time-off requests will NOT be deleted'),'confirmation explicitly preserves non-shift records');
+assert(schedule.includes("where('restaurantId', '==', restaurantId)"),'clear reloads canonical restaurant shifts');
+assert(schedule.includes("scope: 'schedule-builder-clear-month-verification-retry'"),'clear verifies and retries remaining records');
+// Preserve 17.0.23 Request Off policy behavior and authority.
+const route=read('api/time-off-request.js');
+const policy=read('src/core/timeOffPolicy.js');
+assert(schedule.includes("requestOffApi('policy-save'"),'17.0.23 Request Off policy UI is preserved');
+assert(route.includes("action === 'policy-save'"),'17.0.23 protected Request Off policy API is preserved');
+assert(!/permissions\?\.(?:schedule|team|settings)/.test(policy),'Request Off policy authority remains owner/admin only');
+// Preserve release-gate repairs already carried by the baseline.
+const releaseChecks=read('scripts/86chaos-release-gate/run-node-release-checks.cjs');
+const full=read('RUN_86CHAOS_PLAY_STORE_RELEASE_GATE.ps1');
+const layout=read('playwright.layout.config.cjs');
+assert(!/mobile layout Playwright smoke/i.test(releaseChecks),'synchronous Node readiness runner no longer launches the browser smoke');
+assert(full.includes("Set-RunnerPhase 'playwright-layout-smoke'"),'top-level gate records the layout-smoke phase');
+assert(full.includes('$LayoutSmokeExit = Run-LiveStep "Mobile layout Playwright smoke"'),'top-level gate launches the layout smoke as a live step');
+assert(layout.includes('globalTimeout:180000'),'layout smoke keeps the bounded 180-second global limit');
+for(const file of ['src/core/appCore.js','api/_version.js','api/_pos-bridge-config.js']) assert(read(file).includes("'17.0.24'"),`${file} carries 17.0.24`);
+for(const file of ['test-tools/certification/groups.json','test-tools/regressions/registry.json','test-tools/certification/cost-performance-baselines.json']) assert.equal(json(file).release,pkg.version);
+console.log('17.0.24 Schedule Builder Clear Month validation passed; this does not certify the release.');
