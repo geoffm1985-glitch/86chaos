@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "release": "17.0.19",
+  "release": "17.0.20",
   "defects": [
     {
       "defectId": "RG-API-WRAPPER-FIDELITY",
@@ -474,6 +474,18 @@
       ],
       "fidelity": "ACTUAL FULL RELEASE-GATE RUNNER / PREFLIGHT CONTRACT",
       "fixedVersion": "17.0.19",
+      "mandatoryGroup": "hostile-contracts"
+    },
+    {
+      "defectId": "RELEASE-GATE-SOURCE-VALIDATOR-OUTPUT-CONTRACT-1720",
+      "origin": "17.0.19 full Play Store gate run 2026-09-21T21-19-45",
+      "affectedInvariant": "Hostile certification proves the mandatory source validator executed successfully from structured command/start evidence and does not depend on mutable human-readable validator success wording",
+      "reproducer": "api/release-gate-execution-17-0-5.test.cjs",
+      "permanentTestIds": [
+        "17.0.5 actual preflight pins immutable identity and executes mandatory source tests; mismatches execute zero tests"
+      ],
+      "fidelity": "ACTUAL PREFLIGHT EXECUTION / STRUCTURED SOURCE-VALIDATOR CONTRACT",
+      "fixedVersion": "17.0.20",
       "mandatoryGroup": "hostile-contracts"
     }
   ]

@@ -1,16 +1,16 @@
 {
-  "version": "17.0.19",
-  "name": "86 Chaos 17.0.19",
-  "build": "17.0.19",
-  "label": "86 Chaos 17.0.19",
-  "releasedAt": "2026-09-22T00:36:00.000Z",
-  "releaseTitle": "Release Gate Expected Version Pinning Repair",
+  "version": "17.0.20",
+  "name": "86 Chaos 17.0.20",
+  "build": "17.0.20",
+  "label": "86 Chaos 17.0.20",
+  "releasedAt": "2026-09-22T03:00:00.000Z",
+  "releaseTitle": "Release Gate Source Validator Contract Repair",
   "notes": [
-    "Pins full Play Store certification to the version in package.json so stale CHAOS_EXPECTED_VERSION values in PowerShell or .env.test.local cannot block the next sequential release.",
-    "Removes CHAOS_EXPECTED_VERSION from full-gate release-target conflict checks while preserving strict URL, project, source-manifest, commit, branch, deployed-version, and Firebase testing-boundary validation.",
-    "Keeps non-certification preflight behavior strict: an explicitly configured expected version can still be used and mismatches still fail outside full certification."
+    "Repairs the hostile release-gate execution regression so it verifies the mandatory source-validator command and structured preflight evidence instead of depending on a specific validator success sentence.",
+    "Preserves the 17.0.19 package.json expected-version pinning repair and the 17.0.18 split schedule/mobile-layout subprocess repair.",
+    "No Schedule Builder, publishing, POS Bridge, Firebase rules, permission, or restaurant-data behavior changes."
   ],
-  "title": "86 Chaos 17.0.19",
-  "summary": "Surgical release-gate repair that makes package.json the authoritative expected version during full certification.",
-  "description": "Prevents stale persisted expected-version settings from blocking a valid newly deployed release while retaining all deployment identity and safety checks."
+  "title": "86 Chaos 17.0.20",
+  "summary": "Surgical hostile release-gate test repair that removes a stale output-string dependency from mandatory source-validator verification.",
+  "description": "Prevents a valid source validator from failing hostile certification only because its human-readable success wording changed while preserving structured execution and deployment-safety assertions."
 }

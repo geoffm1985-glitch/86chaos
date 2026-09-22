@@ -22,19 +22,19 @@ test('16.0.209 bulk Request Off eligibility accepts visible legacy rows without 
   assert.match(coverage, /req-other-workspace/);
 });
 
-test('16.0.209 historical maturity assertions coexist with current 17.0.19 version metadata', () => {
+test('16.0.209 historical maturity assertions coexist with current 17.0.20 version metadata', () => {
   const pkg = json('package.json');
   const lock = json('package-lock.json');
   const version = json('public/version.json');
   const appCore = read('src/core/appCore.js');
   const apiVersion = read('api/_version.js');
-  assert.equal(pkg.version, '17.0.19');
-  assert.equal(lock.version, '17.0.19');
-  assert.equal(lock.packages[''].version, '17.0.19');
-  assert.equal(pkg.scripts['test:source'], 'node scripts/validate-17-0-19.js');
-  assert.equal(version.version, '17.0.19');
-  assert.equal(version.build, '17.0.19');
-  assert.equal(version.releaseTitle, 'Release Gate Expected Version Pinning Repair');
-  assert.match(appCore, /CURRENT_VERSION = '17.0.19'/);
-  assert.match(apiVersion, /APP_VERSION = '17.0.19'/);
+  assert.equal(pkg.version, '17.0.20');
+  assert.equal(lock.version, '17.0.20');
+  assert.equal(lock.packages[''].version, '17.0.20');
+  assert.equal(pkg.scripts['test:source'], 'node scripts/validate-17-0-20.js');
+  assert.equal(version.version, '17.0.20');
+  assert.equal(version.build, '17.0.20');
+  assert.equal(version.releaseTitle, 'Release Gate Source Validator Contract Repair');
+  assert.match(appCore, /CURRENT_VERSION = '17.0.20'/);
+  assert.match(apiVersion, /APP_VERSION = '17.0.20'/);
 });
