@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "sourceHash": "b3a7380094b7332be2d29a0655bc8afb72afca03adfbba9e0c94abd2293bac2b",
+  "sourceHash": "30a6deaab7269da783b574d07faae0298ea8667c2f5cc740badbbac339ad4a30",
   "files": [
     {
       "file": ".gitattributes",
@@ -85,6 +85,10 @@
     {
       "file": "RELEASE_17_0_25.md",
       "sha256": "b7bb947577e3dc02b2be9d20f2ed967e1b234ad6aa7322bb88dd453da86dabae"
+    },
+    {
+      "file": "RELEASE_17_0_26.md",
+      "sha256": "8a640638fd0374ec8ecfaef15e5ef52cd03bbdb8f2c1c9c667cb778902715cfc"
     },
     {
       "file": "RELEASE_17_0_5.md",
@@ -208,7 +212,7 @@
     },
     {
       "file": "api/_pos-bridge-config.js",
-      "sha256": "85a15c3d3aa168ac2b0256bf83c27895f6c47060bba6119d5f23faad46abb718"
+      "sha256": "54a41e6747feeb275ea122fc04a91186a93f73620e75bc595a4c6d3fb4424672"
     },
     {
       "file": "api/_pos-bridge-events.js",
@@ -340,7 +344,7 @@
     },
     {
       "file": "api/_version.js",
-      "sha256": "66791fabaa1ec29265fc5736413f6267f336a94a7c734a4aeaa59cf402d5a2cc"
+      "sha256": "4397d8c3776b2f8fac7c9c21c56bc07639aa076e889e590a913446016bb301be"
     },
     {
       "file": "api/account-deletion-request.js",
@@ -460,7 +464,7 @@
     },
     {
       "file": "api/customer-help-intelligence.test.cjs",
-      "sha256": "2821cb3f7a34afde96913bd9e590504149a4e6dfa6e19ceecd2b75c1c93778ad"
+      "sha256": "51777fa1480e7c4cb034d106312d17e65b8eed0b226b23d502838dd5745dd151"
     },
     {
       "file": "api/daily-close.js",
@@ -593,6 +597,10 @@
     {
       "file": "api/help-assistant.test.cjs",
       "sha256": "8bdfe047d9d65f7c4e5a9c93109b391a48a8254569dcb4bd91da39f5506445ad"
+    },
+    {
+      "file": "api/i18n-phase1-17-0-26.test.cjs",
+      "sha256": "522e1198d14451220de88ed3db598fcf59abae3681de55239eca6a114c6b8a9f"
     },
     {
       "file": "api/icon-manifest-header-branding.test.cjs",
@@ -912,7 +920,7 @@
     },
     {
       "file": "api/release-gate-expected-version-17-0-19.test.cjs",
-      "sha256": "e56a886e0b31c5b65d617fa5d15ec757d145c297ceec9a2de759e98c365a5968"
+      "sha256": "617cbcffee2bbb15ff6bf71736672605ddd9c2244d32e657c8bce79b1aad195b"
     },
     {
       "file": "api/release-gate-failure-extractor.test.cjs",
@@ -940,19 +948,19 @@
     },
     {
       "file": "api/release-gate-maturity-16-0-207.test.cjs",
-      "sha256": "2aa80164e1b279d9742235d95cd99c4f10aedaf580dba916d17a107f73dfa1d3"
+      "sha256": "41a5b52c9dc932832e1546702fea435214e79dcf4d1ad04a05f987cdcee7fa5a"
     },
     {
       "file": "api/release-gate-maturity-16-0-208.test.cjs",
-      "sha256": "bd66a52f0690f102be899365415b56617c1b7bc6f9be86b43bd27260d4620209"
+      "sha256": "ed6d6bdfab5852fdbf6bd47361cbea744b6cb75b62952aab9337f80e46f68ffb"
     },
     {
       "file": "api/release-gate-maturity-16-0-209.test.cjs",
-      "sha256": "d8972a6767dc0c1d950612ddaedd5531736f5781cb465d4f3dd5fcba7a663371"
+      "sha256": "2cb783eb60b1fd0d2e77bf636b387337351ec183a7a75d3e44228f3474de7b75"
     },
     {
       "file": "api/release-gate-maturity-16-0-210.test.cjs",
-      "sha256": "5cfd578ad72b87791f22834fbc85df5f0d98526397c9daccca8aaee66be9e311"
+      "sha256": "f93c81af0b57a2d7a9395a969f52f7775f267b06d614235a53b6d4ab73de44e1"
     },
     {
       "file": "api/release-gate-provisioning-report.test.cjs",
@@ -1428,11 +1436,11 @@
     },
     {
       "file": "package-lock.json",
-      "sha256": "a2054bcf9319b8254565b9e966bbff90c1d26d4943644fb9fcb82e1300cb9f90"
+      "sha256": "e5aa1de586fc9ac46ed8d7c599fc3bbad92db902402b318dad62d1a30cd0560b"
     },
     {
       "file": "package.json",
-      "sha256": "e76827cd7d38e97d20061e5cfda6d21bb42ad87280e505a575330006e971fd1f"
+      "sha256": "f9995108dc631250695019211ab9319fb24ac875275bce4eac6824348461bd53"
     },
     {
       "file": "playwright.config.js",
@@ -1648,7 +1656,7 @@
     },
     {
       "file": "public/version.json",
-      "sha256": "41e42ad36a4a4578754fd03e1f73b284770801de3b73d8a4a080e7f946ee3436"
+      "sha256": "352dab38a07b5fad0d32d6cc6a352fd21eb8f9994f463a0bc3218d012d8d0b38"
     },
     {
       "file": "public/wisco.png",
@@ -2635,6 +2643,10 @@
       "sha256": "32b5b253ffe9c5db9dea5529d5520cbba9cd811d7c9c2c55ab4c9e380d716f36"
     },
     {
+      "file": "scripts/validate-17-0-26.js",
+      "sha256": "f522abf1b67f72913fe4231b9c8ae142ea4c108622d43593f6fcdbc5e3308127"
+    },
+    {
       "file": "scripts/validate-17-0-3.js",
       "sha256": "ed687d89450d5630398558da0858ce1a853a5d7f2f52e68fa4975b8d946c6b81"
     },
@@ -2700,7 +2712,7 @@
     },
     {
       "file": "src/App.js",
-      "sha256": "c3f1e33fe5c1fc6c0b5aa3108395e7d5bb01349db75a950f4002c8eeecde84e2"
+      "sha256": "93d9d8ec5308c1b27e38382e59685557ca2f927c6a110b6075ca338c8f7ca0df"
     },
     {
       "file": "src/components/CheersLogo.js",
@@ -2796,7 +2808,7 @@
     },
     {
       "file": "src/components/common.jsx",
-      "sha256": "303bd8221f2efd9ec2692b1d8417e9e932d99adecdff3fb4bea51f6971a4a19d"
+      "sha256": "f7edacf0e62e25630743fdad3b1a65f242a3dc6c0a2d5f21858ba15e803e126f"
     },
     {
       "file": "src/config/plans.js",
@@ -2824,7 +2836,7 @@
     },
     {
       "file": "src/core/appCore.js",
-      "sha256": "4e15e9867683905bd897920e27b2e880a1a2f6e6a0f7fba7f47c6c3be916c036"
+      "sha256": "86f7f670a3274150c211481ea56552c003fae9bf06c59829d16908e0f3f102da"
     },
     {
       "file": "src/core/csvSafety.test.js",
@@ -2832,11 +2844,11 @@
     },
     {
       "file": "src/core/customerHelpKnowledge.cjs",
-      "sha256": "6dc35b394ee2b7533362c08e3016149acb9b7ddca1a145bbefcf2ebd564035c6"
+      "sha256": "b690a0e768121cdc50986c838db7ff3d799f364972b3e3a63f570af4f617bc3a"
     },
     {
       "file": "src/core/customerHelpKnowledge.js",
-      "sha256": "6ce646d7ac5a5bae380f7e3ab4959076d925d80553f5edd0ccd6d94e16f146b8"
+      "sha256": "1b2650634c825aefeb737b978d280db63957e55d06a521c43af4778e8e84493d"
     },
     {
       "file": "src/core/fileCompression.js",
@@ -2853,6 +2865,14 @@
     {
       "file": "src/core/foodSafety.shared.js",
       "sha256": "9b8f10510df7095531646ffb100ed1c38d15acf83ff903e47e833f249c041972"
+    },
+    {
+      "file": "src/core/i18n.cjs",
+      "sha256": "f18e45a6f129611ea4d9ef9524292f07277828b9af338e62e6abb9fb0266f84c"
+    },
+    {
+      "file": "src/core/i18n.js",
+      "sha256": "75acd555b15eb1732aaea88bcbdb2552a433ef124bd3553016f1669ec48e35ac"
     },
     {
       "file": "src/core/invoiceRowClassification.js",
@@ -3016,7 +3036,7 @@
     },
     {
       "file": "src/core/schedulePdf.js",
-      "sha256": "82d1a02ea1375f17b75aa8ec80b2902a277c8a66d6a5b9a3d5bda7b249d62cd7"
+      "sha256": "16ae439f6552356b72612a90fe43b050fe953c1274902da809008ab0c051dc1b"
     },
     {
       "file": "src/core/schedulePdf.test.js",
@@ -3148,15 +3168,15 @@
     },
     {
       "file": "src/features/management.jsx",
-      "sha256": "39214c55daaf8477bc7a771dfad0b28d8d34464d440d4779c536575f2db06fed"
+      "sha256": "f3cb4a44495d369769083717d1850c955412d108d8bbf115b571ed63737b76ac"
     },
     {
       "file": "src/features/operations.jsx",
-      "sha256": "417c4513a045a6c3c4b2de27ca9bc5f809270181f5fbc32f48d62e7209c7312e"
+      "sha256": "a5b16ddea9f1ff426e4e97b1f280616b7d6cde5d1bc4c4f54e1bfe917d69d665"
     },
     {
       "file": "src/features/schedule.jsx",
-      "sha256": "cb13d3cf698a3077dca29cb2dfdcfeb4c4099a8bf3efa6951d294e9dec2a31fa"
+      "sha256": "0b46c330c81f44e2bcb20c6cd58c3a8bab6e402fb295a17ff7d68a7306509360"
     },
     {
       "file": "src/features/trainingManual.js",
@@ -3212,11 +3232,11 @@
     },
     {
       "file": "test-tools/certification/cost-performance-baselines.json",
-      "sha256": "ecdb1a6b1314d7302478120ad0954dfecc8b023edbb6f3555756420de00b0f03"
+      "sha256": "cbaaf75cf910ff47ba09870627039f70e81a32a4a60e75b1f3b6f5c1f6cf1a9b"
     },
     {
       "file": "test-tools/certification/groups.json",
-      "sha256": "1813629fd155c3fac64072edeebbe8a8ae4377e4f214c57461cb451c110ce4a1"
+      "sha256": "a343873743e2c62dae06ae604a2c8e22786b4220490933b8cdfe023f4c86c29b"
     },
     {
       "file": "test-tools/certification/permission-matrix.json",
@@ -3264,7 +3284,7 @@
     },
     {
       "file": "test-tools/regressions/registry.json",
-      "sha256": "590ba9a4880174476a11717e4e2520a00ec46958bb7b7d7244c2473e739f6d2b"
+      "sha256": "5b82eaa5d4704eaa892108c0312f6e5c8a80cdacbb278d5d94a1bee0bac70dad"
     },
     {
       "file": "test-tools/reporters/chaos-release-gate-reporter.cjs",
@@ -3380,7 +3400,7 @@
     },
     {
       "file": "tests/86chaos-full-audit/utils/audit-helpers.cjs",
-      "sha256": "2724892df0b0c32489c4a83aaf3ff8675c95133facd0966a3ee7f41410bf5f26"
+      "sha256": "7fd4dbf843fd46e6c65d48ebc51f8c5eb18db9f6d08102d61eb2203264a18829"
     },
     {
       "file": "tests/86chaos-full-audit/utils/fake-restaurant-profile.cjs",
@@ -3417,6 +3437,10 @@
     {
       "file": "tests/86chaos-new-implementations/07-pos-bridge-security.spec.cjs",
       "sha256": "5ee263e378391baabee42cad97319eaceca96827bee66b6a6d68a190b11d6ab9"
+    },
+    {
+      "file": "tests/86chaos-new-implementations/08-phase1-spanish-interface.spec.cjs",
+      "sha256": "ded1b8e20d207e8bcbac186ef75581037a9d0a509a292ea47aa0b4a49a251aa3"
     },
     {
       "file": "tests/86chaos-release-gate/00-qa-restaurant-lifecycle.spec.cjs",

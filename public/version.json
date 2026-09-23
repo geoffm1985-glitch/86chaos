@@ -1,17 +1,17 @@
 {
-  "version": "17.0.25",
-  "name": "86 Chaos 17.0.25",
-  "build": "17.0.25",
-  "label": "86 Chaos 17.0.25",
-  "releasedAt": "2026-09-23T00:30:00.000Z",
-  "releaseTitle": "Schedule Builder Delete Reliability and Delta Baseline Repair",
+  "version": "17.0.26",
+  "name": "86 Chaos 17.0.26",
+  "build": "17.0.26",
+  "label": "86 Chaos 17.0.26",
+  "releasedAt": "2026-09-23T13:12:00.000Z",
+  "releaseTitle": "Phase 1 Spanish Interface",
   "notes": [
-    "Repairs Schedule Builder Clear Month so it deletes every shift in the displayed month across canonical and legacy tenant identity fields through an authenticated server boundary.",
-    "Repairs individual shift deletion so one shift chip can be deleted reliably, including hidden duplicate records for the same employee/date/time.",
-    "Repairs failed+new delta selection so a completed full gate with zero failures is a valid baseline and version identity can be recovered from surviving full-run evidence.",
-    "The delta command now runs the current release targeted regressions before its scoped Playwright selection. Request Off cutoff/blackout behavior and unrelated application features are unchanged."
+    "Adds a per-user English/Spanish interface preference with English fallback. The language choice follows the employee account and does not change the restaurant workspace for other employees.",
+    "Adds Phase 1 Spanish coverage for global navigation, Today/Manager Brief, Time Clock & Schedule, Schedule Builder primary controls, Request Off policy/workflow, Prep & Tasks, Settings preferences, and common dialog/navigation labels.",
+    "Keeps restaurant-entered content such as employee names, job roles, notes, recipes, menu data, event titles, and blackout reasons unchanged instead of machine-translating business data.",
+    "Adds a pure Node Phase 1 i18n regression suite and a deployed Playwright Spanish-interface test under the release-gate test universe. Existing Schedule Builder delete, delta-baseline, and Request Off regressions remain in the current-release targeted suite."
   ],
-  "title": "86 Chaos 17.0.25",
-  "summary": "Repairs Schedule Builder shift deletion and restores useful failed+new delta testing from a clean full baseline.",
-  "description": "Moves Schedule Builder destructive shift deletion behind an authenticated tenant-safe server operation and repairs delta baseline handling for clean full release-gate runs."
+  "title": "86 Chaos 17.0.26",
+  "summary": "Introduces the first native bilingual English/Spanish interface foundation with release-gate coverage.",
+  "description": "Adds a per-user i18n layer and Phase 1 Spanish translations across the most-used employee and scheduling surfaces without altering restaurant-entered data."
 }
