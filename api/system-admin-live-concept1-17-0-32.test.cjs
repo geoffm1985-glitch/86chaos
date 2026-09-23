@@ -12,19 +12,19 @@ test('17.0.32 applies Concept 1 to the actual System Administrator route compone
   const management = read('src/features/management.jsx');
   assert.match(app, /lazyFeature\(\(\) => import\('\.\/features\/management'\), 'TabGodMode'\)/);
   assert.match(management, /const TabGodMode = \(\{ appUser, addToast, setGhostTenant, setActiveTab \}\) => \{/);
-  assert.match(management, /data-testid="system-admin-live-concept1"/);
-  assert.match(management, /data-testid="system-admin-desktop-directory"/);
-  assert.match(management, /data-testid="system-admin-mobile-directory"/);
-  assert.match(management, /data-testid="system-admin-live-nav-card"/);
-  assert.match(management, /rounded-\[30px\]/);
-  assert.match(management, /lg:grid-cols-2 xl:grid-cols-3/);
+  assert.match(management, /data-testid="system-admin-concept1-exact-home"/);
+  assert.match(management, /data-testid="system-admin-concept1-card"/);
+  assert.match(management, /data-testid="system-admin-concept1-card"/);
+  assert.match(management, /data-testid="system-admin-concept1-card"/);
+  assert.match(management, /admin-concept1-exact-hero/);
+  assert.match(management, /admin-concept1-exact-grid-secondary/);
 });
 
 test('17.0.32 Spanish Phase 2 is wired into the live System Administrator shell', () => {
   const management = read('src/features/management.jsx');
   assert.match(management, /const \{ t \} = useI18n\(\);/);
   assert.match(management, /t\('admin\.title'/);
-  assert.match(management, /t\('admin\.summary'/);
+  assert.match(management, /t\('admin\.concept\.subtitle'/);
   assert.match(management, /adminGroupTitleKey/);
   assert.match(management, /adminTabLabelKey/);
   assert.match(management, /localizedAdminTabGroups/);

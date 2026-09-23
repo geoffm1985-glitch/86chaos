@@ -1,16 +1,16 @@
 {
-  "version": "17.0.32",
-  "name": "86 Chaos 17.0.32",
-  "build": "17.0.32",
-  "label": "86 Chaos 17.0.32",
+  "version": "17.0.33",
+  "name": "86 Chaos 17.0.33",
+  "build": "17.0.33",
+  "label": "86 Chaos 17.0.33",
   "releasedAt": "2026-09-23T21:30:00Z",
-  "releaseTitle": "Live System Administrator Concept 1 Repair",
+  "releaseTitle": "Exact Concept 1 System Administrator Home",
   "notes": [
-    "Applies the Concept 1 System Administrator refresh to the actual TabGodMode exported by src/features/management.jsx, which is the component App.js really renders.",
-    "Extends Spanish Phase 2 through the live System Administrator shell and top-level directory labels.",
-    "Pins delta and repair runs to testing.86chaos.com even when stale APP_URL or .env.test.local values still contain the retired Vercel branch alias."
+    "Removes the entire What needs your attention home dashboard, including Next actions, Quick work, overview number tiles, and the old Admin areas directory.",
+    "Rebuilds the actual System Administrator home around the selected Concept 1 seven-card layout on both desktop and mobile, with the softer charcoal and bronze palette from the approved mockup.",
+    "Keeps the underlying System Administrator tools intact when opened, preserves Spanish Phase 2 translations, and carries forward the testing.86chaos.com delta-runner pin."
   ],
-  "title": "86 Chaos 17.0.32",
-  "summary": "Applies Concept 1 to the real System Administrator route and permanently pins delta testing to testing.86chaos.com.",
-  "description": "Corrects the 17.0.31 implementation target so the live System Administrator page receives the Concept 1 desktop/mobile refresh, keeps Spanish Phase 2 wired into that real route, and prevents stale local environment URLs from overriding the permanent testing domain."
+  "title": "86 Chaos 17.0.33",
+  "summary": "Replaces the old attention dashboard with the exact seven-card Concept 1 System Administrator home.",
+  "description": "Removes the What needs your attention dashboard, quick-work tiles, number cards, and admin-area button maze from the live System Administrator home and replaces them with the chosen Concept 1 desktop/mobile card layout while preserving the underlying admin tools and Spanish support."
 }

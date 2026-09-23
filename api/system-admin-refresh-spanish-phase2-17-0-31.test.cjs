@@ -14,12 +14,12 @@ test('17.0.31 System Administrator concept 1 refresh keeps the same tools but us
   const source = read('src/features/management.jsx');
   assert.match(app, /import\('\.\/features\/management'\), 'TabGodMode'/);
   assert.match(source, /useI18n/);
-  assert.match(source, /data-testid="system-admin-live-concept1"/);
-  assert.match(source, /data-testid="system-admin-live-nav-card"/);
+  assert.match(source, /data-testid="system-admin-concept1-exact-home"/);
+  assert.match(source, /data-testid="system-admin-concept1-card"/);
   assert.match(source, /admin\.title/);
-  assert.match(source, /admin\.summary/);
-  assert.match(source, /rounded-\[30px\]/);
-  assert.match(source, /lg:grid-cols-2 xl:grid-cols-3/);
+  assert.match(source, /admin\.concept\.subtitle/);
+  assert.match(source, /admin-concept1-exact-hero/);
+  assert.match(source, /admin-concept1-exact-grid-secondary/);
 });
 
 test('17.0.31 Spanish Phase 2 extends translation coverage into the refreshed System Administrator tab', () => {
