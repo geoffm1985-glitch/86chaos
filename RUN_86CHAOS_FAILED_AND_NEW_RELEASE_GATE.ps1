@@ -69,14 +69,9 @@ function Resolve-ReleaseTargetValue {
     return [pscustomobject]@{ Value = $CanonicalVercelProjectSlug; Source = 'canonical project slug' }
   }
   if ($Key -eq 'APP_URL' -or $Key -eq 'CHAOS_BASE_URL') {
-    $candidates = @($processValue, $testValue, $localValue) | Where-Object { $_ }
-    if ($candidates | Where-Object { (Normalize-ReleaseTargetValue $Key $_) -eq (Normalize-ReleaseTargetValue $Key $canonicalPreviewUrl) }) {
-      return [pscustomobject]@{ Value = $canonicalPreviewUrl; Source = 'canonical testing Preview URL' }
-    }
-    if ($testValue) { return [pscustomobject]@{ Value = $testValue; Source = '.env.test.local' } }
-    if ($processValue) { return [pscustomobject]@{ Value = $processValue; Source = 'process environment' } }
-    if ($localValue) { return [pscustomobject]@{ Value = $localValue; Source = '.env.local' } }
-    return [pscustomobject]@{ Value = $canonicalPreviewUrl; Source = 'canonical testing Preview URL default' }
+    # 17.0.32: the permanent testing branch domain is authoritative for delta/repair runs.
+    # Old .env.test.local or shell values must never drag the gate back to the retired branch alias.
+    return [pscustomobject]@{ Value = $canonicalPreviewUrl; Source = 'canonical testing branch domain' }
   }
   if ($testValue) { return [pscustomobject]@{ Value = $testValue; Source = '.env.test.local' } }
   if ($processValue) { return [pscustomobject]@{ Value = $processValue; Source = 'process environment' } }

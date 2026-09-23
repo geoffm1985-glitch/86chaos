@@ -1,7 +1,7 @@
 'use strict';
 
-const CURRENT_RELEASE_VERSION = '17.0.31';
-const CURRENT_RELEASE_CARRY_FORWARD_NOTE = '17.0.31 carries forward Schedule Builder assignment and browser-safe i18n coverage while refreshing the System Administrator shell, extending Spanish Phase 2 into that experience, and keeping the stale testing-target blocker guidance aligned with testing.86chaos.com.';
+const CURRENT_RELEASE_VERSION = '17.0.32';
+const CURRENT_RELEASE_CARRY_FORWARD_NOTE = '17.0.32 corrects the live System Administrator route to use the Concept 1 desktop/mobile shell, carries forward Spanish Phase 2 and Schedule Builder coverage, and pins delta/repair testing to testing.86chaos.com despite stale local URL settings.';
 const CURRENT_RELEASE_REPAIR_SCOPE = [
   {
     specPath: '86chaos-full-audit/10-presence-system-admin.spec.cjs',

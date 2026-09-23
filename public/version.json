@@ -1,16 +1,16 @@
 {
-  "version": "17.0.31",
-  "name": "86 Chaos 17.0.31",
-  "build": "17.0.31",
-  "label": "86 Chaos 17.0.31",
+  "version": "17.0.32",
+  "name": "86 Chaos 17.0.32",
+  "build": "17.0.32",
+  "label": "86 Chaos 17.0.32",
   "releasedAt": "2026-09-23T21:30:00Z",
-  "releaseTitle": "System Administrator Refresh and Spanish Phase 2",
+  "releaseTitle": "Live System Administrator Concept 1 Repair",
   "notes": [
-    "Refreshes the System Administrator tab with a cleaner concept-1 shell that keeps existing tools but makes both desktop and mobile navigation easier to scan.",
-    "Extends Spanish Phase 2 into the refreshed System Administrator experience, including section labels, summaries, help copy, and snapshot/status messaging.",
-    "Clarifies stale testing-target release-gate guidance so blocked runs point directly at testing.86chaos.com or a fresh canonical 86chaos preview before rerunning delta."
+    "Applies the Concept 1 System Administrator refresh to the actual TabGodMode exported by src/features/management.jsx, which is the component App.js really renders.",
+    "Extends Spanish Phase 2 through the live System Administrator shell and top-level directory labels.",
+    "Pins delta and repair runs to testing.86chaos.com even when stale APP_URL or .env.test.local values still contain the retired Vercel branch alias."
   ],
-  "title": "86 Chaos 17.0.31",
-  "summary": "Concept-1 System Administrator UI refresh plus Phase 2 Spanish coverage and clearer testing-target blocker guidance.",
-  "description": "Keeps the same internal administrative tools while modernizing the System Administrator layout for desktop and mobile, expands Spanish coverage through that experience, and improves stale preview blocker messaging for the release gate."
+  "title": "86 Chaos 17.0.32",
+  "summary": "Applies Concept 1 to the real System Administrator route and permanently pins delta testing to testing.86chaos.com.",
+  "description": "Corrects the 17.0.31 implementation target so the live System Administrator page receives the Concept 1 desktop/mobile refresh, keeps Spanish Phase 2 wired into that real route, and prevents stale local environment URLs from overriding the permanent testing domain."
 }

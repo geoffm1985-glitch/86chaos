@@ -1,6 +1,6 @@
 {
   "name": "86chaos",
-  "version": "17.0.31",
+  "version": "17.0.32",
   "private": true,
   "dependencies": {
     "@fontsource/noto-sans": "^5.3.0",
@@ -30,7 +30,7 @@
     "deploy:check": "npm run test:ci && NODE_OPTIONS=--max-old-space-size=4096 GENERATE_SOURCEMAP=false npm run build",
     "validate:audit-repair": "node scripts/validate-repair.js",
     "rules:check": "node scripts/validate-rules.js",
-    "test:source": "node scripts/validate-17-0-31.js",
+    "test:source": "node scripts/validate-17-0-32.js",
     "validate:16.0.232": "node scripts/validate-16-0-232.js",
     "validate:16.0.233": "node scripts/validate-16-0-233.js",
     "validate:16.0.234": "node scripts/validate-16-0-234.js",
@@ -85,7 +85,7 @@
     "test:hostile:contracts": "node --test api/source-evidence-16-0-228.test.cjs api/api-contract-analyzer-17-0-0.test.cjs api/firestore-emulator-trace-17-0-3.test.cjs api/schedule-publish-17-0-0.test.cjs api/safe-write-tenant-17-0-0.test.cjs api/safe-write-hostile-17-0-1.test.cjs api/canonical-authority-17-0-0.test.cjs api/pos-bridge-mapping-pagination-17-0-0.test.cjs api/repair-17-0-5.test.cjs api/release-gate-execution-17-0-5.test.cjs api/vercel-build-identity-17-0-6.test.cjs api/vercel-build-identity-17-0-7.test.cjs api/vercel-build-identity-17-0-8.test.cjs api/vercel-protected-config-17-0-9.test.cjs api/request-off-runtime-safety-17-0-9.test.cjs api/repository-safety-17-0-10.test.cjs api/release-gate-expected-version-17-0-19.test.cjs",
     "test:hostile:mutations": "node scripts/86chaos-release-gate/run-mutations.cjs",
     "test:schedule-publish": "npm run test:schedule-publish:core && npm run test:mobile-voice-layout",
-    "test:release:fast": "npm run node:check && npm run lock:integrity && npm run validate:17.0.31 && npm run syntax:api && npm run test:hostile:contracts && npm run test:schedule-publish",
+    "test:release:fast": "npm run node:check && npm run lock:integrity && npm run validate:17.0.32 && npm run syntax:api && npm run test:hostile:contracts && npm run test:schedule-publish",
     "test:schedule-publish:emulator": "node scripts/run-schedule-publish-emulator-tests.cjs",
     "test:release:firebase": "npm run test:rules && npm run test:pos-bridge:emulator && npm run test:schedule-publish:emulator",
     "test:release:recovery": "node scripts/run-recovery-emulator-tests.cjs",
@@ -132,7 +132,7 @@
     "test:repair:17.0.24": "node --test api/schedule-builder-clear-month-17-0-24.test.cjs && node scripts/validate-17-0-24.js",
     "validate:17.0.25": "node scripts/validate-17-0-25.js",
     "test:schedule-shift-delete": "node --test api/schedule-shift-delete-17-0-25.test.cjs",
-    "test:current-release-targeted": "node --test api/system-admin-refresh-spanish-phase2-17-0-31.test.cjs api/presence-retirement-testing-domain-17-0-30.test.cjs api/spanish-release-gate-fidelity-17-0-29.test.cjs api/i18n-browser-runtime-17-0-28.test.cjs api/schedule-shift-assignment-emergency-17-0-27.test.cjs api/i18n-phase1-17-0-26.test.cjs api/schedule-shift-delete-17-0-25.test.cjs api/time-off-policy-17-0-23.test.cjs && node scripts/validate-17-0-31.js",
+    "test:current-release-targeted": "node --test api/system-admin-live-concept1-17-0-32.test.cjs api/system-admin-refresh-spanish-phase2-17-0-31.test.cjs api/presence-retirement-testing-domain-17-0-30.test.cjs api/spanish-release-gate-fidelity-17-0-29.test.cjs api/i18n-browser-runtime-17-0-28.test.cjs api/schedule-shift-assignment-emergency-17-0-27.test.cjs api/i18n-phase1-17-0-26.test.cjs api/schedule-shift-delete-17-0-25.test.cjs api/time-off-policy-17-0-23.test.cjs && node scripts/validate-17-0-32.js",
     "test:repair:17.0.25": "npm run test:current-release-targeted",
     "validate:17.0.26": "node scripts/validate-17-0-26.js",
     "test:i18n-phase1": "node --test api/i18n-phase1-17-0-26.test.cjs",
@@ -149,7 +149,9 @@
     "validate:17.0.30": "node scripts/validate-17-0-30.js",
     "test:repair:17.0.30": "npm run test:current-release-targeted",
     "validate:17.0.31": "node scripts/validate-17-0-31.js",
-    "test:repair:17.0.31": "npm run test:current-release-targeted"
+    "test:repair:17.0.31": "npm run test:current-release-targeted",
+    "validate:17.0.32": "node scripts/validate-17-0-32.js",
+    "test:repair:17.0.32": "npm run test:current-release-targeted"
   },
   "browserslist": {
     "production": [

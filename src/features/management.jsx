@@ -3933,7 +3933,9 @@ const ADMIN_TROUBLESHOOTING_ARTICLES = [
   }
 ];
 
-const TabGodMode = ({ appUser, addToast, setGhostTenant, setActiveTab }) => {  const [subTab, setSubTab] = useState('overview');
+const TabGodMode = ({ appUser, addToast, setGhostTenant, setActiveTab }) => {
+  const { t } = useI18n();
+  const [subTab, setSubTab] = useState('overview');
 
   const LEGAL_RETENTION_POLICY = Object.freeze({
     policySource: '86 Chaos Legal Document Packet - Security, Backup, and Data Retention Policy section 6.4',
@@ -7688,7 +7690,28 @@ Type RESTORE to continue.`);
       ]
     }
   ];
-  const adminTabs = adminTabGroups.flatMap(group => group.tabs.map(tab => ({ ...tab, group: group.title, groupSummary: group.summary })));
+  const adminGroupTitleKey = {
+    'Start Here':'admin.group.start',
+    'Backup & Recovery':'admin.group.backup',
+    'Security & Access':'admin.group.security',
+    'Workspaces & People':'admin.group.people',
+    'Support & Monitoring':'admin.group.support',
+    'Maintenance & Releases':'admin.group.maintenance',
+    'Platform Tools':'admin.group.platform'
+  };
+  const adminTabLabelKey = {
+    overview:'admin.tab.overview', health:'admin.tab.health', deployment:'admin.tab.deployment', manual:'admin.tab.manual',
+    forensics:'admin.tab.forensics', retention:'admin.tab.retention', data:'admin.tab.data', security:'admin.tab.security',
+    admins:'admin.tab.admins', roles:'admin.tab.roles', tenants:'admin.tab.tenants', users:'admin.tab.users', setup:'admin.tab.setup',
+    support:'admin.tab.support', 'ai-usage':'admin.tab.aiUsage', automation:'admin.tab.automation', push:'admin.tab.push',
+    maintenance:'admin.tab.maintenance', v14:'admin.tab.v14', history:'admin.tab.history', ops:'admin.tab.ops', danger:'admin.tab.danger'
+  };
+  const localizedAdminTabGroups = adminTabGroups.map(group => ({
+    ...group,
+    title: t(adminGroupTitleKey[group.title] || '', {}, group.title),
+    tabs: group.tabs.map(tab => ({ ...tab, label: t(adminTabLabelKey[tab.id] || '', {}, tab.label) }))
+  }));
+  const adminTabs = localizedAdminTabGroups.flatMap(group => group.tabs.map(tab => ({ ...tab, group: group.title, groupSummary: group.summary })));
   const adminSearchActions = [
     { label:'Run Full System Diagnostics', tab:'health', keywords:'diagnostics deployment report health api routes' },
     { label:'Explain Diagnostics with OpenAI', tab:'health', keywords:'openai repair guidance explain errors health' },
@@ -7722,7 +7745,7 @@ Type RESTORE to continue.`);
     ...adminManualArticles.map((article, idx) => ({ type:'article', label:article.title, detail:`Manual • ${article.group}`, tab:'manual', manualId:`${idx}-${String(article.title || 'article').toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 50)}`, score:scoreAdminSearchText(`${article.title} ${article.group} ${article.keywords || ''} ${(article.body || []).join(' ')}`) }))
   ].filter(result => result.score > 0).sort((a,b) => b.score - a.score || a.label.localeCompare(b.label)).slice(0, 12) : [];
   const activeAdminTab = adminTabs.find(tab => tab.id === subTab) || adminTabs[0];
-  const activeAdminHelpText = `${activeAdminTab.label} lives under ${activeAdminTab.group}. ${activeAdminTab.intent || ''} ${adminTabGroups.find(group => group.title === activeAdminTab.group)?.helper || ''}`.trim();
+  const activeAdminHelpText = `${activeAdminTab.label} lives under ${activeAdminTab.group}. ${activeAdminTab.intent || ''} ${localizedAdminTabGroups.find(group => group.title === activeAdminTab.group)?.helper || ''}`.trim();
   const mobilePrimaryTabs = ['overview', 'automation', 'retention', 'forensics', 'health', 'security', 'tenants', 'users', 'push', 'manual'];
   const mobileQuickTabs = mobilePrimaryTabs.map(id => adminTabs.find(tab => tab.id === id)).filter(Boolean);
 
@@ -7891,120 +7914,93 @@ Type RESTORE to continue.`);
           <button type="button" onClick={() => setAdminHelpModal(null)} className={T.btn}>Got it</button>
         </div>}
       </Modal>
-      {/* 15.0.46 PROFESSIONAL ADMIN CONSOLE */}
-      <section className="admin46-topbar">
-        <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-5">
-          <div className="min-w-0">
-            <div className="text-[10px] font-black uppercase tracking-[0.28em] text-[#D4A381]">System Administration</div>
-            <h1 className="text-2xl sm:text-3xl font-black text-white mt-1">Operations Console</h1>
-            <p className="text-xs sm:text-sm text-slate-400 font-semibold mt-2 max-w-2xl leading-relaxed">A compact workspace for platform health, access, customers, recovery, and support.</p>
-            <div className="mt-3 flex flex-wrap gap-2"><button type="button" onClick={() => selectAdminTab('ops')} className="inline-flex items-center justify-center rounded-xl border border-red-900/50 bg-red-950/20 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-red-200 hover:bg-red-900/30">Clean Full Audit QA Restaurants</button><button type="button" onClick={handleGlobalLogoutNonAdmins} disabled={globalLogoutBusy} className="inline-flex items-center justify-center rounded-xl border border-orange-900/50 bg-orange-950/20 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-orange-200 hover:bg-orange-900/30 disabled:opacity-50">{globalLogoutBusy ? 'Sending Global Logout…' : 'Global Logout Non-Admins'}</button></div>
+      {/* 17.0.32 CONCEPT 1 SYSTEM ADMINISTRATOR REFRESH */}
+      <section data-testid="system-admin-live-concept1" className="admin-concept1-live space-y-4 mb-5">
+        <div className="rounded-[30px] overflow-hidden border border-[#2D3942] bg-[radial-gradient(circle_at_12%_0%,rgba(212,163,129,0.17),transparent_30rem),linear-gradient(145deg,#172027_0%,#10171d_56%,#0a0f13_100%)] shadow-[0_30px_80px_rgba(0,0,0,0.36)]">
+          <div className="p-5 sm:p-6 lg:p-7 border-b border-[#25313a]">
+            <div className="flex flex-col xl:flex-row xl:items-start xl:justify-between gap-5">
+              <div className="min-w-0 max-w-3xl">
+                <div className="inline-flex items-center gap-2 rounded-full border border-[#D4A381]/35 bg-[#D4A381]/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.28em] text-[#E4BE9C]">
+                  <Shield size={12}/>{t('admin.eyebrow', {}, 'Internal controls')}
+                </div>
+                <h1 className="text-2xl sm:text-3xl lg:text-4xl font-black text-white mt-3 tracking-tight">{t('admin.title', {}, 'System Administrator')}</h1>
+                <p className="text-sm sm:text-[15px] text-slate-300 font-semibold mt-2 leading-6">{t('admin.summary', {}, 'Manage platform security, client workspaces, support tools, and internal operations from one cleaner command center.')}</p>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <button type="button" onClick={() => selectAdminTab('ops')} className="rounded-xl border border-red-900/45 bg-red-950/20 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-red-200 hover:bg-red-900/30">Clean Full Audit QA Restaurants</button>
+                  <button type="button" onClick={handleGlobalLogoutNonAdmins} disabled={globalLogoutBusy} className="rounded-xl border border-orange-900/45 bg-orange-950/20 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-orange-200 hover:bg-orange-900/30 disabled:opacity-50">{globalLogoutBusy ? 'Sending Global Logout…' : 'Global Logout Non-Admins'}</button>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-2 w-full xl:w-[410px] shrink-0">
+                <button type="button" onClick={() => selectAdminTab('overview')} className="rounded-2xl border border-[#2A3740] bg-[#131b21]/90 p-3 text-left">
+                  <span className="block text-[9px] font-black uppercase tracking-[0.2em] text-slate-500">Platform</span>
+                  <strong className={`block text-sm mt-1 ${platformStatus === 'Needs Attention' ? 'text-red-300' : platformStatus === 'Monitoring' ? 'text-amber-300' : 'text-emerald-300'}`}>{platformStatus}</strong>
+                  <small className="text-[10px] text-slate-500 font-bold">{adminRiskQueue.length} item{adminRiskQueue.length === 1 ? '' : 's'}</small>
+                </button>
+                <button type="button" onClick={() => selectAdminTab('forensics')} className="rounded-2xl border border-[#2A3740] bg-[#131b21]/90 p-3 text-left">
+                  <span className="block text-[9px] font-black uppercase tracking-[0.2em] text-slate-500">Backup</span>
+                  <strong className={`block text-sm mt-1 ${backupIsStale ? 'text-amber-300' : 'text-emerald-300'}`}>{backupStatusLabel}</strong>
+                  <small className="text-[10px] text-slate-500 font-bold">{nextBackupCountdown}</small>
+                </button>
+                <button type="button" onClick={() => selectAdminTab('security')} className="rounded-2xl border border-[#2A3740] bg-[#131b21]/90 p-3 text-left">
+                  <span className="block text-[9px] font-black uppercase tracking-[0.2em] text-slate-500">Security</span>
+                  <strong className={`block text-sm mt-1 ${(securityReport?.riskyUsers || []).length ? 'text-amber-300' : 'text-slate-100'}`}>{(securityReport?.riskyUsers || []).length} flagged</strong>
+                  <small className="text-[10px] text-slate-500 font-bold">Review center</small>
+                </button>
+                <button type="button" onClick={() => selectAdminTab('retention')} className="rounded-2xl border border-[#2A3740] bg-[#131b21]/90 p-3 text-left">
+                  <span className="block text-[9px] font-black uppercase tracking-[0.2em] text-slate-500">Retention</span>
+                  <strong className={`block text-sm mt-1 ${retentionConfigured ? 'text-emerald-300' : 'text-amber-300'}`}>{retentionConfigured ? 'Ready' : 'Setup needed'}</strong>
+                  <small className="text-[10px] text-slate-500 font-bold">{retentionConfigured ? 'Policy saved' : 'Tap to set up'}</small>
+                </button>
+              </div>
+            </div>
           </div>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 w-full xl:w-auto xl:min-w-[560px]">
-            <button type="button" onClick={() => selectAdminTab('overview')} className="admin46-status-chip text-left">
-              <span>Platform</span><strong className={platformStatus === 'Needs Attention' ? 'text-red-300' : platformStatus === 'Monitoring' ? 'text-amber-300' : 'text-emerald-300'}>{platformStatus}</strong><small>{adminRiskQueue.length} item{adminRiskQueue.length === 1 ? '' : 's'}</small>
-            </button>
-            <button type="button" onClick={() => selectAdminTab('forensics')} className="admin46-status-chip text-left">
-              <span>Backup</span><strong className={backupIsStale ? 'text-amber-300' : 'text-emerald-300'}>{backupStatusLabel}</strong><small>{nextBackupCountdown}</small>
-            </button>
-            <button type="button" onClick={() => selectAdminTab('security')} className="admin46-status-chip text-left">
-              <span>Security</span><strong className={(securityReport?.riskyUsers || []).length ? 'text-amber-300' : 'text-slate-100'}>{(securityReport?.riskyUsers || []).length} flagged</strong><small>Review center</small>
-            </button>
-            <button type="button" onClick={() => selectAdminTab('retention')} className="admin46-status-chip text-left">
-              <span>Retention</span><strong className={retentionConfigured ? 'text-emerald-300' : 'text-amber-300'}>{retentionConfigured ? 'Ready' : 'Setup needed'}</strong><small>{retentionConfigured ? 'Policy saved' : 'Tap to set up'}</small>
-            </button>
+
+          <div className="p-4 sm:p-5 lg:p-6 grid gap-4 lg:grid-cols-[minmax(0,1fr)_300px]">
+            <div className="relative" id="admin-tool-search">
+              <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" />
+              <input value={adminToolSearch} onChange={e => setAdminToolSearch(e.target.value)} className="w-full min-h-[54px] rounded-2xl border border-[#2D3942] bg-[#0D1318] pl-12 pr-12 text-sm font-bold text-white outline-none placeholder:text-slate-600 focus:border-[#D4A381]" placeholder={t('admin.searchPlaceholder', {}, 'Search tools, users, workspaces, or manual...')} aria-label="Search System Administrator" />
+              {adminToolSearch && <button type="button" onClick={() => setAdminToolSearch('')} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white"><X size={17}/></button>}
+              {normalizedAdminToolSearch && <div className="absolute z-50 left-0 right-0 mt-2 bg-[#0B0E11] border border-[#D4A381]/40 rounded-2xl p-2 shadow-2xl max-h-[52vh] overflow-y-auto custom-scrollbar">
+                {adminSearchResults.length === 0 ? <div className="p-4 text-xs font-bold text-slate-500">No matching authorized result.</div> : adminSearchResults.map((result, idx) => <button key={`${result.type}-${result.label}-${idx}`} type="button" onClick={() => selectAdminSearchResult(result)} className="w-full text-left rounded-xl px-3 py-3 hover:bg-[#161C21] border border-transparent hover:border-[#2A353D] transition-colors">
+                  <div className="flex items-center justify-between gap-2"><span className="text-xs font-black text-white">{result.label}</span><span className="text-[8px] font-black uppercase tracking-widest text-[#D4A381]">{result.type}</span></div>
+                  <div className="text-[10px] font-bold text-slate-500 mt-1 leading-snug">{result.detail}</div>
+                </button>)}
+              </div>}
+            </div>
+            <div className="rounded-2xl border border-[#2A3740] bg-[#12191f] px-4 py-3 flex items-center justify-between gap-3">
+              <div className="min-w-0"><div className="text-[9px] font-black uppercase tracking-[0.2em] text-[#E4BE9C]">{t('admin.navigation', {}, 'Control areas')}</div><div className="text-sm font-black text-white truncate mt-1">{activeAdminTab.label}</div><div className="text-[10px] font-bold text-slate-500 truncate mt-0.5">{activeAdminTab.group}</div></div>
+              <button type="button" onClick={() => setAdminHelpModal({ title: activeAdminTab.label, body: activeAdminHelpText })} className="w-10 h-10 rounded-xl border border-[#D4A381]/35 bg-[#0D1318] text-[#E4BE9C] flex items-center justify-center" aria-label={`Explain ${activeAdminTab.label}`}><HelpCircle size={17}/></button>
+            </div>
           </div>
         </div>
 
-        <div className="relative mt-5" id="admin-tool-search">
-          <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" />
-          <input value={adminToolSearch} onChange={e => setAdminToolSearch(e.target.value)} className="w-full min-h-[52px] rounded-2xl border border-[#303B43] bg-[#0B0E11] pl-12 pr-12 text-sm font-bold text-white outline-none placeholder:text-slate-600 focus:border-[#D4A381]" placeholder="Search tools, users, workspaces, or manual..." aria-label="Search System Administrator" />
-          {adminToolSearch && <button type="button" onClick={() => setAdminToolSearch('')} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white"><X size={17}/></button>}
-          {normalizedAdminToolSearch && <div className="absolute z-50 left-0 right-0 mt-2 bg-[#0B0E11] border border-[#D4A381]/40 rounded-2xl p-2 shadow-2xl max-h-[52vh] overflow-y-auto custom-scrollbar">
-            {adminSearchResults.length === 0 ? <div className="p-4 text-xs font-bold text-slate-500">No matching authorized result.</div> : adminSearchResults.map((result, idx) => <button key={`${result.type}-${result.label}-${idx}`} type="button" onClick={() => selectAdminSearchResult(result)} className="w-full text-left rounded-xl px-3 py-3 hover:bg-[#161C21] border border-transparent hover:border-[#2A353D] transition-colors">
-              <div className="flex items-center justify-between gap-2"><span className="text-xs font-black text-white">{result.label}</span><span className="text-[8px] font-black uppercase tracking-widest text-[#D4A381]">{result.type}</span></div>
-              <div className="text-[10px] font-bold text-slate-500 mt-1 leading-snug">{result.detail}</div>
-            </button>)}
-          </div>}
-        </div>
-
-        <div className="admin46-mobile-controls lg:hidden mt-4">
-          <div className="admin46-mobile-current">
-            <div className="min-w-0">
-              <span>Current area</span>
-              <strong>{activeAdminTab.label}</strong>
-              <small>{activeAdminTab.group}</small>
-            </div>
-            <div className="admin46-mobile-current-actions">
-              <button type="button" className="admin46-mobile-help" onClick={() => setAdminHelpModal({ title: activeAdminTab.label, body: activeAdminHelpText })} aria-label={`Explain ${activeAdminTab.label}`}>?</button>
-              <button type="button" onClick={() => setIsAdminNavOpen(v => !v)}>{isAdminNavOpen ? 'Hide directory' : 'Show directory'}</button>
-            </div>
-          </div>
-          <div className="admin46-mobile-quickgrid">
-            {mobileQuickTabs.map(tab => (
-              <button key={tab.id} type="button" aria-label={tab.label} title={tab.label} onClick={() => selectAdminTab(tab.id)} className={`admin46-mobile-quick ${subTab === tab.id ? 'is-active' : ''}`}>
-                <span>{tab.short || tab.label}</span>
-              </button>
+        <div data-testid="system-admin-mobile-directory" className="lg:hidden rounded-[26px] border border-[#28353E] bg-[#10171D] p-3 shadow-xl">
+          <div className="px-1 pb-2 flex items-center justify-between gap-2"><div><div className="text-[9px] font-black uppercase tracking-[0.2em] text-[#E4BE9C]">{t('admin.navigation', {}, 'Control areas')}</div><div className="text-xs text-slate-500 font-bold mt-1">Tap a tool to open it</div></div></div>
+          <div className="space-y-3">
+            {localizedAdminTabGroups.map(group => (
+              <section key={group.title} className={`rounded-2xl border ${group.danger ? 'border-red-900/40 bg-red-950/10' : 'border-[#28353E] bg-[#0D1318]'} overflow-hidden`}>
+                <div className="px-3 pt-3 pb-2"><div className={`text-[10px] font-black uppercase tracking-[0.18em] ${group.danger ? 'text-red-300' : 'text-slate-400'}`}>{group.title}</div><div className="text-[10px] text-slate-600 font-bold mt-1 leading-4">{group.summary}</div></div>
+                <div className="p-2 pt-0 grid gap-2">
+                  {group.tabs.map(tab => <button key={tab.id} type="button" onClick={() => selectAdminTab(tab.id)} className={`rounded-xl border p-3 text-left flex items-center justify-between gap-3 ${subTab === tab.id ? 'border-[#D4A381]/55 bg-[#1A232B]' : 'border-[#222E36] bg-[#111820]'}`}><span className="min-w-0"><strong className="block text-sm text-white">{tab.label}</strong><span className="block text-[10px] font-bold text-slate-500 mt-1 leading-4">{tab.intent}</span></span><ChevronRight size={16} className={subTab === tab.id ? 'text-[#E4BE9C]' : 'text-slate-600'}/></button>)}
+                </div>
+              </section>
             ))}
           </div>
-          {isAdminNavOpen && (
-            <div className="admin46-mobile-section-panel">
-              {adminTabGroups.map(group => (
-                <section key={group.title} className={`admin46-mobile-section-card ${group.danger ? 'is-danger' : ''}`}>
-                  <div className="admin46-mobile-section-head">
-                    <div className="admin46-mobile-section-title">
-                      <strong>{group.title}</strong>
-                      <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); setAdminHelpModal({ title: group.title, body: `${group.summary}\n\n${group.helper || ''}` }); }} aria-label={`Explain ${group.title}`}>?</button>
-                    </div>
-                    <span>{group.summary}</span>
-                  </div>
-                  <div className="admin46-mobile-tool-grid">
-                    {group.tabs.map(tab => (
-                      <button key={tab.id} type="button" aria-label={tab.label} title={tab.label} onClick={() => selectAdminTab(tab.id)} className={subTab === tab.id ? 'is-active' : ''}>
-                        <strong>{tab.short || tab.label}</strong>
-                        <span>{tab.intent}</span>
-                      </button>
-                    ))}
-                  </div>
-                </section>
-              ))}
-            </div>
-          )}
+        </div>
+
+        <div data-testid="system-admin-desktop-directory" className="hidden lg:grid lg:grid-cols-2 xl:grid-cols-3 gap-3">
+          {localizedAdminTabGroups.map(group => (
+            <section key={group.title} className={`rounded-[24px] border p-4 ${group.danger ? 'border-red-900/40 bg-[linear-gradient(160deg,rgba(53,18,23,.34),rgba(14,19,24,.96))]' : 'border-[#293640] bg-[linear-gradient(160deg,rgba(22,30,37,.98),rgba(13,18,23,.98))]'} shadow-[0_16px_42px_rgba(0,0,0,.18)]`}>
+              <div className="flex items-start justify-between gap-3 mb-3"><div><div className={`text-[10px] font-black uppercase tracking-[0.2em] ${group.danger ? 'text-red-300' : 'text-[#E4BE9C]'}`}>{group.title}</div><div className="text-[11px] font-bold text-slate-500 mt-1 leading-4">{group.summary}</div></div><button type="button" onClick={() => setAdminHelpModal({ title: group.title, body: `${group.summary}\n\n${group.helper || ''}` })} className="w-8 h-8 shrink-0 rounded-full border border-[#2D3942] bg-[#0D1318] text-slate-500 hover:text-[#E4BE9C] flex items-center justify-center" aria-label={`Explain ${group.title}`}><HelpCircle size={14}/></button></div>
+              <div className="space-y-2">
+                {group.tabs.map(tab => <button data-testid="system-admin-live-nav-card" key={tab.id} type="button" onClick={() => selectAdminTab(tab.id)} className={`w-full rounded-2xl border px-3 py-3 text-left transition-all flex items-center justify-between gap-3 ${subTab === tab.id ? 'border-[#D4A381]/55 bg-[#202B34] shadow-[0_10px_24px_rgba(0,0,0,.2)]' : 'border-[#243039] bg-[#10171D] hover:border-[#35434D] hover:-translate-y-[1px]'}`}><span className="min-w-0"><strong className="block text-sm text-white">{tab.label}</strong><span className="block text-[10px] text-slate-500 font-bold mt-1 leading-4">{tab.intent}</span></span><ChevronRight size={15} className={subTab === tab.id ? 'text-[#E4BE9C]' : 'text-slate-600'}/></button>)}
+              </div>
+            </section>
+          ))}
         </div>
       </section>
 
-      <div className="admin46-layout grid gap-3 lg:grid-cols-[218px_minmax(0,1fr)] lg:items-start">
-        <aside className="hidden lg:block lg:sticky lg:top-4 h-max" id="admin-left-nav">
-          <nav className="admin46-nav">
-            <div className="flex items-center justify-between gap-2 px-2 py-2 border-b border-[#252E35] mb-2">
-              <div><div className="text-[9px] font-black uppercase tracking-[0.22em] text-[#D4A381]">Sections</div><div className="text-xs font-bold text-slate-500 mt-1">Choose one job</div></div>
-              <button type="button" onClick={() => setIsAdminNavOpen(false)} className="lg:hidden rounded-lg border border-[#303B43] p-2 text-slate-400"><X size={15}/></button>
-            </div>
-            <div className="space-y-3 max-lg:max-h-[68vh] max-lg:overflow-y-auto custom-scrollbar pr-1">
-              {adminTabGroups.map(group => (
-                <div key={group.title}>
-                  <div className={`px-2 pb-1 text-[9px] font-black uppercase tracking-[0.18em] ${group.danger ? 'text-red-300' : 'text-slate-500'} flex items-center justify-between gap-2`}>
-                    <span>{group.title}</span>
-                    <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); setAdminHelpModal({ title: group.title, body: `${group.summary}\n\n${group.helper || ''}` }); }} className="admin46-nav-help" aria-label={`Explain ${group.title}`}>?</button>
-                  </div>
-                  <div className="space-y-1">
-                    {group.tabs.map(tab => (
-                      <button key={tab.id} type="button" onClick={() => selectAdminTab(tab.id)} className={`admin46-nav-button ${subTab === tab.id ? 'is-active' : ''} ${group.danger ? 'is-danger' : ''}`}>
-                        <span>{tab.label}</span>
-                        {subTab === tab.id && <ChevronRight size={14}/>} 
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-            <div className="mt-3 pt-3 border-t border-[#252E35] grid grid-cols-2 gap-2">
-              <button type="button" onClick={() => selectAdminTab('manual')} className="admin46-mini-action">Manual</button>
-              <button type="button" onClick={handleRunFullSystemDiagnostics} disabled={isDiagnosticsRunning} className="admin46-mini-action disabled:opacity-50">{isDiagnosticsRunning ? 'Running' : 'Diagnostics'}</button>
-            </div>
-          </nav>
-        </aside>
-
+      <div className="admin46-layout grid gap-3">
         <div id="admin-content-start" className="admin46-content min-w-0 space-y-3">
 <Modal isOpen={!!editingGlobalUser} onClose={() => { setEditingGlobalUser(null); setSupportUserForm({}); }} title={`Support Edit User: ${editingGlobalUser?.name || editingGlobalUser?.email || ''}`}>
         {editingGlobalUser && (
@@ -8463,7 +8459,7 @@ Type RESTORE to continue.`);
               <div className="text-[10px] font-bold text-slate-500">Everything is still here, just quieter.</div>
             </div>
             <div className="grid md:grid-cols-2 gap-3">
-              {adminTabGroups.map(group => (
+              {localizedAdminTabGroups.map(group => (
                 <div key={group.title} className={`rounded-2xl border p-3 ${group.danger ? 'border-red-900/40 bg-red-950/5' : 'border-[#2A353D] bg-[#0B0E11]/60'}`}>
                   <div className={`text-[10px] font-black uppercase tracking-[0.18em] ${group.danger ? 'text-red-300' : 'text-[#D4A381]'}`}>{group.title}</div>
                   <div className="text-[11px] font-semibold text-slate-500 mt-1 leading-relaxed">{group.summary}</div>

@@ -3,11 +3,9 @@ import { collection, query, where, onSnapshot, addDoc, updateDoc, deleteDoc, doc
 import { initializeApp } from 'firebase/app';
 import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword } from 'firebase/auth';
 import { secureFetch } from '../core/appCore';
-import { useI18n } from '../core/i18n';
 import { Package, Trash2, Moon, Search, Calendar, BookOpen, Bug, Bell, Shield, Loader2, ClipboardList, HelpCircle, Users, LifeBuoy, Radio, KeyRound, ChevronRight, Sparkles } from 'lucide-react';
 
 const TabGodMode = ({ appUser, addToast, setGhostTenant, db, auth, Modal, T, getToday, generateTempPass, firebaseConfig, CURRENT_VERSION, logAudit }) => {
-  const { t } = useI18n();
   const [subTab, setSubTab] = useState('overview');
   
   // Master Data States
@@ -392,27 +390,19 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant, db, auth, Modal, T, get
   // --- CALCULATIONS ---
   const mrr = restaurants.reduce((acc, r) => acc + (r.subscription?.status === 'active' ? (r.subscription?.planId === 'owner_pro' ? 299 : r.subscription?.planId === 'smart_kitchen' ? 179 : r.subscription?.planId === 'operations' ? 99 : 49) : 0), 0);
 
-  const currentOpenAlerts = automationQueue.filter(i => (i.status || 'open') === 'open').length;
-
   const ADMIN_SECTIONS = [
-    { id:'overview', label:t('admin.section.metrics', {}, 'Metrics'), icon: Package, tone:'emerald', description:t('admin.section.metrics.desc', {}, 'Platform health, revenue, installs, and client snapshots.') },
-    { id:'tenants', label:t('admin.section.clients', {}, 'Clients'), icon: Users, tone:'blue', description:t('admin.section.clients.desc', {}, 'Create restaurants, manage plans, deploy owner accounts, export users, and control tenant status.') },
-    { id:'users', label:t('admin.section.users', {}, 'Global Users'), icon: Search, tone:'slate', description:t('admin.section.users.desc', {}, 'Search every user across all restaurants and inspect roles, workspaces, and account state.') },
-    { id:'support', label:t('admin.section.support', {}, 'Support'), icon: LifeBuoy, tone:'amber', description:t('admin.section.support.desc', {}, 'Crash reports, diagnostics, and customer triage tools.') },
-    { id:'forensics', label:t('admin.section.forensics', {}, 'Forensics'), icon: Shield, tone:'purple', description:t('admin.section.forensics.desc', {}, 'Audit timeline, security activity, and administrator accountability records.') },
-    { id:'automation', label:t('admin.section.automation', {}, 'Automation'), icon: Sparkles, tone:'purple', description:t('admin.section.automation.desc', {}, 'Python job controls, scheduled intelligence, owner/admin alerts, and safety rails.') },
-    { id:'ops', label:t('admin.section.operations', {}, 'Operations'), icon: Radio, tone:'red', description:t('admin.section.operations.desc', {}, 'Global refresh, platform broadcast, orphan sweeps, and operational maintenance actions.') },
-    { id:'retention', label:t('admin.section.retention', {}, 'Retention'), icon: Calendar, tone:'emerald', description:t('admin.section.retention.desc', {}, 'Legal data-retention setup marker, official schedule, and production checklist.') },
-    { id:'admins', label:t('admin.section.access', {}, 'Access'), icon: KeyRound, tone:'red', description:t('admin.section.access.desc', {}, 'Grant or revoke internal System Administrator access.') },
+    { id:'overview', label:'Metrics', icon: Package, tone:'emerald', description:'Platform health, revenue, installs, and client snapshots.' },
+    { id:'tenants', label:'Clients', icon: Users, tone:'blue', description:'Create restaurants, manage plans, deploy owner accounts, ghost into clients, export users, and control tenant status.' },
+    { id:'users', label:'Global Users', icon: Search, tone:'slate', description:'Search every user across all restaurants, inspect roles, workspace ties, and account status.' },
+    { id:'support', label:'Support', icon: LifeBuoy, tone:'amber', description:'Crash reports, diagnostics, support triage, and customer problem investigation tools.' },
+    { id:'forensics', label:'Forensics', icon: Shield, tone:'purple', description:'Audit timeline, ghost-action review, security activity, and administrator accountability records.' },
+    { id:'automation', label:'Automation', icon: Sparkles, tone:'purple', description:'Python job controls, scheduled intelligence, owner/admin alerts, read-only scans, and safety rails.' },
+    { id:'ops', label:'Operations', icon: Radio, tone:'red', description:'Global refresh, platform broadcast, orphan sweeps, and operational maintenance actions.' },
+    { id:'retention', label:'Retention', icon: Calendar, tone:'emerald', description:'One-button legal data-retention setup marker, official retention schedule, and production setup checklist.' },
+    { id:'admins', label:'Access', icon: KeyRound, tone:'red', description:'Grant or revoke internal System Administrator access.' },
   ];
 
   const activeAdminSection = ADMIN_SECTIONS.find(section => section.id === subTab) || ADMIN_SECTIONS[0];
-
-  const heroStats = [
-    { key: 'workspaces', value: restaurants.filter(r=>r.isActive).length, label: t('admin.liveWorkspaceCount', { count: restaurants.filter(r=>r.isActive).length }, `${restaurants.filter(r=>r.isActive).length} live workspaces`) },
-    { key: 'users', value: allUsers.length, label: t('admin.liveUserCount', { count: allUsers.length }, `${allUsers.length} user accounts`) },
-    { key: 'alerts', value: currentOpenAlerts, label: t('admin.openAlerts', { count: currentOpenAlerts }, `${currentOpenAlerts} open alerts`) },
-  ];
 
   const openAdminHelp = (sectionId, event) => {
     event?.preventDefault?.();
@@ -422,76 +412,36 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant, db, auth, Modal, T, get
 
 
   return (
-    <div className="system-admin-concept1-shell max-w-6xl mx-auto space-y-6 pb-24 animate-[slideIn_0.2s_ease-out]">
+    <div className="max-w-6xl mx-auto space-y-6 pb-24 animate-[slideIn_0.2s_ease-out]">
       {/* MASTER NAVIGATION */}
-      <div className="space-y-4 mb-6 pb-2">
-        <div data-testid="system-admin-hero" className="rounded-[28px] border border-[#2D3A43] bg-[radial-gradient(circle_at_top_left,_rgba(212,163,129,0.18),_transparent_32%),linear-gradient(145deg,_#182028_0%,_#11171D_58%,_#0B0F13_100%)] shadow-[0_28px_80px_rgba(0,0,0,0.34)] overflow-hidden">
-          <div className="p-5 sm:p-6 lg:p-7 border-b border-[#243039]">
-            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-              <div className="min-w-0">
-                <div className="inline-flex items-center gap-2 rounded-full border border-[#D4A381]/35 bg-[#D4A381]/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.28em] text-[#E4BE9C]">
-                  <Shield size={12}/>{t('admin.eyebrow', {}, 'Internal controls')}
-                </div>
-                <h1 className="text-2xl sm:text-[2rem] font-black text-white tracking-tight mt-3">{t('admin.title', {}, 'System Administrator')}</h1>
-                <p className="max-w-3xl text-sm sm:text-[15px] font-bold leading-6 text-slate-300 mt-2">{t('admin.summary', {}, 'Manage platform security, client workspaces, support tools, and internal operations from one cleaner command center.')}</p>
-              </div>
-              <div className="flex flex-wrap items-center gap-2 lg:max-w-[260px] lg:justify-end">
-                <span className="inline-flex items-center rounded-full border border-emerald-400/30 bg-emerald-400/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.22em] text-emerald-300">{t('admin.internalOnly', {}, 'Internal only')}</span>
-                <span className="inline-flex items-center rounded-full border border-[#2D3A43] bg-[#12181F] px-3 py-1 text-[10px] font-black uppercase tracking-[0.22em] text-slate-300">{t('admin.version', { version: CURRENT_VERSION }, `Version ${CURRENT_VERSION}`)}</span>
-                <button type="button" onClick={(event) => openAdminHelp(activeAdminSection.id, event)} className="inline-flex items-center gap-2 rounded-full border border-[#D4A381]/40 bg-[#141B22] px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.2em] text-[#E4BE9C] hover:bg-[#1B232C] transition-colors" aria-label={`Explain ${activeAdminSection.label}`} title={`Explain ${activeAdminSection.label}`}>
-                  <HelpCircle size={14}/>{activeAdminSection.label}
-                </button>
-              </div>
+      <div className="space-y-3 border-b border-[#2A353D] mb-6 pb-4">
+        <div className="md:hidden bg-[#12161A] border border-[#2A353D] rounded-2xl p-3 shadow-lg">
+          <div className="flex items-start justify-between gap-3 mb-3">
+            <div>
+              <div className="text-[10px] font-black uppercase tracking-[0.22em] text-[#D4A381]">System Administrator</div>
+              <h2 className="text-lg font-black text-white leading-tight mt-1">{activeAdminSection.label}</h2>
+              <p className="text-xs text-slate-400 font-bold leading-5 mt-1">{activeAdminSection.description}</p>
             </div>
-          </div>
-          <div className="p-5 sm:p-6 lg:p-7 grid gap-4 lg:grid-cols-[minmax(0,1.6fr)_minmax(300px,1fr)] items-start">
-            <div className="rounded-3xl border border-[#243039] bg-[#10161C]/92 p-5 shadow-inner">
-              <div className="text-[10px] font-black uppercase tracking-[0.24em] text-[#E4BE9C] mb-2">{t('admin.snapshotTitle', {}, 'Platform snapshot')}</div>
-              <p className="text-sm text-slate-300 font-bold leading-6">{t('admin.snapshotText', {}, 'Choose a control area below. The refreshed layout keeps the same tools, but makes mobile and desktop easier to scan.')}</p>
-              <div className="grid gap-3 sm:grid-cols-3 mt-4">
-                {heroStats.map(stat => (
-                  <div key={stat.key} className="rounded-2xl border border-[#243039] bg-[#161E25] px-4 py-3">
-                    <div className="text-xl font-black text-white">{stat.value}</div>
-                    <div className="text-[11px] font-bold text-slate-400 mt-1">{stat.label}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-            <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-1">
-              <div className="rounded-3xl border border-[#243039] bg-[#10161C]/92 p-4">
-                <div className="text-[10px] font-black uppercase tracking-[0.22em] text-emerald-300 mb-1">{t('admin.navigation', {}, 'Control areas')}</div>
-                <div className="text-lg font-black text-white">{activeAdminSection.label}</div>
-                <div className="text-xs font-bold leading-5 text-slate-400 mt-1">{activeAdminSection.description}</div>
-              </div>
-              <div className="rounded-3xl border border-[#243039] bg-[#10161C]/92 p-4">
-                <div className="text-[10px] font-black uppercase tracking-[0.22em] text-sky-300 mb-1">{t('admin.status.title', {}, 'System status')}</div>
-                <div className="text-sm font-black text-white">{t('admin.status.healthy', {}, 'All platform services available.')}</div>
-                <div className="text-xs font-bold leading-5 text-slate-400 mt-1">{t('admin.status.body', { version: CURRENT_VERSION }, `Core admin tools are ready. Version ${CURRENT_VERSION} is loaded in this session.`)}</div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="md:hidden rounded-[26px] border border-[#243039] bg-[#11171D] p-3 shadow-xl">
-          <div className="px-1 pb-2">
-            <div className="text-[10px] font-black uppercase tracking-[0.22em] text-slate-400">{t('admin.navigation', {}, 'Control areas')}</div>
+            <button type="button" onClick={(event) => openAdminHelp(activeAdminSection.id, event)} className="shrink-0 w-10 h-10 rounded-xl border border-[#D4A381]/50 bg-[#0B0E11] text-[#D4A381] flex items-center justify-center" aria-label={`Explain ${activeAdminSection.label}`} title={`Explain ${activeAdminSection.label}`}>
+              <HelpCircle size={19}/>
+            </button>
           </div>
           <div className="grid grid-cols-1 gap-2">
             {ADMIN_SECTIONS.map((section) => {
               const Icon = section.icon;
               const active = subTab === section.id;
               return (
-                <div key={section.id} className={`rounded-2xl border overflow-hidden transition-all ${active ? 'border-[#D4A381]/60 bg-[#1A232C]' : 'border-[#243039] bg-[#0E141A]'}`}>
+                <div key={section.id} className={`rounded-2xl border ${active ? 'border-[#D4A381] bg-[#D4A381]/10' : 'border-[#2A353D] bg-[#0B0E11]'} overflow-hidden`}>
                   <div className="flex items-stretch">
                     <button type="button" onClick={() => setSubTab(section.id)} className="flex-1 min-w-0 p-3 text-left flex items-center gap-3">
-                      <span className={`w-11 h-11 rounded-2xl flex items-center justify-center border ${active ? 'border-[#D4A381]/50 bg-[#D4A381]/10 text-[#E4BE9C]' : 'border-[#2E3A44] bg-[#151C23] text-slate-400'}`}><Icon size={18}/></span>
+                      <span className={`w-10 h-10 rounded-xl flex items-center justify-center border ${active ? 'border-[#D4A381]/60 text-[#D4A381] bg-[#0B0E11]' : 'border-[#2A353D] text-slate-400 bg-[#12161A]'}`}><Icon size={18}/></span>
                       <span className="min-w-0 flex-1">
-                        <span className={`block text-sm font-black ${active ? 'text-white' : 'text-slate-100'}`}>{section.label}</span>
-                        <span className="block text-[11px] text-slate-400 font-bold leading-4 mt-0.5">{section.description}</span>
+                        <span className={`block text-sm font-black ${active ? 'text-white' : 'text-slate-200'}`}>{section.label}</span>
+                        <span className="block text-[11px] text-slate-500 font-bold leading-4 truncate">{section.description}</span>
                       </span>
-                      <ChevronRight size={16} className={active ? 'text-[#E4BE9C]' : 'text-slate-600'}/>
+                      <ChevronRight size={16} className={active ? 'text-[#D4A381]' : 'text-slate-600'}/>
                     </button>
-                    <button type="button" onClick={(event) => openAdminHelp(section.id, event)} className="w-12 border-l border-[#243039] text-[#E4BE9C] bg-[#131920] flex items-center justify-center" aria-label={`What is ${section.label}?`} title={`What is ${section.label}?`}>
+                    <button type="button" onClick={(event) => openAdminHelp(section.id, event)} className="w-12 border-l border-[#2A353D] text-[#D4A381] bg-[#12161A]/60 flex items-center justify-center" aria-label={`What is ${section.label}?`} title={`What is ${section.label}?`}>
                       <HelpCircle size={17}/>
                     </button>
                   </div>
@@ -501,21 +451,16 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant, db, auth, Modal, T, get
           </div>
         </div>
 
-        <div className="hidden md:grid md:grid-cols-2 xl:grid-cols-3 gap-3">
+        <div className="hidden md:grid md:grid-cols-4 lg:grid-cols-8 gap-2">
           {ADMIN_SECTIONS.map((section) => {
             const Icon = section.icon;
-            const active = subTab === section.id;
             return (
-              <div key={section.id} className={`relative rounded-[24px] border p-4 transition-all shadow-sm ${active ? 'border-[#D4A381]/55 bg-[linear-gradient(160deg,_rgba(32,44,54,0.98),_rgba(17,23,29,0.98))] shadow-[0_18px_46px_rgba(0,0,0,0.26)]' : 'border-[#243039] bg-[linear-gradient(160deg,_rgba(20,27,34,0.98),_rgba(13,18,24,0.98))] hover:border-[#33414B] hover:-translate-y-[1px]'}`}>
-                <button data-testid="system-admin-nav-card" type="button" onClick={() => setSubTab(section.id)} className="w-full text-left pr-10">
-                  <div className={`w-12 h-12 rounded-2xl flex items-center justify-center border ${active ? 'border-[#D4A381]/55 bg-[#D4A381]/10 text-[#E4BE9C]' : 'border-[#2E3A44] bg-[#161D24] text-slate-300'}`}><Icon size={19}/></div>
-                  <div className="mt-4">
-                    <div className={`text-base font-black ${active ? 'text-white' : 'text-slate-100'}`}>{section.label}</div>
-                    <div className="text-[12px] leading-5 font-bold text-slate-400 mt-1">{section.description}</div>
-                  </div>
+              <div key={section.id} className="relative group">
+                <button onClick={() => setSubTab(section.id)} className={`w-full px-2 py-2.5 text-[10px] sm:text-[11px] font-black rounded-xl uppercase tracking-widest transition-all flex items-center justify-center gap-1.5 ${subTab === section.id ? 'bg-red-600 text-white shadow-lg scale-[1.02]' : 'bg-[#1A2126] text-slate-400 border border-[#2A353D] hover:text-white hover:border-slate-500'}`}>
+                  <Icon size={13}/>{section.label}
                 </button>
-                <button type="button" onClick={(event) => openAdminHelp(section.id, event)} className="absolute right-4 top-4 w-8 h-8 rounded-full border border-[#2D3A43] bg-[#10161C] text-slate-400 hover:text-[#E4BE9C] hover:border-[#D4A381]/35 flex items-center justify-center" aria-label={`Explain ${section.label}`} title={`Explain ${section.label}`}>
-                  <HelpCircle size={14}/>
+                <button type="button" onClick={(event) => openAdminHelp(section.id, event)} className="absolute -right-1 -top-1 w-6 min-w-[24px] h-6 rounded-full border border-[#D4A381]/60 bg-[#0B0E11] text-[#D4A381] hidden group-hover:flex items-center justify-center shadow-md" aria-label={`Explain ${section.label}`} title={`Explain ${section.label}`}>
+                  <HelpCircle size={12}/>
                 </button>
               </div>
             );
@@ -528,13 +473,13 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant, db, auth, Modal, T, get
           <div className="space-y-4 text-sm text-slate-300 font-bold leading-6">
             <p>{adminHelpTopic.description}</p>
             <div className="rounded-xl border border-[#2A353D] bg-[#12161A] p-4">
-              <div className="text-[10px] font-black uppercase tracking-widest text-[#D4A381] mb-2">{t('admin.help.accessNote.title', {}, 'Access note')}</div>
-              <p className="text-xs text-slate-400 leading-5">{t('admin.help.accessNote.body', {}, 'This area is internal-only for verified System Administrator or Master Admin accounts. Customer owners, managers, and staff should not see these controls.')}</p>
+              <div className="text-[10px] font-black uppercase tracking-widest text-[#D4A381] mb-2">Access note</div>
+              <p className="text-xs text-slate-400 leading-5">This area is internal-only for verified System Administrator or Master Admin accounts. Customer owners, managers, and staff should not see these controls.</p>
             </div>
             {adminHelpTopic.id === 'retention' && (
               <div className="rounded-xl border border-emerald-500/30 bg-emerald-900/10 p-4">
-                <div className="text-[10px] font-black uppercase tracking-widest text-emerald-300 mb-2">{t('admin.help.retention.title', {}, 'Retention warning')}</div>
-                <p className="text-xs text-slate-300 leading-5">{t('admin.help.retention.body', {}, 'The setup button saves the legal retention policy marker and checklist only. Actual deletion and archive jobs run from deployed Firebase Functions after production setup is complete.')}</p>
+                <div className="text-[10px] font-black uppercase tracking-widest text-emerald-300 mb-2">Retention warning</div>
+                <p className="text-xs text-slate-300 leading-5">The setup button saves the legal retention policy marker and checklist only. Actual deletion/archive jobs run from deployed Firebase Functions after production setup is complete.</p>
               </div>
             )}
           </div>
@@ -621,34 +566,16 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant, db, auth, Modal, T, get
       {/* --- TAB: OVERVIEW --- */}
       {subTab === 'overview' && (
         <div className="space-y-6 animate-[slideIn_0.2s_ease-out]">
-          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-            <div className={`${T.card} p-5 bg-[linear-gradient(145deg,_rgba(19,30,37,1),_rgba(12,18,23,1))] border-emerald-500/20`}>
-              <div className="text-[10px] font-black text-emerald-300 uppercase tracking-[0.22em] mb-2">{t('admin.stat.mrr', {}, 'Estimated platform MRR')}</div>
-              <div className="text-3xl lg:text-4xl font-black text-white">${mrr}<span className="text-sm lg:text-lg text-slate-500">/mo</span></div>
-            </div>
-            <div className={`${T.card} p-5 bg-[linear-gradient(145deg,_rgba(19,30,37,1),_rgba(12,18,23,1))] border-[#D4A381]/20`}>
-              <div className="text-[10px] font-black text-[#E4BE9C] uppercase tracking-[0.22em] mb-2">{t('admin.stat.workspaces', {}, 'Active workspaces')}</div>
-              <div className="text-3xl lg:text-4xl font-black text-white">{restaurants.filter(r=>r.isActive).length}</div>
-            </div>
-            <div className={`${T.card} p-5 bg-[linear-gradient(145deg,_rgba(19,30,37,1),_rgba(12,18,23,1))] border-sky-500/20`}>
-              <div className="text-[10px] font-black text-sky-300 uppercase tracking-[0.22em] mb-2">{t('admin.stat.users', {}, 'Network users')}</div>
-              <div className="text-3xl lg:text-4xl font-black text-white">{allUsers.length}</div>
-            </div>
-            <div className={`${T.card} p-5 bg-[linear-gradient(145deg,_rgba(19,30,37,1),_rgba(12,18,23,1))] border-fuchsia-500/20`}>
-              <div className="text-[10px] font-black text-fuchsia-300 uppercase tracking-[0.22em] mb-2">{t('admin.stat.installs', {}, 'App installs')}</div>
-              <div className="text-3xl lg:text-4xl font-black text-white">{totalInstalls}</div>
-            </div>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className={`${T.card} p-5 bg-gradient-to-br from-[#1A2126] to-[#12161A] border-emerald-900/30`}><div className="text-[10px] font-black text-emerald-500 uppercase tracking-widest mb-1">Est. Platform MRR</div><div className="text-3xl lg:text-4xl font-black text-white">${mrr}<span className="text-sm lg:text-lg text-slate-500">/mo</span></div></div>
+            <div className={`${T.card} p-5 bg-gradient-to-br from-[#1A2126] to-[#12161A]`}><div className="text-[10px] font-black text-[#D4A381] uppercase tracking-widest mb-1">Active Tenants</div><div className="text-3xl lg:text-4xl font-black text-white">{restaurants.filter(r=>r.isActive).length}</div></div>
+            <div className={`${T.card} p-5 bg-gradient-to-br from-[#1A2126] to-[#12161A]`}><div className="text-[10px] font-black text-blue-400 uppercase tracking-widest mb-1">Network Users</div><div className="text-3xl lg:text-4xl font-black text-white">{allUsers.length}</div></div>
+            <div className={`${T.card} p-5 bg-gradient-to-br from-[#1A2126] to-[#12161A] border-fuchsia-900/30`}><div className="text-[10px] font-black text-fuchsia-400 uppercase tracking-widest mb-1">Total App Installs</div><div className="text-3xl lg:text-4xl font-black text-white">{totalInstalls}</div></div>
           </div>
 
-          <div className={`${T.card} p-6 border-[#243039] bg-[linear-gradient(145deg,_rgba(18,25,31,1),_rgba(10,15,19,1))]`}>
-            <h3 className="font-black text-lg text-white mb-3 flex items-center gap-2"><Shield className="text-emerald-300" size={18}/>{t('admin.status.title', {}, 'System status')}</h3>
-            <div className="flex items-start gap-3">
-              <span className="flex h-3 w-3 relative mt-1.5"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span><span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span></span>
-              <div>
-                <div className="text-sm font-black text-white">{t('admin.status.healthy', {}, 'All platform services available.')}</div>
-                <div className="text-sm font-bold text-slate-400 mt-1">{t('admin.status.body', { version: CURRENT_VERSION }, `Core admin tools are ready. Version ${CURRENT_VERSION} is loaded in this session.`)}</div>
-              </div>
-            </div>
+          <div className={`${T.card} p-6 border-red-900/30`}>
+            <h3 className="font-black text-lg text-white mb-2 flex items-center gap-2"><Shield className="text-red-500" size={18}/> System Status</h3>
+            <div className="flex items-center gap-3"><span className="flex h-3 w-3 relative"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span><span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span></span><span className="text-sm font-bold text-slate-300">All Database Shards Operational   Version {CURRENT_VERSION} Online</span></div>
           </div>
         </div>
       )}

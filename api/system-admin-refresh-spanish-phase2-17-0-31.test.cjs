@@ -10,17 +10,16 @@ const root = path.resolve(__dirname, '..');
 const read = file => fs.readFileSync(path.join(root, file), 'utf8');
 
 test('17.0.31 System Administrator concept 1 refresh keeps the same tools but uses a cleaner shell and card navigation', () => {
-  const source = read('src/components/TabGodMode.js');
+  const app = read('src/App.js');
+  const source = read('src/features/management.jsx');
+  assert.match(app, /import\('\.\/features\/management'\), 'TabGodMode'/);
   assert.match(source, /useI18n/);
-  assert.match(source, /system-admin-concept1-shell/);
-  assert.match(source, /data-testid="system-admin-hero"/);
-  assert.match(source, /data-testid="system-admin-nav-card"/);
-  assert.match(source, /admin\.snapshotTitle/);
-  assert.match(source, /admin\.status\.title/);
-  assert.match(source, /heroStats/);
-  assert.match(source, /rounded-\[28px\]/);
-  assert.match(source, /hidden md:grid md:grid-cols-2 xl:grid-cols-3 gap-3/);
-  assert.match(source, /md:hidden rounded-\[26px\]/);
+  assert.match(source, /data-testid="system-admin-live-concept1"/);
+  assert.match(source, /data-testid="system-admin-live-nav-card"/);
+  assert.match(source, /admin\.title/);
+  assert.match(source, /admin\.summary/);
+  assert.match(source, /rounded-\[30px\]/);
+  assert.match(source, /lg:grid-cols-2 xl:grid-cols-3/);
 });
 
 test('17.0.31 Spanish Phase 2 extends translation coverage into the refreshed System Administrator tab', () => {
