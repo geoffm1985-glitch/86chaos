@@ -431,6 +431,10 @@ if (selectionMode === 'repair') {
   };
 }
 
+const noScopedPlaywrightTestsRemain = copied.totalSelected === 0 && (
+  selectionMode === 'failed-only' ||
+  (selectionMode === 'failed+new' && copied.noFailedOrNewPlaywrightTestsRemain === true)
+);
 const validation = copied.totalSelected === 0 && selectionMode === 'failed-only'
   ? { ok: true, errors: [] }
   : validateManifestForCurrentRun(copied, {
@@ -440,6 +444,7 @@ const validation = copied.totalSelected === 0 && selectionMode === 'failed-only'
     firebaseProjectId,
     appUrl,
     allowStaticFallback: selectionMode === 'failed-only',
+    validateIdentities: noScopedPlaywrightTestsRemain ? false : true,
   });
 if (!validation.ok) {
   fail(`Refusing unsafe ${selectionMode} manifest.`, validation.errors);
@@ -481,6 +486,8 @@ const selectionPayload = {
   newTestsCount: copied.newTestsCount || 0,
   partialNotRunSelected: copied.partialNotRunSelected || 0,
   noFailedOrTimedOutTestsRemain: copied.noFailedOrTimedOutTestsRemain === true || (selectionMode === 'failed-only' && copied.totalSelected === 0),
+  noFailedOrNewPlaywrightTestsRemain: copied.noFailedOrNewPlaywrightTestsRemain === true || (selectionMode === 'failed+new' && copied.totalSelected === 0),
+  noScopedPlaywrightTestsRemain,
 };
 writeJson(failedAndNewSelectionPath, selectionPayload);
 writeJson(failedOnlySelectionPath, selectionPayload);
@@ -509,12 +516,15 @@ writeJson(validationPath, {
   newTestsCount: selectionPayload.newTestsCount,
   partialNotRunSelected: selectionPayload.partialNotRunSelected,
   noFailedOrTimedOutTestsRemain: selectionPayload.noFailedOrTimedOutTestsRemain,
+  noFailedOrNewPlaywrightTestsRemain: selectionPayload.noFailedOrNewPlaywrightTestsRemain,
+  noScopedPlaywrightTestsRemain: selectionPayload.noScopedPlaywrightTestsRemain,
   generatedAt: new Date().toISOString(),
 });
 
 console.log(`Prepared ${selectionMode} manifest from ${selectedSource.baselineFullRunDir || 'no previous failure source'}`);
 if (copied.previousFailedOnlyRunId) console.log(`Narrowed from failed-only descendant: ${copied.previousFailedOnlyRunId} (${copied.previousFailedOnlySourceVersion}/${copied.previousFailedOnlyDeployedVersion})`);
 if (selectionPayload.noFailedOrTimedOutTestsRemain) console.log('No failed or timed-out Playwright tests remain.');
+if (selectionPayload.noFailedOrNewPlaywrightTestsRemain) console.log('No failed, timed-out, or new Playwright identities remain. Current-release targeted regressions already ran before this delta.');
 console.log(`Failed-only source run: ${copied.previousFailedOnlyRunId || copied.baselineFullRunId || 'none'}`);
 console.log(`Source reason: ${copied.selectionSource || selectedSource.selectionSource || 'latest compatible completed Playwright run'}`);
 console.log(`Baseline: ${copied.baselineSourceVersion || 'none'}/${copied.baselineDeployedVersion || 'none'}`);
