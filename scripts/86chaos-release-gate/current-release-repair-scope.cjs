@@ -1,7 +1,7 @@
 'use strict';
 
-const CURRENT_RELEASE_VERSION = '17.0.30';
-const CURRENT_RELEASE_CARRY_FORWARD_NOTE = '17.0.30 carries forward Spanish, Schedule Builder assignment, and browser-safe i18n coverage while adding deployed verification that System Administrator no longer exposes online or last-seen status.';
+const CURRENT_RELEASE_VERSION = '17.0.31';
+const CURRENT_RELEASE_CARRY_FORWARD_NOTE = '17.0.31 carries forward Schedule Builder assignment and browser-safe i18n coverage while refreshing the System Administrator shell, extending Spanish Phase 2 into that experience, and keeping the stale testing-target blocker guidance aligned with testing.86chaos.com.';
 const CURRENT_RELEASE_REPAIR_SCOPE = [
   {
     specPath: '86chaos-full-audit/10-presence-system-admin.spec.cjs',

@@ -67,7 +67,8 @@ test('17.0.30 gives only the testing PWA the installed name 86chaos testing', ()
   assert.equal(testing.short_name, '86chaos testing');
   assert.equal(testing.id, '/86-chaos-testing-pwa');
   assert.match(index, /window\.location\.hostname === 'testing\.86chaos\.com'/);
-  assert.match(index, /testingHost \? '\/manifest-testing\.json' : '\/manifest\.json'/);
+  assert.match(index, /id="app-manifest"[^>]+href="%PUBLIC_URL%\/manifest\.json"/);
+  assert.match(index, /manifest\.setAttribute\('href', '\/manifest-testing\.json'\)/);
   assert.match(index, /apple-mobile-web-app-title/);
   assert.match(index, /86chaos testing/);
 });

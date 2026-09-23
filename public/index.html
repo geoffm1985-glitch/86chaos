@@ -14,15 +14,14 @@
     <link rel="icon" type="image/png" sizes="48x48" href="%PUBLIC_URL%/86chaos-icon-48-v2.png" />
     <link rel="shortcut icon" href="%PUBLIC_URL%/favicon.ico" />
     <link rel="apple-touch-icon" sizes="180x180" href="%PUBLIC_URL%/86chaos-icon-180-v2.png" />
+    <link id="app-manifest" rel="manifest" href="%PUBLIC_URL%/manifest.json" />
     <title>86 Chaos</title>
     <script>
       (function () {
         var testingHost = window.location.hostname === 'testing.86chaos.com';
-        var manifest = document.createElement('link');
-        manifest.rel = 'manifest';
-        manifest.href = testingHost ? '/manifest-testing.json' : '/manifest.json';
-        document.head.appendChild(manifest);
         if (testingHost) {
+          var manifest = document.getElementById('app-manifest');
+          if (manifest) manifest.setAttribute('href', '/manifest-testing.json');
           var appleTitle = document.querySelector('meta[name="apple-mobile-web-app-title"]');
           if (appleTitle) appleTitle.setAttribute('content', '86chaos testing');
           document.title = '86chaos testing';

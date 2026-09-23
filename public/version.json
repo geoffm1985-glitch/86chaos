@@ -1,17 +1,16 @@
 {
-  "version": "17.0.30",
-  "name": "86 Chaos 17.0.30",
-  "build": "17.0.30",
-  "label": "86 Chaos 17.0.30",
+  "version": "17.0.31",
+  "name": "86 Chaos 17.0.31",
+  "build": "17.0.31",
+  "label": "86 Chaos 17.0.31",
   "releasedAt": "2026-09-23T21:30:00Z",
-  "releaseTitle": "Testing Domain Cutover and Presence Retirement",
+  "releaseTitle": "System Administrator Refresh and Spanish Phase 2",
   "notes": [
-    "Moves release-gate testing to the permanent testing.86chaos.com branch domain and explicitly locks that host to the testing Firebase project.",
-    "Retires the online-status and last-seen subsystem: no presence listeners, heartbeats, presence APIs, RTDB status rules, roster badges, System Administrator presence screens, or last-online displays remain.",
-    "Makes the installed PWA name 86chaos testing only on testing.86chaos.com while production keeps the 86 Chaos installed-app identity.",
-    "Retires the already-passed 17.0.25 delta clean-baseline regression from the current targeted test set while preserving the delta runner itself."
+    "Refreshes the System Administrator tab with a cleaner concept-1 shell that keeps existing tools but makes both desktop and mobile navigation easier to scan.",
+    "Extends Spanish Phase 2 into the refreshed System Administrator experience, including section labels, summaries, help copy, and snapshot/status messaging.",
+    "Clarifies stale testing-target release-gate guidance so blocked runs point directly at testing.86chaos.com or a fresh canonical 86chaos preview before rerunning delta."
   ],
-  "title": "86 Chaos 17.0.30",
-  "summary": "Permanent testing-domain cutover plus complete retirement of user online/last-seen tracking and display.",
-  "description": "Uses testing.86chaos.com as the canonical testing target, removes the presence/last-online subsystem end to end, and isolates the testing PWA install name from production."
+  "title": "86 Chaos 17.0.31",
+  "summary": "Concept-1 System Administrator UI refresh plus Phase 2 Spanish coverage and clearer testing-target blocker guidance.",
+  "description": "Keeps the same internal administrative tools while modernizing the System Administrator layout for desktop and mobile, expands Spanish coverage through that experience, and improves stale preview blocker messaging for the release gate."
 }

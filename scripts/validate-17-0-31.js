@@ -14,20 +14,21 @@ const pkg = json('package.json');
 const lock = json('package-lock.json');
 const version = json('public/version.json');
 
-assert.equal(pkg.version, '17.0.30');
+assert.equal(pkg.version, '17.0.31');
 assert.equal(lock.version, pkg.version);
 assert.equal(lock.packages[''].version, pkg.version);
 assert.equal(version.version, pkg.version);
 assert.equal(version.build, pkg.version);
-assert.equal(version.releaseTitle, 'Testing Domain Cutover and Presence Retirement');
-assert.equal(pkg.scripts['test:source'], 'node scripts/validate-17-0-30.js');
-assert.equal(pkg.scripts['validate:17.0.30'], 'node scripts/validate-17-0-30.js');
-assert(pkg.scripts['test:repair:17.0.30']?.includes('test:current-release-targeted'));
+assert.equal(version.releaseTitle, 'System Administrator Refresh and Spanish Phase 2');
+assert.equal(pkg.scripts['test:source'], 'node scripts/validate-17-0-31.js');
+assert.equal(pkg.scripts['validate:17.0.31'], 'node scripts/validate-17-0-31.js');
+assert(pkg.scripts['test:repair:17.0.31']?.includes('test:current-release-targeted'));
+assert(pkg.scripts['test:current-release-targeted']?.includes('api/system-admin-refresh-spanish-phase2-17-0-31.test.cjs'));
 assert(pkg.scripts['test:current-release-targeted']?.includes('api/presence-retirement-testing-domain-17-0-30.test.cjs'));
 assert(!pkg.scripts['test:current-release-targeted']?.includes('release-gate-delta-clean-baseline-17-0-25'));
 assert.equal(pkg.scripts['test:delta-clean-baseline'], undefined);
 assert(pkg.scripts['test:play-store:delta']?.startsWith('npm run test:current-release-targeted &&'));
-assert(pkg.scripts['test:release:fast']?.includes('validate:17.0.30'));
+assert(pkg.scripts['test:release:fast']?.includes('validate:17.0.31'));
 assert.equal(exists('api/release-gate-delta-clean-baseline-17-0-25.test.cjs'), false);
 
 const appCore = read('src/core/appCore.js');
@@ -54,11 +55,19 @@ assert(fullRunner.includes('$env:CHAOS_BASE_URL = $CanonicalTestingUrl'));
 assert(targets.includes("const TESTING_HOST = 'testing.86chaos.com'"));
 assert(mutationSafety.includes("const CANONICAL_TESTING_HOST = 'testing.86chaos.com'"));
 assert(mutationSafety.includes("clean !== CANONICAL_TESTING_HOST"), 'only canonical testing domain is carved out from the 86chaos.com production-domain guard');
-assert(scope.includes("const CURRENT_RELEASE_VERSION = '17.0.30'"));
+assert(scope.includes("const CURRENT_RELEASE_VERSION = '17.0.31'"));
 assert(scope.includes('10-presence-system-admin.spec.cjs'));
 assert(scope.includes('08-phase1-spanish-interface.spec.cjs'));
 assert(scope.includes('09-schedule-builder-shift-assignment.spec.cjs'));
 assert(scope.includes('10-app-bootstrap-i18n-runtime.spec.cjs'));
+assert(legacyGodMode.includes('system-admin-concept1-shell'));
+assert(legacyGodMode.includes("t('admin.title'"));
+assert(legacyGodMode.includes('data-testid="system-admin-hero"'));
+assert(legacyGodMode.includes('data-testid="system-admin-nav-card"'));
+assert(targets.includes('Testing target is stale.'));
+assert(targets.includes('testing.86chaos.com'));
+assert(read('src/core/i18n.js').includes("'admin.title': 'Administrador del sistema'"));
+assert(read('src/core/i18n.cjs').includes("'admin.section.metrics': 'Métricas'"));
 
 for (const file of ['api/_presence-diagnostics.cjs','api/presence-heartbeat.js','api/presence-snapshot.js','api/presence-workspace-summary.js']) {
   assert.equal(exists(file), false, `${file} is retired`);
@@ -87,7 +96,7 @@ assert(indexHtml.includes("manifest.setAttribute('href', '/manifest-testing.json
 
 // Preserve the immediately preceding repairs.
 assert(read('tests/86chaos-new-implementations/08-phase1-spanish-interface.spec.cjs').includes("locator('button.settings-tab-button').filter({ hasText: /^Preferencias$/i })"));
-assert(read('tests/86chaos-new-implementations/10-app-bootstrap-i18n-runtime.spec.cjs').includes('Version 17\\.0\\.30'));
+assert(read('tests/86chaos-new-implementations/10-app-bootstrap-i18n-runtime.spec.cjs').includes('Version 17\\.0\\.31'));
 assert(read('src/features/schedule.jsx').includes("secureFetch('/api/schedule-shift-assign'"));
 assert(read('api/schedule-shift-delete.js').includes("action === 'clear-month'"));
 assert(!/permissions\?\.(?:schedule|team|settings)/.test(read('src/core/timeOffPolicy.js')));
@@ -95,7 +104,7 @@ assert(!/permissions\?\.(?:schedule|team|settings)/.test(read('src/core/timeOffP
 for (const file of [
   'src/core/appCore.js','api/_version.js','api/_pos-bridge-config.js',
   'src/core/customerHelpKnowledge.js','src/core/customerHelpKnowledge.cjs','src/core/schedulePdf.js',
-]) assert(read(file).includes('17.0.30'), `${file} carries current version 17.0.30`);
+]) assert(read(file).includes('17.0.31'), `${file} carries current version 17.0.31`);
 for (const file of [
   'test-tools/certification/groups.json','test-tools/regressions/registry.json','test-tools/certification/cost-performance-baselines.json',
 ]) assert.equal(json(file).release, pkg.version, `${file} release identity matches package version`);
@@ -112,4 +121,4 @@ if (fs.existsSync(manifestPath)) {
   assert.equal(buildIdentity.sourceHash, identity.sourceHash, 'build identity source hash matches manifest');
 }
 
-console.log('17.0.30 Testing Domain Cutover and Presence Retirement validation passed; this does not certify the release.');
+console.log('17.0.31 System Administrator Refresh and Spanish Phase 2 validation passed; this does not certify the release.');

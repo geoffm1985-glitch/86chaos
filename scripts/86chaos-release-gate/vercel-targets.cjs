@@ -134,7 +134,7 @@ function validateReleaseTarget(options = {}) {
   if (host && host.endsWith('.vercel.app') && !canonical) errors.push(`APP_URL host ${host} is not in the canonical Vercel project family ${expectedSlug}.`);
   if (host && !host.endsWith('.vercel.app') && !canonicalTestingHost && !production && !allowLocal) errors.push(`APP_URL host ${host} is not the canonical testing domain or a Vercel testing preview. Use ${TESTING_HOST} or a non-production preview from canonical project ${expectedSlug}.`);
   if (expectedVersion && sourceVersion && sourceVersion !== expectedVersion) errors.push(`Source version ${sourceVersion} does not match CHAOS_EXPECTED_VERSION ${expectedVersion}.`);
-  if (expectedVersion && deployedVersion && deployedVersion !== expectedVersion) errors.push(`Testing preview is stale. Source/expected=${sourceVersion || expectedVersion}, deployed=${deployedVersion}. Deploy the current commit to canonical Vercel project ${expectedSlug}, then update APP_URL to that preview.`);
+  if (expectedVersion && deployedVersion && deployedVersion !== expectedVersion) errors.push(`Testing target is stale. Source/expected=${sourceVersion || expectedVersion}, deployed=${deployedVersion}. Deploy the current commit to canonical Vercel project ${expectedSlug} until ${TESTING_HOST} (or your chosen fresh canonical preview) reports ${expectedVersion}, then rerun the release gate.`);
   return {
     ok: errors.length === 0,
     errors,
