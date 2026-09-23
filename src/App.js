@@ -16,6 +16,7 @@ import { FEATURE_KEYS } from './config/plans';
 import { LoginScreen } from './features/auth';
 import * as runtimeReportStateModule from './core/runtimeReportState.cjs';
 import { initChaosPostHog, identifyChaosPostHogUser, resetChaosPostHogIdentity, trackChaosPageView, trackChaosPostHogEvent, trackChaosRuntimeError } from './core/posthogClient';
+import { I18nProvider, LANGUAGE_STORAGE_KEY, normalizeAppLanguage } from './core/i18n';
 
 const resolveCommonJsModule = (moduleValue) => {
   const candidate = moduleValue?.default && typeof moduleValue.default === 'object' ? moduleValue.default : moduleValue;
@@ -1569,6 +1570,19 @@ if (liveAppUser && clientData) {
      };
   }
   setActiveTimeFormat(liveAppUser?.preferences?.timeFormat || '12h');
+  const appLanguage = normalizeAppLanguage(
+    liveAppUser?.preferences?.language ||
+    appUser?.preferences?.language ||
+    (typeof window !== 'undefined' ? window.localStorage?.getItem(LANGUAGE_STORAGE_KEY) : '') ||
+    'en'
+  );
+  useEffect(() => {
+    try { window.localStorage?.setItem(LANGUAGE_STORAGE_KEY, appLanguage); } catch (_) {}
+    if (typeof document !== 'undefined') {
+      document.documentElement.lang = appLanguage === 'es' ? 'es' : 'en';
+      document.documentElement.dataset.chaosLanguage = appLanguage;
+    }
+  }, [appLanguage]);
   const canSeeRestaurantAdminAlerts = Boolean(liveAppUser && !liveAppUser.isDemo && (
     liveAppUser.isSuperAdmin || liveAppUser.isOwner || liveAppUser.owner || liveAppUser.accountOwner ||
     liveAppUser.workspaceOwner || liveAppUser.isAdmin || liveAppUser.permissions?.settings || liveAppUser.permissions?.team
@@ -3233,7 +3247,7 @@ What I clicked / expected:
     );
   }
 
-  if (!liveAppUser) return <div className="non-admin-controls-compact"><LoginScreen users={displayUsers} setAppUser={setAppUser} addToast={addToast} /></div>;
+  if (!liveAppUser) return <I18nProvider language={appLanguage}><div className="non-admin-controls-compact"><LoginScreen users={displayUsers} setAppUser={setAppUser} addToast={addToast} /></div></I18nProvider>;
 
   const scheduleToolsDataState = {
     workspaceId: rId,
@@ -3394,6 +3408,7 @@ What I clicked / expected:
   const appThemeStyle = { '--chaos-accent': appAccentColor };
 
 return (
+    <I18nProvider language={appLanguage}>
     <div data-active-tab={activeTabState} style={appThemeStyle} onClickCapture={blockDemoMutation} onSubmitCapture={blockDemoMutation} className={`desktop-pro-shell ui-v13-polished ui-v12-compact cockpit-shell ${activeTabState === 'godmode' ? '' : 'non-admin-controls-compact'} kitchen-simple-shell ui-density-${liveAppUser?.preferences?.uiDensity || displayClientData?.systemSettings?.uiDensity || 'compact'} recipe-density-${liveAppUser?.preferences?.recipeDensity || displayClientData?.systemSettings?.recipeCardDensity || 'tight'} motion-${liveAppUser?.preferences?.motionMode || displayClientData?.systemSettings?.cockpitLights || 'normal'} min-h-screen font-sans flex flex-col w-full max-w-[100vw] ${T.bg}`}>
       
       {/* GHOST / DEMO MODE BANNER */}
@@ -3704,5 +3719,6 @@ return (
         <span className="text-slate-600 font-bold text-[8px] tracking-widest uppercase mt-1">© 2026 Chilton App Works LLC</span>
       </div>
     </div>
+    </I18nProvider>
   );
 }

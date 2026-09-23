@@ -1,17 +1,17 @@
 {
-  "version": "17.0.25",
-  "name": "86 Chaos 17.0.25",
-  "build": "17.0.25",
-  "label": "86 Chaos 17.0.25",
-  "releasedAt": "2026-09-23T00:30:00.000Z",
-  "releaseTitle": "Schedule Builder Delete Reliability and Delta Baseline Repair",
+  "version": "17.0.27",
+  "name": "86 Chaos 17.0.27",
+  "build": "17.0.27",
+  "label": "86 Chaos 17.0.27",
+  "releasedAt": "2026-09-23T15:15:00.000Z",
+  "releaseTitle": "Emergency Schedule Assignment Reliability Repair",
   "notes": [
-    "Repairs Schedule Builder Clear Month so it deletes every shift in the displayed month across canonical and legacy tenant identity fields through an authenticated server boundary.",
-    "Repairs individual shift deletion so one shift chip can be deleted reliably, including hidden duplicate records for the same employee/date/time.",
-    "Repairs failed+new delta selection so a completed full gate with zero failures is a valid baseline and version identity can be recovered from surviving full-run evidence.",
-    "The delta command now runs the current release targeted regressions before its scoped Playwright selection. Request Off cutoff/blackout behavior and unrelated application features are unchanged."
+    "Moves Schedule Builder shift assignment from a fragile direct browser Firestore write to an authenticated, tenant-bound server assignment operation while preserving existing Schedule Builder authority.",
+    "Makes one assignment request atomic across the selected dates, idempotent for accidental request replay, and returns the exact created shift identities so the builder updates immediately.",
+    "Clears stale local deletion tombstones when a shift is re-added after Clear Month or single-shift deletion, preventing a valid new assignment from being hidden by prior delete UI state.",
+    "Adds visible Assignment Failed feedback plus new Node and deployed Playwright release-gate coverage for assigning and cleaning up a QA shift. Phase 1 Spanish and the repaired delta workflow are preserved."
   ],
-  "title": "86 Chaos 17.0.25",
-  "summary": "Repairs Schedule Builder shift deletion and restores useful failed+new delta testing from a clean full baseline.",
-  "description": "Moves Schedule Builder destructive shift deletion behind an authenticated tenant-safe server operation and repairs delta baseline handling for clean full release-gate runs."
+  "title": "86 Chaos 17.0.27",
+  "summary": "Emergency repair for reliable Schedule Builder shift assignment without backing out Phase 1 Spanish or delta-gate fixes.",
+  "description": "Routes Schedule Builder assignments through an authenticated server boundary, prevents stale delete state from hiding re-added shifts, and adds release-gate regression coverage."
 }

@@ -22,6 +22,7 @@ import { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, MapClickListener, Sma
 import { usePlanAccess } from '../hooks/usePlanAccess';
 import { FEATURE_KEYS } from '../config/plans';
 import { canViewRestaurantOpsIntelligence } from '../lib/featureAccess';
+import { useI18n } from '../core/i18n';
 
 const { FOOD_SAFETY_CATEGORIES, evaluateFoodSafety, missedFoodSafetyChecks } = foodSafetyHelpers;
 
@@ -62,6 +63,7 @@ const PREP_TASK_TEMPLATE_PACKS = {
 };
 
 const TabPrep = ({ currentDate, appUser, addToast, setLabelsToPrint }) => {
+  const { t } = useI18n();
   const prepItems = useLiveCollection('prepItems', appUser?.restaurantId, { limitCount: 250 });
   const tasks = useLiveCollection('tasks', appUser?.restaurantId, { limitCount: 350 });
   const [subTab, setSubTab] = useState('prep');
@@ -355,31 +357,31 @@ const TabPrep = ({ currentDate, appUser, addToast, setLabelsToPrint }) => {
     <div className="max-w-4xl mx-auto space-y-4 pb-40">
       
       {/* EDIT LINE CHECK MODAL */}
-      <Modal isOpen={!!editLineCheckItem} onClose={() => setEditLineCheckItem(null)} title="Edit Line Check">
+      <Modal isOpen={!!editLineCheckItem} onClose={() => setEditLineCheckItem(null)} title={t('prep.editLineCheck')}>
         {editLineCheckItem && (
           <form onSubmit={handleSaveLineCheckEdit} className="space-y-4">
             <div>
-              <label className={T.label}>Item / Cooler Name</label>
+              <label className={T.label}>{t('prep.itemCoolerName')}</label>
               <input type="text" value={editLineCheckItem.name} onChange={e=>setEditLineCheckItem({...editLineCheckItem, name: e.target.value})} className={T.input} required />
             </div>
             <div>
-              <label className={T.label}>Food-safety expectation</label>
+              <label className={T.label}>{t('prep.foodSafetyExpectation')}</label>
               <select value={editLineCheckItem.category} onChange={e=>setEditLineCheckItem({...editLineCheckItem, category: e.target.value})} className={T.input}>
                 {Object.keys(USDA_CATEGORIES).map(c=><option key={c} value={c}>{c}</option>)}
               </select>
             </div>
             {['location', 'requiredMin', 'requiredMax', 'requiredEveryHours'].map(field => <label key={field} className={T.label}>{({ location: 'Location', requiredMin: 'Minimum °F (optional)', requiredMax: 'Maximum °F (optional)', requiredEveryHours: 'Required every N hours (optional)' })[field]}<input className={T.input} value={editLineCheckItem[field] ?? ''} onChange={e => setEditLineCheckItem({ ...editLineCheckItem, [field]: e.target.value })}/></label>)}
-            <button type="submit" className={`w-full ${T.btn}`}>Save Changes</button>
+            <button type="submit" className={`w-full ${T.btn}`}>{t('prep.saveChanges')}</button>
           </form>
         )}
       </Modal>
 
       <div className="flex flex-wrap gap-2 border-b border-[#2A353D] mb-4 pb-2">
         {['prep', 'line-check', 'daily', 'weekly', 'monthly'].map((tab) => {
-          const label = tab === 'prep' ? 'Food Prep' : tab === 'line-check' ? 'Line Check' : `${tab} Tasks`;
+          const label = tab === 'prep' ? t('prep.foodPrep') : tab === 'line-check' ? t('prep.lineCheck') : tab === 'daily' ? t('prep.dailyTasks') : tab === 'weekly' ? t('prep.weeklyTasks') : t('prep.monthlyTasks');
           const stateLabel = tab === 'prep' ? 'prep' : tab === 'line-check' ? 'line check' : tab;
           return (
-          <button key={tab} type="button" aria-label={stateLabel} title={label} onClick={() => { setSubTab(tab); if(tab !== 'prep' && tab !== 'line-check') setTaskFreq(tab); }} className={`px-3 sm:px-5 py-2.5 text-[10px] sm:text-xs font-black rounded-xl uppercase tracking-widest transition-all flex-1 sm:flex-none ${subTab === tab ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>
+          <button key={tab} type="button" aria-label={label} title={label} onClick={() => { setSubTab(tab); if(tab !== 'prep' && tab !== 'line-check') setTaskFreq(tab); }} className={`px-3 sm:px-5 py-2.5 text-[10px] sm:text-xs font-black rounded-xl uppercase tracking-widest transition-all flex-1 sm:flex-none ${subTab === tab ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>
             {label}
           </button>
         );})}
@@ -463,11 +465,11 @@ const TabPrep = ({ currentDate, appUser, addToast, setLabelsToPrint }) => {
         <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
           <LabelPrintSetup/>
           <div className={`${T.card} p-3 flex justify-between items-center bg-[#1A2126]`}>
-            <h3 className={`font-black flex items-center gap-2 text-sm text-white uppercase tracking-wider`}><ClipboardList size={18} className={T.copper}/> Target Date:</h3>
+            <h3 className={`font-black flex items-center gap-2 text-sm text-white uppercase tracking-wider`}><ClipboardList size={18} className={T.copper}/> {t('prep.targetDate')}</h3>
             <input type="date" value={prepDate} onChange={e=>setPrepDate(e.target.value)} className="p-1.5 bg-[#12161A] border border-[#2A353D] rounded-lg outline-none text-sm font-bold text-[#D4A381] shadow-inner"/>
           </div>
           <form onSubmit={handleAddPrep} className={`${T.card} p-3 flex flex-col sm:flex-row gap-3 items-center bg-[#1A2126]`}>
-            <input type="text" value={text} onChange={e=>setText(e.target.value)} className="flex-1 w-full p-2 bg-[#12161A] border border-[#2A353D] rounded-xl text-sm outline-none font-medium text-white placeholder-slate-500" placeholder="Add prep item..." required/>
+            <input type="text" value={text} onChange={e=>setText(e.target.value)} className="flex-1 w-full p-2 bg-[#12161A] border border-[#2A353D] rounded-xl text-sm outline-none font-medium text-white placeholder-slate-500" placeholder={t('prep.addItemPlaceholder')} required/>
             <div className="flex w-full sm:w-auto gap-3 items-center">
               <select value={station} onChange={e=>setStation(e.target.value)} className="w-full sm:w-32 p-2 text-xs font-bold bg-[#12161A] border border-[#2A353D] rounded-xl outline-none text-white">{displayStations.map(s => <option key={s} value={s}>{s}</option>)}</select> 
               <label className={`flex items-center gap-2 text-[10px] uppercase tracking-widest font-bold ${T.muted} cursor-pointer`}><input type="checkbox" checked={isMaster} onChange={e=>setIsMaster(e.target.checked)} className="w-4 h-4 accent-[#8F6040] bg-[#12161A] border-[#2A353D] rounded"/> Master</label>
@@ -489,7 +491,7 @@ const TabPrep = ({ currentDate, appUser, addToast, setLabelsToPrint }) => {
                     return (
                     <div key={i.id} className={`${T.row} ${isSelected ? 'bg-[#12161A]' : ''} flex items-center gap-2`}>
                       <input type="checkbox" checked={isSelected} onChange={() => toggleSelection(i.id)} className="w-5 h-5 rounded accent-[#8F6040] bg-[#12161A] border-[#2A353D] flex-shrink-0 cursor-pointer" />
-                      <div className="flex-1 min-w-0"><span className={`text-sm font-bold ${isDone?'line-through text-slate-500':'text-white'}`}>{i.text}</span> {doneBy && <span className={`text-[9px] font-black text-emerald-500 bg-emerald-900/20 border border-emerald-900/50 px-1.5 py-0.5 rounded ml-2`}>✓ {doneBy}</span>} {i.isMaster&&<span className="block text-[9px] font-black text-slate-500 uppercase mt-0.5">Master Task</span>}</div>
+                      <div className="flex-1 min-w-0"><span className={`text-sm font-bold ${isDone?'line-through text-slate-500':'text-white'}`}>{i.text}</span> {doneBy && <span className={`text-[9px] font-black text-emerald-500 bg-emerald-900/20 border border-emerald-900/50 px-1.5 py-0.5 rounded ml-2`}>✓ {doneBy}</span>} {i.isMaster&&<span className="block text-[9px] font-black text-slate-500 uppercase mt-0.5">{t('prep.masterTask')}</span>}</div>
                       {i.quantityChangedAfterCompletion && <span className="text-[9px] font-black text-amber-300 bg-amber-900/20 border border-amber-900/50 px-1.5 py-0.5 rounded">QTY CHANGED</span>}
                       <div className="flex items-center gap-1.5 flex-shrink-0">
                         <div className={`flex items-center bg-[#12161A] rounded-lg border ${T.border} h-8`}><button onClick={async ()=> await safePrepWrite({ action: "update", collectionName: "prepItems", docId: i.id, label: "Prep quantity", before: i, data: { qty: Math.max(0, qty - 1), unit: i.unit || 'item', lastQuantityChangeAt: new Date().toISOString(), lastQuantityChangeBy: appUser.name, quantityChangedAfterCompletion: isDone } })} className="w-6 h-full font-bold text-white hover:bg-[#1A2126]">-</button><span className="min-w-10 px-1 text-center text-xs font-bold text-[#D4A381]">{formatPrepAmount(qty, i.unit)}</span><button onClick={async ()=> await safePrepWrite({ action: "update", collectionName: "prepItems", docId: i.id, label: "Prep quantity", before: i, data: { qty: qty + 1, unit: i.unit || 'item', lastQuantityChangeAt: new Date().toISOString(), lastQuantityChangeBy: appUser.name, quantityChangedAfterCompletion: isDone } })} className="w-6 h-full font-bold text-white hover:bg-[#1A2126]">+</button></div>
@@ -515,7 +517,7 @@ const TabPrep = ({ currentDate, appUser, addToast, setLabelsToPrint }) => {
                     labelQuantity: formatPrepAmount(item.qty ?? 1, item.unit || 'item')
                   }));
                   setLabelsToPrint({items: labels, prepDate});
-              }} disabled={selectedActivePrep.length===0} className={`flex-1 ${T.btn} disabled:opacity-50 flex items-center justify-center gap-2`}><ClipboardList size={18}/> Print {selectedActivePrep.length || ''} {selectedActivePrep.length === 1 ? 'Label' : 'Labels'}</button>
+              }} disabled={selectedActivePrep.length===0} className={`flex-1 ${T.btn} disabled:opacity-50 flex items-center justify-center gap-2`}><ClipboardList size={18}/> {selectedActivePrep.length === 1 ? t('prep.printLabel', { count: selectedActivePrep.length || '' }) : t('prep.printLabels', { count: selectedActivePrep.length || '' })}</button>
               <p className="absolute left-4 right-4 -top-5 text-center text-[10px] font-bold text-slate-500">* Intended for use with Brother QL-810W label printer.</p>
               
               <button onClick={async () => { 
@@ -529,7 +531,7 @@ const TabPrep = ({ currentDate, appUser, addToast, setLabelsToPrint }) => {
                       }
                   } 
                   setSelectedPreps([]);
-              }} disabled={selectedActivePrep.length===0} className={`flex-1 ${T.btn} disabled:opacity-50 flex items-center justify-center gap-2`}><Check size={18}/> Mark Done</button>
+              }} disabled={selectedActivePrep.length===0} className={`flex-1 ${T.btn} disabled:opacity-50 flex items-center justify-center gap-2`}><Check size={18}/> {t('prep.markDone')}</button>
             </div>
           </div>
   
@@ -1833,7 +1835,7 @@ const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = 
         <div className={`${T.card} command-card p-4 lg:col-span-2`}>
           <div className="flex items-center justify-between border-b border-[#2A353D] pb-3 mb-3">
             <h2 className="font-black text-white flex items-center gap-2"><ChefHat size={18} className={T.copper}/> Today’s Priorities</h2>
-            <span className="text-[9px] font-black uppercase tracking-widest text-slate-500">{formatDisplayFullDate(today)}</span>
+            <span className="text-[9px] font-black uppercase tracking-widest text-slate-500">{formatFullDate(today)}</span>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {recommendations.map((rec, idx) => (
@@ -2113,6 +2115,7 @@ const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = 
 };
 
 const TabToday = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequests, events, sales, timePunches, inventoryItems, maintenanceLogs, prepItems, tasks, recipes, menuDependencies = [], restaurantAdminAlerts = [], clientData, setActiveTab, addToast, registerUndo }) => {
+  const { t, formatFullDate } = useI18n();
   const todayPlanAccess = usePlanAccess(appUser, clientData);
   const canUseManagerBrief = todayPlanAccess.canUse(FEATURE_KEYS.MANAGER_BRIEF).allowed;
   const canUseBasicInventory = todayPlanAccess.canUse(FEATURE_KEYS.BASIC_INVENTORY).allowed || todayPlanAccess.canUse(FEATURE_KEYS.BURN_LOG).allowed;
@@ -2397,9 +2400,9 @@ const TabToday = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequ
     addToast('Notification Preset Applied', 'Your alerts now match your role.');
   };
 
-  const heroTitle = canUseManagerBrief ? (profile === 'manager' || profile === 'system' ? 'Manager Brief' : profile === 'kitchen' ? 'Kitchen Brief' : profile === 'bar' ? 'Bar Brief' : profile === 'service' ? 'Service Brief' : 'Today Brief') : 'Today Home';
-  const topPriority = attentionProblems[0]?.detail || (myShift ? `You work ${formatShortTime(myShift.startTime)}-${formatShortTime(myShift.endTime)} as ${myShift.role}.` : 'Nothing urgent needs your attention right now.');
-  const managerBriefMathText = `${todaysShifts.length} On Schedule ${activePunches.length} Clocked In ${attentionProblems.length} Need Review`;
+  const heroTitle = canUseManagerBrief ? (profile === 'manager' || profile === 'system' ? t('today.managerBrief') : profile === 'kitchen' ? t('today.kitchenBrief') : profile === 'bar' ? t('today.barBrief') : profile === 'service' ? t('today.serviceBrief') : t('today.todayBrief')) : t('today.todayHome');
+  const topPriority = attentionProblems[0]?.detail || (myShift ? `You work ${formatShortTime(myShift.startTime)}-${formatShortTime(myShift.endTime)} as ${myShift.role}.` : t('today.nothingUrgent'));
+  const managerBriefMathText = `${todaysShifts.length} ${t('today.onSchedule')} ${activePunches.length} ${t('today.clockedIn')} ${attentionProblems.length} ${t('today.needReview')}`;
 
   return <div className="manager-brief-compact desktop-ops-page max-w-7xl mx-auto space-y-3 pb-24 animate-[slideIn_0.2s_ease-out]">
     <Modal isOpen={!!attentionExplain} onClose={() => setAttentionExplain(null)} title={attentionExplain?.title || 'Why this matters'}>
@@ -2414,24 +2417,24 @@ const TabToday = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequ
       <div className="absolute -right-8 -top-8 text-[9rem] font-black text-white/5 leading-none">86</div>
       <div className="relative z-10 flex flex-col sm:flex-row sm:items-start justify-between gap-3">
         <div>
-          <div className="text-[10px] font-black uppercase tracking-widest text-[#D4A381]">{formatDisplayFullDate(today)}</div>
+          <div className="text-[10px] font-black uppercase tracking-widest text-[#D4A381]">{formatFullDate(today)}</div>
           <h1 className="text-2xl sm:text-3xl font-black text-white mt-1">{heroTitle}</h1>
           <p className="text-sm text-slate-300 font-bold mt-2 max-w-2xl leading-snug">{topPriority}</p>
           <p className="text-[10px] text-slate-500 font-black uppercase tracking-widest mt-2" data-testid="manager-brief-math-summary">{managerBriefMathText}</p>
         </div>
         <div className="grid grid-cols-3 gap-2 min-w-[230px]">
-          <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-2 text-center"><div className="text-lg font-black text-white">{todaysShifts.length}</div><div className="text-[8px] uppercase tracking-widest font-black text-slate-500">On Schedule</div></div>
-          <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-2 text-center"><div className="text-lg font-black text-emerald-400">{activePunches.length}</div><div className="text-[8px] uppercase tracking-widest font-black text-slate-500">Clocked In</div></div>
-          <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-2 text-center"><div className="text-lg font-black text-red-300">{attentionProblems.length}</div><div className="text-[8px] uppercase tracking-widest font-black text-slate-500">Need Review</div></div>
+          <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-2 text-center"><div className="text-lg font-black text-white">{todaysShifts.length}</div><div className="text-[8px] uppercase tracking-widest font-black text-slate-500">{t('today.onSchedule')}</div></div>
+          <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-2 text-center"><div className="text-lg font-black text-emerald-400">{activePunches.length}</div><div className="text-[8px] uppercase tracking-widest font-black text-slate-500">{t('today.clockedIn')}</div></div>
+          <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-2 text-center"><div className="text-lg font-black text-red-300">{attentionProblems.length}</div><div className="text-[8px] uppercase tracking-widest font-black text-slate-500">{t('today.needReview')}</div></div>
         </div>
       </div>
     </div>
 
     <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-      <button onClick={open86Center} className="brief-quick-action bg-red-900/20 border border-red-500/40 text-red-300 rounded-xl p-3 font-black text-xs uppercase tracking-widest">Open 86 Alerts</button>
-      <button onClick={openPrepPlan} className="brief-quick-action bg-[#1A2126] border border-[#2A353D] text-[#D4A381] rounded-xl p-3 font-black text-xs uppercase tracking-widest">Open Prep</button>
-      <button onClick={openMessageBoard} className="brief-quick-action bg-[#1A2126] border border-[#2A353D] text-slate-200 rounded-xl p-3 font-black text-xs uppercase tracking-widest">Open Messages</button>
-      {canUseCleaningRoutines && <button onClick={openMaintenanceCenter} className="brief-quick-action bg-amber-900/20 border border-amber-500/40 text-amber-300 rounded-xl p-3 font-black text-xs uppercase tracking-widest">Open Fix It</button>}
+      <button onClick={open86Center} className="brief-quick-action bg-red-900/20 border border-red-500/40 text-red-300 rounded-xl p-3 font-black text-xs uppercase tracking-widest">{t('today.open86Alerts')}</button>
+      <button onClick={openPrepPlan} className="brief-quick-action bg-[#1A2126] border border-[#2A353D] text-[#D4A381] rounded-xl p-3 font-black text-xs uppercase tracking-widest">{t('today.openPrep')}</button>
+      <button onClick={openMessageBoard} className="brief-quick-action bg-[#1A2126] border border-[#2A353D] text-slate-200 rounded-xl p-3 font-black text-xs uppercase tracking-widest">{t('today.openMessages')}</button>
+      {canUseCleaningRoutines && <button onClick={openMaintenanceCenter} className="brief-quick-action bg-amber-900/20 border border-amber-500/40 text-amber-300 rounded-xl p-3 font-black text-xs uppercase tracking-widest">{t('today.openFixIt')}</button>}
     </div>
 
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
@@ -2459,9 +2462,9 @@ const TabToday = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequ
         </div>}
 
         <div className={`${T.card} brief-card p-4`}>
-          <button className="w-full flex justify-between items-center" onClick={() => setExpanded(e => ({...e, problems: !e.problems}))}><h2 className="font-black text-white text-lg">Need Attention</h2><ChevronRight className={`transition-transform ${expanded.problems ? 'rotate-90' : ''}`} size={18}/></button>
+          <button className="w-full flex justify-between items-center" onClick={() => setExpanded(e => ({...e, problems: !e.problems}))}><h2 className="font-black text-white text-lg">{t('today.needAttention')}</h2><ChevronRight className={`transition-transform ${expanded.problems ? 'rotate-90' : ''}`} size={18}/></button>
           {expanded.problems && <div className="grid sm:grid-cols-2 gap-2 mt-3">
-            {attentionProblems.length ? attentionProblems.map((p, idx) => <div key={`${p.title}-${idx}`} className="relative"><MiniProblemCard {...p} action="Open" onClick={() => p.onClick ? p.onClick() : setActiveTab(p.tab)} /><button type="button" onClick={() => setAttentionExplain(buildNeedAttentionExplanation(p))} className="mt-1 text-[10px] font-black uppercase tracking-widest text-[#D4A381] hover:text-white">Explain</button></div>) : <SmartEmptyState icon={<Check size={24}/>} title="Nothing urgent right now" desc="Everything looks clear right now." />}
+            {attentionProblems.length ? attentionProblems.map((p, idx) => <div key={`${p.title}-${idx}`} className="relative"><MiniProblemCard {...p} action="Open" onClick={() => p.onClick ? p.onClick() : setActiveTab(p.tab)} /><button type="button" onClick={() => setAttentionExplain(buildNeedAttentionExplanation(p))} className="mt-1 text-[10px] font-black uppercase tracking-widest text-[#D4A381] hover:text-white">Explain</button></div>) : <SmartEmptyState icon={<Check size={24}/>} title={t('today.nothingUrgent')} desc={t('today.everythingClear')} />}
           </div>}
         </div>
 
@@ -2509,23 +2512,23 @@ const TabToday = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequ
         </div>
 
         <div className={`${T.card} brief-card p-4`}>
-          <div className="flex justify-between items-center gap-2"><h2 className="font-black text-white text-lg">Important Messages</h2><button onClick={() => setActiveTab('messages')} className="text-[10px] font-black uppercase tracking-widest text-[#D4A381]">Open Board</button></div>
-          <div className="mt-3 space-y-2">{importantNotes.length ? importantNotes.map(n => <div key={n.id} className="bg-red-950/10 border border-red-500/30 rounded-xl p-3"><div className="text-[9px] font-black uppercase tracking-widest text-red-300">{n.messageCategory || 'Important'} • {n.author}</div><div className="text-sm text-white font-bold mt-1 line-clamp-2">{n.title}</div>{(n.notes || n.menuImpact) && <div className="text-[11px] text-slate-300 font-bold mt-1 whitespace-pre-wrap line-clamp-3">{n.notes || n.menuImpact}</div>}</div>) : <SmartEmptyState icon={<MessageSquare size={22}/>} title="No important posts" desc="When a manager marks something important, it lands here first." />}</div>
+          <div className="flex justify-between items-center gap-2"><h2 className="font-black text-white text-lg">{t('today.importantMessages')}</h2><button onClick={() => setActiveTab('messages')} className="text-[10px] font-black uppercase tracking-widest text-[#D4A381]">{t('today.openBoard')}</button></div>
+          <div className="mt-3 space-y-2">{importantNotes.length ? importantNotes.map(n => <div key={n.id} className="bg-red-950/10 border border-red-500/30 rounded-xl p-3"><div className="text-[9px] font-black uppercase tracking-widest text-red-300">{n.messageCategory || 'Important'} • {n.author}</div><div className="text-sm text-white font-bold mt-1 line-clamp-2">{n.title}</div>{(n.notes || n.menuImpact) && <div className="text-[11px] text-slate-300 font-bold mt-1 whitespace-pre-wrap line-clamp-3">{n.notes || n.menuImpact}</div>}</div>) : <SmartEmptyState icon={<MessageSquare size={22}/>} title={t('today.noImportantPosts')} desc={t('today.noImportantPostsDesc')} />}</div>
         </div>
       </div>
 
       <div className="space-y-3">
         <div className={`${T.card} brief-card p-4`}>
-          <button className="w-full flex justify-between items-center" onClick={() => setExpanded(e => ({...e, setup: !e.setup}))}><h2 className="font-black text-white text-lg">Setup Checklist</h2><span className="text-[10px] font-black text-[#D4A381]">{setupDone}/{setupTotal}</span></button>
+          <button className="w-full flex justify-between items-center" onClick={() => setExpanded(e => ({...e, setup: !e.setup}))}><h2 className="font-black text-white text-lg">{t('today.setupChecklist')}</h2><span className="text-[10px] font-black text-[#D4A381]">{setupDone}/{setupTotal}</span></button>
           {expanded.setup && <div className="mt-3 space-y-2">{setupItems.map(item => <button key={item.label} onClick={() => setActiveTab(item.tab)} className="w-full flex items-center justify-between gap-2 bg-[#0B0E11] border border-[#2A353D] rounded-xl px-3 py-2 text-left"><span className="text-xs font-bold text-slate-200">{item.label}</span><span className={`text-[9px] font-black uppercase tracking-widest ${item.done ? 'text-emerald-400' : 'text-amber-400'}`}>{item.done ? 'Done' : 'Open'}</span></button>)}<button onClick={seedDemoData} className="w-full mt-2 bg-[#D4A381] text-slate-900 rounded-xl px-3 py-2 text-[10px] font-black uppercase tracking-widest">Load Demo Data</button></div>}
         </div>
         <div className={`${T.card} brief-card p-4`}>
-          <h2 className="font-black text-white text-lg mb-3">Recently Used</h2>
+          <h2 className="font-black text-white text-lg mb-3">{t('today.recentlyUsed')}</h2>
           <div className="flex flex-wrap gap-2">{recentTabs.length ? recentTabs.map(t => <button key={t} onClick={() => setActiveTab(t)} className="px-3 py-2 bg-[#0B0E11] border border-[#2A353D] rounded-lg text-[10px] text-slate-300 font-black uppercase tracking-widest">{t}</button>) : <p className="text-xs text-slate-500 font-bold">Tabs you use will appear here.</p>}</div>
         </div>
         <div className={`${T.card} brief-card p-4`}>
-          <button className="w-full flex justify-between items-center" onClick={() => setExpanded(e => ({...e, prefs: !e.prefs}))}><h2 className="font-black text-white text-lg">My Preferences</h2><Settings size={16}/></button>
-          {expanded.prefs && <div className="mt-3 space-y-2"><button onClick={applyNotificationPreset} className="w-full bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3 text-[10px] font-black uppercase tracking-widest text-[#D4A381]">Use {profile} Alert Settings</button><button onClick={() => setActiveTab('settings')} className="w-full bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3 text-[10px] font-black uppercase tracking-widest text-slate-300">Open All Settings</button></div>}
+          <button className="w-full flex justify-between items-center" onClick={() => setExpanded(e => ({...e, prefs: !e.prefs}))}><h2 className="font-black text-white text-lg">{t('today.myPreferences')}</h2><Settings size={16}/></button>
+          {expanded.prefs && <div className="mt-3 space-y-2"><button onClick={applyNotificationPreset} className="w-full bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3 text-[10px] font-black uppercase tracking-widest text-[#D4A381]">Use {profile} Alert Settings</button><button onClick={() => setActiveTab('settings')} className="w-full bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3 text-[10px] font-black uppercase tracking-widest text-slate-300">{t('today.openAllSettings')}</button></div>}
         </div>
       </div>
     </div>

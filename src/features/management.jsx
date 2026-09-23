@@ -19,6 +19,7 @@ import { resolveSubscription, resolveFeatureAccess, getPlanDefinition, formatMon
 import { HELP_SUBJECTS, HELP_SUBTOPICS, HELP_DEEP_LINKS, CUSTOMER_HELP_ARTICLES, CUSTOMER_HELP_ARTICLES_LEGACY, searchCustomerHelp, makeDeterministicHelpAnswer, buildCustomerHelpCoverage } from '../core/customerHelpKnowledge';
 import * as adminSafetyModule from '../core/systemAdminDataSafety.cjs';
 import { roleNameKey } from '../core/rosterRoleIdentity';
+import { useI18n, normalizeAppLanguage, LANGUAGE_STORAGE_KEY } from '../core/i18n';
 
 
 const resolveAdminSafetyModule = (moduleValue) => {
@@ -1021,7 +1022,9 @@ const prepareRestaurantLogoUpload = async (file) => {
   }
 };
 
-const TabSettings = ({ appUser, addToast, users = [], clientData = {}, presenceSelf = null }) => {  const [subTab, setSubTab] = useState('profile');
+const TabSettings = ({ appUser, addToast, users = [], clientData = {}, presenceSelf = null }) => {
+  const { t } = useI18n();
+  const [subTab, setSubTab] = useState('profile');
   const [newOwnerId, setNewOwnerId] = useState('');
 
   // --- Profile State ---
@@ -1086,6 +1089,7 @@ const TabSettings = ({ appUser, addToast, users = [], clientData = {}, presenceS
   const prefs = appUser?.preferences || {};
   const [defaultTab, setDefaultTab] = useState(prefs.defaultTab || (appUser?.isAdmin ? 'schedule' : 'published'));
   const [timeFormat, setTimeFormat] = useState(prefs.timeFormat || '12h');
+  const [language, setLanguage] = useState(normalizeAppLanguage(prefs.language || 'en'));
   const [uiDensity, setUiDensity] = useState(prefs.uiDensity || 'compact');
   const [recipeDensity, setRecipeDensity] = useState(prefs.recipeDensity || 'tight');
   const [messageView, setMessageView] = useState(prefs.messageView || 'ops');
@@ -1406,14 +1410,15 @@ const handleEnableNotifications = async () => {
     try {
       await updateDoc(doc(db, "users", appUser.id), {
         preferences: { 
-          ...prefs, defaultTab, timeFormat, payPeriod, payPeriodStart,
+          ...prefs, defaultTab, timeFormat, language, payPeriod, payPeriodStart,
           notifSchedule, notifMessages, notifTrades, notifReminders, reminderTime,
           notifLevel, keywords, muteOnDaysOff, dndEnabled, dndStart, dndEnd,
           uiDensity, recipeDensity, messageView, motionMode, tableDensity, confirmDestructiveActions, showQuickDock, showMorningBrief
         }
       });
-      addToast('Preferences Saved', 'Your personal app settings are locked in.');
-    } catch (err) { addToast('Error', 'Failed to save preferences.'); }
+      try { window.localStorage?.setItem(LANGUAGE_STORAGE_KEY, language); } catch (_) {}
+      addToast(t('preferences.savedTitle'), t('preferences.savedBody'));
+    } catch (err) { addToast(t('preferences.saveErrorTitle'), t('preferences.saveErrorBody')); }
   };
 
   const handleSaveSystem = async (e) => {
@@ -1964,8 +1969,8 @@ const Toggle = ({ label, desc, checked, onChange, disabled = false }) => (
 <button type="button" key={tab} onClick={() => {
             setSubTab(tab);
           }} className={`settings-tab-button px-2 sm:px-5 py-2 text-[10px] font-black rounded-xl uppercase tracking-widest transition-all sm:flex-1 flex items-center justify-center gap-1 ${subTab === tab ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-300 hover:text-white'} ${integrationLocked ? 'opacity-80 border border-[#2A353D]' : ''}`}>
-            {tab === 'integrations' && integrationLocked ? '🔒 Integrations' : tab === 'branding' ? 'Branding' : tab === 'accountSecurity' ? 'Account Security' : tab === 'billing' ? 'Plan & Billing' : tab}
-            {tab === 'integrations' && <span className="ml-1 bg-blue-900/30 text-blue-400 border border-blue-500/50 text-[8px] px-1.5 py-0.5 rounded-md uppercase tracking-widest font-black shadow-[0_0_8px_rgba(59,130,246,0.2)]">Soon</span>}
+            {tab === 'integrations' && integrationLocked ? `🔒 ${t('settings.integrations')}` : tab === 'branding' ? t('settings.branding') : tab === 'accountSecurity' ? t('settings.accountSecurity') : tab === 'billing' ? t('settings.billing') : tab === 'profile' ? t('settings.profile') : tab === 'preferences' ? t('settings.preferences') : tab === 'alerts' ? t('settings.alerts') : tab === 'workspace' ? t('settings.workspace') : tab}
+            {tab === 'integrations' && <span className="ml-1 bg-blue-900/30 text-blue-400 border border-blue-500/50 text-[8px] px-1.5 py-0.5 rounded-md uppercase tracking-widest font-black shadow-[0_0_8px_rgba(59,130,246,0.2)]">{t('settings.soon')}</span>}
           </button>
         );})}
       </div>
@@ -2413,7 +2418,7 @@ const Toggle = ({ label, desc, checked, onChange, disabled = false }) => (
         <div className="space-y-4">
           <form onSubmit={handleSavePrefs} className={`${T.card} p-3 sm:p-5 space-y-4`}>
             <div>
-              <h2 className="text-base font-black text-white mb-3 border-b border-[#2A353D] pb-2">App Experience</h2>
+              <h2 className="text-base font-black text-white mb-3 border-b border-[#2A353D] pb-2">{t('preferences.appExperience')}</h2>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className={T.label}>Default Startup Tab</label>
@@ -2430,6 +2435,14 @@ const Toggle = ({ label, desc, checked, onChange, disabled = false }) => (
                     {appUser?.isAdmin && <option value="sales">Sales Ledger</option>}
                     {appUser?.isAdmin && <option value="maintenance">Maintenance Log</option>}
                   </select>
+                </div>
+                <div>
+                  <label className={T.label}>{t('preferences.language')}</label>
+                  <select data-testid="app-language-select" value={language} onChange={e => setLanguage(normalizeAppLanguage(e.target.value))} className={`${T.input} py-2 text-sm`}>
+                    <option value="en">{t('language.english')}</option>
+                    <option value="es">{t('language.spanish')}</option>
+                  </select>
+                  <p className={`text-[9px] font-bold ${T.muted} mt-1 leading-snug`}>{t('preferences.languageHelp')}</p>
                 </div>
                 <div>
                   <label className={T.label}>Time Format</label>
@@ -2517,7 +2530,7 @@ const Toggle = ({ label, desc, checked, onChange, disabled = false }) => (
                 </div>
               </div>
             )}
-            <button type="submit" className={`w-full ${T.btn} py-2`}>Save Preferences</button>
+            <button type="submit" className={`w-full ${T.btn} py-2`}>{t('preferences.save')}</button>
           </form>
 
           {appUser?.isAdmin && (

@@ -28,6 +28,7 @@ import { activeRosterRoles, resolveShiftRosterRole, copyRosterRoleFields } from 
 import { buildSchedulePublicationPlan, buildConfirmedShiftEvidence, digestSchedulePublicationPlan, isIntentionalOpenScheduleShift } from '../core/schedulePublicationPlan';
 import { requestOffDateKey, normalizeRequestOffRuntimeRow, safeRequestOffRows } from '../core/requestOffRuntimeSafety';
 import { normalizeTimeOffPolicy, evaluateTimeOffPolicyDate, timeOffPolicyReleaseDateForRequestDate, timeOffPolicyCutoffDateForRequestDate, canConfigureTimeOffPolicy } from '../core/timeOffPolicy';
+import { useI18n } from '../core/i18n';
 import { normalizeScheduleBuilderEvents, safeScheduleBuilderRecords } from '../core/scheduleBuilderRuntime';
 import { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, MapClickListener, SmartEmptyState, MiniProblemCard, getHomeProfile, calculatePunchHours, getWeekStart, roleMatches, toLocalTimeInput, makeLocalIso, PunchTable, FriendlyEmpty, GlobalSearchModal, QuickActionDock, KitchenTVMode, ChangeLogModal, UndoBar } from '../components/common';
 
@@ -1018,6 +1019,7 @@ const normalizeTipAmount = (value) => {
 };
 
 const TabMasterSchedule = ({ currentDate, setCurrentDate = null, onSubTabChange = null, appUser, users, shifts, shiftSwaps, timeOffRequests, events, addToast, initialSubTab = 'my-schedule', voiceScheduleSubTabTarget = null, scheduleBuilderProps = null, clientData = null }) => {
+  const { t, formatDate: i18nDate } = useI18n();
   const [rosterFilterDate, setRosterFilterDate] = useState('');
   const [isFullSchedulePickerOpen, setIsFullSchedulePickerOpen] = useState(false);
   const [fullSchedulePickerMonth, setFullSchedulePickerMonth] = useState(getMonthStr(currentDate));
@@ -1431,7 +1433,7 @@ Clock out anyway?`);
 
   const handleClaimShift = async (swap) => {
     if (!swap?.shiftId) return addToast('Shift Cannot Be Claimed', 'This Trade Board listing is no longer linked to a shift. Ask a manager to remove it.');
-    if (!window.confirm(`Claim this ${swap.role} shift on ${formatDisplayDate(swap.shiftDate || swap.date)}?`)) return;
+    if (!window.confirm(`Claim this ${swap.role} shift on ${i18nDate(swap.shiftDate || swap.date)}?`)) return;
 
     try {
       const claimantAuthUid = auth?.currentUser?.uid || appUser.authUid || appUser.uid || appUser.id || '';
@@ -1554,9 +1556,9 @@ const handleOfferSwap = async (shift) => {
 
       <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2 border-b border-[#2A353D] mb-4 pb-2">
         {['my-schedule', 'full-schedule', 'month-view', 'trade-board', 'time-off', 'availability', ...((appUser?.isAdmin || appUser?.permissions?.schedule) && scheduleBuilderProps ? ['schedule-builder'] : [])].map((tab) => {
-          const label = tab === 'time-off' ? 'Request Off' : tab === 'availability' ? 'Availability' : tab === 'trade-board' ? 'Trade Board' : tab === 'schedule-builder' ? 'Schedule Builder' : tab.replace('-', ' ');
+          const label = tab === 'my-schedule' ? t('schedule.mySchedule') : tab === 'full-schedule' ? t('schedule.fullSchedule') : tab === 'month-view' ? t('schedule.monthView') : tab === 'time-off' ? t('schedule.requestOff') : tab === 'availability' ? t('schedule.availability') : tab === 'trade-board' ? t('schedule.tradeBoard') : tab === 'schedule-builder' ? t('schedule.builder') : tab.replace('-', ' ');
           return (
-          <button key={tab} type="button" aria-label={tab === 'time-off' ? 'Schedule Request Off' : label} title={label} onClick={() => setSubTab(tab)} className={`px-2 sm:px-4 py-2 text-[10px] sm:text-xs font-black rounded-xl uppercase tracking-widest transition-all sm:flex-1 ${subTab === tab ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>
+          <button key={tab} type="button" aria-label={label} title={label} onClick={() => setSubTab(tab)} className={`px-2 sm:px-4 py-2 text-[10px] sm:text-xs font-black rounded-xl uppercase tracking-widest transition-all sm:flex-1 ${subTab === tab ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>
             {label}
           </button>
         );})}
@@ -1574,35 +1576,35 @@ const handleOfferSwap = async (shift) => {
             <div key={alert.id} className="bg-gradient-to-r from-[#7A4F31]/30 to-[#1A2126] border border-[#B88764]/40 p-3 rounded-xl flex gap-3 shadow-lg">
               <Bell size={24} className="text-red-500 flex-shrink-0" />
               <div>
-                <span className="text-[9px] font-black uppercase text-[#D4A381] tracking-widest block">System Alert</span>
+                <span className="text-[9px] font-black uppercase text-[#D4A381] tracking-widest block">{t('schedule.systemAlert')}</span>
                 <p className="text-xs text-slate-200 font-medium leading-snug">{alert.title}</p>
               </div>
             </div>
           ))}
           <div className={`${T.grad} rounded-3xl p-6 shadow-2xl relative overflow-hidden border border-[#D4A381]/30`}>
             <div className="absolute -top-4 -right-4 text-8xl font-black text-slate-900/10">86</div>
-            <h3 className="text-sm font-black uppercase tracking-widest text-slate-900/60 mb-1">My Schedule</h3>
+            <h3 className="text-sm font-black uppercase tracking-widest text-slate-900/60 mb-1">{t('schedule.mySchedule')}</h3>
             {myNextShift ? (
-              <div className="mb-6"><div className="text-2xl font-black text-slate-900 tracking-tight leading-none mb-1">Next: {myNextShift.role}</div><div className="text-sm font-bold text-slate-900/80 flex items-center gap-1.5">{formatDisplayDate(getShiftDateKey(myNextShift))}   {formatShortTime(myNextShift.startTime)} - {formatShortTime(myNextShift.endTime)} {myNextShift.endTime === 'CLOSE' && <span className="bg-slate-900 text-[#D4A381] text-[9px] px-1.5 py-0.5 rounded ml-1 uppercase tracking-wider">Close</span>}</div></div>
-            ) : (<div className="mb-6 text-slate-900 font-bold">No upcoming shifts scheduled.</div>)}
+              <div className="mb-6"><div className="text-2xl font-black text-slate-900 tracking-tight leading-none mb-1">{t('schedule.next', { role: myNextShift.role })}</div><div className="text-sm font-bold text-slate-900/80 flex items-center gap-1.5">{i18nDate(getShiftDateKey(myNextShift))}   {formatShortTime(myNextShift.startTime)} - {formatShortTime(myNextShift.endTime)} {myNextShift.endTime === 'CLOSE' && <span className="bg-slate-900 text-[#D4A381] text-[9px] px-1.5 py-0.5 rounded ml-1 uppercase tracking-wider">Close</span>}</div></div>
+            ) : (<div className="mb-6 text-slate-900 font-bold">{t('schedule.noUpcoming')}</div>)}
             
             {effectiveActivePunch ? (
               <div className="space-y-2 relative z-10">
                 <button onClick={initiateClockOut} disabled={clockActionBusy} className="clock-action-button no-compact w-full py-4 bg-red-900/80 text-red-100 rounded-xl font-black text-sm uppercase tracking-widest shadow-[0_0_15px_rgba(220,38,38,0.4)] hover:bg-red-800 border border-red-500/50 transition-all flex flex-col items-center justify-center gap-1 disabled:opacity-60 disabled:cursor-not-allowed">
-                  <span>{clockActionBusy && clockActionType === 'out' ? 'CLOCKING OUT...' : 'CLOCK OUT'}</span>
-                  <span className="clock-action-meta text-[10px] text-red-300 font-medium normal-case tracking-normal">Clocked in at {formatClockTime(effectiveActivePunch.clockInTime)}</span>
+                  <span>{clockActionBusy && clockActionType === 'out' ? t('schedule.clockingOut') : t('schedule.clockOut')}</span>
+                  <span className="clock-action-meta text-[10px] text-red-300 font-medium normal-case tracking-normal">{t('schedule.clockedInAt', { time: formatClockTime(effectiveActivePunch.clockInTime) })}</span>
                 </button>
                 {mergeWorkspaceSettings(appUser, clientData).breaks && (
                   effectiveActivePunch.status === 'on_break' ? (
-                    <button onClick={handleEndBreak} className="clock-action-button no-compact w-full py-3 bg-blue-900/80 text-blue-100 rounded-xl font-black text-sm uppercase tracking-widest hover:bg-blue-800 border border-blue-500/50 transition-all">END BREAK</button>
+                    <button onClick={handleEndBreak} className="clock-action-button no-compact w-full py-3 bg-blue-900/80 text-blue-100 rounded-xl font-black text-sm uppercase tracking-widest hover:bg-blue-800 border border-blue-500/50 transition-all">{t('schedule.endBreak')}</button>
                   ) : (
-                    <button onClick={handleStartBreak} className="clock-action-button no-compact w-full py-3 bg-slate-800/50 text-slate-900 rounded-xl font-black text-sm uppercase tracking-widest hover:bg-slate-800 hover:text-white border border-slate-700 transition-all">START UNPAID BREAK</button>
+                    <button onClick={handleStartBreak} className="clock-action-button no-compact w-full py-3 bg-slate-800/50 text-slate-900 rounded-xl font-black text-sm uppercase tracking-widest hover:bg-slate-800 hover:text-white border border-slate-700 transition-all">{t('schedule.startBreak')}</button>
                   )
                 )}
               </div>
             ) : (
               <button onClick={handleClockIn} disabled={clockActionBusy} className="clock-action-button no-compact w-full py-4 bg-emerald-600/20 text-emerald-400 rounded-xl font-black text-sm uppercase tracking-widest shadow-[0_0_15px_rgba(16,185,129,0.1)] hover:bg-emerald-600/30 border border-emerald-500/50 transition-all relative z-10 disabled:opacity-60 disabled:cursor-not-allowed">
-                {clockActionBusy && clockActionType === 'in' ? 'CLOCKING IN...' : 'CLOCK IN'}
+                {clockActionBusy && clockActionType === 'in' ? t('schedule.clockingIn') : t('schedule.clockIn')}
               </button>
             )}
 
@@ -1611,20 +1613,20 @@ const handleOfferSwap = async (shift) => {
           <div className="grid grid-cols-2 gap-3">
             <button onClick={() => setSubTab('trade-board')} className={`${T.card} p-4 flex flex-col items-center justify-center gap-2 hover:bg-[#2A353D] transition-colors relative`}>
               <Repeat size={24} className={T.copper}/>
-              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-300">Trade Board</span>
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-300">{t('schedule.tradeBoard')}</span>
               {availableSwaps.length > 0 && <span className="absolute top-2 right-2 bg-red-500 text-white text-[9px] font-black w-5 h-5 rounded-full flex items-center justify-center shadow-lg">{availableSwaps.length}</span>}
             </button>
             <button onClick={() => setSubTab('time-off')} className={`${T.card} p-4 flex flex-col items-center justify-center gap-2 hover:bg-[#2A353D] transition-colors`}>
               <Calendar size={24} className={T.copper}/>
-              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-300">Request Off</span>
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-300">{t('schedule.requestOff')}</span>
             </button>
           </div>
 
           <div className={`${T.card} overflow-hidden mt-4`}>
-            <div className={T.th}>My Published Schedule</div>
+            <div className={T.th}>{t('schedule.myPublished')}</div>
             <div className={`divide-y ${T.border}`}>
               {myMonthShifts.length === 0 ? (
-                <div className={`p-4 text-center text-xs font-bold ${T.muted}`}>No published shifts found for this month.</div>
+                <div className={`p-4 text-center text-xs font-bold ${T.muted}`}>{t('schedule.noPublishedMonth')}</div>
               ) : (
                 myMonthShifts.map(s => {
                   const isPastShift = isShiftInPast(s, scheduleNow);
@@ -1633,7 +1635,7 @@ const handleOfferSwap = async (shift) => {
                   return (
                     <div key={s.id} className={`${T.row} flex justify-between items-center transition-colors ${isPastShift ? 'bg-[#0B0E11]/70 opacity-50 grayscale' : ''}`}>
                       <div>
-                        <div className={`font-bold text-sm ${isPastShift ? 'text-slate-400' : 'text-white'}`}>{formatDisplayDate(getShiftDateKey(s))}</div>
+                        <div className={`font-bold text-sm ${isPastShift ? 'text-slate-400' : 'text-white'}`}>{i18nDate(getShiftDateKey(s))}</div>
                         <div className={`text-[9px] font-black uppercase tracking-widest mt-0.5 ${isPastShift ? 'text-slate-600' : T.copper}`}>{s.role}</div>
                       </div>
                       <div className="flex items-center gap-3">
@@ -1641,13 +1643,13 @@ const handleOfferSwap = async (shift) => {
                           {formatShortTime(s.startTime)} - {formatShortTime(s.endTime)}
                         </div>
                         {isPastShift ? (
-                          <span className="text-[8px] font-black uppercase tracking-widest text-slate-600 border border-[#1F2933] px-2 py-1 rounded">Ended</span>
+                          <span className="text-[8px] font-black uppercase tracking-widest text-slate-600 border border-[#1F2933] px-2 py-1 rounded">{t('schedule.ended')}</span>
                         ) : (
                           isOffered ? (
-                            <span className="text-[8px] font-black uppercase tracking-widest text-orange-400 bg-orange-900/20 border border-orange-900/50 px-2 py-1 rounded">Listed</span>
+                            <span className="text-[8px] font-black uppercase tracking-widest text-orange-400 bg-orange-900/20 border border-orange-900/50 px-2 py-1 rounded">{t('schedule.listed')}</span>
                           ) : (
                             <button onClick={() => handleOfferSwap(s)} className="text-[8px] font-black uppercase tracking-widest bg-[#1A2126] text-slate-300 border border-[#2A353D] hover:text-[#D4A381] hover:border-[#D4A381]/50 px-2 py-1 rounded transition-colors shadow-sm">
-                              Swap
+                              {t('schedule.swap')}
                             </button>
                           )
                         )}
@@ -1666,13 +1668,13 @@ const handleOfferSwap = async (shift) => {
         <div className="animate-[slideIn_0.2s_ease-out]">
           <div className={`${T.card} overflow-hidden`}>
             <div className={`bg-[#12161A] p-4 border-b ${T.border} flex justify-between items-center`}>
-              <h3 className={`font-black text-lg flex items-center gap-2 ${T.copper}`}><Repeat size={18} /> Trade Board</h3>
-              <button onClick={() => setSubTab('my-schedule')} className="text-xs font-bold text-slate-400 hover:text-white border border-[#2A353D] px-3 py-1.5 rounded-lg">Back to Dashboard</button>
+              <h3 className={`font-black text-lg flex items-center gap-2 ${T.copper}`}><Repeat size={18} /> {t('schedule.tradeBoard')}</h3>
+              <button onClick={() => setSubTab('my-schedule')} className="text-xs font-bold text-slate-400 hover:text-white border border-[#2A353D] px-3 py-1.5 rounded-lg">{t('schedule.backDashboard')}</button>
             </div>
             
             <div className={`divide-y ${T.border}`}>
               {availableSwaps.length === 0 ? (
-                <div className={`p-8 text-center text-sm font-bold ${T.muted}`}>No shifts currently available.</div>
+                <div className={`p-8 text-center text-sm font-bold ${T.muted}`}>{t('schedule.noAvailableShifts')}</div>
               ) : (
                 availableSwaps.map(swap => {
                   const isMine = shiftMatchesPerson({ employeeId: swap.originalEmployeeId, userId: swap.originalUserId, employeeName: swap.originalEmployeeName, employeeEmail: swap.originalEmployeeEmail }, schedulePerson, users) || swap.originalEmployeeId === appUser.id;
@@ -1681,7 +1683,7 @@ const handleOfferSwap = async (shift) => {
                   return (
                     <div key={swap.id} className={`${T.row} p-4 flex flex-col sm:flex-row justify-between sm:items-center gap-4`}>
                       <div>
-                        <div className="font-bold text-white text-base">{formatDisplayDate(swap.shiftDate || swap.date)}</div>
+                        <div className="font-bold text-white text-base">{i18nDate(swap.shiftDate || swap.date)}</div>
                         <div className="text-[10px] font-black uppercase tracking-widest text-[#D4A381] mt-0.5">
                           {swap.role}   {formatShortTime(swap.startTime)} - {formatShortTime(swap.endTime)}
                         </div>
@@ -1798,6 +1800,7 @@ const handleOfferSwap = async (shift) => {
 };
 
 const TabSchedule = ({ currentDate, users: rawUsers, shifts: rawShifts, events: rawEvents, timeOffRequests: rawTimeOffRequests, timePunches = [], addToast, appUser, clientData = null, initialSubTab = 'schedule', hideSubTabs = false, availabilityRecords: rawAvailabilityRecords = [], schedulePeriodContext = null, reviewPublishRequest = 0 }) => {
+  const { t, locale, formatMonth: i18nMonth } = useI18n();
   const users = safeScheduleBuilderRecords(rawUsers);
   const shifts = safeScheduleBuilderRecords(rawShifts);
   const events = normalizeScheduleBuilderEvents(rawEvents);
@@ -2520,7 +2523,7 @@ const [eventDate, setEventDate] = useState(getToday());
     if (isPublishingSchedule) return addToast('Publishing in Progress', 'Wait for schedule publishing to finish before clearing a month.');
     if (isAssigningShift) return addToast('Assignment in Progress', 'Wait for the current shift assignment to finish before clearing a month.');
     const targetMonth = monthStr;
-    const monthLabel = formatDisplayMonth(targetMonth);
+    const monthLabel = i18nMonth(targetMonth);
     const markerSource = visibleScheduleBuilderMonthShifts(targetMonth);
     const visibleCount = markerSource.length;
     const confirmed = window.confirm(
@@ -2549,7 +2552,7 @@ const [eventDate, setEventDate] = useState(getToday());
       if (optimisticMarkers.length) {
         setLocalBuilderDeletedShiftMarkers(prev => prev.filter(marker => marker?.optimisticOperationId !== optimisticOperationId));
       }
-      addToast('Clear Month Failed', err?.message || `Could not clear ${formatDisplayMonth(targetMonth)}.`);
+      addToast('Clear Month Failed', err?.message || `Could not clear ${i18nMonth(targetMonth)}.`);
     } finally {
       setIsClearingScheduleMonth(false);
     }
@@ -2662,7 +2665,7 @@ const [eventDate, setEventDate] = useState(getToday());
         }
         validDates.push(d);
       }
-      const savedShiftEchoes = [];
+      const preparedAssignments = [];
       for (const d of validDates) {
         const nowIso = new Date().toISOString();
         const shiftMonth = getMonthStr(d);
@@ -2702,15 +2705,39 @@ const [eventDate, setEventDate] = useState(getToday());
           shiftData.source = 'Schedule Builder manual edit after emergency rescue';
         }
         recordScheduleOperationDiagnostic('canonicalDatePatches');
-        const savedRef = await addDoc(collection(db, "shifts"), shiftData);
-        recordScheduleOperationDiagnostic('directSdkWrites');
-        recordScheduleOperationDiagnostic('totalScheduleDocumentsWritten');
-        savedShiftEchoes.push({ ...shiftData, id: savedRef.id, localEcho: true });
+        preparedAssignments.push(shiftData);
       }
+
+      const assignmentOperationId = `schedule-builder-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+      const response = await secureFetch('/api/schedule-shift-assign', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          restaurantId: appUser.restaurantId,
+          operationId: assignmentOperationId,
+          assignments: preparedAssignments
+        })
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || result?.ok !== true) {
+        throw new Error(result?.error || `Shift assignment failed (HTTP ${response.status}).`);
+      }
+      const savedShiftEchoes = Array.isArray(result.created) ? result.created.map(shift => ({ ...shift, localEcho: true })) : [];
+      if (savedShiftEchoes.length !== preparedAssignments.length) {
+        throw new Error('The server did not confirm every requested shift assignment. Refresh Schedule Builder before trying again.');
+      }
+
       if (savedShiftEchoes.length) {
+        const assignedPruneKeys = new Set(savedShiftEchoes.flatMap(getScheduleShiftLocalPruneKeys).filter(Boolean));
+        const assignedIdKeys = new Set(savedShiftEchoes.map(shift => getShiftWritableDocId(shift)).filter(Boolean).map(id => `id:${id}`));
+        setLocalBuilderDeletedShiftMarkers(prev => prev.filter(marker => !assignedPruneKeys.has(marker?.key) && !assignedIdKeys.has(marker?.key)));
         setLocalBuilderShiftEchoes(prev => mergeVisibleScheduleShifts(prev, savedShiftEchoes));
+        recordScheduleOperationDiagnostic('totalScheduleDocumentsWritten', savedShiftEchoes.length);
       }
-      setAssignDates([]); addToast('Assigned', `Added ${validDates.length} shift${validDates.length === 1 ? '' : 's'} for ${emp.name || 'selected staff'}.`);
+      setAssignDates([]);
+      addToast('Assigned', `Added ${savedShiftEchoes.length} shift${savedShiftEchoes.length === 1 ? '' : 's'} for ${emp.name || 'selected staff'}.`);
+    } catch (err) {
+      addToast('Assignment Failed', err?.message || 'Could not assign the selected shift. Refresh Schedule Builder and try again.');
     } finally {
       setIsAssigningShift(false);
     }
@@ -4288,18 +4315,18 @@ const handleExportTimesheets = () => {
               </div>
 
               {/* Assign Button */}
-              <button onClick={handleAssign} disabled={isClearingScheduleMonth||isAssigningShift||!selectedEmp||assignDates.length===0} className={`schedule-builder-assign-button w-full xl:w-auto ${T.btn} py-1.5 px-2 text-xs h-9 disabled:opacity-50 flex items-center justify-center shadow-lg shrink-0 whitespace-nowrap`}>{isAssigningShift ? 'Assigning…' : `Assign (${assignDates.length})`}</button>
+              <button data-testid="schedule-builder-assign" onClick={handleAssign} disabled={isClearingScheduleMonth||isAssigningShift||!selectedEmp||assignDates.length===0} className={`schedule-builder-assign-button w-full xl:w-auto ${T.btn} py-1.5 px-2 text-xs h-9 disabled:opacity-50 flex items-center justify-center shadow-lg shrink-0 whitespace-nowrap`}>{isAssigningShift ? t('builder.assigning') : t('builder.assign', { count: assignDates.length })}</button>
 
             </div>
             
             {/* Action Row */}
             <div className="schedule-builder-action-row flex flex-wrap w-full lg:w-auto gap-2 items-center pt-1.5 lg:pt-0 border-t lg:border-t-0 border-[#2A353D]">
               <div className="schedule-builder-labor-pill hidden sm:flex flex-col items-end mr-2 bg-[#12161A] border border-[#2A353D] px-2 py-1 rounded-xl">
-                <span className="text-[9px] font-black uppercase tracking-widest text-slate-500">Proj. Period Labor</span>
+                <span className="text-[9px] font-black uppercase tracking-widest text-slate-500">{t('builder.projectedLabor')}</span>
                 <span className="text-emerald-400 font-black text-base">${projectedMonthLabor.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
               </div>
 <button onClick={() => setIsAutoPopulateModalOpen(true)} disabled={isClearingScheduleMonth} className={`schedule-builder-action-button flex-1 lg:flex-none ${T.btnAlt} py-1.5 h-9 flex items-center justify-center font-black border-blue-900/50 text-blue-400 disabled:opacity-50`}>
-                <Repeat size={16} className="mr-1"/> <span aria-label="Auto-Fill">Copy Month</span>
+                <Repeat size={16} className="mr-1"/> <span aria-label={t('builder.copyMonth')}>{t('builder.copyMonth')}</span>
               </button>
               <button
                 type="button"
@@ -4308,12 +4335,12 @@ const handleExportTimesheets = () => {
                 data-chaos-control-kind="destructive-mutation"
                 data-chaos-workflow-id="schedule-clear-month"
                 className={`schedule-builder-action-button flex-1 lg:flex-none ${T.btnAlt} py-1.5 px-2 h-9 flex items-center justify-center font-black border-red-900/60 text-red-400 hover:text-red-300 disabled:opacity-50`}
-                title={`Delete every saved draft and published shift from ${formatDisplayMonth(monthStr)}`}
+                title={`Delete every saved draft and published shift from ${i18nMonth(monthStr)}`}
               >
                 {isClearingScheduleMonth ? <Loader2 size={16} className="mr-1 animate-spin"/> : <Trash2 size={16} className="mr-1"/>}
-                {isClearingScheduleMonth ? 'Clearing…' : 'Clear Month'}
+                {isClearingScheduleMonth ? t('builder.clearing') : t('builder.clearMonth')}
               </button>
-              <button onClick={() => openPublishPicker('builder')} disabled={isClearingScheduleMonth} className={`schedule-builder-action-button flex-1 lg:flex-none ${T.btnAlt} py-1.5 h-9 flex items-center justify-center font-black disabled:opacity-50`}>Publish</button>
+              <button onClick={() => openPublishPicker('builder')} disabled={isClearingScheduleMonth} className={`schedule-builder-action-button flex-1 lg:flex-none ${T.btnAlt} py-1.5 h-9 flex items-center justify-center font-black disabled:opacity-50`}>{t('builder.publish')}</button>
               <button onClick={openNewEventModal} className={`schedule-builder-action-button flex-1 lg:flex-none ${T.btnAlt} border-[#D4A381] text-[#D4A381] py-1.5 h-9 flex items-center justify-center font-black`}><Plus size={16} className="mr-1"/> Event</button>
             </div>
           </div>
@@ -4401,7 +4428,7 @@ const handleExportTimesheets = () => {
                             // Conflict Check: Alert if a shift overlaps with ANY time-off request (pending or approved)
                             const allUserReqs = timeOffRequests.filter(r => r.date === d && timeOffMatchesPerson(r, u) && isActiveTimeOffRequest(r));
                             return (
-                            <td key={d} onClick={()=>handleCellClick(d,u.id)} className={`p-0.5 border-r border-[#2A353D] cursor-pointer transition-all align-top h-7 sm:h-8 ${sel?'bg-[#8F6040] outline outline-2 outline-[#D4A381] shadow-inner z-0 relative':'hover:bg-[#12161A]'}`}>
+                            <td key={d} data-testid="schedule-builder-cell" data-date={d} data-employee-id={u.id} onClick={()=>handleCellClick(d,u.id)} className={`p-0.5 border-r border-[#2A353D] cursor-pointer transition-all align-top h-7 sm:h-8 ${sel?'bg-[#8F6040] outline outline-2 outline-[#D4A381] shadow-inner z-0 relative':'hover:bg-[#12161A]'}`}>
                             <div className="flex flex-col gap-[1px] w-full justify-start overflow-visible">
                               {req && !req.isPartial && <div className="schedule-builder-time-chip w-full rounded font-black text-[7px] sm:text-[8px] py-0.5 text-center text-red-400 bg-red-900/40 uppercase tracking-tighter" title="Requested Off">Off</div>}
                               {req && req.isPartial && <div className="schedule-builder-time-chip schedule-builder-partial-off-chip w-full rounded font-black text-[7px] sm:text-[8px] py-0.5 text-center text-amber-400 bg-amber-900/40 uppercase tracking-tighter" title={`Requested off: ${formatScheduleBuilderRequestRange(req)}`}>{formatScheduleBuilderRequestRange(req)}</div>}
@@ -5120,6 +5147,7 @@ const normalizeConflictResult = (row = {}, dateKey = '') => ({
 });
 
 const TabTimeOff = ({ timeOffRequests, appUser, users, addToast, events = [], shifts = [], clientData = null }) => {
+  const { t, formatDate: i18nDate } = useI18n();
   const [calMonth, setCalMonth] = useState(getToday().substring(0, 7));
   const [selectedDates, setSelectedDates] = useState([]);
   const [isPartial, setIsPartial] = useState(false);
@@ -5665,22 +5693,22 @@ const TabTimeOff = ({ timeOffRequests, appUser, users, addToast, events = [], sh
         </div>
       </div>
       {canConfigureRequestOffPolicy && <div className={`${T.card} p-4 space-y-4`} data-testid="time-off-policy-admin">
-        <div><h3 className="font-black text-white">Request Off Policy</h3><p className={`text-xs font-bold ${T.muted}`}>Only account owners and workspace admins can change these rules. They control normal employee requests and do not auto-publish a schedule.</p></div>
-        <label className="flex items-center gap-2 text-xs font-bold text-slate-300"><input type="checkbox" checked={timeOffPolicyDraft.enabled === true} onChange={e => setTimeOffPolicyDraft(prev => ({ ...prev, enabled: e.target.checked }))} className="accent-[#8F6040]"/>Enable Request Off cutoff and blackout rules</label>
+        <div><h3 className="font-black text-white">{t('requestOff.policy')}</h3><p className={`text-xs font-bold ${T.muted}`}>{t('requestOff.policyAdminHelp')}</p></div>
+        <label className="flex items-center gap-2 text-xs font-bold text-slate-300"><input type="checkbox" checked={timeOffPolicyDraft.enabled === true} onChange={e => setTimeOffPolicyDraft(prev => ({ ...prev, enabled: e.target.checked }))} className="accent-[#8F6040]"/>{t('requestOff.enablePolicy')}</label>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          <div><label className={T.label}>Cutoff Days Before Release</label><input data-testid="time-off-cutoff-days" type="number" min="0" max="90" value={timeOffPolicyDraft.cutoffDaysBeforeRelease} onChange={e => setTimeOffPolicyDraft(prev => ({ ...prev, cutoffDaysBeforeRelease: e.target.value }))} className={T.input}/><p className={`text-[9px] ${T.muted} mt-1`}>Example: 10 means requests close after the day 10 days before the planned release.</p></div>
-          {schedulePublishingSettings.mode === 'monthly' ? <div><label className={T.label}>Monthly Schedule Release Day</label><input data-testid="time-off-monthly-release-day" type="number" min="1" max="28" value={timeOffPolicyDraft.monthlyReleaseDay} onChange={e => setTimeOffPolicyDraft(prev => ({ ...prev, monthlyReleaseDay: e.target.value }))} className={T.input}/><p className={`text-[9px] ${T.muted} mt-1`}>Day of the previous month the next monthly schedule normally comes out. This does not publish it automatically.</p></div> : <div><label className={T.label}>Schedule Release Lead Days</label><input data-testid="time-off-release-lead-days" type="number" min="0" max="60" value={timeOffPolicyDraft.nonMonthlyReleaseLeadDays} onChange={e => setTimeOffPolicyDraft(prev => ({ ...prev, nonMonthlyReleaseLeadDays: e.target.value }))} className={T.input}/><p className={`text-[9px] ${T.muted} mt-1`}>How many days before the schedule period starts the schedule normally comes out. This does not auto-publish.</p></div>}
+          <div><label className={T.label}>{t('requestOff.cutoffDays')}</label><input data-testid="time-off-cutoff-days" type="number" min="0" max="90" value={timeOffPolicyDraft.cutoffDaysBeforeRelease} onChange={e => setTimeOffPolicyDraft(prev => ({ ...prev, cutoffDaysBeforeRelease: e.target.value }))} className={T.input}/><p className={`text-[9px] ${T.muted} mt-1`}>Example: 10 means requests close after the day 10 days before the planned release.</p></div>
+          {schedulePublishingSettings.mode === 'monthly' ? <div><label className={T.label}>{t('requestOff.monthlyReleaseDay')}</label><input data-testid="time-off-monthly-release-day" type="number" min="1" max="28" value={timeOffPolicyDraft.monthlyReleaseDay} onChange={e => setTimeOffPolicyDraft(prev => ({ ...prev, monthlyReleaseDay: e.target.value }))} className={T.input}/><p className={`text-[9px] ${T.muted} mt-1`}>Day of the previous month the next monthly schedule normally comes out. This does not publish it automatically.</p></div> : <div><label className={T.label}>{t('requestOff.releaseLeadDays')}</label><input data-testid="time-off-release-lead-days" type="number" min="0" max="60" value={timeOffPolicyDraft.nonMonthlyReleaseLeadDays} onChange={e => setTimeOffPolicyDraft(prev => ({ ...prev, nonMonthlyReleaseLeadDays: e.target.value }))} className={T.input}/><p className={`text-[9px] ${T.muted} mt-1`}>How many days before the schedule period starts the schedule normally comes out. This does not auto-publish.</p></div>}
           <div className="rounded-xl border border-[#2A353D] bg-[#12161A] p-3 text-xs font-bold text-slate-300">{(() => { const sample = `${calMonth}-01`; const release = timeOffPolicyReleaseDateForRequestDate(sample, timeOffPolicyDraft, workspaceScheduleSettings); const cutoff = timeOffPolicyCutoffDateForRequestDate(sample, timeOffPolicyDraft, workspaceScheduleSettings); return <><div className="text-white font-black mb-1">{formatDisplayMonth(calMonth)} Preview</div><div>Planned release: {release ? formatDisplayDate(release) : 'Not available'}</div><div>Request cutoff: {cutoff ? formatDisplayDate(cutoff) : 'Not available'}</div></>; })()}</div>
         </div>
-        <div className="border-t border-[#2A353D] pt-4 space-y-3"><div><div className="text-xs font-black text-white">Blackout Dates</div><div className={`text-[10px] font-bold ${T.muted}`}>Block normal employee Request Off submissions for a single day or a date range.</div></div><div className="grid grid-cols-1 md:grid-cols-4 gap-2"><input type="date" value={blackoutStart} onChange={e=>setBlackoutStart(e.target.value)} className={T.input}/><input type="date" value={blackoutEnd} onChange={e=>setBlackoutEnd(e.target.value)} className={T.input}/><input type="text" value={blackoutReason} onChange={e=>setBlackoutReason(e.target.value)} maxLength={160} className={T.input} placeholder="Reason, optional"/><button type="button" onClick={addBlackoutDraft} className={T.btnAlt}>Add Blackout</button></div><div className="space-y-2">{(timeOffPolicyDraft.blackouts || []).length === 0 && <div className={`text-[10px] font-bold ${T.muted}`}>No blackout dates configured.</div>}{(timeOffPolicyDraft.blackouts || []).map(row => <div key={row.id} className="flex items-center justify-between gap-3 rounded-xl border border-[#2A353D] bg-[#12161A] p-3"><div className="text-xs font-bold text-slate-300"><div className="text-white">{formatDisplayDate(row.startDate)}{row.endDate !== row.startDate ? ` through ${formatDisplayDate(row.endDate)}` : ''}</div>{row.reason && <div className={`text-[10px] ${T.muted} mt-0.5`}>{row.reason}</div>}</div><button type="button" onClick={() => removeBlackoutDraft(row.id)} className="text-slate-400 hover:text-red-400 p-2" aria-label="Remove blackout"><Trash2 size={15}/></button></div>)}</div></div>
-        <button type="button" onClick={saveTimeOffPolicy} disabled={policySaving} className={`${T.btn} disabled:opacity-50`}>{policySaving ? 'Saving Policy…' : 'Save Request Off Policy'}</button>
+        <div className="border-t border-[#2A353D] pt-4 space-y-3"><div><div className="text-xs font-black text-white">{t('requestOff.blackoutDates')}</div><div className={`text-[10px] font-bold ${T.muted}`}>{t('requestOff.blackoutHelp')}</div></div><div className="grid grid-cols-1 md:grid-cols-4 gap-2"><input type="date" value={blackoutStart} onChange={e=>setBlackoutStart(e.target.value)} className={T.input}/><input type="date" value={blackoutEnd} onChange={e=>setBlackoutEnd(e.target.value)} className={T.input}/><input type="text" value={blackoutReason} onChange={e=>setBlackoutReason(e.target.value)} maxLength={160} className={T.input} placeholder={t('requestOff.reasonOptional')}/><button type="button" onClick={addBlackoutDraft} className={T.btnAlt}>{t('requestOff.addBlackout')}</button></div><div className="space-y-2">{(timeOffPolicyDraft.blackouts || []).length === 0 && <div className={`text-[10px] font-bold ${T.muted}`}>{t('requestOff.noBlackouts')}</div>}{(timeOffPolicyDraft.blackouts || []).map(row => <div key={row.id} className="flex items-center justify-between gap-3 rounded-xl border border-[#2A353D] bg-[#12161A] p-3"><div className="text-xs font-bold text-slate-300"><div className="text-white">{i18nDate(row.startDate)}{row.endDate !== row.startDate ? ` through ${i18nDate(row.endDate)}` : ''}</div>{row.reason && <div className={`text-[10px] ${T.muted} mt-0.5`}>{row.reason}</div>}</div><button type="button" onClick={() => removeBlackoutDraft(row.id)} className="text-slate-400 hover:text-red-400 p-2" aria-label={t('requestOff.removeBlackout')}><Trash2 size={15}/></button></div>)}</div></div>
+        <button type="button" onClick={saveTimeOffPolicy} disabled={policySaving} className={`${T.btn} disabled:opacity-50`}>{policySaving ? t('requestOff.savingPolicy') : t('requestOff.savePolicy')}</button>
       </div>}
       <div className={`${T.card} p-4 request-off-workflow-panel`}>
-        <div className="flex flex-col xl:flex-row xl:items-start xl:justify-between gap-3 mb-3"><div><h3 className="font-black text-white">Request-Off Workflow</h3><p className={`text-xs font-bold ${T.muted}`}>Default view only shows items that need attention. Published and archived requests stay searchable.</p>{canManage && workflowApiStatus === 'loading' && <p className="text-[10px] font-bold text-blue-300 mt-1">Checking all workspace Request Off records...</p>}{canManage && workflowApiStatus === 'error' && <p className="text-[10px] font-bold text-amber-300 mt-1">Some legacy Request Off records could not be double-checked. Refresh and try again.</p>}</div>{canManage && <div className="request-off-bulk-grid"><button onClick={approveAllVisible} disabled={!!bulkBusy} className={`${T.btnAlt} disabled:opacity-50`}>Approve All Visible</button><button onClick={archiveAllVisible} disabled={!!bulkBusy} className={`${T.btnAlt} disabled:opacity-50`}>Archive All Visible</button>{selectedRequestIds.length > 0 && <button onClick={archiveSelected} disabled={!!bulkBusy} className={`${T.btnAlt} disabled:opacity-50 request-off-span-all`}>Archive selected ({selectedRequestIds.length})</button>}</div>}</div>
+        <div className="flex flex-col xl:flex-row xl:items-start xl:justify-between gap-3 mb-3"><div><h3 className="font-black text-white">{t('requestOff.workflow')}</h3><p className={`text-xs font-bold ${T.muted}`}>{t('requestOff.workflowHelp')}</p>{canManage && workflowApiStatus === 'loading' && <p className="text-[10px] font-bold text-blue-300 mt-1">Checking all workspace Request Off records...</p>}{canManage && workflowApiStatus === 'error' && <p className="text-[10px] font-bold text-amber-300 mt-1">Some legacy Request Off records could not be double-checked. Refresh and try again.</p>}</div>{canManage && <div className="request-off-bulk-grid"><button onClick={approveAllVisible} disabled={!!bulkBusy} className={`${T.btnAlt} disabled:opacity-50`}>{t('requestOff.approveVisible')}</button><button onClick={archiveAllVisible} disabled={!!bulkBusy} className={`${T.btnAlt} disabled:opacity-50`}>{t('requestOff.archiveVisible')}</button>{selectedRequestIds.length > 0 && <button onClick={archiveSelected} disabled={!!bulkBusy} className={`${T.btnAlt} disabled:opacity-50 request-off-span-all`}>{t('requestOff.archiveSelected', { count: selectedRequestIds.length })}</button>}</div>}</div>
         <div className="request-off-control-group"><div className="request-off-control-label">Status</div><div className="request-off-status-grid">{[['needs-review','Needs Review'],['upcoming-approved','Upcoming Approved'],['archived','Published/Archived'],['all','All']].map(([id,label]) => <button key={id} onClick={() => setViewFilter(id)} className={viewFilter === id ? T.btn : T.btnAlt}>{label}</button>)}</div></div>
         <div className="request-off-control-group"><div className="request-off-control-label">Date</div><div className="request-off-date-grid">{[['all','All Dates'],['this-week','This Week'],['next-week','Next Week'],['this-month','This Month'],['next-month','Next Month'],['custom','Custom Range']].map(([id,label]) => <button key={id} onClick={() => setDateFilter(id)} className={`${dateFilter === id ? T.btn : T.btnAlt} ${id === 'custom' ? 'request-off-custom-range' : ''}`}>{label}</button>)}</div>{dateFilter === 'custom' && <div className="request-off-custom-dates"><input type="date" value={customStart} onChange={e=>setCustomStart(e.target.value)} className={T.input}/><input type="date" value={customEnd} onChange={e=>setCustomEnd(e.target.value)} className={T.input}/></div>}</div>
-        {canManage && <div className="request-off-employee-filter"><label className="request-off-control-label" htmlFor="request-off-employee-filter">Employee</label><select id="request-off-employee-filter" value={employeeFilter} onChange={e=>setEmployeeFilter(e.target.value)} className={`${T.input} request-off-employee-select`} aria-label="Filter Request Off by employee"><option value="">All Employees</option>{requestOffEmployeeOptions.map(group => <optgroup key={group.role} label={group.role}>{group.rows.map(row => <option key={row.value} value={row.value}>{row.label}</option>)}</optgroup>)}</select></div>}
-        <div className="space-y-2 max-h-[520px] overflow-y-auto custom-scrollbar">{filteredRequests.length === 0 && <FriendlyEmpty title="No requests here" text="Switch filters to review history or upcoming approvals." />}{filteredRequests.map(r => <RequestCard key={r.id} r={r}/>)}</div>
+        {canManage && <div className="request-off-employee-filter"><label className="request-off-control-label" htmlFor="request-off-employee-filter">{t('requestOff.employee')}</label><select id="request-off-employee-filter" value={employeeFilter} onChange={e=>setEmployeeFilter(e.target.value)} className={`${T.input} request-off-employee-select`} aria-label="Filter Request Off by employee"><option value="">{t('requestOff.allEmployees')}</option>{requestOffEmployeeOptions.map(group => <optgroup key={group.role} label={group.role}>{group.rows.map(row => <option key={row.value} value={row.value}>{row.label}</option>)}</optgroup>)}</select></div>}
+        <div className="space-y-2 max-h-[520px] overflow-y-auto custom-scrollbar">{filteredRequests.length === 0 && <FriendlyEmpty title={t('requestOff.noRequests')} text={t('requestOff.noRequestsHelp')} />}{filteredRequests.map(r => <RequestCard key={r.id} r={r}/>)}</div>
       </div>
       {canManage && <div className={`${T.card} p-4`}><h3 className="font-black text-white text-sm mb-2">Master Override Log</h3><p className={`text-xs font-bold ${T.muted}`}>Manager approvals, denials, archives, restores, cancellations, and published-schedule processing are preserved in audit logs and request history.</p></div>}
     </div>
@@ -5738,6 +5766,7 @@ const ScheduleWarningCard = ({ warning, appUser }) => {
 };
 
 const ScheduleCopilot = ({ period, periodLabel = '', users = [], shifts = [], timeOffRequests = [], availabilityRecords = [], availabilityDataState = null, scheduleDataState = null, addToast, appUser, onReviewPublish = null }) => {
+  const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const copilotReadEnabled = Boolean(open && appUser?.restaurantId);
   const templateLimit = 120;
@@ -6034,14 +6063,14 @@ const ScheduleCopilot = ({ period, periodLabel = '', users = [], shifts = [], ti
   if (!open) return (
     <div className={`${T.card} schedule-copilot-launcher p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-[#D4A381]/30`}>
       <div className="min-w-0">
-        <div className="text-[10px] uppercase tracking-widest font-black text-[#D4A381]">Schedule Tools</div>
+        <div className="text-[10px] uppercase tracking-widest font-black text-[#D4A381]">{t('builder.scheduleTools')}</div>
         <div className="text-sm font-black text-white mt-0.5">{draftCount} drafts ready</div>
         <div className="schedule-tools-period-label text-xs text-slate-400 font-bold mt-0.5">{activePeriodLabel} • Counts and tools use this schedule period.</div>
       </div>
       <div className="flex flex-wrap sm:justify-end gap-1.5 flex-shrink-0">
-        <button type="button" aria-label="Open Copilot Tools" title="Open Schedule Tools" onClick={() => openCopilotTool('targets')} className={`${T.btnAlt} flex items-center justify-center gap-2`}><ChefHat size={16}/> Open Schedule Tools</button>
-        <button type="button" aria-label={editingTemplateId ? 'Edit Template' : 'Create Template'} title={editingTemplateId ? 'Edit Template' : 'Create Template'} onClick={() => openCopilotTool('template-editor')} className={T.btnAlt}>{editingTemplateId ? 'Edit Template' : 'Create Template'}</button>
-        <button type="button" aria-label="Drag Board" title="Drag Board" onClick={() => openCopilotTool('drag')} className={T.btnAlt}>Drag Board</button>
+        <button type="button" aria-label="Open Copilot Tools" title="Open Schedule Tools" onClick={() => openCopilotTool('targets')} className={`${T.btnAlt} flex items-center justify-center gap-2`}><ChefHat size={16}/> {t('builder.openTools')}</button>
+        <button type="button" aria-label={editingTemplateId ? 'Edit Template' : 'Create Template'} title={editingTemplateId ? 'Edit Template' : 'Create Template'} onClick={() => openCopilotTool('template-editor')} className={T.btnAlt}>{editingTemplateId ? t('builder.editTemplate') : t('builder.createTemplate')}</button>
+        <button type="button" aria-label="Drag Board" title="Drag Board" onClick={() => openCopilotTool('drag')} className={T.btnAlt}>{t('builder.dragBoard')}</button>
       </div>
     </div>
   );
@@ -6050,17 +6079,17 @@ const ScheduleCopilot = ({ period, periodLabel = '', users = [], shifts = [], ti
     <div className={`${T.card} schedule-copilot-compact p-3 space-y-2 border-[#D4A381]/30`} aria-label="Open Copilot Tools" title="Open Copilot Tools" data-chaos-current-state="true">
       <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-2 border-b border-[#2A353D] pb-2">
         <div className="min-w-0">
-          <div className="text-[9px] uppercase tracking-widest font-black text-[#D4A381]">Schedule Tools</div>
+          <div className="text-[9px] uppercase tracking-widest font-black text-[#D4A381]">{t('builder.scheduleTools')}</div>
           <h3 className="text-sm sm:text-base font-black text-white leading-tight">Templates, coverage gaps, warnings, and publish review</h3>
           <p className="schedule-tools-period-label text-[10px] text-slate-400 font-bold leading-snug mt-0.5">{activePeriodLabel} • Counts and actions use this schedule period.</p>
         </div>
-        <div className="flex flex-wrap gap-1.5 flex-shrink-0"><button onClick={copyPreviousWeek} disabled={periodActionBlocked} title={`Copies the prior week into ${formatDisplayDate(copyWeekPeriod.start)} through ${formatDisplayDate(copyWeekPeriod.end)}`} className={`${T.btnAlt} disabled:opacity-50`}>Copy Previous Week</button><button aria-label="Smart Fill" onClick={smartFill} disabled={periodActionBlocked} className={`${T.btnAlt} disabled:opacity-50`}>Fill Coverage Gaps</button><button onClick={reviewAndPublish} disabled={periodActionBlocked} className={`${T.btn} disabled:opacity-50`}>Review & Publish</button><button onClick={() => setOpen(false)} className={T.btnAlt}>Close Tools</button></div>
+        <div className="flex flex-wrap gap-1.5 flex-shrink-0"><button onClick={copyPreviousWeek} disabled={periodActionBlocked} title={`Copies the prior week into ${formatDisplayDate(copyWeekPeriod.start)} through ${formatDisplayDate(copyWeekPeriod.end)}`} className={`${T.btnAlt} disabled:opacity-50`}>{t('builder.copyPreviousWeek')}</button><button aria-label="Smart Fill" onClick={smartFill} disabled={periodActionBlocked} className={`${T.btnAlt} disabled:opacity-50`}>{t('builder.fillCoverageGaps')}</button><button onClick={reviewAndPublish} disabled={periodActionBlocked} className={`${T.btn} disabled:opacity-50`}>{t('builder.reviewPublish')}</button><button onClick={() => setOpen(false)} className={T.btnAlt}>{t('builder.closeTools')}</button></div>
       </div>
       {!scheduleToolsCompleteness.complete && <div className="rounded-xl border border-amber-900/50 bg-amber-900/15 px-3 py-2 text-[10px] font-bold text-amber-200" role="status">Schedule check incomplete: {scheduleToolsCompleteness.reasons.join(' • ')}. Counts may change when loading finishes; period actions are paused.</div>}
       <div className="grid grid-cols-4 gap-1.5">
         {[['Drafts',draftCount],['Missing',missingTargets.length],['Warnings',allScheduleWarnings.length],['Templates',safeTemplates.length]].map(([label,value]) => <div key={label} className="schedule-copilot-metric bg-[#12161A] border border-[#2A353D]"><span className="text-[8px] uppercase tracking-widest font-black text-slate-500">{label}</span><strong className="text-white">{value}</strong></div>)}
       </div>
-      <div className="flex gap-1.5 overflow-x-auto custom-scrollbar border-b border-[#2A353D] pb-2" role="tablist" aria-label="Schedule Builder tools" aria-orientation="horizontal">{[['targets','Coverage'],['templates','Templates'],['template-editor', editingTemplateId ? 'Edit Template' : 'Create Template'],['drag','Drag Board'],['warnings','Warnings']].map(([id,label]) => <button key={id} type="button" role="tab" aria-label={label} title={label} onClick={() => setActiveTool(id)} aria-selected={activeTool===id} data-chaos-current-state={activeTool===id ? 'true' : undefined} className={`flex-shrink-0 px-2.5 py-1.5 rounded-lg text-[9px] uppercase tracking-widest font-black ${activeTool===id ? `${T.grad} text-slate-900` : 'bg-[#12161A] text-slate-400 hover:text-white'}`}>{label}</button>)}</div>
+      <div className="flex gap-1.5 overflow-x-auto custom-scrollbar border-b border-[#2A353D] pb-2" role="tablist" aria-label="Schedule Builder tools" aria-orientation="horizontal">{[['targets',t('builder.coverage')],['templates',t('builder.templates')],['template-editor', editingTemplateId ? t('builder.editTemplate') : t('builder.createTemplate')],['drag',t('builder.dragBoard')],['warnings',t('builder.warnings')]].map(([id,label]) => <button key={id} type="button" role="tab" aria-label={label} title={label} onClick={() => setActiveTool(id)} aria-selected={activeTool===id} data-chaos-current-state={activeTool===id ? 'true' : undefined} className={`flex-shrink-0 px-2.5 py-1.5 rounded-lg text-[9px] uppercase tracking-widest font-black ${activeTool===id ? `${T.grad} text-slate-900` : 'bg-[#12161A] text-slate-400 hover:text-white'}`}>{label}</button>)}</div>
       <div className="schedule-copilot-body custom-scrollbar space-y-3">
       {activeTool === 'targets' && <div className="grid lg:grid-cols-2 gap-4"><form onSubmit={addCoverageTarget} className="bg-[#12161A] border border-[#2A353D] rounded-xl p-3 space-y-2"><h4 className="font-black text-white">Add Coverage Target</h4><p className="text-[10px] font-bold text-slate-400">Choose how many people you need for a role and time. Roles match the Staff Roster and Schedule Builder.</p><div className="grid grid-cols-2 gap-2"><select value={targetForm.dayIndex} onChange={e=>setTargetForm({...targetForm, dayIndex:e.target.value})} className={T.input}>{dayNames.map((d,i)=><option key={d} value={i}>{d}</option>)}</select><select value={targetForm.role} onChange={e=>setTargetForm({...targetForm, role:e.target.value})} className={T.input}>{scheduleRoleOptions.map(r => <option key={r} value={r}>{r}</option>)}</select><input type="time" value={targetForm.startTime} onChange={e=>setTargetForm({...targetForm, startTime:e.target.value})} className={T.input}/><input type="time" value={targetForm.endTime} onChange={e=>setTargetForm({...targetForm, endTime:e.target.value})} className={T.input}/><input type="number" min="1" value={targetForm.count} onChange={e=>setTargetForm({...targetForm, count:e.target.value})} className={T.input}/><button className={`${T.btn} py-2`}>Save Coverage Target</button></div></form><div className="space-y-2">{coverageTargets.length === 0 ? <FriendlyEmpty title="No coverage targets yet" text="Add the staffing level you want for each role and time. Fill Coverage Gaps can then create draft shifts for review."/> : coverageTargets.map(t => <div key={t.id} className="bg-[#12161A] border border-[#2A353D] rounded-xl p-3 flex justify-between items-center"><div><div className="font-black text-white">{dayNames[t.dayIndex]} • {t.role} x{t.count}</div><div className="text-xs text-slate-400 font-bold">{formatShortTime(t.startTime)} - {formatShortTime(t.endTime)}</div></div><button onClick={() => deleteDoc(doc(db,'scheduleCoverageTargets',t.id))} className="p-2 text-slate-400 hover:text-red-400"><Trash2 size={14}/></button></div>)}</div></div>}
       {activeTool === 'templates' && <div className="space-y-3"><div className="flex flex-col md:flex-row gap-2"><select value={templateId} onChange={e => setTemplateId(e.target.value)} className={`${T.input} flex-1`}><option value="">Select template to apply</option>{templateOptions.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}</select><button onClick={applyTemplate} disabled={periodActionBlocked} className={`${T.btn} py-2 disabled:opacity-50`}>{activePeriod.mode === 'weekly' ? 'Apply to Current Week' : 'Apply to Current Period'}</button><button onClick={saveCurrentWeekAsTemplate} className={T.btnAlt}>Save Current Week</button></div>{templateOptions.length === 0 ? <FriendlyEmpty title="No templates yet" text="Create a Normal Week, Packers Sunday, Fish Fry Friday, or Live Music template. Each restaurant gets its own library."/> : templateOptions.map(t => <div key={t.id} className="bg-[#12161A] border border-[#2A353D] rounded-xl p-3 flex justify-between items-center"><div><div className="font-black text-white">{t.name}</div><div className="text-xs text-slate-400 font-bold">{t.description || 'No description'} • {(t.rows || []).length} rules</div></div><div className="flex gap-2"><button onClick={() => editTemplate(t)} className={T.btnAlt}>Edit</button><button onClick={() => deleteTemplate(t)} className="px-3 py-2 rounded-xl bg-red-900/20 text-red-300 border border-red-900/50 text-xs font-black">Delete</button></div></div>)}</div>}
