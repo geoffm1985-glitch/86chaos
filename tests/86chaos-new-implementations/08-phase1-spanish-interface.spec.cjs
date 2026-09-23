@@ -21,7 +21,7 @@ test.describe('17.0.26 Phase 1 Spanish interface', () => {
       await language.selectOption('es');
       await page.getByRole('button', { name: /save preferences|guardar preferencias/i }).click();
       await expect(page.locator('html')).toHaveAttribute('lang', 'es', { timeout: 15000 });
-      await expect(page.getByRole('button', { name: /preferencias/i }).first()).toBeVisible();
+      await expect(page.locator('button.settings-tab-button').filter({ hasText: /^Preferencias$/i }).first()).toBeVisible();
 
       await page.getByRole('button', { name: /open navigation menu/i }).click();
       await expect(page.getByText('Reloj y horario', { exact: true })).toBeVisible();
