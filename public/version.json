@@ -1,17 +1,17 @@
 {
-  "version": "17.0.24",
-  "name": "86 Chaos 17.0.24",
-  "build": "17.0.24",
-  "label": "86 Chaos 17.0.24",
-  "releasedAt": "2026-09-22T23:10:00.000Z",
-  "releaseTitle": "Schedule Builder Clear Month",
+  "version": "17.0.25",
+  "name": "86 Chaos 17.0.25",
+  "build": "17.0.25",
+  "label": "86 Chaos 17.0.25",
+  "releasedAt": "2026-09-23T00:30:00.000Z",
+  "releaseTitle": "Schedule Builder Delete Reliability and Delta Baseline Repair",
   "notes": [
-    "Adds a Clear Month action in Schedule Builder that removes every saved shift in the displayed month only after explicit confirmation.",
-    "The confirmation states that both draft and published shifts will be deleted while events and time-off requests remain unchanged.",
-    "The clear operation reloads and verifies the restaurant month from Firestore, retries any remaining shift records once, and reports an error instead of silently leaving a partial clear.",
-    "Preserves the 17.0.23 Request Off cutoff/blackout policy and all unrelated application behavior."
+    "Repairs Schedule Builder Clear Month so it deletes every shift in the displayed month across canonical and legacy tenant identity fields through an authenticated server boundary.",
+    "Repairs individual shift deletion so one shift chip can be deleted reliably, including hidden duplicate records for the same employee/date/time.",
+    "Repairs failed+new delta selection so a completed full gate with zero failures is a valid baseline and version identity can be recovered from surviving full-run evidence.",
+    "The delta command now runs the current release targeted regressions before its scoped Playwright selection. Request Off cutoff/blackout behavior and unrelated application features are unchanged."
   ],
-  "title": "86 Chaos 17.0.24",
-  "summary": "Schedule Builder can now clear all saved shifts from the displayed month with explicit destructive confirmation.",
-  "description": "Adds a verified Clear Month control to Schedule Builder for deleting all draft and published shifts in the displayed month without deleting events or Request Off records."
+  "title": "86 Chaos 17.0.25",
+  "summary": "Repairs Schedule Builder shift deletion and restores useful failed+new delta testing from a clean full baseline.",
+  "description": "Moves Schedule Builder destructive shift deletion behind an authenticated tenant-safe server operation and repairs delta baseline handling for clean full release-gate runs."
 }
