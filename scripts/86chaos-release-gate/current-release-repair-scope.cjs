@@ -1,7 +1,7 @@
 'use strict';
 
-const CURRENT_RELEASE_VERSION = '17.0.27';
-const CURRENT_RELEASE_CARRY_FORWARD_NOTE = 'Current release browser coverage for Phase 1 Spanish plus the emergency Schedule Builder shift-assignment repair. These tests run in failed+new/repair selection until a later release replaces this scope.';
+const CURRENT_RELEASE_VERSION = '17.0.28';
+const CURRENT_RELEASE_CARRY_FORWARD_NOTE = 'Current release browser coverage for Phase 1 Spanish, the emergency Schedule Builder shift-assignment repair, and the 17.0.28 browser-safe i18n bootstrap repair. These tests run in failed+new/repair selection until a later release replaces this scope.';
 const CURRENT_RELEASE_REPAIR_SCOPE = [
   {
     specPath: '86chaos-new-implementations/08-phase1-spanish-interface.spec.cjs',
@@ -12,6 +12,11 @@ const CURRENT_RELEASE_REPAIR_SCOPE = [
     specPath: '86chaos-new-implementations/09-schedule-builder-shift-assignment.spec.cjs',
     fullSuitePath: '17.0.27 Schedule Builder shift assignment emergency repair',
     exactTestTitle: 'manager can assign one future shift through Schedule Builder and remove the QA shift afterward',
+  },
+  {
+    specPath: '86chaos-new-implementations/10-app-bootstrap-i18n-runtime.spec.cjs',
+    fullSuitePath: '17.0.28 browser-safe i18n bootstrap repair',
+    exactTestTitle: 'application boots through the i18n provider without a translation runtime crash',
   },
 ].flatMap(row => ['chromium', 'mobile-chromium'].map(project => ({
   ...row,
