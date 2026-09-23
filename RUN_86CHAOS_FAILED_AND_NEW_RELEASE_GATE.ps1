@@ -59,7 +59,7 @@ function Resolve-ReleaseTargetValue {
   $processValue = [Environment]::GetEnvironmentVariable($Key, 'Process')
   $testValue = if ($TestEnv.ContainsKey($Key)) { [string]$TestEnv[$Key] } else { '' }
   $localValue = if ($LocalEnv.ContainsKey($Key)) { [string]$LocalEnv[$Key] } else { '' }
-  $canonicalPreviewUrl = 'https://86chaos-git-testing-cheers-portal-s-projects.vercel.app/'
+  $canonicalPreviewUrl = 'https://testing.86chaos.com/'
   $packageVersion = Read-PackageVersion
 
   if ($Key -eq 'CHAOS_EXPECTED_VERSION' -and $packageVersion) {

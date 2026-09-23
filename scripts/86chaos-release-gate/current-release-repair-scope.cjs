@@ -1,8 +1,13 @@
 'use strict';
 
-const CURRENT_RELEASE_VERSION = '17.0.29';
-const CURRENT_RELEASE_CARRY_FORWARD_NOTE = 'Current release browser coverage for Phase 1 Spanish including the corrected visible-label locator, the emergency Schedule Builder shift-assignment repair, and the browser-safe i18n bootstrap repair. These tests run in failed+new/repair selection until a later release replaces this scope.';
+const CURRENT_RELEASE_VERSION = '17.0.30';
+const CURRENT_RELEASE_CARRY_FORWARD_NOTE = '17.0.30 carries forward Spanish, Schedule Builder assignment, and browser-safe i18n coverage while adding deployed verification that System Administrator no longer exposes online or last-seen status.';
 const CURRENT_RELEASE_REPAIR_SCOPE = [
+  {
+    specPath: '86chaos-full-audit/10-presence-system-admin.spec.cjs',
+    fullSuitePath: '10 System Administrator without online tracking',
+    exactTestTitle: 'System Administrator and Staff Roster do not expose online or last-seen status',
+  },
   {
     specPath: '86chaos-new-implementations/08-phase1-spanish-interface.spec.cjs',
     fullSuitePath: '17.0.26 Phase 1 Spanish interface',

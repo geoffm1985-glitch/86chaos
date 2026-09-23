@@ -72,7 +72,7 @@ const ROUTE_STATES = {
     ['Security Center'], ['Super Admin Access'], ['Permission & Role Manager'],
     ['Workspaces / Clients'], ['People Directory'], ['Workspace Setup Wizard'],
     ['Support Diagnostics'], ['AI Usage / Scan Limits'], ['Python Automation Center'],
-    ['Push Control Center'], ['Online / Last Seen'], ['Maintenance Mode'], ['Robustness Suite'],
+    ['Push Control Center'], ['Maintenance Mode'], ['Robustness Suite'],
     ['Settings Version History'], ['Platform Operations'], ['Danger Zone'],
   ],
 };

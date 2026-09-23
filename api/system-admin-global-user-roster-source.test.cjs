@@ -26,9 +26,9 @@ test('System Administrator active management component uses authoritative people
   assert.match(source, /\/api\/system-admin\/people/);
   assert.match(source, /loadSystemAdminPeopleRoster/);
   assert.match(source, /SYSTEM_ADMIN_GLOBAL_PEOPLE_TABS/);
-  assert.match(source, /new Set\(\['tenants', 'push', 'users', 'live'\]\)/);
+  assert.match(source, /new Set\(\['tenants', 'push', 'users'\]\)/);
   assert.match(source, /SYSTEM_ADMIN_GLOBAL_PEOPLE_TABS\.has\(subTab\)[\s\S]{0,160}loadSystemAdminPeopleRoster\(\{ refreshing: false \}\)/);
-  assert.doesNotMatch(source, /if \(subTab === 'users' \|\| subTab === 'live'\)[\s\S]{0,400}collection\(db, 'users'\)/, 'People Directory and Live/Last Seen must not install a browser users roster listener');
+  assert.doesNotMatch(source, /subTab === 'live'/, 'System Administrator must not expose the retired live-status tab');
   assert.doesNotMatch(source, /listen\('users',[\s\S]{0,240}collection\(db, 'users'\)[\s\S]{0,240}applySystemAdminUserCounts/, 'System Administrator roster must not be populated from a client users onSnapshot query');
   assert.match(source, /Authoritative server roster/);
   assert.match(source, /Authoritative platform user roster could not load/);

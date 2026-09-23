@@ -23,7 +23,7 @@ function fixture(t, rows) {
   const current = path.join(directory, 'current'); fs.mkdirSync(current);
   const source = { version: '16.0.231', sourceHash: 'a'.repeat(64), commit: 'b'.repeat(40) };
   const records = rows || ['passed', 'failed', 'timeout', 'not run', 'running', 'skipped'].map(leafTitle => ({ specPath: 'e2e/example.spec.cjs', fullSuitePath: 'owner > nested > nested', leafTitle, project: 'chromium' }));
-  const preflight = { ok: true, runId: 'prior', sourceVersion: source.version, deployedVersion: source.version, firebaseProjectId: 'chaos-test-d1601', appUrl: 'https://86chaos-git-testing-cheers-portal-s-projects.vercel.app' };
+  const preflight = { ok: true, runId: 'prior', sourceVersion: source.version, deployedVersion: source.version, firebaseProjectId: 'chaos-test-d1601', appUrl: 'https://testing.86chaos.com' };
   write(path.join(prior, 'source-identity-start.json'), source); write(path.join(prior, 'environment-preflight.json'), preflight);
   const tests = records.map(row => fakeTest(row, sourceRoot));
   const journal = progress.createProgressJournal({ root: sourceRoot, runDir: prior, tests, mode: 'full', currentSource: source });
@@ -153,7 +153,7 @@ test('the actual reporter persists progress and the actual prepare command selec
   }
   const prior = path.join(directory, 'prior'); const current = path.join(directory, 'current'); fs.mkdirSync(prior); fs.mkdirSync(current);
   assert.ok(source.commit);
-  const preflight = { ok: true, runId: 'prior', sourceVersion: source.version, deployedVersion: source.version, firebaseProjectId: 'chaos-test-d1601', appUrl: 'https://86chaos-git-testing-cheers-portal-s-projects.vercel.app' };
+  const preflight = { ok: true, runId: 'prior', sourceVersion: source.version, deployedVersion: source.version, firebaseProjectId: 'chaos-test-d1601', appUrl: 'https://testing.86chaos.com' };
   write(path.join(prior, 'source-identity-start.json'), source); write(path.join(prior, 'environment-preflight.json'), preflight);
   write(path.join(current, 'environment-preflight.json'), { ...preflight, runId: 'current' });
   const records = generatePlaywrightInventory({ root: gitRoot }).records;

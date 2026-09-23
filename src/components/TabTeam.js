@@ -120,46 +120,6 @@ Please log in and update your password.`;
     } catch(err) { addToast('Error', err.message); }
   };
 
-
-  const parsePresenceTimeMs = (value) => {
-    if (!value) return 0;
-    if (typeof value === 'number') return value > 1000000000000 ? value : value * 1000;
-    if (typeof value === 'string') {
-      const parsed = new Date(value).getTime();
-      return Number.isFinite(parsed) ? parsed : 0;
-    }
-    if (typeof value?.toDate === 'function') {
-      const parsed = value.toDate().getTime();
-      return Number.isFinite(parsed) ? parsed : 0;
-    }
-    if (typeof value?.seconds === 'number') return value.seconds * 1000;
-    return 0;
-  };
-  const getLastActiveMs = (u = {}) => Math.max(
-    parsePresenceTimeMs(u.lastHeartbeatAt),
-    parsePresenceTimeMs(u.presenceUpdatedAt),
-    parsePresenceTimeMs(u.lastActive),
-    parsePresenceTimeMs(u.lastSeen)
-  );
-  const formatLastActive = (u = {}) => {
-    const lastMs = getLastActiveMs(u);
-    if (!lastMs) return { label: 'Never active', tone: 'text-slate-500', exact: 'No app activity recorded yet.' };
-    const diff = Math.max(0, Date.now() - lastMs);
-    const minutes = Math.floor(diff / 60000);
-    const hours = Math.floor(minutes / 60);
-    const days = Math.floor(hours / 24);
-    let label = 'Just now';
-    let tone = 'text-emerald-400';
-    if (diff < 3 * 60 * 1000 && u.onlineState !== 'offline') label = 'Online now';
-    else if (minutes < 60) label = `${minutes || 1}m ago`;
-    else if (hours < 24) { label = `${hours}h ago`; tone = 'text-emerald-500'; }
-    else if (days === 1) { label = 'Yesterday'; tone = 'text-amber-400'; }
-    else { label = `${days}d ago`; tone = days > 7 ? 'text-red-400' : 'text-amber-400'; }
-    let exact = '';
-    try { exact = new Date(lastMs).toLocaleString(); } catch (err) { exact = ''; }
-    return { label, tone, exact };
-  };
-
   const activeUsers = users.filter(u => u.isActive !== false).sort((a, b) => String(a.role || '').localeCompare(String(b.role || '')) || String(a.name || '').localeCompare(String(b.name || '')));
 
 return (
@@ -227,7 +187,6 @@ return (
           {activeUsers.length === 0 && <div className={`p-6 text-center text-sm font-bold ${T.muted}`}>No active staff found.</div>}
           
           {activeUsers.map(u => {
-            const activity = formatLastActive(u);
             return (
             <div key={u.id} className="p-2.5 border-b border-[#2A353D] hover:bg-[#12161A] transition-colors flex items-center justify-between gap-2">
               <div className="flex items-center gap-3 overflow-hidden">

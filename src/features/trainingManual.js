@@ -832,11 +832,11 @@ export const SYSTEM_TRAINING_MANUAL_CHAPTERS = [
   {
     id: "system-admin-support-monitoring",
     group: "System Administrator",
-    title: "System Administrator: Support, AI Usage, Push, and Presence",
+    title: "System Administrator: Support, AI Usage, and Push",
     tab: "System Administrator > Support & Monitoring",
     audience: "Configured System Administrators only",
-    summary: "Diagnose customer problems with minimum data exposure and monitor capped AI, push delivery, and on-demand presence.",
-    keywords: "system administrator support diagnostics crash logs ai usage scan limits push control tokens presence snapshot customer problem",
+    summary: "Diagnose customer problems with minimum data exposure and monitor capped AI and push delivery.",
+    keywords: "system administrator support diagnostics crash logs ai usage scan limits push control tokens customer problem",
     sections: [
       { title: "Support Diagnostics", steps: [
         "Start with the customer's exact time, workspace, user, device, screen, action, and error.",
@@ -848,10 +848,9 @@ export const SYSTEM_TRAINING_MANUAL_CHAPTERS = [
         "Workspace overrides may lower or set business limits, but server hard caps, allowed low-cost models, output limits, call budgets, rate limits, and duplicate locks remain authoritative.",
         "Investigate repeated failures before allowing retries. Do not raise limits merely to hide a file-quality or workflow problem."
       ]},
-      { title: "Push and presence", steps: [
-        "Use Push Control Center to inspect token age, permission state, stale devices, and targeted test results. A token does not guarantee the operating system will display a notification.",
-        "Use Manual Presence Snapshot only when needed. It performs an on-demand read instead of keeping an expensive platform-wide live listener open.",
-        "Presence is an operational clue, not proof that a person is actively reading the app."
+      { title: "Push delivery", steps: [
+        "Use Push Control Center to inspect notification permission, saved push devices, and delivery/repair status.",
+        "Push diagnostics are limited to notification permission, device-token, delivery, and repair metadata."
       ]}
     ],
     notes: ["Do not paste customer secrets or employee files into diagnostic assistants. Use redacted operational facts only."]
@@ -883,8 +882,7 @@ export const SYSTEM_TRAINING_MANUAL_CHAPTERS = [
       ]}
     ],
     notes: ["Danger Zone is the last stop, not a shortcut. If scope or recovery is unclear, stop and investigate."]
-  }
-,
+  },
   {
     id: "complete-app-feature-map",
     group: "Coverage Index",

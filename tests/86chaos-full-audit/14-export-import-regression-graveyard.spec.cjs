@@ -15,7 +15,7 @@ test.describe('14 exports/imports and permanent regression graveyard', () => {
     expect(joined).not.toMatch(/Invalid Date|Infinity|undefined undefined|null null|\$NaN|NaN%|(?:^|[^A-Za-z])NaN(?:[^A-Za-z]|$)/i);
   });
 
-  test('known bug graveyard stays dead: no AppleWebKit, fake dependency, preview mic label, broken presence/math strings, or bad System Admin label', async ({ page }, testInfo) => {
+  test('known bug graveyard stays dead: no AppleWebKit, fake dependency, preview mic label, broken math strings, or bad System Admin label', async ({ page }, testInfo) => {
     const account = ownerLikeCreds();
     requireCreds(account, 'owner-like account');
     await login(page, account.email, account.password);
@@ -26,7 +26,6 @@ test.describe('14 exports/imports and permanent regression graveyard', () => {
     const findings = [];
     const checks = [
       ['raw AppleWebKit user agent', /Mozilla\/5\.0|AppleWebKit|KHTML, like Gecko/],
-      ['presence all-online stale label', /Seen Active Today[\s\S]{0,80}\bONLINE\b/i],
       ['negative inactive days', /Inactive -\d+ days/i],
       ['mic preview label', /(?:microphone|\bmic\b|86\s*voice|voice assistant|86voice)[\s\S]{0,120}\bPREVIEW\b|\bPREVIEW\b[\s\S]{0,120}(?:microphone|\bmic\b|86\s*voice|voice assistant|86voice)/i],
       ['System Admin Branding / Display', /Branding\s*\/\s*Display/i],

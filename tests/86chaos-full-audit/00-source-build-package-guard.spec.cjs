@@ -29,7 +29,7 @@ test.describe('00 source / build / deploy / package guards', () => {
     for (const marker of ['chaos-test-d1601', 'cheers-34b8d', 'REACT_APP_TEST_FIREBASE_API_KEY', 'REACT_APP_PROD_FIREBASE_API_KEY']) add(all.includes(marker), `Missing Firebase safety marker ${marker}`);
     add(!(/["']private_key["']\s*:\s*["']-----BEGIN/i.test(all)), 'Hardcoded private key value appears in app source');
     add(/INVALID TIME|Invalid time|CHECK TIME RANGE|invalid time/i.test(schedule), 'Schedule Builder should flag invalid time ranges');
-    add(/Online Now|Recently Active|Active Today|Last Seen/i.test(management), 'Presence board should split online/recent/active-today/last-seen');
+    add(!/Online \/ Last Seen|Last online|Online now|Recently Active|Presence Snapshot/i.test(management), 'Online/last-seen presence UI should be retired');
     add(!/id:\s*['"]branding['"]\s*,\s*label:\s*['"]Branding\s*\/\s*Display['"]/i.test(management), 'System Administrator nav should not expose Branding / Display');
     add(/special_event|Events \/ staff up|event/i.test(schedule), 'Schedule Builder should include events row/visibility logic');
         add(/activeElement|focus|keyboard|modal/i.test(modal + schedule), 'Mobile modal input focus protection is not obvious');

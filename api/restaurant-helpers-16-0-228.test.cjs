@@ -3,7 +3,7 @@ const pack = require('../src/core/restaurantPack.cjs'); const memory = require('
 const { vendorMemory } = require('./_vendor-memory'); const { approveInvoice } = require('./_invoice-approval'); const { recipeCosting } = require('./_recipe-costing');
 const { foodSafety } = require('./_food-safety'); const food = require('../src/core/foodSafety.cjs'); const pos = require('../src/core/posNormalization.cjs');
 const { suggestMenuIngredient } = require('../src/core/menuLanguage.cjs'); const { normalizeLabelSettings } = require('../src/core/labelPresets.cjs');
-const { fakeFirestore } = require('../test-tools/fakeFirestore.cjs'); const { presenceDiagnostic, withPresenceTimeout } = require('./_presence-diagnostics.cjs');
+const { fakeFirestore } = require('../test-tools/fakeFirestore.cjs');
 const { safeProductQuery, researchProduct } = require('./free-ai-services').__test;
 for (const [value, amount, unit] of [['4/10 LB',40,'lb'],['2/5 LB',10,'lb'],['6/64 OZ',384,'oz'],['12/8 OZ',96,'oz'],['24 CT',24,'each'],['1 CS',1,'case'],['1 CASE',1,'case'],['1 EA',1,'each'],['1 BAG',1,'bag'],['1 PK',1,'pack'],['.5 CS',0.5,'case'],['6 x 64 FL OZ',384,'fl oz']]) test(`case-pack ${value}`, () => { const result = pack.parseCasePack(value); assert.equal(result.known,true); assert.equal(result.amount,amount); assert.equal(result.unit,unit); });
 for (const value of ['', '4//10 LB', '4/0 LB', '4/-10 LB', '4/10', '4/10 KZ', '4-10 LB', '2 PC CW', '40 LB APPROX', '4/10 LB?']) test(`malformed or uncertain pack ${value || '(missing)'}`, () => { const result = pack.parseCasePack(value); assert.equal(result.known,false); assert.equal(result.amount,null); });
@@ -94,10 +94,6 @@ test('POS CSV preserves item/category/daily identities, explicit mapping, tax, t
   assert.throws(()=>pos.normalizePosImport({rows:[...parsed.rows,parsed.rows[0]],restaurantId:'a'}),/duplicate/); assert.throws(()=>pos.parsePosCsv('a,b\n"unclosed,1'),/unterminated/);
 });
 test('label presets bound calibration while keeping the reliable default', () => assert.deepEqual(normalizeLabelSettings({preset:'unknown',offsetX:100,offsetY:-100}),{preset:'legacy',offsetX:5,offsetY:-5}));
-test('presence diagnostics distinguish a missing instance from timeout without changing configuration', async () => {
-  const app={options:{projectId:'testing-project',databaseURL:'https://example.invalid'}}; assert.equal(presenceDiagnostic(app,new Error('RTDB REST 404'),'fallback').code,'RTDB_INSTANCE_NOT_FOUND');
-  assert.equal(await withPresenceTimeout(Promise.resolve('ok'),1000,'test'),'ok'); await assert.rejects(withPresenceTimeout(new Promise(()=>{}),5,'test'),{code:'PRESENCE_TIMEOUT'});
-});
 test('QuickBooks preserves draft credits and requires explicit account mapping', () => {
   const {normalizeDraft}=require('./quickbooks-bill-draft'); const draft=normalizeDraft({draftType:'VendorCredit',vendorName:'Vendor',vendorId:'v',lines:[{description:'Returned wings',amount:20}]});
   assert.equal(draft.draftType,'VendorCredit'); assert.equal(draft.quickBooksShape.entity,'VendorCredit'); assert(draft.validationIssues.some(issue=>/account/.test(issue))); assert.equal(draft.ownerApprovalRequired,true); assert.equal(draft.sendStatus,'not_sent');

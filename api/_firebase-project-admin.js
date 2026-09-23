@@ -233,15 +233,6 @@ function readProjectCredential(projectId) {
   return null;
 }
 
-function getDatabaseUrlForProject(projectId) {
-  const direct = projectId === 'cheers-34b8d'
-    ? (process.env.FIREBASE_PROD_DATABASE_URL || process.env.PROD_FIREBASE_DATABASE_URL || process.env.REACT_APP_PROD_FIREBASE_DATABASE_URL)
-    : (process.env.FIREBASE_TEST_DATABASE_URL || process.env.TEST_FIREBASE_DATABASE_URL || process.env.REACT_APP_TEST_FIREBASE_DATABASE_URL);
-  if (direct) return String(direct).trim();
-  return projectId === 'cheers-34b8d'
-    ? 'https://cheers-34b8d-default-rtdb.firebaseio.com'
-    : 'https://chaos-test-d1601-default-rtdb.firebaseio.com';
-}
 
 function getStorageBucketForProject(projectId) {
   const aliases = PROJECT_ENV_ALIASES[projectId] || {};
@@ -386,8 +377,7 @@ function getAdminAppForProject(projectId, { requireCredentials = true } = {}) {
   return admin.initializeApp({
     credential: admin.credential.cert({ ...found.credential, projectId: finalProjectId }),
     projectId: finalProjectId,
-    storageBucket: getStorageBucketForProject(finalProjectId),
-    databaseURL: getDatabaseUrlForProject(finalProjectId)
+    storageBucket: getStorageBucketForProject(finalProjectId)
   }, finalAppName);
 }
 

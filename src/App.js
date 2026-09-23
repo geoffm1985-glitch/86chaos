@@ -4,7 +4,7 @@ import { addDoc, collection, doc, onSnapshot, updateDoc } from 'firebase/firesto
 import { getToken, onMessage } from 'firebase/messaging';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import 'leaflet/dist/leaflet.css';
-import { T, db, auth, messagingReady, isFirebaseMessagingUnsupportedError, firebaseConfig, CURRENT_VERSION, MASTER_ADMIN_EMAIL, useLiveCollection, useLiveCollectionState, useLiveDocumentState, secureFetch, waitForAuthCurrentUser, getToday, getMonthStr, formatDate, formatDisplayFullDate, formatDisplayMonth, logAudit, setActiveTimeFormat, getOfflineQueue, replayOfflineQueue, startLowCostPresenceSession, useLowCostPresenceSummary, clearTenantListenerCache, recordScheduleOperationDiagnostic } from './core/appCore';
+import { T, db, auth, messagingReady, isFirebaseMessagingUnsupportedError, firebaseConfig, CURRENT_VERSION, MASTER_ADMIN_EMAIL, useLiveCollection, useLiveCollectionState, useLiveDocumentState, secureFetch, getToday, getMonthStr, formatDate, formatDisplayFullDate, formatDisplayMonth, logAudit, setActiveTimeFormat, getOfflineQueue, replayOfflineQueue, clearTenantListenerCache, recordScheduleOperationDiagnostic } from './core/appCore';
 import { buildAlertFingerprint, useRememberedAlert } from './core/alertMemory';
 import { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, GlobalSearchModal, KitchenTVMode, UndoBar, VoiceCommandDock } from './components/common';
 import { LockedFeatureScreen } from './components/PlanGate';
@@ -846,7 +846,6 @@ export default function App() {
   const pwaBackExitRef = useRef({ armed: false, timer: null, initialized: false, exiting: false });
   const [helpOriginState, setHelpOriginState] = useState('');
   const [clientData, setClientData] = useState(null);
-  const [heartbeatDebug, setHeartbeatDebug] = useState(null);
   const clientFeatures = clientData?.features || {};
   const [isGlobalSearchOpen, setIsGlobalSearchOpen] = useState(false);
   const [globalSearchQuery, setGlobalSearchQuery] = useState('');
@@ -1186,7 +1185,6 @@ const [currentDate, setCurrentDate] = useState(getToday());
   const eventLimitCount = schedulePlan.eventLimit || (activeTabState === 'messages' ? 90 : 35);
   const prepDateWindow = Array.from(new Set([currentDate, getToday(), 'MASTER']));
   const canViewTeamScheduleData = Boolean(appUser?.isSuperAdmin || appUser?.isAdmin || appUser?.isOwner || appUser?.accountOwner || appUser?.workspaceOwner || appUser?.permissions?.schedule || appUser?.permissions?.team);
-  const canViewTeamPresenceData = Boolean(appUser?.isSuperAdmin || appUser?.isAdmin || appUser?.isOwner || appUser?.accountOwner || appUser?.workspaceOwner || appUser?.permissions?.team);
   const wantsFullRosterData = Boolean(rId && !ghostTenant && (
     schedulePlan.needsRoster || wantsToday || ['team', 'labor', 'financials', 'messages', 'hr-training', 'prep'].includes(activeTabState) || globalSearchHasMeaningfulQuery
   ));
@@ -1194,32 +1192,6 @@ const [currentDate, setCurrentDate] = useState(getToday());
 
   const users = useLiveCollection('users', rId, { enabled: wantsFullRosterData, limitCount: activeTabState === 'team' ? 220 : 90, fallbackLimitCount: 40, debugLabel: `app:${activeTabState}:roster` });
   const workspaceMembers = useLiveCollection('workspaceMembers', rId, { enabled: wantsWorkspaceMembershipList, limitCount: activeTabState === 'team' ? 220 : 60, fallbackLimitCount: 30, debugLabel: `app:${activeTabState}:workspace-members` });
-  // Low-cost presence: no Firestore live heartbeat/listener. When a manager/team screen needs
-  // last-seen hints, read tiny Realtime Database summaries instead of users/livePresence documents.
-  const wantsWorkspacePresenceSnapshot = Boolean(activeTabState === 'team' && canViewTeamPresenceData);
-  const [workspacePresenceRecords, setWorkspacePresenceRecords] = useState([]);
-  useEffect(() => {
-    if (!rId || ghostTenant || !wantsWorkspacePresenceSnapshot) {
-      setWorkspacePresenceRecords([]);
-      return undefined;
-    }
-    let alive = true;
-    secureFetch(`/api/presence-workspace-summary?restaurantId=${encodeURIComponent(rId)}&limit=500`, { method: 'GET' })
-      .then(response => response.json().then(data => ({ response, data })).catch(() => ({ response, data: {} })))
-      .then(({ response, data }) => {
-        if (!alive) return;
-        if (!response.ok || data?.ok === false) throw new Error(data?.error || `API ${response.status}`);
-        setWorkspacePresenceRecords(Array.isArray(data?.users) ? data.users : []);
-      })
-      .catch(err => {
-        if (!alive) return;
-        console.warn('Workspace presence summary unavailable; keeping last-known-good summary:', err?.message || err);
-      });
-    return () => { alive = false; };
-  }, [rId, ghostTenant, wantsWorkspacePresenceSnapshot]);
-  const livePresenceRecords = workspacePresenceRecords;
-  const selfPresenceRecord = useLowCostPresenceSummary(rId, appUser?.id || '', { enabled: !!rId && !ghostTenant && activeTabState === 'settings' && !!appUser?.id });
-  const presenceSessions = livePresenceRecords;
   const rawDateShiftsState = useLiveCollectionState('shifts', rId, { enabled: !!rId && wantsShiftData, whereClauses: schedulePlan.shiftClauses, orderByField: 'date', orderDirection: 'asc', limitCount: schedulePlan.shiftLimit, fallbackLimitCount: Math.min(schedulePlan.shiftLimit || 80, 80), debugLabel: `app:${activeTabState}:${activeScheduleSubTab}:shifts-date-plan` });
   const rawDateShifts = rawDateShiftsState.data || [];
   const enableScheduleDateKeyRescue = shouldEnableScheduleDateKeyRescue({ wantsShiftData, wantsScheduleScreen, canonicalState: rawDateShiftsState, clientData, shiftClauses: schedulePlan.shiftClauses });
@@ -1604,70 +1576,26 @@ if (liveAppUser && clientData) {
     sales: rawDemoFeatures.financials !== false && liveAppUser?.demoRole !== 'employee'
   } : clientFeatures;
   const maskDemoUser = (u, idx = 0) => ({ ...u, name: u.name || `Demo Staff ${idx+1}`, email: `employee${idx+1}@demo.hidden`, phone: 'Hidden for demo', address: 'Hidden for demo', emergencyContact: 'Hidden for demo', wage: 0, photoURL: u.photoURL || '' });
-  const parsePresenceTimeMs = (value) => {
-    if (!value) return 0;
-    if (typeof value === 'number') return value > 1000000000000 ? value : value * 1000;
-    if (typeof value === 'string') { const parsed = new Date(value).getTime(); return Number.isFinite(parsed) ? parsed : 0; }
-    if (typeof value?.toDate === 'function') { const parsed = value.toDate().getTime(); return Number.isFinite(parsed) ? parsed : 0; }
-    if (typeof value?.seconds === 'number') return value.seconds * 1000;
-    return 0;
-  };
-  const mergePresenceIntoUsers = (userList = [], sessionList = []) => {
-    if (!Array.isArray(userList) || !Array.isArray(sessionList) || sessionList.length === 0) return userList || [];
-    const now = Date.now();
-    const liveWindowMs = 5 * 60 * 1000;
-    const sessionsByUser = {};
-    sessionList.forEach(session => {
-      const userId = session.userId || session.uid || session.id;
-      if (!userId) return;
-      const lastMs = Math.max(
-        parsePresenceTimeMs(session.lastHeartbeatAt),
-        parsePresenceTimeMs(session.presenceUpdatedAt),
-        parsePresenceTimeMs(session.lastActive),
-        parsePresenceTimeMs(session.lastSeen),
-        parsePresenceTimeMs(session.heartbeatEpochMs),
-        parsePresenceTimeMs(session.lastChanged),
-        parsePresenceTimeMs(session.lastOnline)
-      );
-      if (!lastMs) return;
-      const explicitlyOnline = session.online === true || session.onlineState === 'online' || session.state === 'online';
-      const explicitlyOffline = session.online === false || session.onlineState === 'offline' || session.state === 'offline';
-      const enriched = { ...session, _presenceLastMs: lastMs, _presenceLive: explicitlyOnline || (!explicitlyOffline && (now - lastMs) < liveWindowMs) };
-      if (!sessionsByUser[userId]) sessionsByUser[userId] = [];
-      sessionsByUser[userId].push(enriched);
-    });
-    return (userList || []).map(user => {
-      const sessions = (sessionsByUser[user.id] || []).sort((a, b) => b._presenceLastMs - a._presenceLastMs);
-      if (sessions.length === 0) return user;
-      const liveSession = sessions.find(s => s._presenceLive);
-      const best = liveSession || sessions[0];
-      const bestTime = new Date(best._presenceLastMs).toISOString();
-      return {
-        ...user,
-        lastActive: bestTime,
-        lastSeen: bestTime,
-        lastHeartbeatAt: best.lastHeartbeatAt || bestTime,
-        presenceUpdatedAt: best.presenceUpdatedAt || bestTime,
-        onlineState: liveSession ? (best.onlineState || 'online') : (best.onlineState || user.onlineState),
-        activeTab: best.activeTab || user.activeTab,
-        activeSessionId: best.activeSessionId || user.activeSessionId,
-        activeDevice: best.activeDevice || user.activeDevice,
-        activeHost: best.activeHost || user.activeHost,
-        notificationPermission: best.notificationPermission || user.notificationPermission,
-        gpsPermission: best.gpsPermission || user.gpsPermission,
-        deviceDiagnostics: best.deviceDiagnostics || user.deviceDiagnostics,
-        presenceSessionCount: sessions.length,
-        presenceSource: liveSession ? 'live-session' : 'session-history'
-      };
-    });
-  };
   const wageSettings = clientData?.systemSettings || {};
   const wageViewAccess = Array.isArray(wageSettings.wageAccess) ? wageSettings.wageAccess : [];
   const wageEditAccess = Array.isArray(wageSettings.wageEditAccess) ? wageSettings.wageEditAccess : [];
   const sessionEmail = (liveAppUser?.email || appUser?.email || '').toLowerCase().trim();
   const sessionOwnerEmail = (clientData?.ownerEmail || '').toLowerCase().trim();
-  const sessionIsOwner = Boolean(liveAppUser?.isSuperAdmin || serverSaysSuperAdmin || (MASTER_ADMIN_EMAIL && sessionEmail === MASTER_ADMIN_EMAIL.toLowerCase()) || liveAppUser?.isOwner || liveAppUser?.accountOwner || (sessionOwnerEmail && sessionEmail === sessionOwnerEmail));
-  const sessionCanViewWages = Boolean(sessionIsOwner || liveAppUser?.permissions?.wageView || liveAppUser?.permissions?.wageEdit || wageViewAccess.includes(liveAppUser?.id) || wageEditAccess.includes(liveAppUser?.id));
+  const sessionIsOwner = Boolean(
+    liveAppUser?.isSuperAdmin ||
+    serverSaysSuperAdmin ||
+    (MASTER_ADMIN_EMAIL && sessionEmail === MASTER_ADMIN_EMAIL.toLowerCase()) ||
+    liveAppUser?.isOwner ||
+    liveAppUser?.accountOwner ||
+    (sessionOwnerEmail && sessionEmail === sessionOwnerEmail)
+  );
+  const sessionCanViewWages = Boolean(
+    sessionIsOwner ||
+    liveAppUser?.permissions?.wageView ||
+    liveAppUser?.permissions?.wageEdit ||
+    wageViewAccess.includes(liveAppUser?.id) ||
+    wageEditAccess.includes(liveAppUser?.id)
+  );
 
   const displayUsers = useMemo(() => {
     const accountById = new Map((users || []).map(u => [u.id, u]));
@@ -1678,14 +1606,12 @@ if (liveAppUser && clientData) {
     const legacyUsers = (users || []).filter(u => !memberIds.has(u.id) && u.isActive !== false);
     const combinedUsers = memberUsers.length ? [...memberUsers, ...legacyUsers] : (users || []);
     const baseUsers = isDemoMode ? combinedUsers.map(maskDemoUser) : combinedUsers;
-    // Merge low-cost RTDB last-seen summaries only on screens that need it. This avoids
-    // constant Firestore presence reads/writes while still giving managers a useful hint.
-    let merged = mergePresenceIntoUsers(baseUsers, livePresenceRecords);
+    let merged = baseUsers;
     if (!isDemoMode && !sessionCanViewWages) {
       merged = merged.map(u => ({ ...u, wage: 0, wageHidden: true }));
     }
     return merged;
-  }, [isDemoMode, users, workspaceMembers, sessionCanViewWages, livePresenceRecords]);
+  }, [isDemoMode, users, workspaceMembers, sessionCanViewWages]);
   const scheduleDisplayUsers = useMemo(() => {
     if (!wantsScheduleScreen && activeTabState !== 'published') return displayUsers;
     const merged = Array.isArray(displayUsers) ? [...displayUsers] : [];
@@ -1916,119 +1842,12 @@ if (liveAppUser && clientData) {
       }
     });
 
-// 2. Low-frequency presence check-in (no live scanner, no interval)
-    let cancelledPresenceCheck = false;
-
-    if (false && !ghostTenant && appUser?.id) {
-      const saveHeartbeatDebug = (next) => {
-        const packed = { ...(next || {}), at: new Date().toISOString(), restaurantId: rId, userId: appUser.id };
-        if (!cancelledPresenceCheck) setHeartbeatDebug(packed);
-        try { sessionStorage.setItem(`chaosPresenceCheckInDebug_${rId}_${appUser.id}`, JSON.stringify(packed)); } catch (err) {}
-      };
-
-      const collectDeviceDiagnostics = async () => {
-        const diag = {
-          notifications: typeof Notification !== 'undefined' ? Notification.permission : 'unsupported',
-          geolocation: navigator.geolocation ? 'supported' : 'unsupported',
-          gpsPermission: 'unknown',
-          serviceWorker: 'serviceWorker' in navigator,
-          indexedDb: 'indexedDB' in window,
-          language: navigator.language || 'unknown',
-          platform: navigator.platform || 'unknown',
-          screen: `${window.innerWidth}x${window.innerHeight}`,
-          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'unknown'
-        };
-        try {
-          if (navigator.permissions?.query && navigator.geolocation) {
-            const gps = await navigator.permissions.query({ name: 'geolocation' });
-            diag.gpsPermission = gps.state || 'unknown';
-          }
-        } catch (err) {
-          diag.gpsPermission = 'unknown';
-        }
-        return diag;
-      };
-
-      const sendPresenceCheckIn = async () => {
-        const checkKey = `chaosPresenceCheckIn_${rId}_${appUser.id}`;
-        let lastCheckIn = 0;
-        try { lastCheckIn = Number(sessionStorage.getItem(checkKey) || 0); } catch (err) {}
-        if (lastCheckIn && Date.now() - lastCheckIn < 10 * 60 * 1000) {
-          saveHeartbeatDebug({ ok: true, channel: 'manual-presence-mode', state: 'online', message: 'Presence check-in already saved for this browser session. No live heartbeat interval is running.', heartbeatEpochMs: lastCheckIn });
-          return;
-        }
-
-        const firebaseUser = await waitForAuthCurrentUser(8000);
-        if (!firebaseUser) {
-          saveHeartbeatDebug({ ok: false, channel: 'auth-wait', state: 'online', message: 'Presence check-in skipped because Firebase login is not active yet.', heartbeatEpochMs: Date.now() });
-          return;
-        }
-        const authUid = firebaseUser.uid;
-        if (appUser.id && appUser.id !== authUid) {
-          saveHeartbeatDebug({ ok: false, channel: 'auth-mismatch', state: 'online', message: `Cached app user does not match Firebase Auth user. Cached ${appUser.id}; Auth ${authUid}.`, heartbeatEpochMs: Date.now() });
-          return;
-        }
-
-        const stamp = new Date().toISOString();
-        const heartbeatEpochMs = Date.now();
-        const deviceDiagnostics = await collectDeviceDiagnostics();
-        const presenceSessionKey = `chaosSessionId_${rId}_${appUser.id}`;
-        let sessionId = sessionStorage.getItem(presenceSessionKey);
-        if (!sessionId) {
-          sessionId = `${rId}_${appUser.id}_${Date.now()}_${Math.random().toString(36).slice(2)}`;
-          sessionStorage.setItem(presenceSessionKey, sessionId);
-        }
-        const safeSessionId = String(sessionId).replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 140);
-        const device = (navigator.userAgent || 'Unknown device').substring(0, 140);
-
-        try {
-          const response = await secureFetch('/api/presence-heartbeat', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              restaurantId: rId,
-              state: 'online',
-              activeTab: 'app',
-              sessionId: safeSessionId,
-              device,
-              deviceDiagnostics,
-              notificationPermission: deviceDiagnostics.notifications,
-              gpsPermission: deviceDiagnostics.gpsPermission,
-              heartbeatEpochMs,
-              stamp
-            })
-          });
-          const data = await response.json().catch(() => ({}));
-          if (!response.ok || data?.ok === false) throw new Error(data?.error || `API ${response.status}`);
-          try { sessionStorage.setItem(checkKey, String(heartbeatEpochMs)); } catch (err) {}
-          saveHeartbeatDebug({ ok: true, channel: data?.mode || 'presence-check-in', state: 'online', message: 'One app-open presence check-in saved. No repeating heartbeat timer is running.', heartbeatEpochMs, apiProjectId: data?.projectId || '' });
-        } catch (err) {
-          saveHeartbeatDebug({ ok: false, channel: 'presence-check-in', state: 'online', message: err?.message || String(err), heartbeatEpochMs });
-        }
-      };
-
-      sendPresenceCheckIn();
-    }
-
     return () => {
-      cancelledPresenceCheck = true;
       unsub();
     };
-  }, [rId, ghostTenant, appUser?.id]);
+  }, [rId]);
 
 
-  // Low-cost presence: Realtime Database onDisconnect handles online/offline without Firestore heartbeats.
-  useEffect(() => {
-    if (!rId || ghostTenant || !appUser?.id) return undefined;
-    return startLowCostPresenceSession({
-      user: appUser,
-      restaurantId: rId,
-      activeTab: 'app',
-      onDebug: (next) => setHeartbeatDebug({ ...(next || {}), at: new Date().toISOString(), restaurantId: rId, userId: appUser.id })
-    });
-  }, [rId, ghostTenant, appUser?.id, appUser?.email, appUser?.name, appUser?.role]);
-
- 
   const transitionActiveTabState = useCallback((nextTab) => {
     const normalized = normalizeRouteTab(nextTab);
     if (normalized === 'schedule') {
@@ -2617,9 +2436,6 @@ What I clicked / expected:
       localStorage.setItem(`chaosActiveRestaurantId_${nextUser.id}`, workspace.restaurantId);
       sessionStorage.setItem('chaosWorkspaceSwitchedAt', new Date().toISOString());
       sessionStorage.setItem(`chaosWorkspacePickerSeen_${nextUser.id}`, 'true');
-      Object.keys(localStorage).forEach(k => {
-        if (k.startsWith('chaosLastHeartbeat_') || k.startsWith('chaosHeartbeatDebug_')) localStorage.removeItem(k);
-      });
     } catch (_) {}
     if (nextUser.id && nextUser.id !== 'dev-backdoor') {
       const alreadyActiveWorkspace = appUser?.activeRestaurantId === workspace.restaurantId && appUser?.lastWorkspaceId === workspace.restaurantId;
@@ -3308,7 +3124,7 @@ What I clicked / expected:
     if (activeTabState === 'team' && routeAllowed) return <TabTeam key={`tea-${rId}`} appUser={liveAppUser} users={displayUsers} clientData={displayClientData} addToast={addToast} />;
     if (activeTabState === 'hr-training' && routeAllowed) return <TabHrTraining key={`hrt-${rId}-${liveAppUser?.id}`} appUser={liveAppUser} users={displayUsers} addToast={addToast} />;
     if (activeTabState === 'maintenance' && routeAllowed) return <TabMaintenance key={`mtn-${rId}`} appUser={liveAppUser} addToast={addToast} />;
-    if (activeTabState === 'settings' && routeAllowed) return <TabSettings key={`set-${rId}`} addToast={addToast} appUser={liveAppUser} clientData={displayClientData} users={displayUsers} presenceSelf={selfPresenceRecord} />;
+    if (activeTabState === 'settings' && routeAllowed) return <TabSettings key={`set-${rId}`} addToast={addToast} appUser={liveAppUser} clientData={displayClientData} users={displayUsers} />;
     if (activeTabState === 'help' && routeAllowed) return <TabHelpCenter key={`help-${rId}`} appUser={liveAppUser} activeTab={activeTabState} helpOrigin={helpOriginState} voiceHelpSearchTarget={voiceHelpSearchTarget} addToast={addToast} setActiveTab={stableSetActiveTab} setScheduleSubTabTarget={setVoiceScheduleSubTabTarget} setInventorySubTabTarget={setInventorySubTabTarget} />;
     if (activeTabState === 'godmode' && serverSaysSuperAdmin) return <TabGodMode key={`god-${rId}-${serverAdminRetryKey}`} appUser={{ ...liveAppUser, isSuperAdmin: true, serverAdminCheck }} addToast={addToast} setGhostTenant={setGhostTenant} setActiveTab={stableSetActiveTab} />;
     if (activeTabState === 'godmode' && (serverAdminCheckPending || serverAdminCheckTemporarilyUnavailable) && pendingLocalSystemAdminHint) return (

@@ -230,7 +230,7 @@ test('strict failed-only recovers from latest completed focused run when the old
     currentSourceVersion: '16.0.159',
     currentDeployedVersion: '16.0.159',
     firebaseProjectId: 'chaos-test-d1601',
-    appUrl: 'https://86chaos-git-testing-cheers-portal-s-projects.vercel.app',
+    appUrl: 'https://testing.86chaos.com',
     validateIdentities: false,
   });
   assert.equal(validation.ok, true, validation.errors.join('\n'));

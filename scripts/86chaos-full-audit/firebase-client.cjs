@@ -104,7 +104,6 @@ function readFirebaseConfig() {
     storageBucket: env('REACT_APP_FIREBASE_STORAGE_BUCKET', 'REACT_APP_TEST_FIREBASE_STORAGE_BUCKET'),
     messagingSenderId: env('REACT_APP_FIREBASE_MESSAGING_SENDER_ID', 'REACT_APP_TEST_FIREBASE_MESSAGING_SENDER_ID'),
     appId: env('REACT_APP_FIREBASE_APP_ID', 'REACT_APP_TEST_FIREBASE_APP_ID'),
-    databaseURL: env('REACT_APP_FIREBASE_DATABASE_URL', 'REACT_APP_TEST_FIREBASE_DATABASE_URL'),
   };
   if (explicit.apiKey && explicit.authDomain && explicit.projectId && explicit.appId) return explicit;
 
@@ -116,7 +115,7 @@ function readFirebaseConfig() {
   if (!literal) throw new Error('Could not extract Firebase config object from src/core/appCore.js');
 
   const config = {};
-  for (const key of ['apiKey', 'authDomain', 'projectId', 'storageBucket', 'messagingSenderId', 'appId', 'databaseURL']) {
+  for (const key of ['apiKey', 'authDomain', 'projectId', 'storageBucket', 'messagingSenderId', 'appId']) {
     config[key] = resolveExpression(extractPropertyExpression(literal, key), constants);
   }
 

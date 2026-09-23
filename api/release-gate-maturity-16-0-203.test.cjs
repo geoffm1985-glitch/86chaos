@@ -6,19 +6,6 @@ const path = require('node:path');
 const root = path.resolve(__dirname, '..');
 const read = file => fs.readFileSync(path.join(root, file), 'utf8');
 
-test('16.0.203 presence expected timeout is fail-soft and non-5xx without adding polling', () => {
-  const api = read('api/presence-workspace-summary.js');
-  const app = read('src/App.js');
-  assert.match(api, /PRESENCE_SUMMARY_TIMEOUT_MS/);
-  assert.match(api, /withTimeout\(ctx\.app\.database\(\)\.ref\(`statusSummary/);
-  assert.match(api, /err\?\.code === 'presence-summary-timeout'/);
-  assert.match(api, /res\.status\(200\)\.json\(\{/);
-  assert.match(api, /degraded: true/);
-  assert.match(api, /retryable: true/);
-  assert.doesNotMatch(api, /presence-summary-timeout' \? 504 : 500/);
-  assert.equal((app.match(/presence-workspace-summary/g) || []).length, 1, 'client still makes only one presence-summary fetch site');
-  assert.match(app, /keeping last-known-good summary/);
-});
 
 test('16.0.203 Back Office tabs have valid tablist semantics and tests target tab role', () => {
   const management = read('src/features/management.jsx');

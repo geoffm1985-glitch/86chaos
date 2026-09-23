@@ -39,7 +39,7 @@ for (const needle of ['chaos-test-d1601', 'cheers-34b8d', 'REACT_APP_TEST_FIREBA
 assert(!/["']private_key["']\s*:\s*["']-----BEGIN/i.test(allSource + lockText), 'Hardcoded private key value found in source/package-lock');
 assert(!/unterminated/i.test(schedule), 'schedule.jsx contains literal word unterminated, check previous Vercel failure area');
 assert(/INVALID TIME|Invalid time|CHECK TIME RANGE|invalid time/i.test(schedule), 'Schedule source should visibly flag invalid time ranges');
-assert(/Online Now|Recently Active|Active Today|Last Seen/i.test(management), 'Presence board should have honest status labels');
+assert(!/Online \/ Last Seen|Online Now|Recently Active|Active Today|Last Seen|Presence Snapshot/i.test(management), 'Online/last-seen presence UI must remain retired');
 assert(!/id:\s*['"]branding['"]\s*,\s*label:\s*['"]Branding\s*\/\s*Display['"]/i.test(management), 'System Administrator nav still exposes Branding / Display label');
 assert(/special_event|Events \/ staff up|event/i.test(schedule), 'Schedule Builder source should include scheduled event visibility');
 assert(/keyboard|focus|activeElement|modal/i.test(read('src/components/Modal.js') + schedule), 'Mobile modal/input focus protection is not obvious in source');

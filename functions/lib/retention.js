@@ -107,8 +107,6 @@ const TENANT_COLLECTIONS = [
     "crashReports",
     "accountDeletionRequests",
     "workspaceMembers",
-    "presenceSessions",
-    "livePresence",
     "securityAlerts",
 ];
 const TRANSIENT_RULES = [
@@ -150,8 +148,6 @@ const AUDIT_SECURITY_RULES = [
     { collection: "securityEvents", field: "createdAt", cutoffKind: "timestamp" },
     { collection: "suspiciousActivity", field: "createdAt", cutoffKind: "timestamp" },
     { collection: "crashReports", field: "createdAt", cutoffKind: "iso" },
-    { collection: "presenceSessions", field: "lastSeenAt", cutoffKind: "timestamp" },
-    { collection: "livePresence", field: "lastSeenAt", cutoffKind: "timestamp" },
 ];
 const ARCHIVE_RULES = [
     // Current 86 Chaos schema. Geofence information is embedded in each punch.

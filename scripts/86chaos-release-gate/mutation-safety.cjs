@@ -1,6 +1,7 @@
 const APPROVED_TEST_PROJECT = 'chaos-test-d1601';
 const PRODUCTION_PROJECT = 'cheers-34b8d';
 const PRODUCTION_HOSTS = new Set(['86chaos.com', 'www.86chaos.com', 'app.86chaos.com']);
+const CANONICAL_TESTING_HOST = 'testing.86chaos.com';
 const RETIRED_VERCEL_PROJECT_SLUGS = ['cheers-portal-4oxv'];
 const CANONICAL_VERCEL_PROJECT_SLUG = '86chaos';
 const APPROVED_QA_EMAIL_RE = /^86chaos\.qa\.(system-admin|owner|manager|staff)\.\d{8}-\d{4}@example\.test$/i;
@@ -14,7 +15,7 @@ function parseHost(url = '') {
 }
 function isProductionHost(host = '') {
   const clean = normalizeHost(host);
-  return PRODUCTION_HOSTS.has(clean) || /(^|\.)86chaos\.com$/i.test(clean);
+  return PRODUCTION_HOSTS.has(clean) || (/(^|\.)86chaos\.com$/i.test(clean) && clean !== CANONICAL_TESTING_HOST);
 }
 function isRetiredVercelHost(host = '') {
   const clean = normalizeHost(host);
@@ -32,6 +33,7 @@ function isTestingPreviewHost(host = '') {
   if (!clean) return false;
   if (isProductionHost(clean)) return false;
   if (isRetiredVercelHost(clean)) return false;
+  if (clean === CANONICAL_TESTING_HOST) return true;
   if (/\.vercel\.app$/i.test(clean)) return isCanonicalVercelPreviewHost(clean);
   return /(?:^|\.)localhost$/i.test(clean) || /^(127\.0\.0\.1|0\.0\.0\.0)$/i.test(clean) || /testing|preview|qa|git-/i.test(clean);
 }
@@ -83,4 +85,4 @@ function assertMutationSafety(options = {}) {
   if (!result.ok && options.throwOnFailure) throw new Error(result.errors.join('\n'));
   return result;
 }
-module.exports = { APPROVED_TEST_PROJECT, PRODUCTION_PROJECT, PRODUCTION_HOSTS, APPROVED_QA_EMAIL_RE, normalizeHost, parseHost, isProductionHost, isRetiredVercelHost, isCanonicalVercelPreviewHost, isTestingPreviewHost, assertMutationSafety, redactSecrets, collectQaEmails };
+module.exports = { APPROVED_TEST_PROJECT, PRODUCTION_PROJECT, PRODUCTION_HOSTS, CANONICAL_TESTING_HOST, APPROVED_QA_EMAIL_RE, normalizeHost, parseHost, isProductionHost, isRetiredVercelHost, isCanonicalVercelPreviewHost, isTestingPreviewHost, assertMutationSafety, redactSecrets, collectQaEmails };

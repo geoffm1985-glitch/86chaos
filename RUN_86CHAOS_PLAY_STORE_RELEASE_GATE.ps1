@@ -18,6 +18,7 @@ if (-not (Test-Path ".\package-lock.json")) {
 
 $ReleaseTargetKeys = @('APP_URL', 'CHAOS_BASE_URL', 'CHAOS_EXPECTED_VERCEL_PROJECT_SLUG')
 $CanonicalVercelProjectSlug = '86chaos'
+$CanonicalTestingUrl = 'https://testing.86chaos.com'
 
 function Read-EnvFileMap {
   param([string]$Path)
@@ -79,6 +80,17 @@ $EnvLocal = Read-EnvFileMap (Join-Path $Root '.env.local')
 Assert-NoReleaseTargetConflicts $EnvTestLocal $EnvLocal
 Import-EnvFile $EnvTestLocal
 Import-EnvFile $EnvLocal
+
+# Full certification always targets the permanent branch-bound testing domain.
+foreach ($key in @('APP_URL', 'CHAOS_BASE_URL')) {
+  $existing = [string][Environment]::GetEnvironmentVariable($key, 'Process')
+  if ($existing -and $existing.Trim().TrimEnd('/') -ne $CanonicalTestingUrl) {
+    Write-Host "Ignoring stale $key=$($existing.Trim()); full certification is pinned to $CanonicalTestingUrl." -ForegroundColor Yellow
+  }
+  [Environment]::SetEnvironmentVariable($key, $CanonicalTestingUrl, 'Process')
+}
+$env:APP_URL = $CanonicalTestingUrl
+$env:CHAOS_BASE_URL = $CanonicalTestingUrl
 
 # Full certification always targets the version that is actually present in package.json.
 # CHAOS_EXPECTED_VERSION is transient release evidence, not persistent local configuration;

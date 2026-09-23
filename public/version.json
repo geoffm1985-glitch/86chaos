@@ -1,17 +1,17 @@
 {
-  "version": "17.0.29",
-  "name": "86 Chaos 17.0.29",
-  "build": "17.0.29",
-  "label": "86 Chaos 17.0.29",
-  "releasedAt": "2026-09-23T20:20:26Z",
-  "releaseTitle": "Spanish Release-Gate Locator Fidelity Repair",
+  "version": "17.0.30",
+  "name": "86 Chaos 17.0.30",
+  "build": "17.0.30",
+  "label": "86 Chaos 17.0.30",
+  "releasedAt": "2026-09-23T21:30:00Z",
+  "releaseTitle": "Testing Domain Cutover and Presence Retirement",
   "notes": [
-    "Repairs the desktop Phase 1 Spanish release-gate assertion to verify the translated visible Preferences tab text instead of its intentionally English accessibility label.",
-    "Preserves strict browser coverage: the test still switches the per-user interface to Spanish and verifies Spanish drawer, schedule, prep, and Today surfaces on desktop and mobile Chromium.",
-    "Leaves production Settings behavior unchanged because the failure snapshot proves the Spanish interface was already rendered correctly.",
-    "Preserves the 17.0.28 browser-safe i18n runtime, 17.0.27 Schedule Builder assignment repair, and 17.0.25 schedule delete/delta repairs."
+    "Moves release-gate testing to the permanent testing.86chaos.com branch domain and explicitly locks that host to the testing Firebase project.",
+    "Retires the online-status and last-seen subsystem: no presence listeners, heartbeats, presence APIs, RTDB status rules, roster badges, System Administrator presence screens, or last-online displays remain.",
+    "Makes the installed PWA name 86chaos testing only on testing.86chaos.com while production keeps the 86 Chaos installed-app identity.",
+    "Retires the already-passed 17.0.25 delta clean-baseline regression from the current targeted test set while preserving the delta runner itself."
   ],
-  "title": "86 Chaos 17.0.29",
-  "summary": "Release-gate fidelity repair for the desktop Spanish interface check without changing working production localization behavior.",
-  "description": "Corrects the Playwright locator that confused the translated visible label “Preferencias” with the button accessibility name “Open Preferences”, while retaining the full Spanish browser regression coverage."
+  "title": "86 Chaos 17.0.30",
+  "summary": "Permanent testing-domain cutover plus complete retirement of user online/last-seen tracking and display.",
+  "description": "Uses testing.86chaos.com as the canonical testing target, removes the presence/last-online subsystem end to end, and isolates the testing PWA install name from production."
 }

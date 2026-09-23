@@ -9,7 +9,7 @@ test.describe('13 data integrity and Firebase read/write cost guard', () => {
     const requests = [];
     page.on('request', req => {
       const url = req.url();
-      if (/firestore|googleapis|firebaseio|send-push|presence|safe-write|dispatch-reminders/i.test(url)) requests.push({ method: req.method(), url: url.slice(0, 240) });
+      if (/firestore|googleapis|firebaseio|send-push|safe-write|dispatch-reminders/i.test(url)) requests.push({ method: req.method(), url: url.slice(0, 240) });
     });
     await login(page, account.email, account.password);
     for (const route of ROUTE_SPECS.slice(0, 12)) await gotoTab(page, route.tab, { settleMs: 700 });

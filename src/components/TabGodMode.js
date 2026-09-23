@@ -77,7 +77,7 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant, db, auth, Modal, T, get
     e.preventDefault(); if (!rName.trim() || !oEmail.trim() || !oName.trim()) return;
     try {
       const defaultFeatures = { schedule: true, prep: true, inventory: true, recipes: true, messages: true, sales: true };
-      const newRestRef = await addDoc(collection(db, "restaurants"), { name: rName.trim(), ownerName: oName.trim(), ownerEmail: oEmail.toLowerCase().trim(), isActive: true, isReadOnly: false, features: defaultFeatures, labs: {}, planId: 'smart_kitchen', subscriptionStatus: 'beta', isFounderBeta: true, integrationsLocked: true, subscription: { planId: 'smart_kitchen', selectedFutureTier: 'smart_kitchen', status: 'beta', isFounderBeta: true, founderDiscountPercent: 50, billingProvider: 'none', integrationsLocked: true }, createdAt: new Date().toISOString(), lastActive: new Date().toISOString() });
+      const newRestRef = await addDoc(collection(db, "restaurants"), { name: rName.trim(), ownerName: oName.trim(), ownerEmail: oEmail.toLowerCase().trim(), isActive: true, isReadOnly: false, features: defaultFeatures, labs: {}, planId: 'smart_kitchen', subscriptionStatus: 'beta', isFounderBeta: true, integrationsLocked: true, subscription: { planId: 'smart_kitchen', selectedFutureTier: 'smart_kitchen', status: 'beta', isFounderBeta: true, founderDiscountPercent: 50, billingProvider: 'none', integrationsLocked: true }, createdAt: new Date().toISOString() });
       const tPass = generateTempPass(); const secondaryApp = initializeApp(firebaseConfig, "TenantBuilder_" + Date.now()); const secondaryAuth = getAuth(secondaryApp);
       const userCredential = await createUserWithEmailAndPassword(secondaryAuth, oEmail.toLowerCase().trim(), tPass); const newAuthUid = userCredential.user.uid; await secondaryAuth.signOut();
       await setDoc(doc(db, "users", newAuthUid), { name: oName.trim(), email: oEmail.toLowerCase().trim(), role: 'Owner', isAdmin: true, isActive: true, forcePasswordChange: true, restaurantId: newRestRef.id, restaurantName: rName.trim(), permissions: { schedule: true, inventory: true, prep: true, sales: true, team: true }, passwordStored: false, passwordPurgedAt: new Date().toISOString() });
@@ -389,11 +389,9 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant, db, auth, Modal, T, get
 
   // --- CALCULATIONS ---
   const mrr = restaurants.reduce((acc, r) => acc + (r.subscription?.status === 'active' ? (r.subscription?.planId === 'owner_pro' ? 299 : r.subscription?.planId === 'smart_kitchen' ? 179 : r.subscription?.planId === 'operations' ? 99 : 49) : 0), 0);
-  const timeAgo = (dateStr) => { if (!dateStr) return 'Never'; const days = Math.floor((Date.now() - new Date(dateStr).getTime()) / (1000 * 60 * 60 * 24)); if (days === 0) return 'Active Today'; if (days === 1) return 'Active Yesterday'; return `Inactive ${days} days`; };
-  const staleTenants = restaurants.filter(r => r.isActive && Math.floor((Date.now() - new Date(r.lastActive||0).getTime()) / 86400000) > 21);
 
   const ADMIN_SECTIONS = [
-    { id:'overview', label:'Metrics', icon: Package, tone:'emerald', description:'Platform health, revenue, install, client activity, and stale-location snapshots.' },
+    { id:'overview', label:'Metrics', icon: Package, tone:'emerald', description:'Platform health, revenue, installs, and client snapshots.' },
     { id:'tenants', label:'Clients', icon: Users, tone:'blue', description:'Create restaurants, manage plans, deploy owner accounts, ghost into clients, export users, and control tenant status.' },
     { id:'users', label:'Global Users', icon: Search, tone:'slate', description:'Search every user across all restaurants, inspect roles, workspace ties, and account status.' },
     { id:'support', label:'Support', icon: LifeBuoy, tone:'amber', description:'Crash reports, diagnostics, support triage, and customer problem investigation tools.' },
@@ -575,22 +573,6 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant, db, auth, Modal, T, get
             <div className={`${T.card} p-5 bg-gradient-to-br from-[#1A2126] to-[#12161A] border-fuchsia-900/30`}><div className="text-[10px] font-black text-fuchsia-400 uppercase tracking-widest mb-1">Total App Installs</div><div className="text-3xl lg:text-4xl font-black text-white">{totalInstalls}</div></div>
           </div>
 
-          {/* STALE ACCOUNT ALERTS */}
-          {staleTenants.length > 0 && (
-            <div className={`${T.card} p-6 border-orange-900/30`}>
-              <h3 className="font-black text-lg text-white mb-2 flex items-center gap-2"><Bell className="text-orange-500" size={18}/> Stale Account Alerts</h3>
-              <p className="text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-3">These active accounts have not logged in for over 21 days.</p>
-              <div className="space-y-2">
-                {staleTenants.map(r => (
-                  <div key={r.id} className="flex justify-between items-center bg-[#12161A] p-3 rounded-lg border border-[#2A353D]">
-                    <div><div className="font-bold text-sm text-white">{r.name}</div><div className="text-[10px] text-slate-500">{r.ownerEmail}</div></div>
-                    <div className="text-orange-400 font-black text-xs">Inactive {Math.floor((Date.now() - new Date(r.lastActive||0).getTime()) / 86400000)} Days</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
           <div className={`${T.card} p-6 border-red-900/30`}>
             <h3 className="font-black text-lg text-white mb-2 flex items-center gap-2"><Shield className="text-red-500" size={18}/> System Status</h3>
             <div className="flex items-center gap-3"><span className="flex h-3 w-3 relative"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span><span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span></span><span className="text-sm font-bold text-slate-300">All Database Shards Operational   Version {CURRENT_VERSION} Online</span></div>
@@ -620,7 +602,7 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant, db, auth, Modal, T, get
                       {r.subscription?.status === 'past_due' ? <span className="bg-red-900 text-red-400 border border-red-500/50 text-[8px] px-1.5 py-0.5 rounded uppercase">Past Due</span> : <span className="bg-emerald-900 text-emerald-400 border border-emerald-500/50 text-[8px] px-1.5 py-0.5 rounded uppercase">{r.subscription?.planId || r.planId || 'smart_kitchen'}</span>}
                     </div>
                     <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Owner: {r.ownerName} <span className="mx-1"> </span> {r.ownerEmail} {r.ownerPhone && <><span className="mx-1"> </span> {r.ownerPhone}</>}</div>
-                    <div className="text-[9px] text-slate-500 font-medium mt-0.5">ID: {r.id} <span className="mx-1"> </span> <span className="text-[#D4A381]">{userCounts[r.id] || 0} Seats</span> <span className="mx-1"> </span> <span className={timeAgo(r.lastActive).includes('Inactive') ? 'text-red-400' : 'text-emerald-500'}>Ping: {timeAgo(r.lastActive)}</span></div>
+                    <div className="text-[9px] text-slate-500 font-medium mt-0.5">ID: {r.id} <span className="mx-1"> </span> <span className="text-[#D4A381]">{userCounts[r.id] || 0} Seats</span></div>
                   </div>
                   <div className="flex flex-wrap gap-2">
                     <button onClick={() => setGhostTenant({ id: r.id, name: r.name })} className="px-3 py-1.5 bg-purple-900/20 border border-purple-500/50 text-purple-400 font-bold text-[10px] uppercase tracking-widest rounded-lg hover:bg-purple-900/50 transition-colors shadow-sm flex items-center gap-1"><Moon size={14} /> Possess</button>

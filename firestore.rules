@@ -639,42 +639,6 @@ function userSafeSelfUpdate() {
 let changed = request.resource.data.diff(resource.data).affectedKeys();
 return userSafeSelfUpdateForChanged(changed);
 }
-function presenceSessionKeys() {
-return [
-'userId', 'uid', 'restaurantId', 'userName', 'userEmail', 'email', 'role', 'photoURL',
-'lastActive', 'lastSeen', 'lastHeartbeatAt', 'presenceUpdatedAt', 'heartbeatEpochMs',
-'onlineState', 'activeTab', 'activeSessionId', 'activeDevice', 'activeHost',
-'notificationPermission', 'gpsPermission', 'deviceDiagnostics', 'createdAt', 'updatedAt', 'source', 'sessionId'
-];
-}
-function presenceCreateIsSafe() {
-return request.resource.data.keys().hasOnly(presenceSessionKeys()) &&
-request.resource.data.userId == request.auth.uid &&
-request.resource.data.restaurantId is string &&
-isTenantMatch(request.resource.data.restaurantId);
-}
-function presenceUpdateIsSafe() {
-return request.resource.data.diff(resource.data).affectedKeys().hasOnly(presenceSessionKeys()) &&
-resource.data.userId == request.auth.uid &&
-request.resource.data.userId == resource.data.userId &&
-request.resource.data.restaurantId == resource.data.restaurantId &&
-resource.data.restaurantId is string &&
-isTenantMatch(resource.data.restaurantId);
-}
-function livePresenceKeys() {
-return [
-'userId', 'uid', 'restaurantId', 'userName', 'userEmail', 'email', 'role', 'photoURL',
-'lastActive', 'lastSeen', 'lastHeartbeatAt', 'presenceUpdatedAt', 'heartbeatEpochMs',
-'onlineState', 'activeTab', 'activeSessionId', 'activeDevice', 'activeHost',
-'notificationPermission', 'gpsPermission', 'deviceDiagnostics', 'createdAt', 'updatedAt', 'source'
-];
-}
-function livePresenceWriteIsSafe() {
-return request.resource.data.keys().hasOnly(livePresenceKeys()) &&
-request.resource.data.userId == request.auth.uid &&
-request.resource.data.restaurantId is string &&
-isTenantMatch(request.resource.data.restaurantId);
-}
 function safePermissionsFrom(data) {
 let perms = data.get('permissions', {});
 return perms is map ? perms : {};
@@ -996,17 +960,6 @@ allow delete: if signedIn() && (
 isSuperAdmin() ||
 (resource.data.restaurantId is string && canManageStaff(resource.data.restaurantId))
 );
-}
-match /presenceSessions/{sessionId} {
-allow read: if signedIn() && isSuperAdmin();
-allow create: if signedIn() && presenceCreateIsSafe();
-allow update: if signedIn() && presenceUpdateIsSafe();
-allow delete: if signedIn() && (isSuperAdmin() || resource.data.userId == request.auth.uid);
-}
-match /livePresence/{docId} {
-allow read: if signedIn() && isSuperAdmin();
-allow create, update: if signedIn() && livePresenceWriteIsSafe();
-allow delete: if signedIn() && (isSuperAdmin() || resource.data.userId == request.auth.uid);
 }
 match /restaurants/{restaurantId} {
 allow read: if signedIn() && (isSuperAdmin() || isTenantMatch(restaurantId) || isOwnerOfRestaurantDoc());

@@ -39,7 +39,6 @@ const COLLECTION_CLEANUP_RULES = {
   inventoryItems: ['restaurantId', 'workspaceId'],
   invoices: ['restaurantId', 'workspaceId'],
   lineCheckItems: ['restaurantId', 'workspaceId'],
-  livePresence: ['restaurantId', 'workspaceId'],
   maintenanceLogs: ['restaurantId', 'workspaceId'],
   menuDependencies: ['restaurantId', 'workspaceId'],
   menuIntelligenceScans: ['restaurantId', 'workspaceId'],
