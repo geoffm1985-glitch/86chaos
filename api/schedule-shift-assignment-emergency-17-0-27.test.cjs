@@ -166,15 +166,16 @@ test('17.0.27 Schedule Builder assignment uses the authenticated server boundary
   assert.match(schedule, /data-testid="schedule-builder-cell"/);
 });
 
-test('17.0.27 delta browser scope includes Phase 1 Spanish and emergency shift assignment on desktop and mobile Chromium', () => {
+test('17.0.27 assignment browser coverage remains in the advancing current-release delta scope', () => {
   const scope = require('../scripts/86chaos-release-gate/current-release-repair-scope.cjs');
-  assert.equal(scope.CURRENT_RELEASE_VERSION, '17.0.27');
-  assert.equal(scope.CURRENT_RELEASE_REPAIR_SCOPE.length, 4);
+  const packageVersion = require('../package.json').version;
+  assert.equal(scope.CURRENT_RELEASE_VERSION, packageVersion);
+  assert(scope.CURRENT_RELEASE_REPAIR_SCOPE.length >= 4);
   const paths = new Set(scope.CURRENT_RELEASE_REPAIR_SCOPE.map(row => row.specPath));
   assert(paths.has('86chaos-new-implementations/08-phase1-spanish-interface.spec.cjs'));
   assert(paths.has('86chaos-new-implementations/09-schedule-builder-shift-assignment.spec.cjs'));
   const result = scope.resolveCurrentReleaseRepairScope({ currentRecords: scope.CURRENT_RELEASE_REPAIR_SCOPE });
   assert.equal(result.ok, true);
-  assert.equal(result.totalSelected, 4);
+  assert.equal(result.totalSelected, scope.CURRENT_RELEASE_REPAIR_SCOPE.length);
   assert.deepEqual(new Set(result.selected.map(row => row.project)), new Set(['chromium', 'mobile-chromium']));
 });
