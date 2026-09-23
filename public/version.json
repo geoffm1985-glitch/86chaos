@@ -1,17 +1,17 @@
 {
-  "version": "17.0.26",
-  "name": "86 Chaos 17.0.26",
-  "build": "17.0.26",
-  "label": "86 Chaos 17.0.26",
-  "releasedAt": "2026-09-23T13:12:00.000Z",
-  "releaseTitle": "Phase 1 Spanish Interface",
+  "version": "17.0.27",
+  "name": "86 Chaos 17.0.27",
+  "build": "17.0.27",
+  "label": "86 Chaos 17.0.27",
+  "releasedAt": "2026-09-23T15:15:00.000Z",
+  "releaseTitle": "Emergency Schedule Assignment Reliability Repair",
   "notes": [
-    "Adds a per-user English/Spanish interface preference with English fallback. The language choice follows the employee account and does not change the restaurant workspace for other employees.",
-    "Adds Phase 1 Spanish coverage for global navigation, Today/Manager Brief, Time Clock & Schedule, Schedule Builder primary controls, Request Off policy/workflow, Prep & Tasks, Settings preferences, and common dialog/navigation labels.",
-    "Keeps restaurant-entered content such as employee names, job roles, notes, recipes, menu data, event titles, and blackout reasons unchanged instead of machine-translating business data.",
-    "Adds a pure Node Phase 1 i18n regression suite and a deployed Playwright Spanish-interface test under the release-gate test universe. Existing Schedule Builder delete, delta-baseline, and Request Off regressions remain in the current-release targeted suite."
+    "Moves Schedule Builder shift assignment from a fragile direct browser Firestore write to an authenticated, tenant-bound server assignment operation while preserving existing Schedule Builder authority.",
+    "Makes one assignment request atomic across the selected dates, idempotent for accidental request replay, and returns the exact created shift identities so the builder updates immediately.",
+    "Clears stale local deletion tombstones when a shift is re-added after Clear Month or single-shift deletion, preventing a valid new assignment from being hidden by prior delete UI state.",
+    "Adds visible Assignment Failed feedback plus new Node and deployed Playwright release-gate coverage for assigning and cleaning up a QA shift. Phase 1 Spanish and the repaired delta workflow are preserved."
   ],
-  "title": "86 Chaos 17.0.26",
-  "summary": "Introduces the first native bilingual English/Spanish interface foundation with release-gate coverage.",
-  "description": "Adds a per-user i18n layer and Phase 1 Spanish translations across the most-used employee and scheduling surfaces without altering restaurant-entered data."
+  "title": "86 Chaos 17.0.27",
+  "summary": "Emergency repair for reliable Schedule Builder shift assignment without backing out Phase 1 Spanish or delta-gate fixes.",
+  "description": "Routes Schedule Builder assignments through an authenticated server boundary, prevents stale delete state from hiding re-added shifts, and adds release-gate regression coverage."
 }

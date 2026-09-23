@@ -2665,7 +2665,7 @@ const [eventDate, setEventDate] = useState(getToday());
         }
         validDates.push(d);
       }
-      const savedShiftEchoes = [];
+      const preparedAssignments = [];
       for (const d of validDates) {
         const nowIso = new Date().toISOString();
         const shiftMonth = getMonthStr(d);
@@ -2705,15 +2705,39 @@ const [eventDate, setEventDate] = useState(getToday());
           shiftData.source = 'Schedule Builder manual edit after emergency rescue';
         }
         recordScheduleOperationDiagnostic('canonicalDatePatches');
-        const savedRef = await addDoc(collection(db, "shifts"), shiftData);
-        recordScheduleOperationDiagnostic('directSdkWrites');
-        recordScheduleOperationDiagnostic('totalScheduleDocumentsWritten');
-        savedShiftEchoes.push({ ...shiftData, id: savedRef.id, localEcho: true });
+        preparedAssignments.push(shiftData);
       }
+
+      const assignmentOperationId = `schedule-builder-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+      const response = await secureFetch('/api/schedule-shift-assign', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          restaurantId: appUser.restaurantId,
+          operationId: assignmentOperationId,
+          assignments: preparedAssignments
+        })
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || result?.ok !== true) {
+        throw new Error(result?.error || `Shift assignment failed (HTTP ${response.status}).`);
+      }
+      const savedShiftEchoes = Array.isArray(result.created) ? result.created.map(shift => ({ ...shift, localEcho: true })) : [];
+      if (savedShiftEchoes.length !== preparedAssignments.length) {
+        throw new Error('The server did not confirm every requested shift assignment. Refresh Schedule Builder before trying again.');
+      }
+
       if (savedShiftEchoes.length) {
+        const assignedPruneKeys = new Set(savedShiftEchoes.flatMap(getScheduleShiftLocalPruneKeys).filter(Boolean));
+        const assignedIdKeys = new Set(savedShiftEchoes.map(shift => getShiftWritableDocId(shift)).filter(Boolean).map(id => `id:${id}`));
+        setLocalBuilderDeletedShiftMarkers(prev => prev.filter(marker => !assignedPruneKeys.has(marker?.key) && !assignedIdKeys.has(marker?.key)));
         setLocalBuilderShiftEchoes(prev => mergeVisibleScheduleShifts(prev, savedShiftEchoes));
+        recordScheduleOperationDiagnostic('totalScheduleDocumentsWritten', savedShiftEchoes.length);
       }
-      setAssignDates([]); addToast('Assigned', `Added ${validDates.length} shift${validDates.length === 1 ? '' : 's'} for ${emp.name || 'selected staff'}.`);
+      setAssignDates([]);
+      addToast('Assigned', `Added ${savedShiftEchoes.length} shift${savedShiftEchoes.length === 1 ? '' : 's'} for ${emp.name || 'selected staff'}.`);
+    } catch (err) {
+      addToast('Assignment Failed', err?.message || 'Could not assign the selected shift. Refresh Schedule Builder and try again.');
     } finally {
       setIsAssigningShift(false);
     }
@@ -4291,7 +4315,7 @@ const handleExportTimesheets = () => {
               </div>
 
               {/* Assign Button */}
-              <button onClick={handleAssign} disabled={isClearingScheduleMonth||isAssigningShift||!selectedEmp||assignDates.length===0} className={`schedule-builder-assign-button w-full xl:w-auto ${T.btn} py-1.5 px-2 text-xs h-9 disabled:opacity-50 flex items-center justify-center shadow-lg shrink-0 whitespace-nowrap`}>{isAssigningShift ? t('builder.assigning') : t('builder.assign', { count: assignDates.length })}</button>
+              <button data-testid="schedule-builder-assign" onClick={handleAssign} disabled={isClearingScheduleMonth||isAssigningShift||!selectedEmp||assignDates.length===0} className={`schedule-builder-assign-button w-full xl:w-auto ${T.btn} py-1.5 px-2 text-xs h-9 disabled:opacity-50 flex items-center justify-center shadow-lg shrink-0 whitespace-nowrap`}>{isAssigningShift ? t('builder.assigning') : t('builder.assign', { count: assignDates.length })}</button>
 
             </div>
             
@@ -4404,7 +4428,7 @@ const handleExportTimesheets = () => {
                             // Conflict Check: Alert if a shift overlaps with ANY time-off request (pending or approved)
                             const allUserReqs = timeOffRequests.filter(r => r.date === d && timeOffMatchesPerson(r, u) && isActiveTimeOffRequest(r));
                             return (
-                            <td key={d} onClick={()=>handleCellClick(d,u.id)} className={`p-0.5 border-r border-[#2A353D] cursor-pointer transition-all align-top h-7 sm:h-8 ${sel?'bg-[#8F6040] outline outline-2 outline-[#D4A381] shadow-inner z-0 relative':'hover:bg-[#12161A]'}`}>
+                            <td key={d} data-testid="schedule-builder-cell" data-date={d} data-employee-id={u.id} onClick={()=>handleCellClick(d,u.id)} className={`p-0.5 border-r border-[#2A353D] cursor-pointer transition-all align-top h-7 sm:h-8 ${sel?'bg-[#8F6040] outline outline-2 outline-[#D4A381] shadow-inner z-0 relative':'hover:bg-[#12161A]'}`}>
                             <div className="flex flex-col gap-[1px] w-full justify-start overflow-visible">
                               {req && !req.isPartial && <div className="schedule-builder-time-chip w-full rounded font-black text-[7px] sm:text-[8px] py-0.5 text-center text-red-400 bg-red-900/40 uppercase tracking-tighter" title="Requested Off">Off</div>}
                               {req && req.isPartial && <div className="schedule-builder-time-chip schedule-builder-partial-off-chip w-full rounded font-black text-[7px] sm:text-[8px] py-0.5 text-center text-amber-400 bg-amber-900/40 uppercase tracking-tighter" title={`Requested off: ${formatScheduleBuilderRequestRange(req)}`}>{formatScheduleBuilderRequestRange(req)}</div>}
