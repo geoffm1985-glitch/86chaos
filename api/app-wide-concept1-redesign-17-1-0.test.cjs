@@ -34,7 +34,8 @@ test('17.1.0 System Administrator exposes all 21 real tools while preserving fea
   const management = read('src/features/management.jsx');
   const historicalBrowser = read('tests/86chaos-new-implementations/14-system-admin-complete-directory-desktop.spec.cjs');
   assert.match(management, /className="admin37-featured-test-frame" data-testid="system-admin-featured-card"/);
-  assert.match(management, /className="admin-concept1-exact-card admin37-featured-card" data-testid="system-admin-directory-card" data-admin-tab=\{tab\.id\}/);
+  assert.match(management, /className="admin-concept1-exact-card admin37-featured-card" data-admin-shortcut=\{tab\.id\}/);
+  assert.match(management, /className="admin37-tool-card" data-testid="system-admin-directory-card" data-admin-tab=\{tab\.id\}/);
   assert.match(historicalBrowser, /toHaveCount\(21, \{ timeout: 15000 \}\)/);
 });
 

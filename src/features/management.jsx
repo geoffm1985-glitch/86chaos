@@ -506,7 +506,7 @@ const handleDeactivate = async (u) => {
   const activeUsers = users.filter(u => u.isActive !== false && !staffIsLocallyRemoved(u)).sort((a, b) => String(a.role || '').localeCompare(String(b.role || '')) || String(a.name || '').localeCompare(String(b.name || '')));
 
 return (
-    <div className="max-w-4xl mx-auto space-y-6 pb-24">
+    <div className="concept17-surface concept17-team-surface max-w-4xl mx-auto space-y-6 pb-24">
       <Modal isOpen={!!createdLogin} onClose={() => setCreatedLogin(null)} title="Employee Login Created">
         {createdLogin && <div className="space-y-4">
           <div className="bg-emerald-900/10 border border-emerald-900/40 rounded-xl p-3 text-xs font-bold text-emerald-200">This is shown one time only. Copy, print, email, or text it before closing.</div>
@@ -770,7 +770,7 @@ const TabMessages = ({ events, appUser, users, addToast }) => {
   };
 
   return (
-    <div className="max-w-4xl mx-auto space-y-2 message-pro pb-20">
+    <div className="concept17-surface concept17-messages-surface max-w-4xl mx-auto space-y-2 message-pro pb-20">
       <div className="cockpit-panel rounded-xl overflow-hidden">
         <div className="p-2.5 sm:p-3 border-b border-[#2A353D] bg-[#12161A]/70 space-y-2">
           <div className="flex items-start justify-between gap-3">
@@ -1884,8 +1884,8 @@ const Toggle = ({ label, desc, checked, onChange, disabled = false }) => (
   
 
   return (
-    <div className="settings-page max-w-4xl mx-auto space-y-4 pb-24 animate-[slideIn_0.2s_ease-out]">
-<div className="settings-tab-bar grid grid-cols-2 sm:flex sm:flex-wrap gap-2 border-b border-[#2A353D] mb-4 pb-2">
+    <div data-concept-subtab={`settings-${subTab}`} className="concept17-surface concept17-settings-surface settings-page max-w-4xl mx-auto space-y-4 pb-24 animate-[slideIn_0.2s_ease-out]">
+<div className="concept17-subtab-bar settings-tab-bar grid grid-cols-2 sm:flex sm:flex-wrap gap-2 border-b border-[#2A353D] mb-4 pb-2">
         {['profile', 'accountSecurity', 'preferences', 'alerts'].concat(canViewBilling ? ['billing'] : [], canManageWorkspaceSettings ? ['workspace'] : [], canManageBranding ? ['branding'] : [], ['integrations']).map((tab) => {
           const integrationLocked = tab === 'integrations' && !canManageIntegrations;
           return (
@@ -3099,7 +3099,7 @@ const TabAuditLog = ({ appUser }) => {
     .sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp));
 
   return (
-    <div className="max-w-4xl mx-auto space-y-4 pb-24 animate-[slideIn_0.2s_ease-out]">
+    <div className="concept17-surface concept17-audit-surface max-w-4xl mx-auto space-y-4 pb-24 animate-[slideIn_0.2s_ease-out]">
       <div className={`${T.card} overflow-hidden`}>
         <div className={`bg-[#12161A] p-4 border-b ${T.border} flex justify-between items-center`}>
           <h2 className="text-lg font-black text-white flex items-center gap-2"><Shield className="text-red-500"/> System Audit Logs</h2>
@@ -7730,7 +7730,7 @@ Type RESTORE to continue.`);
   const activeAdminTab = adminTabs.find(tab => tab.id === subTab) || adminTabs[0];
   const featuredAdminTabIds = ['roles', 'push', 'security', 'forensics', 'support', 'deployment', 'history'];
   const featuredAdminTabs = featuredAdminTabIds.map(id => adminTabs.find(tab => tab.id === id)).filter(Boolean);
-  const additionalAdminTabs = adminTabs.filter(tab => tab.id !== 'overview' && !featuredAdminTabIds.includes(tab.id));
+  const directoryAdminTabs = adminTabs.filter(tab => tab.id !== 'overview');
   const adminTabIcons = {
     overview: Settings,
     health: Wrench,
@@ -7907,7 +7907,7 @@ Type RESTORE to continue.`);
 
 
   return (
-    <div className={`admin46-shell ${subTab !== 'overview' ? 'admin-concept1-subpage-active' : ''} max-w-[1500px] mx-auto pb-24 px-2 sm:px-4 lg:px-5 animate-[slideIn_0.2s_ease-out]`}>
+    <div data-concept-subtab={`system-admin-${subTab}`} className={`admin46-shell ${subTab !== 'overview' ? 'admin-concept1-subpage-active' : ''} max-w-[1500px] mx-auto pb-24 px-2 sm:px-4 lg:px-5 animate-[slideIn_0.2s_ease-out]`}>
       <Modal isOpen={!!createdWorkspaceLogin} onClose={() => setCreatedWorkspaceLogin(null)} title="Workspace Login Created">
         {createdWorkspaceLogin && <div className="space-y-4">
           <div className="bg-emerald-900/10 border border-emerald-900/40 rounded-xl p-3 text-xs font-bold text-emerald-200">This owner login is shown one time only. Copy, print, email, or text it before closing.</div>
@@ -8317,7 +8317,7 @@ Type RESTORE to continue.`);
               <strong>{activeAdminTab.label}</strong>
             </div>
             <AdminInfoButton title={activeAdminTab.label} body={activeAdminHelpText} />
-            <button type="button" onClick={() => selectAdminTab('overview')} className="admin-concept1-subpage-home"><ChevronLeft size={14}/> All System Administrator Tools</button>
+            <button type="button" data-testid="system-admin-subpage-back" onClick={() => selectAdminTab('overview')} className="admin-concept1-subpage-home"><ChevronLeft size={14}/> All System Administrator Tools</button>
           </div>
         </section>
       )}
@@ -8343,7 +8343,7 @@ Type RESTORE to continue.`);
                 const Icon = adminTabIcons[tab.id] || Settings;
                 return (
                   <div key={tab.id} className="admin37-featured-test-frame" data-testid="system-admin-featured-card">
-                    <button type="button" onClick={() => selectAdminTab(tab.id)} className="admin-concept1-exact-card admin37-featured-card" data-testid="system-admin-directory-card" data-admin-tab={tab.id}>
+                    <button type="button" onClick={() => selectAdminTab(tab.id)} className="admin-concept1-exact-card admin37-featured-card" data-admin-shortcut={tab.id}>
                       <span className="admin-concept1-exact-card-icon"><Icon size={27}/></span>
                       <span className="admin-concept1-exact-card-copy"><strong>{tab.label}</strong><small>{tab.intent}</small></span>
                       <span className="admin-concept1-exact-card-arrow"><ChevronRight size={17}/></span>
@@ -8357,7 +8357,7 @@ Type RESTORE to continue.`);
                 const Icon = adminTabIcons[tab.id] || Settings;
                 return (
                   <div key={tab.id} className="admin37-featured-test-frame" data-testid="system-admin-featured-card">
-                    <button type="button" onClick={() => selectAdminTab(tab.id)} className="admin-concept1-exact-card admin37-featured-card" data-testid="system-admin-directory-card" data-admin-tab={tab.id}>
+                    <button type="button" onClick={() => selectAdminTab(tab.id)} className="admin-concept1-exact-card admin37-featured-card" data-admin-shortcut={tab.id}>
                       <span className="admin-concept1-exact-card-icon"><Icon size={27}/></span>
                       <span className="admin-concept1-exact-card-copy"><strong>{tab.label}</strong><small>{tab.intent}</small></span>
                       <span className="admin-concept1-exact-card-arrow"><ChevronRight size={17}/></span>
@@ -8377,7 +8377,7 @@ Type RESTORE to continue.`);
               <p>Every internal System Administrator page stays available here without changing the Concept 1 desktop layout above.</p>
             </div>
             <div className="admin37-all-tools-grid">
-              {additionalAdminTabs.map(tab => {
+              {directoryAdminTabs.map(tab => {
                 const Icon = adminTabIcons[tab.id] || Settings;
                 return (
                   <button key={tab.id} type="button" onClick={() => selectAdminTab(tab.id)} className="admin37-tool-card" data-testid="system-admin-directory-card" data-admin-tab={tab.id}>
@@ -10534,7 +10534,7 @@ const TabLabor = ({ currentDate, users = [], shifts = [], sales = [], timePunche
   };
 
   return (
-    <div className="desktop-management-page max-w-7xl mx-auto space-y-4 pb-24">
+    <div data-concept-subtab={`labor-${subTab}`} className="concept17-subtab-surface concept17-labor-surface desktop-management-page max-w-7xl mx-auto space-y-4 pb-24">
       <div className={`${T.card} p-4 sm:p-5 cockpit-grid`}>
         <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-4">
           <div>
@@ -10551,7 +10551,7 @@ const TabLabor = ({ currentDate, users = [], shifts = [], sales = [], timePunche
         </div>
       </div>
 
-      <div className="flex flex-wrap gap-2 border-b border-[#2A353D] pb-3">
+      <div className="concept17-subtab-bar concept17-labor-tabs flex flex-wrap gap-2 border-b border-[#2A353D] pb-3">
         {[['fixer','Punch Fixer'],['editor', editingPunch ? 'Edit Punch' : 'Add Punch'],['review','Timesheet Review'],['tips','Tips'],['export','Export']].map(([id,label]) => <button key={id} onClick={() => setSubTab(id)} className={`px-3 py-2 rounded-xl text-[10px] uppercase tracking-widest font-black ${subTab === id ? `${T.grad} text-slate-900` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>{label}</button>)}
       </div>
 
@@ -10592,7 +10592,7 @@ const TabLabor = ({ currentDate, users = [], shifts = [], sales = [], timePunche
 
       {subTab === 'review' && <PunchTable rows={payrollRows} openEditPunch={openEditPunch} forceOut={forceOut} approvePunch={approvePunch} deletePunch={deletePunch} />}
       {subTab === 'tips' && <div className={`${T.card} p-4`}><h3 className="font-black text-white mb-3">Tip Summary</h3><div className="grid md:grid-cols-3 gap-3"><div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-4"><div className="text-[10px] uppercase text-slate-500 font-black">Cash Tips</div><div className="text-2xl font-black text-white">${payrollRows.reduce((s,r)=>s+(parseFloat(r.punch.cashTips||0)||0),0).toFixed(2)}</div></div><div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-4"><div className="text-[10px] uppercase text-slate-500 font-black">Credit Tips</div><div className="text-2xl font-black text-white">${payrollRows.reduce((s,r)=>s+(parseFloat(r.punch.creditTips||0)||0),0).toFixed(2)}</div></div><div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-4"><div className="text-[10px] uppercase text-slate-500 font-black">Total Tips</div><div className="text-2xl font-black text-[#D4A381]">${totalTips.toFixed(2)}</div></div></div></div>}
-      {subTab === 'export' && <div className={`${T.card} p-5 space-y-4`}>
+      {subTab === 'export' && <div data-concept-subtab={`labor-export-${exportMode}`} className={`${T.card} concept17-nested-mode p-5 space-y-4`}>
         <div>
           <h3 className="font-black text-white text-lg">Payroll Export</h3>
           <p className="text-xs text-slate-400 font-bold mt-1">Download the selected custom role or whole restaurant as a CSV or print-ready PDF for payroll review, accountant handoff, or owner records. Role choices come from the roles created in Settings, plus any active staff roles already in use.</p>
@@ -10821,7 +10821,7 @@ const TabHelpCenter = ({ appUser, activeTab, helpOrigin = '', voiceHelpSearchTar
     </section>
   </article>;
 
-  return <div className="desktop-management-page max-w-7xl mx-auto space-y-4 pb-24" data-testid="customer-help-center">
+  return <div data-concept-subtab={`help-${selectedArticleId ? 'article' : selectedSubtopic ? 'subtopic' : selectedSubject ? 'subject' : query.trim() ? 'search' : 'home'}`} className="concept17-surface concept17-help-surface desktop-management-page max-w-7xl mx-auto space-y-4 pb-24" data-testid="customer-help-center">
     <div className={`${T.card} p-5 cockpit-grid flex flex-col gap-4`}>
       <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-3">
         <div><div className="text-[10px] uppercase tracking-widest font-black text-[#D4A381]">Customer Help</div><h2 className="text-2xl font-black text-white">Help Center</h2><p className="text-sm text-slate-400 font-bold mt-1 max-w-3xl">Plain-language Help for restaurant users. Internal platform manuals stay in the System Administrator area, not here.</p>{originSubject && <p className="text-xs text-[#D4A381] font-black mt-2">Help with {originSubject.label}</p>}</div>
@@ -11086,7 +11086,7 @@ const TabFinancials = ({ currentDate, users = [], shifts = [], sales = [], timeP
   );
 
   return (
-    <div className="financial-center-desktop max-w-7xl mx-auto space-y-4 pb-24">
+    <div data-concept-subtab={`financials-${subTab}`} className="concept17-surface concept17-financials-surface financial-center-desktop max-w-7xl mx-auto space-y-4 pb-24">
       <div className={`${T.card} p-5 cockpit-grid`}>
         <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-4">
           <div>
@@ -11101,7 +11101,7 @@ const TabFinancials = ({ currentDate, users = [], shifts = [], sales = [], timeP
         </div>
       </div>
 
-      <div className="flex gap-2 overflow-x-auto pb-2 border-b border-[#2A353D] custom-scrollbar">
+      <div className="concept17-subtab-bar concept17-financial-tabs flex gap-2 overflow-x-auto pb-2 border-b border-[#2A353D] custom-scrollbar">
         {financeTabs.map(tab => <button key={tab.id} onClick={() => setSubTab(tab.id)} className={`px-4 py-3 rounded-xl text-xs uppercase tracking-widest font-black whitespace-nowrap ${subTab === tab.id ? `${T.grad} text-slate-900` : 'bg-[#1A2126] text-slate-300 hover:text-white border border-[#2A353D]'} ${tab.access?.allowed ? '' : 'opacity-75'}`}>{tab.access?.allowed ? tab.label : `🔒 ${tab.label}`}</button>)}
       </div>
 
@@ -11766,7 +11766,7 @@ const TabBackOffice = ({ currentDate, users = [], sales = [], timePunches = [], 
   };
 
   return (
-    <div className="max-w-7xl mx-auto space-y-4 pb-24">
+    <div data-concept-subtab={`back-office-${subTab}`} className="concept17-surface concept17-back-office-surface max-w-7xl mx-auto space-y-4 pb-24">
       <div className={`${T.card} p-5 border-[#D4A381]/30`}>
         <div className="flex flex-col xl:flex-row xl:items-end justify-between gap-4">
           <div>

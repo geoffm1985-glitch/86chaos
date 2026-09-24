@@ -1537,7 +1537,7 @@ const handleOfferSwap = async (shift) => {
   const effectiveActivePunch = clockActionBusy && clockActionType === 'out' ? (clockActionPunch || activePunch) : (activePunch && !(clockActionBusy && clockActionType === 'in') ? activePunch : null);
 
   return (
-    <div className="schedule-desktop max-w-7xl mx-auto space-y-4 pb-24">
+    <div data-concept-subtab={`timeclock-${subTab}`} className="concept17-surface concept17-timeclock-surface schedule-desktop max-w-7xl mx-auto space-y-4 pb-24">
       
       <Modal isOpen={isTipModalOpen} onClose={() => setIsTipModalOpen(false)} title="Declare Tips">
         <form onSubmit={finalizeClockOut} className="space-y-4">
@@ -1554,11 +1554,11 @@ const handleOfferSwap = async (shift) => {
         </form>
       </Modal>
 
-      <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2 border-b border-[#2A353D] mb-4 pb-2">
+      <div className="concept17-subtab-bar concept17-timeclock-tabs grid grid-cols-2 sm:flex sm:flex-wrap gap-2 border-b border-[#2A353D] mb-4 pb-2">
         {['my-schedule', 'full-schedule', 'month-view', 'trade-board', 'time-off', 'availability', ...((appUser?.isAdmin || appUser?.permissions?.schedule) && scheduleBuilderProps ? ['schedule-builder'] : [])].map((tab) => {
           const label = tab === 'my-schedule' ? t('schedule.mySchedule') : tab === 'full-schedule' ? t('schedule.fullSchedule') : tab === 'month-view' ? t('schedule.monthView') : tab === 'time-off' ? t('schedule.requestOff') : tab === 'availability' ? t('schedule.availability') : tab === 'trade-board' ? t('schedule.tradeBoard') : tab === 'schedule-builder' ? t('schedule.builder') : tab.replace('-', ' ');
           return (
-          <button key={tab} type="button" aria-label={label} title={label} onClick={() => setSubTab(tab)} className={`px-2 sm:px-4 py-2 text-[10px] sm:text-xs font-black rounded-xl uppercase tracking-widest transition-all sm:flex-1 ${subTab === tab ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>
+          <button key={tab} type="button" aria-label={label} title={label} onClick={() => setSubTab(tab)} className={`concept17-subtab px-2 sm:px-4 py-2 text-[10px] sm:text-xs font-black rounded-xl uppercase tracking-widest transition-all sm:flex-1 ${subTab === tab ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>
             {label}
           </button>
         );})}
@@ -3907,7 +3907,7 @@ const handleExportTimesheets = () => {
   });
 
   return (
-    <div className="space-y-4 pb-12 w-full">
+    <div data-concept-subtab={`schedule-${subTab}`} className="concept17-surface concept17-subtab-surface concept17-schedule-admin-surface space-y-4 pb-12 w-full">
 
 {/* MANAGER EXPLANATION BANNER */}
       {pendingTimeOffAlertRequests.length > 0 && !pendingTimeOffAlertMemory.isDismissed && (
@@ -4818,7 +4818,7 @@ const TabMonth = ({ currentDate, users, shifts, appUser }) => {
   };
 
   return (
-    <div className={`${T.card} overflow-hidden print-container`}>
+    <div className={`concept17-subtab-surface concept17-month-surface ${T.card} overflow-hidden print-container`}>
       <style>{`
         @media print {
           @page { size: letter landscape; margin: 0.12in; }
@@ -5093,7 +5093,7 @@ const TabAvailability = ({ availabilityRecords = [], appUser, users = [], addToa
   );
 
   return (
-    <div className="space-y-4">
+    <div data-concept-subtab={`availability-mode-${mode}`} className="concept17-subtab-surface concept17-availability-surface concept17-nested-mode space-y-4">
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
         <div className={`${T.card} p-4 xl:col-span-2`}>
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4">
@@ -5657,7 +5657,7 @@ const TabTimeOff = ({ timeOffRequests, appUser, users, addToast, events = [], sh
   };
 
   return (
-    <div className="space-y-4">
+    <div className="concept17-subtab-surface concept17-timeoff-surface space-y-4">
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <div className={`lg:col-span-2 ${T.card} overflow-hidden`}>
           <div className={`bg-[#12161A] p-3 border-b ${T.border} flex justify-between items-center`}><button onClick={() => changeMonth(-1)} className={T.btnAlt}><ChevronLeft size={16}/></button><h3 className="font-black text-base text-white tracking-tight">{formatDisplayMonth(calMonth)}</h3><button onClick={() => changeMonth(1)} className={T.btnAlt}><ChevronRight size={16}/></button></div>
@@ -5720,7 +5720,7 @@ const TabScheduleWorkbench = ({ currentDate, users, shifts, events, timeOffReque
   const schedulePeriodContext = getSchedulePeriodContext(currentDate, appUser, clientData);
   const scheduleToolsPeriod = schedulePeriodContext.period;
   return (
-    <div className="space-y-5">
+    <div className="concept17-surface concept17-schedule-builder-surface space-y-5">
       <ScheduleCopilot
         period={scheduleToolsPeriod}
         periodLabel={schedulePeriodContext.label}
@@ -6089,7 +6089,7 @@ const ScheduleCopilot = ({ period, periodLabel = '', users = [], shifts = [], ti
       <div className="grid grid-cols-4 gap-1.5">
         {[['Drafts',draftCount],['Missing',missingTargets.length],['Warnings',allScheduleWarnings.length],['Templates',safeTemplates.length]].map(([label,value]) => <div key={label} className="schedule-copilot-metric bg-[#12161A] border border-[#2A353D]"><span className="text-[8px] uppercase tracking-widest font-black text-slate-500">{label}</span><strong className="text-white">{value}</strong></div>)}
       </div>
-      <div className="flex gap-1.5 overflow-x-auto custom-scrollbar border-b border-[#2A353D] pb-2" role="tablist" aria-label="Schedule Builder tools" aria-orientation="horizontal">{[['targets',t('builder.coverage')],['templates',t('builder.templates')],['template-editor', editingTemplateId ? t('builder.editTemplate') : t('builder.createTemplate')],['drag',t('builder.dragBoard')],['warnings',t('builder.warnings')]].map(([id,label]) => <button key={id} type="button" role="tab" aria-label={label} title={label} onClick={() => setActiveTool(id)} aria-selected={activeTool===id} data-chaos-current-state={activeTool===id ? 'true' : undefined} className={`flex-shrink-0 px-2.5 py-1.5 rounded-lg text-[9px] uppercase tracking-widest font-black ${activeTool===id ? `${T.grad} text-slate-900` : 'bg-[#12161A] text-slate-400 hover:text-white'}`}>{label}</button>)}</div>
+      <div data-concept-subtab={`schedule-builder-tool-${activeTool}`} className="concept17-subtab-bar concept17-schedule-tools-tabs flex gap-1.5 overflow-x-auto custom-scrollbar border-b border-[#2A353D] pb-2" role="tablist" aria-label="Schedule Builder tools" aria-orientation="horizontal">{[['targets',t('builder.coverage')],['templates',t('builder.templates')],['template-editor', editingTemplateId ? t('builder.editTemplate') : t('builder.createTemplate')],['drag',t('builder.dragBoard')],['warnings',t('builder.warnings')]].map(([id,label]) => <button key={id} type="button" role="tab" aria-label={label} title={label} onClick={() => setActiveTool(id)} aria-selected={activeTool===id} data-chaos-current-state={activeTool===id ? 'true' : undefined} className={`flex-shrink-0 px-2.5 py-1.5 rounded-lg text-[9px] uppercase tracking-widest font-black ${activeTool===id ? `${T.grad} text-slate-900` : 'bg-[#12161A] text-slate-400 hover:text-white'}`}>{label}</button>)}</div>
       <div className="schedule-copilot-body custom-scrollbar space-y-3">
       {activeTool === 'targets' && <div className="grid lg:grid-cols-2 gap-4"><form onSubmit={addCoverageTarget} className="bg-[#12161A] border border-[#2A353D] rounded-xl p-3 space-y-2"><h4 className="font-black text-white">Add Coverage Target</h4><p className="text-[10px] font-bold text-slate-400">Choose how many people you need for a role and time. Roles match the Staff Roster and Schedule Builder.</p><div className="grid grid-cols-2 gap-2"><select value={targetForm.dayIndex} onChange={e=>setTargetForm({...targetForm, dayIndex:e.target.value})} className={T.input}>{dayNames.map((d,i)=><option key={d} value={i}>{d}</option>)}</select><select value={targetForm.role} onChange={e=>setTargetForm({...targetForm, role:e.target.value})} className={T.input}>{scheduleRoleOptions.map(r => <option key={r} value={r}>{r}</option>)}</select><input type="time" value={targetForm.startTime} onChange={e=>setTargetForm({...targetForm, startTime:e.target.value})} className={T.input}/><input type="time" value={targetForm.endTime} onChange={e=>setTargetForm({...targetForm, endTime:e.target.value})} className={T.input}/><input type="number" min="1" value={targetForm.count} onChange={e=>setTargetForm({...targetForm, count:e.target.value})} className={T.input}/><button className={`${T.btn} py-2`}>Save Coverage Target</button></div></form><div className="space-y-2">{coverageTargets.length === 0 ? <FriendlyEmpty title="No coverage targets yet" text="Add the staffing level you want for each role and time. Fill Coverage Gaps can then create draft shifts for review."/> : coverageTargets.map(t => <div key={t.id} className="bg-[#12161A] border border-[#2A353D] rounded-xl p-3 flex justify-between items-center"><div><div className="font-black text-white">{dayNames[t.dayIndex]} • {t.role} x{t.count}</div><div className="text-xs text-slate-400 font-bold">{formatShortTime(t.startTime)} - {formatShortTime(t.endTime)}</div></div><button onClick={() => deleteDoc(doc(db,'scheduleCoverageTargets',t.id))} className="p-2 text-slate-400 hover:text-red-400"><Trash2 size={14}/></button></div>)}</div></div>}
       {activeTool === 'templates' && <div className="space-y-3"><div className="flex flex-col md:flex-row gap-2"><select value={templateId} onChange={e => setTemplateId(e.target.value)} className={`${T.input} flex-1`}><option value="">Select template to apply</option>{templateOptions.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}</select><button onClick={applyTemplate} disabled={periodActionBlocked} className={`${T.btn} py-2 disabled:opacity-50`}>{activePeriod.mode === 'weekly' ? 'Apply to Current Week' : 'Apply to Current Period'}</button><button onClick={saveCurrentWeekAsTemplate} className={T.btnAlt}>Save Current Week</button></div>{templateOptions.length === 0 ? <FriendlyEmpty title="No templates yet" text="Create a Normal Week, Packers Sunday, Fish Fry Friday, or Live Music template. Each restaurant gets its own library."/> : templateOptions.map(t => <div key={t.id} className="bg-[#12161A] border border-[#2A353D] rounded-xl p-3 flex justify-between items-center"><div><div className="font-black text-white">{t.name}</div><div className="text-xs text-slate-400 font-bold">{t.description || 'No description'} • {(t.rows || []).length} rules</div></div><div className="flex gap-2"><button onClick={() => editTemplate(t)} className={T.btnAlt}>Edit</button><button onClick={() => deleteTemplate(t)} className="px-3 py-2 rounded-xl bg-red-900/20 text-red-300 border border-red-900/50 text-xs font-black">Delete</button></div></div>)}</div>}

@@ -34,7 +34,8 @@ test('17.0.37 keeps every real System Administrator page on the home screen with
   const groupSource = source.slice(groupsStart, groupsEnd);
   for (const id of ['overview', ...EXPECTED_SUBPAGES]) assert.match(groupSource, new RegExp(`id:'${id.replace('-', '\\-')}'`), `canonical admin group includes ${id}`);
   assert.equal(EXPECTED_SUBPAGES.length, 21);
-  assert.match(source, /const additionalAdminTabs = adminTabs\.filter\(tab => tab\.id !== 'overview' && !featuredAdminTabIds\.includes\(tab\.id\)\)/);
+  assert.match(source, /const directoryAdminTabs = adminTabs\.filter\(tab => tab\.id !== 'overview'\)/);
+  assert.match(source, /data-admin-shortcut=\{tab\.id\}/);
   assert.match(source, /data-testid="system-admin-complete-directory"/);
   assert.match(source, /data-testid="system-admin-directory-card"/);
   assert.match(source, /All System Administrator Tools/);

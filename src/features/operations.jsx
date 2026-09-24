@@ -354,7 +354,7 @@ const TabPrep = ({ currentDate, appUser, addToast, setLabelsToPrint }) => {
   };
 
   return (
-    <div className="max-w-4xl mx-auto space-y-4 pb-40">
+    <div data-concept-subtab={`prep-${subTab}`} className="concept17-surface concept17-prep-surface max-w-4xl mx-auto space-y-4 pb-40">
       
       {/* EDIT LINE CHECK MODAL */}
       <Modal isOpen={!!editLineCheckItem} onClose={() => setEditLineCheckItem(null)} title={t('prep.editLineCheck')}>
@@ -376,7 +376,7 @@ const TabPrep = ({ currentDate, appUser, addToast, setLabelsToPrint }) => {
         )}
       </Modal>
 
-      <div className="flex flex-wrap gap-2 border-b border-[#2A353D] mb-4 pb-2">
+      <div className="concept17-subtab-bar flex flex-wrap gap-2 border-b border-[#2A353D] mb-4 pb-2">
         {['prep', 'line-check', 'daily', 'weekly', 'monthly'].map((tab) => {
           const label = tab === 'prep' ? t('prep.foodPrep') : tab === 'line-check' ? t('prep.lineCheck') : tab === 'daily' ? t('prep.dailyTasks') : tab === 'weekly' ? t('prep.weeklyTasks') : t('prep.monthlyTasks');
           const stateLabel = tab === 'prep' ? 'prep' : tab === 'line-check' ? 'line check' : tab;
@@ -388,7 +388,7 @@ const TabPrep = ({ currentDate, appUser, addToast, setLabelsToPrint }) => {
       </div>
 
       {subTab === 'line-check' && (
-        <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
+        <div data-concept-subtab="prep-line-check" className="concept17-subtab-surface concept17-prep-line-check-surface space-y-4 animate-[slideIn_0.2s_ease-out]">
           
           <p className="text-xs text-slate-400">Fast kitchen records with manager review. Configure expectations for your operation; logs do not certify legal compliance. Record time and process details for cooling and reheating.</p>
           {missedSafety.length > 0 && <div role="alert" className="rounded-xl border border-amber-800 p-3 text-amber-300 text-sm">Required checks need attention: {missedSafety.map(item => item.name).join(', ')}</div>}
@@ -462,7 +462,7 @@ const TabPrep = ({ currentDate, appUser, addToast, setLabelsToPrint }) => {
       )}
 
       {subTab === 'prep' && (
-        <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
+        <div data-concept-subtab="prep-food-prep" className="concept17-subtab-surface concept17-prep-food-surface space-y-4 animate-[slideIn_0.2s_ease-out]">
           <LabelPrintSetup/>
           <div className={`${T.card} p-3 flex justify-between items-center bg-[#1A2126]`}>
             <h3 className={`font-black flex items-center gap-2 text-sm text-white uppercase tracking-wider`}><ClipboardList size={18} className={T.copper}/> {t('prep.targetDate')}</h3>
@@ -538,7 +538,7 @@ const TabPrep = ({ currentDate, appUser, addToast, setLabelsToPrint }) => {
       </div>
       )}
 
-      {subTab !== 'prep' && subTab !== 'line-check' && <div className="animate-[slideIn_0.2s_ease-out]">{renderTasks(subTab)}</div>}
+      {subTab !== 'prep' && subTab !== 'line-check' && <div data-concept-subtab={`prep-${subTab}`} className="concept17-subtab-surface concept17-prep-task-surface animate-[slideIn_0.2s_ease-out]">{renderTasks(subTab)}</div>}
     </div>
   );
 };
@@ -832,7 +832,7 @@ const TabRecipes = ({ appUser, addToast, voiceRecipeTarget = null }) => {
   const canModifyRecipe = activeRecipe && (canManageRecipes || appUser?.id === activeRecipe.authorId);
 
   return (
-    <div className="recipes-desktop max-w-7xl mx-auto space-y-4 pb-12 animate-[slideIn_0.2s_ease-out] recipe-compact">
+    <div className="concept17-surface concept17-recipes-surface recipes-desktop max-w-7xl mx-auto space-y-4 pb-12 animate-[slideIn_0.2s_ease-out] recipe-compact">
       
       {/* THE NEW SLEEK CONTROL PANEL */}
       <div className="bg-[#1A2126] border border-[#2A353D] rounded-2xl shadow-lg overflow-hidden mb-4">
@@ -1172,7 +1172,7 @@ const TabMaintenance = ({ appUser, addToast }) => {
   });
 
   return (
-    <div className="maintenance-center-compact desktop-ops-page max-w-7xl mx-auto space-y-3 pb-24 animate-[slideIn_0.2s_ease-out]">
+    <div data-concept-subtab={`maintenance-${subTab}`} className="concept17-surface concept17-maintenance-surface maintenance-center-compact desktop-ops-page max-w-7xl mx-auto space-y-3 pb-24 animate-[slideIn_0.2s_ease-out]">
       <Modal isOpen={isModalOpen} onClose={() => { setIsModalOpen(false); resetForm(); }} title={editingLogId ? "Update Maintenance Record" : "Report Equipment Issue"}>
         <form onSubmit={handleSave} className="space-y-3 max-h-[70vh] overflow-y-auto custom-scrollbar pr-1">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -1221,7 +1221,7 @@ const TabMaintenance = ({ appUser, addToast }) => {
         ].map(([label,value,color]) => <div key={label} className="maintenance-summary-card bg-[#1A2126] border border-[#2A353D]"><div className="text-[9px] uppercase tracking-widest font-black text-slate-500">{label}</div><div className={`text-lg font-black mt-1 ${color}`}>{value}</div></div>)}
       </div>
 
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-2 border-b border-[#2A353D] pb-2">
+      <div className="concept17-subtab-bar concept17-maintenance-tabs flex flex-col md:flex-row md:items-center justify-between gap-2 border-b border-[#2A353D] pb-2">
         <div className="flex gap-1.5 overflow-x-auto custom-scrollbar">
           <button onClick={() => setSubTab('issues')} className={`flex-shrink-0 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest ${subTab === 'issues' ? `${T.grad} text-slate-900` : 'bg-[#1A2126] text-slate-400 border border-[#2A353D]'}`}>Repair Board</button>
           <button onClick={() => setSubTab('pm')} className={`relative flex-shrink-0 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest ${subTab === 'pm' ? `${T.grad} text-slate-900` : 'bg-[#1A2126] text-slate-400 border border-[#2A353D]'}`}>Preventative Maintenance{overdueCount > 0 && <span className="ml-2 inline-flex min-w-4 h-4 px-1 rounded-full bg-red-500 text-white items-center justify-center text-[9px]">{overdueCount}</span>}</button>
@@ -1232,7 +1232,7 @@ const TabMaintenance = ({ appUser, addToast }) => {
         </div>}
       </div>
 
-      {subTab === 'issues' && <div className="animate-[slideIn_0.2s_ease-out]">
+      {subTab === 'issues' && <div data-concept-subtab="maintenance-repair-board" className="concept17-subtab-surface concept17-maintenance-repairs-surface animate-[slideIn_0.2s_ease-out]">
         <div className="flex items-center justify-between mb-2"><div><h2 className="text-sm font-black text-white">Repair Board</h2><p className="text-[10px] uppercase tracking-widest font-bold text-slate-500">{visibleLogs.length} record{visibleLogs.length === 1 ? '' : 's'} shown</p></div></div>
         {visibleLogs.length === 0 ? <SmartEmptyState icon={<Wrench size={22}/>} title="No maintenance records match" desc="Change the filter or report a new equipment issue." /> : <div className="grid grid-cols-1 xl:grid-cols-2 gap-2">
           {visibleLogs.map(log => {
@@ -1255,7 +1255,7 @@ const TabMaintenance = ({ appUser, addToast }) => {
         </div>}
       </div>}
 
-      {subTab === 'pm' && <div className="animate-[slideIn_0.2s_ease-out]">
+      {subTab === 'pm' && <div data-concept-subtab="maintenance-preventative" className="concept17-subtab-surface concept17-maintenance-pm-surface animate-[slideIn_0.2s_ease-out]">
         <div className="flex items-center justify-between mb-2"><div><h2 className="text-sm font-black text-white">Preventative Maintenance</h2><p className="text-[10px] uppercase tracking-widest font-bold text-slate-500">Recurring equipment care and due dates</p></div></div>
         {sortedPmSchedules.length === 0 ? <SmartEmptyState icon={<Calendar size={22}/>} title="No preventative schedules" desc="Add recurring equipment care to build the maintenance calendar." /> : <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2">
           {sortedPmSchedules.map(pm => {
@@ -1790,7 +1790,7 @@ const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = 
   ];
 
   return (
-    <div className="kitchen-command-compact desktop-ops-page max-w-7xl mx-auto space-y-4 pb-24 animate-[slideIn_0.2s_ease-out]">
+    <div className="concept17-surface concept17-ops-surface kitchen-command-compact desktop-ops-page max-w-7xl mx-auto space-y-4 pb-24 animate-[slideIn_0.2s_ease-out]">
       <div className={`${T.card} command-hero p-5 bg-gradient-to-br from-[#1A2126] to-[#12161A] overflow-hidden relative`}>
         <div className="absolute -top-8 -right-6 text-[120px] font-black text-[#D4A381]/5 leading-none">86</div>
         <div className="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
@@ -1953,10 +1953,10 @@ const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = 
               <h2 id="kitchen-specials-heading" className="text-lg font-black text-white flex items-center gap-2"><Star size={19} className={T.copper}/> Service Specials</h2>
               <p className="text-xs sm:text-sm text-slate-400 font-medium mt-1">The official list for pre-shift, line execution, allergens, and 86 status. Posted directly - no AI.</p>
             </div>
-            <div className="flex flex-wrap items-center gap-2">
+            <div data-concept-subtab={`ops-specials-${specialView}`} className="concept17-subtab-bar concept17-specials-tabs flex flex-wrap items-center gap-2">
               {canManageSpecials && <>
-                <button type="button" onClick={() => setSpecialView('current')} className={`${specialView === 'current' ? T.btn : T.btnAlt} px-3`}>Current</button>
-                <button type="button" onClick={() => setSpecialView('all')} className={`${specialView === 'all' ? T.btn : T.btnAlt} px-3`}>All & History</button>
+                <button type="button" onClick={() => setSpecialView('current')} className={`concept17-subtab ${specialView === 'current' ? T.btn : T.btnAlt} px-3`}>Current</button>
+                <button type="button" onClick={() => setSpecialView('all')} className={`concept17-subtab ${specialView === 'all' ? T.btn : T.btnAlt} px-3`}>All & History</button>
                 <button type="button" onClick={openNewSpecial} className={`${T.btn} flex items-center gap-1.5`}><Plus size={15}/> Add Special</button>
               </>}
             </div>
@@ -2404,7 +2404,7 @@ const TabToday = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequ
   const topPriority = attentionProblems[0]?.detail || (myShift ? `You work ${formatShortTime(myShift.startTime)}-${formatShortTime(myShift.endTime)} as ${myShift.role}.` : t('today.nothingUrgent'));
   const managerBriefMathText = `${todaysShifts.length} ${t('today.onSchedule')} ${activePunches.length} ${t('today.clockedIn')} ${attentionProblems.length} ${t('today.needReview')}`;
 
-  return <div className="manager-brief-compact desktop-ops-page max-w-7xl mx-auto space-y-3 pb-24 animate-[slideIn_0.2s_ease-out]">
+  return <div className="concept17-surface concept17-today-surface manager-brief-compact desktop-ops-page max-w-7xl mx-auto space-y-3 pb-24 animate-[slideIn_0.2s_ease-out]">
     <Modal isOpen={!!attentionExplain} onClose={() => setAttentionExplain(null)} title={attentionExplain?.title || 'Why this matters'}>
       {attentionExplain && <div className="space-y-3">
         <div className="rounded-xl border border-[#2A353D] bg-[#12161A] p-3"><div className="text-[9px] uppercase tracking-widest font-black text-[#D4A381]">What triggered it</div><p className="text-sm font-bold text-white mt-1">{attentionExplain.detail}</p></div>

@@ -334,7 +334,7 @@ const TabPersonalReminders = ({ appUser, addToast, onEnableNotifications }) => {
   };
 
   return (
-    <div className="space-y-4 animate-[slideIn_0.25s_ease-out]">
+    <div className="concept17-surface concept17-reminders-surface space-y-4 animate-[slideIn_0.25s_ease-out]">
       <div className={`${T.card} p-4 flex flex-col lg:flex-row lg:items-center justify-between gap-3`}>
         <div><h2 className="text-xl font-black text-white">Personal Reminders</h2><p className="text-xs text-slate-400 font-bold">Private or teammate reminders, queued for the optimized dispatcher.</p></div>
         <button type="button" aria-label={listening ? 'Stop reminder voice entry' : 'Speak Reminder'} aria-pressed={listening} onClick={listening ? stopReminderRecognition : startListening} className={`${T.btnAlt} flex items-center justify-center gap-2 ${listening ? 'text-red-300 border-red-500/40' : ''}`}><Mic size={16}/> {listening ? 'Listening' : 'Speak Reminder'}</button>
@@ -342,7 +342,7 @@ const TabPersonalReminders = ({ appUser, addToast, onEnableNotifications }) => {
 
       {!reminderNotificationsReady && <div role="status" className="rounded-xl border border-amber-700/50 bg-amber-950/20 p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3"><div className="flex items-start gap-2"><Bell size={17} className="text-amber-300 mt-0.5 shrink-0"/><div><div className="text-xs font-black text-amber-200">Reminder notifications are not connected on this device</div><div className="text-[10px] text-slate-400 font-bold mt-1">Reminders still save normally. Connect once so due reminders can create a real browser or installed-app notification.</div></div></div>{notificationPermission !== 'unsupported' && <button type="button" onClick={enableReminderNotifications} disabled={notificationConnecting} className={`${T.btnAlt} shrink-0 disabled:opacity-60`}>{notificationConnecting ? 'Connecting…' : 'Enable Notifications'}</button>}</div>}
 
-      <form onSubmit={saveReminder} className={`${T.card} p-4 grid lg:grid-cols-[1.35fr_.62fr_.52fr_.72fr_auto] gap-3 items-end`}>
+      <form data-concept-subtab={`reminders-share-${shareMode}`} onSubmit={saveReminder} className={`${T.card} concept17-nested-mode p-4 grid lg:grid-cols-[1.35fr_.62fr_.52fr_.72fr_auto] gap-3 items-end`}>
         <div><label className={T.label}>Reminder</label><input value={title} onChange={e => setTitle(e.target.value)} onBlur={e => /^remind me/i.test(e.target.value) && applyParsedText(e.target.value)} className={T.input} placeholder="Remind me tomorrow at 9 AM to order buns" /></div>
         <div><label className={T.label}>Date</label><input type="date" value={dateInput} onChange={e => setDateInput(e.target.value)} className={T.input} /></div>
         <div><label className={T.label}>Time</label><input type="time" value={timeInput} onChange={e => setTimeInput(e.target.value)} className={T.input} /></div>
@@ -600,7 +600,7 @@ const TabMenuIntelligence = ({ appUser, clientData, inventoryItems = [], menuDep
 
   if (!allowed) {
     return (
-      <div className="max-w-4xl mx-auto">
+      <div className="concept17-surface concept17-intelligence-locked-surface max-w-4xl mx-auto">
         <div className={`${T.card} p-8 text-center`}>
           <Sparkles className="mx-auto text-slate-500 mb-3" size={38}/>
           <h2 className="text-xl font-black text-white">Menu Intelligence is owner controlled</h2>
@@ -958,7 +958,7 @@ const TabMenuIntelligence = ({ appUser, clientData, inventoryItems = [], menuDep
   const menuUsageWarning = aiPageLimitMessage('menu', menuAiUsage);
 
   return (
-    <div className="intelligence-desktop max-w-7xl mx-auto space-y-4 pb-24">
+    <div className="concept17-surface concept17-intelligence-surface intelligence-desktop max-w-7xl mx-auto space-y-4 pb-24">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#2A353D] pb-3">
         <div>
           <h2 className="text-2xl font-black flex items-center gap-2 text-white"><Sparkles size={24} className={T.copper}/> Menu Intelligence</h2>
@@ -1135,7 +1135,7 @@ const TabAITools = ({ appUser, clientData, setActiveTab, setInventorySubTabTarge
     }
   ];
   return (
-    <div className="intelligence-desktop max-w-7xl mx-auto space-y-4 pb-24">
+    <div className="concept17-surface concept17-intelligence-surface intelligence-desktop max-w-7xl mx-auto space-y-4 pb-24">
       <div className="cockpit-panel cockpit-grid rounded-2xl p-5 border border-[#2A353D]">
         <div className="text-[10px] font-black uppercase tracking-widest text-[#D4A381]">Scans & Suggestions</div>
         <h2 className="text-2xl font-black text-white mt-1 flex items-center gap-2"><Sparkles size={24}/> Kitchen Tools</h2>

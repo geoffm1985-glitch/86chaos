@@ -568,7 +568,7 @@ export const TabHrTraining = ({ appUser, users = [], addToast }) => {
   const availableTabs = TABS.filter(([id]) => id !== 'performance' || manager);
 
   return (
-    <div className="hr-desktop mx-auto w-full max-w-7xl space-y-4 px-3 pb-12 sm:px-5">
+    <div data-concept-subtab={`hr-${activeTab}`} className="concept17-surface concept17-hr-surface hr-desktop mx-auto w-full max-w-7xl space-y-4 px-3 pb-12 sm:px-5">
       <div className={`${T.card} overflow-hidden p-0`}>
         <div className="border-b border-[#2A353D] bg-gradient-to-br from-[#1B242B] via-[#171D22] to-[#12161A] p-5 sm:p-7">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -579,7 +579,7 @@ export const TabHrTraining = ({ appUser, users = [], addToast }) => {
             <div className="flex items-center gap-2 rounded-xl border border-emerald-400/20 bg-emerald-500/10 px-3 py-2 text-xs font-black uppercase tracking-[0.1em] text-emerald-200"><ShieldCheck size={17} /> {manager ? 'Manager access' : 'Employee self-service'}</div>
           </div>
         </div>
-        <div className="grid grid-cols-2 gap-2 p-3 sm:flex sm:flex-wrap">
+        <div className="concept17-subtab-bar concept17-hr-tabs grid grid-cols-2 gap-2 p-3 sm:flex sm:flex-wrap">
           {availableTabs.map(([id, label]) => <button key={id} type="button" onClick={() => setActiveTab(id)} className={`min-h-[42px] rounded-xl border px-3 py-2 text-xs font-black transition sm:text-sm ${activeTab === id ? 'border-[#D4A381]/50 bg-[#D4A381]/15 text-white shadow-sm' : 'border-[#2A353D] bg-[#12161A]/55 text-slate-300 hover:border-[#D4A381]/30 hover:text-white'}`}>{label}</button>)}
         </div>
       </div>

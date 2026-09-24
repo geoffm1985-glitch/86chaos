@@ -7,7 +7,7 @@ import 'leaflet/dist/leaflet.css';
 import { T, db, auth, messagingReady, isFirebaseMessagingUnsupportedError, firebaseConfig, CURRENT_VERSION, MASTER_ADMIN_EMAIL, useLiveCollection, useLiveCollectionState, useLiveDocumentState, secureFetch, getToday, getMonthStr, formatDate, formatDisplayFullDate, formatDisplayMonth, logAudit, setActiveTimeFormat, getOfflineQueue, replayOfflineQueue, clearTenantListenerCache, recordScheduleOperationDiagnostic } from './core/appCore';
 import { buildAlertFingerprint, useRememberedAlert } from './core/alertMemory';
 import { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, GlobalSearchModal, KitchenTVMode, UndoBar, VoiceCommandDock } from './components/common';
-import { Concept17Sidebar, Concept17MobileNav } from './components/concept17';
+import { Concept17Sidebar, Concept17MobileNav, Concept17RouteFrame } from './components/concept17';
 import { LockedFeatureScreen } from './components/PlanGate';
 import { usePlanAccess } from './hooks/usePlanAccess';
 import { resolveFeatureAccess } from './lib/featureAccess';
@@ -3323,12 +3323,12 @@ What I clicked / expected:
     try { return planAccess.canRoute(route, shellAccessContext)?.allowed !== false; } catch (_) { return false; }
   };
   const shellNavCatalog = [
+    { id: 'published', label: shellText('drawer.timeClockSchedule', 'Time Clock & Schedule'), mobileLabel: shellText('shell.schedule', 'Time Clock'), alert: hasMyShiftAlert || hasScheduleBuilderAlert },
     { id: 'today', label: shellText('drawer.todayHome', 'Today'), mobileLabel: shellText('shell.home', 'Home') },
     { id: 'ops', label: shellText('drawer.kitchenCommandCenter', 'Kitchen Command'), mobileLabel: shellText('shell.kitchen', 'Kitchen') },
     { id: 'prep', label: shellText('drawer.prepTasks', 'Prep & Tasks'), mobileLabel: shellText('shell.prep', 'Prep') },
     { id: 'inventory', label: shellText('drawer.inventoryOrders', 'Inventory & Orders'), mobileLabel: shellText('shell.inventory', 'Inventory') },
     { id: 'recipes', label: shellText('drawer.recipeBook', 'Recipes') },
-    { id: 'schedule', label: shellText('drawer.timeClockSchedule', 'Time Clock & Schedule'), mobileLabel: shellText('shell.schedule', 'Schedule'), alert: hasMyShiftAlert || hasScheduleBuilderAlert },
     { id: 'team', label: shellText('drawer.staffRoster', 'Staff Roster'), mobileLabel: shellText('shell.staff', 'Staff') },
     { id: 'financials', label: shellText('drawer.financials', 'Financials') },
     { id: 'messages', label: shellText('drawer.messageBoard', 'Message Board'), alert: hasUnreadMessages },
@@ -3337,7 +3337,7 @@ What I clicked / expected:
     { id: 'help', label: shellText('drawer.helpCenter', 'Help Center'), alert: hasHelpUpdate },
   ];
   const shellNavItems = shellNavCatalog.filter(item => shellRouteAllowed(item.id));
-  const preferredMobileRoutes = ['today', 'ops', 'schedule', 'team', 'prep', 'inventory'];
+  const preferredMobileRoutes = ['published', 'today', 'ops', 'team', 'prep', 'inventory'];
   const shellMobileNavItems = preferredMobileRoutes.map(id => shellNavItems.find(item => item.id === id)).filter(Boolean).slice(0, 4);
   const shellUserName = liveAppUser?.name || liveAppUser?.displayName || liveAppUser?.email || '86 Chaos';
   const shellUserRole = liveAppUser?.role || (liveAppUser?.isAdmin ? 'Administrator' : 'Team Member');
@@ -3676,7 +3676,14 @@ return (
               data-concept-route={activeTabState}
               data-concept-subroute={['schedule','published'].includes(activeTabState) ? activeScheduleSubTab : ''}
             >
-              {renderMainContent()}
+              <Concept17RouteFrame
+                route={activeTabState}
+                subroute={['schedule','published'].includes(activeTabState) ? activeScheduleSubTab : ''}
+                restaurantName={displayClientData?.name || liveAppUser?.restaurantName || liveAppUser?.workspaceName || '86 Chaos'}
+                language={appLanguage}
+              >
+                {renderMainContent()}
+              </Concept17RouteFrame>
             </div>
           </React.Suspense>
         </AppSurfaceErrorBoundary>

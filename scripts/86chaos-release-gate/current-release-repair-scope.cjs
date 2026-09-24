@@ -1,8 +1,33 @@
 'use strict';
 
-const CURRENT_RELEASE_VERSION = '17.1.1';
-const CURRENT_RELEASE_CARRY_FORWARD_NOTE = '17.1.1 completes the Concept 1 deep workflow migration across the real application routes, preserves the 86 Chaos brand assets, repairs the Vercel Lucide named-import failure, and carries forward the System Administrator, PWA Back, Spanish, schedule, presence-retirement, testing-domain, and production security safeguards.';
+const CURRENT_RELEASE_VERSION = '17.1.2';
+const CURRENT_RELEASE_CARRY_FORWARD_NOTE = '17.1.2 completes the explicit Concept 1 page-and-subtab migration, makes Time Clock & Schedule the first primary tab, repairs the System Administrator unique 21-card directory contract, preserves the 86 Chaos brand assets and Vercel Lucide import repair, and carries forward PWA Back, Spanish, schedule, presence-retirement, testing-domain, and production security safeguards.';
 const CURRENT_RELEASE_REPAIR_SCOPE = [
+  {
+    specPath: '86chaos-new-implementations/19-concept1-complete-route-subtab-fidelity.spec.cjs',
+    fullSuitePath: '17.1.2 complete Concept 1 route and subtab fidelity',
+    exactTestTitle: 'every real routed page uses the complete Concept 1 frame and desktop/mobile geometry',
+  },
+  {
+    specPath: '86chaos-new-implementations/19-concept1-complete-route-subtab-fidelity.spec.cjs',
+    fullSuitePath: '17.1.2 complete Concept 1 route and subtab fidelity',
+    exactTestTitle: 'representative real subtabs retain the Concept 1 frame after navigation',
+  },
+  {
+    specPath: '86chaos-new-implementations/19-concept1-complete-route-subtab-fidelity.spec.cjs',
+    fullSuitePath: '17.1.2 complete Concept 1 route and subtab fidelity',
+    exactTestTitle: 'Time Clock & Schedule is the first primary tab on desktop and mobile',
+  },
+  {
+    specPath: '86chaos-new-implementations/19-concept1-complete-route-subtab-fidelity.spec.cjs',
+    fullSuitePath: '17.1.2 complete Concept 1 route and subtab fidelity',
+    exactTestTitle: 'nested Labor & Payroll subtabs keep the Concept 1 command surface',
+  },
+  {
+    specPath: '86chaos-new-implementations/19-concept1-complete-route-subtab-fidelity.spec.cjs',
+    fullSuitePath: '17.1.2 complete Concept 1 route and subtab fidelity',
+    exactTestTitle: 'System Administrator exposes exactly 21 canonical directory cards and featured shortcuts do not duplicate identities',
+  },
   {
     specPath: '86chaos-new-implementations/18-app-wide-deep-route-layout.spec.cjs',
     fullSuitePath: '17.1.1 Concept 1 deep route migration',

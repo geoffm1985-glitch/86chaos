@@ -21,7 +21,8 @@ test('17.0.36 System Administrator home renders every internal subpage from the 
   const groupSource = source.slice(groupsStart, groupsEnd);
   for (const id of ['overview', ...EXPECTED_SUBPAGES]) assert.match(groupSource, new RegExp(`id:'${id.replace('-', '\\-')}'`), `canonical admin group includes ${id}`);
   assert.match(source, /featuredAdminTabs\.slice\(0, 4\)/);
-  assert.match(source, /additionalAdminTabs\.map\(tab =>/);
+  assert.match(source, /const directoryAdminTabs = adminTabs\.filter\(tab => tab\.id !== 'overview'\)/);
+  assert.match(source, /directoryAdminTabs\.map\(tab =>/);
   assert.match(source, /data-testid="system-admin-complete-directory"/);
   assert.match(source, /data-testid="system-admin-directory-card"/);
   assert.match(source, /data-admin-tab=\{tab\.id\}/);

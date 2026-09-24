@@ -1275,7 +1275,7 @@ const groupedItems = orderableInventoryItems
   const invoiceUsageWarning = aiPageLimitMessage('invoice', invoiceAiUsage);
 
   return (
-    <div className="inventory-desktop max-w-7xl mx-auto space-y-4 pb-24">
+    <div data-concept-subtab={`inventory-${invTab}`} className="concept17-surface concept17-inventory-surface inventory-desktop max-w-7xl mx-auto space-y-4 pb-24">
       
       {/* CSV IMPORT CLEANUP REVIEW MODAL */}
       <Modal isOpen={!!csvImportReview} onClose={() => isSavingCsvImport ? null : setCsvImportReview(null)} title="Inventory Import Cleanup Review">
@@ -1346,8 +1346,8 @@ const groupedItems = orderableInventoryItems
               </div>
             )}
             
-            <div className="flex flex-wrap gap-2 bg-[#12161A] border border-[#2A353D] rounded-xl p-1">
-              {[['matched','Stock Matcher'], ['skipped',`Needs Review (${(scannedInvoice.skippedRows || []).length + (scannedInvoice.lineItems || []).filter(row => row.matchNeedsReview && !row.quantityConfirmed).length})`], ['raw','Raw Audit']].map(([id,label]) => <button key={id} type="button" onClick={() => setInvoiceReviewTab(id)} className={`flex-1 min-w-[120px] px-3 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest ${invoiceReviewTab === id ? `${T.grad} text-slate-900` : 'text-slate-400 hover:text-white'}`}>{label}</button>)}
+            <div data-concept-subtab={`inventory-invoice-review-${invoiceReviewTab}`} className="concept17-subtab-bar concept17-invoice-review-tabs flex flex-wrap gap-2 bg-[#12161A] border border-[#2A353D] rounded-xl p-1">
+              {[['matched','Stock Matcher'], ['skipped',`Needs Review (${(scannedInvoice.skippedRows || []).length + (scannedInvoice.lineItems || []).filter(row => row.matchNeedsReview && !row.quantityConfirmed).length})`], ['raw','Raw Audit']].map(([id,label]) => <button key={id} type="button" onClick={() => setInvoiceReviewTab(id)} className={`concept17-subtab flex-1 min-w-[120px] px-3 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest ${invoiceReviewTab === id ? `${T.grad} text-slate-900` : 'text-slate-400 hover:text-white'}`}>{label}</button>)}
             </div>
 
             {invoiceReviewTab === 'matched' && <div className="flex justify-between items-center mt-2 mb-1">
@@ -1503,7 +1503,7 @@ const groupedItems = orderableInventoryItems
 
       <div className={`flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b ${T.border} pb-3`}>
         <h2 className="text-2xl font-black flex items-center gap-2 text-white"><ClipboardList size={24} className={T.copper}/> Inventory</h2>
-        <div className={`inventory-subtabs bg-[#12161A] p-1 rounded-xl flex flex-wrap border ${T.border} w-full sm:w-auto`}>
+        <div className={`concept17-subtab-bar inventory-subtabs bg-[#12161A] p-1 rounded-xl flex flex-wrap border ${T.border} w-full sm:w-auto`}>
           <button onClick={() => setInvTab('count')} className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all flex-1 sm:flex-none ${invTab === 'count' ? `${T.grad} text-slate-900 shadow-sm` : 'text-slate-400 hover:text-white'}`}>count</button>
           {hasInvPerms && <button onClick={() => setInvTab('order')} className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all flex-1 sm:flex-none ${invTab === 'order' ? `${T.grad} text-slate-900 shadow-sm` : 'text-slate-400 hover:text-white'}`}>order</button>}
           {hasInvPerms && canUseAiOrdering && <button onClick={() => setInvTab('ai-order')} className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all flex-1 sm:flex-none ${invTab === 'ai-order' ? `${T.grad} text-slate-900 shadow-sm` : 'text-slate-400 hover:text-white'}`}>Order Suggestions</button>}
@@ -1516,7 +1516,7 @@ const groupedItems = orderableInventoryItems
       </div>
 
 {invTab === 'count' && (
-        <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
+        <div data-concept-subtab="inventory-count" className="concept17-subtab-surface concept17-inventory-count-surface space-y-4 animate-[slideIn_0.2s_ease-out]">
           <div id="below-par-focus-panel" className="flex flex-col sm:flex-row gap-3">
             <input type="text" placeholder="Search product or code..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className={`${T.input} flex-1`} />
             <select value={groupBy} onChange={e => setGroupBy(e.target.value)} className={`${T.input} sm:w-48 font-bold`}>
@@ -1566,7 +1566,7 @@ const groupedItems = orderableInventoryItems
       )}
 
       {hasInvPerms && canUseAiOrdering && invTab === 'ai-order' && (
-        <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
+        <div data-concept-subtab="inventory-ai-order" className="concept17-subtab-surface concept17-inventory-ai-order-surface space-y-4 animate-[slideIn_0.2s_ease-out]">
           <div id="ai-order-assistant-panel" className={`${T.card} p-4 sm:p-5 border-[#D4A381]/40 bg-gradient-to-br from-[#1A2126] to-[#0B0E11]`}>
             <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4">
               <div>
@@ -1729,7 +1729,7 @@ const groupedItems = orderableInventoryItems
       )}
 
       {hasInvPerms && invTab === 'order' && (
-        <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
+        <div data-concept-subtab="inventory-order" className="concept17-subtab-surface concept17-inventory-order-surface space-y-4 animate-[slideIn_0.2s_ease-out]">
           
           {pendingVendors.length > 0 && (
             <div className="mb-6 space-y-4">
@@ -1789,7 +1789,7 @@ const groupedItems = orderableInventoryItems
       )}
 
       {hasInvPerms && invTab === 'manage' && (
-        <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
+        <div data-concept-subtab="inventory-manage" className="concept17-subtab-surface concept17-inventory-manage-surface space-y-4 animate-[slideIn_0.2s_ease-out]">
           <Modal isOpen={!!editItem} onClose={() => setEditItem(null)} title="Edit Item">
              {editItem && (
                <form onSubmit={handleSaveEdit} className="space-y-3">
@@ -1955,7 +1955,7 @@ const groupedItems = orderableInventoryItems
       )}
 
       {hasInvPerms && invTab === 'vendors' && (
-        <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
+        <div data-concept-subtab="inventory-vendors" className="concept17-subtab-surface concept17-inventory-vendors-surface space-y-4 animate-[slideIn_0.2s_ease-out]">
           <VendorMemoryPanel appUser={appUser} vendors={vendors} inventoryItems={inventoryItems} addToast={addToast}/>
           <form onSubmit={handleAddVendor} className={`${T.card} p-4 space-y-3 bg-[#1A2126]`}>
             <h3 className="text-sm font-black uppercase text-[#D4A381] tracking-widest">Add Vendor</h3>
@@ -1971,7 +1971,7 @@ const groupedItems = orderableInventoryItems
       )}
 
       {hasInvPerms && invTab === 'invoices' && canUseSmartInventory && (
-        <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
+        <div data-concept-subtab="inventory-invoices" className="concept17-subtab-surface concept17-inventory-invoices-surface space-y-4 animate-[slideIn_0.2s_ease-out]">
           <div className={`${T.card} overflow-hidden`}>
             <div className={`bg-[#12161A] p-4 border-b ${T.border} flex justify-between items-center`}>
               <h3 className="font-black text-sm text-white flex items-center gap-2">Invoice History ({invoices.length} loaded)</h3>
@@ -2011,7 +2011,7 @@ const groupedItems = orderableInventoryItems
       )}
 
       {invTab === 'waste' && (
-        <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
+        <div data-concept-subtab="inventory-waste" className="concept17-subtab-surface concept17-inventory-waste-surface space-y-4 animate-[slideIn_0.2s_ease-out]">
           
           <Modal isOpen={!!editWaste} onClose={() => setEditWaste(null)} title="Edit Burn Log">
             {editWaste && (
@@ -2026,7 +2026,7 @@ const groupedItems = orderableInventoryItems
             )}
           </Modal>
 
-          <form onSubmit={handleLogWaste} className={`${T.card} p-4 space-y-3 bg-[#1A2126]`}>
+          <form data-concept-subtab={`inventory-waste-mode-${wMode}`} onSubmit={handleLogWaste} className={`${T.card} concept17-nested-mode p-4 space-y-3 bg-[#1A2126]`}>
 <h3 className="text-sm font-black uppercase text-red-400 tracking-widest flex items-center gap-2">
               🚨 The Burn Log
               <span className="inventory-preview-badge bg-red-950/60 text-red-100 border border-red-400/60 text-[8px] px-1.5 py-0.5 rounded-md uppercase tracking-widest font-black shadow-[0_0_8px_rgba(239,68,68,0.2)]">Review</span>

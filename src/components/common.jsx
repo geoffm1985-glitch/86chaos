@@ -147,8 +147,8 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
   const pushTab = (tab) => { if (planAllowsTab(tab.id)) tabs.push(tab); };
 
   const managerBriefAccess = resolveFeatureAccess({ workspace: clientData || {}, user: appUser || {}, featureKey: FEATURE_KEYS.MANAGER_BRIEF });
-  pushTab({ id: 'today', label: managerBriefAccess.allowed ? t('drawer.managerBrief') : t('drawer.todayHome'), icon: <Star size={18}/>, dot: hasUnreadMessages || hasMyShiftAlert || hasScheduleBuilderAlert });
-  if (isEnabled('schedule')) pushTab({ id: 'published', label: t('drawer.timeClockSchedule'), icon: <Clock size={18}/>, dot: hasMyShiftAlert }); 
+  if (isEnabled('schedule')) pushTab({ id: 'published', label: t('drawer.timeClockSchedule'), icon: <Clock size={18}/>, dot: hasMyShiftAlert });
+  pushTab({ id: 'today', label: managerBriefAccess.allowed ? t('drawer.managerBrief') : t('drawer.todayHome'), icon: <Star size={18}/>, dot: hasUnreadMessages || hasScheduleBuilderAlert });
   if (planAllowsTab('financials')) pushTab({ id: 'financials', label: t('drawer.financials'), icon: <Scale size={18}/> });
   if (planAllowsTab('back-office')) pushTab({ id: 'back-office', label: t('drawer.backOffice'), icon: <ClipboardList size={18}/> });
   if (planAllowsTab('ops')) pushTab({ id: 'ops', label: t('drawer.kitchenCommandCenter'), icon: <ChefHat size={18}/> }); 
