@@ -14,7 +14,8 @@ test('17.1.4 Schedule Builder control deck no longer overlays the editable grid'
   assert.match(css, /17\.1\.4 release-gate browser stability repair/);
   assert.match(css, /\.schedule-builder-control-deck\s*\{[\s\S]*?position:\s*relative !important;[\s\S]*?top:\s*auto !important;/);
   assert.match(css, /schedule-builder-cell[\s\S]*scroll-margin-top:\s*48px/);
-  assert.match(assignmentSpec, /elementFromPoint/);
+  assert.match(assignmentSpec, /cells\.evaluateAll/);
+  assert.doesNotMatch(assignmentSpec, /elementFromPoint/);
   assert.match(assignmentSpec, /scrollIntoViewIfNeeded/);
   assert.doesNotMatch(assignmentSpec, /force:\s*true/);
 });

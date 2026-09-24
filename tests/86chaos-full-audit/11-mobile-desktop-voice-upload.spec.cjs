@@ -120,6 +120,8 @@ test.describe('11 mobile, desktop, 86Voice, and upload/scan UI', () => {
     }
     await neutralizeTestingPreviewOverlays(page, { attach: (name, data) => attachJson(testInfo, name, data) });
     await voiceButton.click();
+    const autoStartRecognitionState = await page.evaluate(() => window.__voiceRecognitionState || {});
+    expect(autoStartRecognitionState.startedCount || 0, 'Opening 86Voice from the microphone toolbar control must start recognition in the user gesture').toBeGreaterThanOrEqual(1);
     const headerClose = page.getByRole('button', { name: 'Close 86Voice panel' });
     const floatingHide = page.getByRole('button', { name: 'Hide 86Voice assistant' });
     await expect(headerClose).toBeVisible({ timeout: 5000 });

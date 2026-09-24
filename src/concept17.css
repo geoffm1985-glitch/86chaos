@@ -2676,3 +2676,30 @@ body {
     letter-spacing: -0.025em;
   }
 }
+
+
+/* 17.1.6 release-gate + microphone repair.
+   Keep the Schedule Builder command rows in normal flow at standard desktop
+   widths. Side-by-side assignment/action columns at 1440px could overlap and
+   intercept Assign. Only the day/date table header remains sticky. */
+.schedule-builder-control-deck,
+.schedule-builder-assign-button {
+  scroll-margin-top: 112px !important;
+}
+
+@media (min-width: 721px) and (max-width: 1599px) {
+  .schedule-builder-control-deck {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) !important;
+    gap: 6px !important;
+  }
+  .schedule-builder-assignment-row,
+  .schedule-builder-action-row {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+  }
+  .schedule-builder-action-row {
+    justify-content: flex-start !important;
+  }
+}

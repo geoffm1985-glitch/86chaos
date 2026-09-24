@@ -1582,12 +1582,10 @@ const VoiceCommandDockBase = ({ appUser, inventoryItems = [], recipes = [], user
     setHeardText('');
     setManualText('');
     setVoiceResult(null);
-    cancelPendingVoiceStart();
-    pendingVoiceStartTimerRef.current = setTimeout(() => {
-      pendingVoiceStartTimerRef.current = null;
-      if (!voiceMountedRef.current) return;
-      startListening({ autoStart: true });
-    }, 80);
+    // Start recognition inside the actual tap/click handler. Android Chrome/PWA
+    // can reject microphone-backed speech recognition after transient user
+    // activation has been lost to a timer.
+    startListening({ autoStart: true, fromUserGesture: true });
   };
 
   const parseCommand = async (spokenText) => {

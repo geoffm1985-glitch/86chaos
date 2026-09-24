@@ -21,30 +21,21 @@ test.describe('17.0.27 Schedule Builder shift assignment emergency repair', () =
     });
 
     const today = new Date().toISOString().slice(0, 10);
-    let target = null;
-    const count = Math.min(await cells.count(), 400);
-    for (let i = 0; i < count; i += 1) {
-      const cell = cells.nth(i);
-      const date = await cell.getAttribute('data-date');
-      if (!date || date < today) continue;
-      if (await cell.locator('[data-chaos-workflow-id="schedule-delete-shift"]').count()) continue;
-      if (await cell.locator('[title="Requested Off"], .schedule-builder-partial-off-chip').count()) continue;
-      await cell.scrollIntoViewIfNeeded();
-      const hitTestable = await cell.evaluate(el => {
-        const rect = el.getBoundingClientRect();
-        const x = Math.max(rect.left + 6, Math.min(rect.right - 6, rect.left + (rect.width * 0.72)));
-        const y = Math.max(rect.top + 6, Math.min(rect.bottom - 6, rect.top + (rect.height * 0.55)));
-        const hit = document.elementFromPoint(x, y);
-        return !!hit && (hit === el || el.contains(hit));
-      }).catch(() => false);
-      if (!hitTestable) continue;
-      target = cell;
-      break;
-    }
-    expect(target, 'QA Schedule Builder should expose at least one empty editable future cell').not.toBeNull();
+    const candidate = await cells.evaluateAll((nodes, minDate) => {
+      const cell = nodes.find(el => {
+        const date = el.getAttribute('data-date') || '';
+        if (!date || date < minDate) return false;
+        if (el.querySelector('[data-chaos-workflow-id="schedule-delete-shift"]')) return false;
+        if (el.querySelector('[title="Requested Off"], .schedule-builder-partial-off-chip')) return false;
+        return true;
+      });
+      return cell ? { date: cell.getAttribute('data-date'), employeeId: cell.getAttribute('data-employee-id') } : null;
+    }, today);
+    expect(candidate, 'QA Schedule Builder should expose at least one empty editable future cell').not.toBeNull();
 
+    const target = page.locator(`td[data-testid="schedule-builder-cell"][data-date="${candidate.date}"][data-employee-id="${candidate.employeeId}"]`).first();
     await target.scrollIntoViewIfNeeded();
-    await target.click();
+    await target.click({ timeout: 15000 });
     await expect(assignButton).toBeEnabled({ timeout: 5000 });
     await assignButton.scrollIntoViewIfNeeded();
     await assignButton.click();

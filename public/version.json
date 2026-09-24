@@ -1,22 +1,23 @@
 {
-  "version": "17.1.5",
-  "name": "86 Chaos 17.1.5",
-  "build": "17.1.5",
-  "label": "86 Chaos 17.1.5",
-  "releasedAt": "2026-09-24T13:15:00Z",
-  "releaseTitle": "Mobile Bottom Toolbar Single-Line Label Repair",
+  "version": "17.1.6",
+  "name": "86 Chaos 17.1.6",
+  "build": "17.1.6",
+  "label": "86 Chaos 17.1.6",
+  "releasedAt": "2026-09-24T15:30:00Z",
+  "releaseTitle": "Microphone and Delta Gate Interaction Repair",
   "notes": [
-    "Keeps Voice, Schedule, Home, Kitchen, Staff, and More on one line in the six-slot mobile bottom toolbar.",
-    "Adds explicit nowrap, keep-all, and Android text-size handling for mobile navigation labels.",
-    "Preserves the first-slot 86Voice control and existing 17.1.4 release-gate stability repairs."
+    "Starts 86Voice speech recognition directly from the microphone tap so Android/PWA user activation is preserved.",
+    "Repairs the Spanish mobile release-gate assertion to target the visible translated route instead of a hidden desktop-sidebar duplicate.",
+    "Prevents Schedule Builder assignment and action controls from overlapping at normal desktop widths while keeping the day/date header sticky.",
+    "Makes the Schedule Builder shift-assignment regression choose a candidate cell in one DOM pass instead of repeatedly scrolling hundreds of cells."
   ],
-  "title": "86 Chaos 17.1.5",
-  "summary": "Precision mobile toolbar typography repair so every bottom-navigation label remains on one line.",
-  "description": "Hardens the six-slot mobile command bar against narrow-phone and Android text scaling without reducing touch target size or changing route behavior.",
+  "title": "86 Chaos 17.1.6",
+  "summary": "Precision microphone, Schedule Builder interaction, and delta-gate reliability repair.",
+  "description": "Preserves the 17.1.5 Concept 1/mobile-toolbar work while restoring first-tap 86Voice behavior and eliminating the two remaining failed+new release-gate blockers.",
   "highlights": [
-    "Schedule and Kitchen no longer wrap into two lines.",
-    "All six toolbar labels use dedicated single-line geometry.",
-    "86Voice remains the first bottom-toolbar control.",
-    "No business logic, permissions, schedule data, or Message Board behavior is changed."
+    "86Voice starts listening from the actual mic tap instead of an 80 ms delayed callback.",
+    "Schedule Builder Assign can no longer be covered by Copy Month/action controls at 1440px desktop width.",
+    "Spanish mobile testing validates the visible translated UI rather than hidden desktop navigation.",
+    "All 17.1.5 single-line toolbar protections remain intact."
   ]
 }

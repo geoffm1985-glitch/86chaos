@@ -43,7 +43,13 @@ test.describe('17.0.26 Phase 1 Spanish interface', () => {
       await expect(page.getByRole('button', { name: /Control de línea/i }).first()).toBeVisible();
 
       await page.goto(appUrl('today'), { waitUntil: 'domcontentloaded' });
-      await expect(page.getByText(/Resumen del gerente|Resumen de cocina|Resumen del bar|Resumen de servicio|Resumen de hoy|Inicio de hoy/i).first()).toBeVisible({ timeout: 20000 });
+      const todayFrame = page.locator('[data-route-frame="today"]:visible').first();
+      await expect(todayFrame).toBeVisible({ timeout: 20000 });
+      await expect(todayFrame).toHaveAttribute('lang', 'es');
+      await expect(todayFrame.getByText(/Resumen del gerente|Resumen de cocina|Resumen del bar|Resumen de servicio|Resumen de hoy/i).first()).toBeVisible({ timeout: 20000 });
+      const visibleTodayNav = page.locator('[data-shell-route="today"]:visible').first();
+      await expect(visibleTodayNav).toBeVisible({ timeout: 20000 });
+      await expect(visibleTodayNav).toContainText(/Inicio/i);
     } finally {
       await page.goto(appUrl('settings'), { waitUntil: 'domcontentloaded' });
       const prefs = page.getByRole('button', { name: /preferences|preferencias/i }).first();
