@@ -1,8 +1,13 @@
 'use strict';
 
-const CURRENT_RELEASE_VERSION = '17.0.33';
-const CURRENT_RELEASE_CARRY_FORWARD_NOTE = '17.0.33 replaces the old System Administrator attention dashboard with the selected seven-card Concept 1 home on desktop and mobile, carries forward Spanish Phase 2 and Schedule Builder coverage, and preserves the testing.86chaos.com delta-runner pin.';
+const CURRENT_RELEASE_VERSION = '17.0.34';
+const CURRENT_RELEASE_CARRY_FORWARD_NOTE = '17.0.34 unifies every System Administrator subpage with Concept 1 styling, resets the drawer System Administrator route to the seven-card home, adds one-page-back plus double-back PWA exit behavior, and preserves Spanish Phase 2, Schedule Builder coverage, presence retirement, and the testing.86chaos.com delta-runner pin.';
 const CURRENT_RELEASE_REPAIR_SCOPE = [
+  {
+    specPath: '86chaos-new-implementations/12-system-admin-subpages-back-navigation.spec.cjs',
+    fullSuitePath: '17.0.34 System Administrator subpages and navigation',
+    exactTestTitle: 'admin subpages share Concept 1 styling and drawer System Administrator returns to the seven-card home',
+  },
   {
     specPath: '86chaos-new-implementations/11-system-admin-concept1-exact.spec.cjs',
     fullSuitePath: '17.0.33 System Administrator Concept 1 exact home',

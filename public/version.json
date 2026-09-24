@@ -1,16 +1,16 @@
 {
-  "version": "17.0.33",
-  "name": "86 Chaos 17.0.33",
-  "build": "17.0.33",
-  "label": "86 Chaos 17.0.33",
+  "version": "17.0.34",
+  "name": "86 Chaos 17.0.34",
+  "build": "17.0.34",
+  "label": "86 Chaos 17.0.34",
   "releasedAt": "2026-09-23T21:30:00Z",
-  "releaseTitle": "Exact Concept 1 System Administrator Home",
+  "releaseTitle": "System Administrator Subpage Unification and PWA Back Navigation",
   "notes": [
-    "Removes the entire What needs your attention home dashboard, including Next actions, Quick work, overview number tiles, and the old Admin areas directory.",
-    "Rebuilds the actual System Administrator home around the selected Concept 1 seven-card layout on both desktop and mobile, with the softer charcoal and bronze palette from the approved mockup.",
-    "Keeps the underlying System Administrator tools intact when opened, preserves Spanish Phase 2 translations, and carries forward the testing.86chaos.com delta-runner pin."
+    "Restyles every System Administrator subpage with the same Concept 1 charcoal cards, bronze accents, headers, spacing, inputs, buttons, and mobile treatment as the seven-card home.",
+    "Tapping System Administrator in the drawer always resets the internal admin view to the main seven-card page, even when already inside an admin subpage.",
+    "On the installed PWA, the first Back press returns to the previous in-app page; pressing Back again within two seconds exits through the normal Android/PWA history edge."
   ],
-  "title": "86 Chaos 17.0.33",
-  "summary": "Replaces the old attention dashboard with the exact seven-card Concept 1 System Administrator home.",
-  "description": "Removes the What needs your attention dashboard, quick-work tiles, number cards, and admin-area button maze from the live System Administrator home and replaces them with the chosen Concept 1 desktop/mobile card layout while preserving the underlying admin tools and Spanish support."
+  "title": "86 Chaos 17.0.34",
+  "summary": "Unifies every System Administrator subpage with Concept 1 styling and repairs drawer/back navigation.",
+  "description": "Applies the approved charcoal/bronze Concept 1 visual system across every System Administrator internal page, makes the drawer System Administrator button always return to the seven-card home, and adds one-level previous-page plus double-back-to-exit behavior for the installed PWA."
 }

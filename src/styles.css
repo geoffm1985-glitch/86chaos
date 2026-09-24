@@ -5940,3 +5940,240 @@ span.bg-red-500.text-white,
     flex-basis: 28px;
   }
 }
+
+/* 17.0.34 System Administrator Concept 1 subpage unification */
+.admin46-shell.admin-concept1-subpage-active {
+  max-width: 1180px !important;
+}
+.admin46-shell .admin-concept1-subpage-hero {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  min-height: 138px;
+  margin: 0 0 18px;
+  padding: 22px 24px;
+  overflow: hidden;
+  border: 1px solid #2f3941;
+  border-radius: 20px;
+  background:
+    linear-gradient(90deg, rgba(12,17,21,.96) 0%, rgba(16,22,27,.94) 54%, rgba(20,24,27,.82) 100%),
+    radial-gradient(circle at 90% 42%, rgba(212,163,129,.15), transparent 28rem);
+  box-shadow: 0 18px 46px rgba(0,0,0,.24);
+}
+.admin46-shell .admin-concept1-subpage-hero::after {
+  content: '';
+  position: absolute;
+  right: 26px;
+  bottom: 17px;
+  width: 66px;
+  height: 2px;
+  border-radius: 99px;
+  background: #d9a07b;
+}
+.admin46-shell .admin-concept1-subpage-hero-icon {
+  width: 62px;
+  height: 62px;
+  flex: 0 0 62px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(212,163,129,.2);
+  border-radius: 14px;
+  color: #eda77c;
+  background: linear-gradient(145deg, #3b312e, #2a2929);
+  box-shadow: inset 0 0 28px rgba(212,163,129,.08);
+}
+.admin46-shell .admin-concept1-subpage-heading h2 {
+  margin: 0;
+  color: #fff;
+  font-size: clamp(24px, 2.5vw, 34px);
+  font-weight: 900;
+  line-height: 1.08;
+  letter-spacing: -.03em;
+}
+.admin46-shell .admin-concept1-subpage-heading p {
+  max-width: 640px;
+  margin: 7px 0 0;
+  color: #aeb5bb;
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1.5;
+}
+.admin46-shell .admin-concept1-subpage-actions {
+  position: relative;
+  z-index: 1;
+  margin-left: auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  max-width: 390px;
+}
+.admin46-shell .admin-concept1-subpage-select {
+  min-width: 210px;
+  min-height: 40px;
+  padding: 8px 34px 8px 12px;
+  border: 1px solid #3a454d;
+  border-radius: 11px;
+  color: #e6eaed;
+  background: #151c22;
+  font-size: 11px;
+  font-weight: 800;
+  outline: none;
+}
+.admin46-shell .admin-concept1-subpage-select:focus {
+  border-color: #a77556;
+  box-shadow: 0 0 0 2px rgba(212,163,129,.12);
+}
+.admin46-shell button.admin-concept1-subpage-home,
+.admin46-shell .app-content-shell button.admin-concept1-subpage-home,
+.ui-v12-compact .admin46-shell button.admin-concept1-subpage-home {
+  min-height: 40px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 7px !important;
+  padding: 8px 12px !important;
+  border: 1px solid #8a6249 !important;
+  border-radius: 11px !important;
+  background: rgba(17,21,24,.72) !important;
+  color: #e6a176 !important;
+  font-size: 10px !important;
+  font-weight: 900 !important;
+  letter-spacing: .08em !important;
+  text-transform: uppercase !important;
+  box-shadow: none !important;
+}
+.admin46-shell button.admin-concept1-subpage-home:hover {
+  background: #211b18 !important;
+  border-color: #b47d5b !important;
+}
+
+/* Every internal tool now inherits the same charcoal / bronze visual grammar as Concept 1. */
+.admin46-shell.admin-concept1-subpage-active #admin-content-start .chaos-card {
+  border: 1px solid #39434a !important;
+  border-radius: 16px !important;
+  background: linear-gradient(145deg, #242c32 0%, #1b2228 100%) !important;
+  box-shadow: 0 12px 26px rgba(0,0,0,.18) !important;
+}
+.admin46-shell.admin-concept1-subpage-active #admin-content-start .chaos-card .chaos-card {
+  background: linear-gradient(145deg, #1d252b 0%, #171e24 100%) !important;
+  box-shadow: none !important;
+}
+.admin46-shell.admin-concept1-subpage-active #admin-content-start [class*="bg-[#12161A]"],
+.admin46-shell.admin-concept1-subpage-active #admin-content-start [class*="bg-[#0B0E11]"] {
+  background-color: #151c22 !important;
+  border-color: #303b43 !important;
+}
+.admin46-shell.admin-concept1-subpage-active #admin-content-start .chaos-input,
+.admin46-shell.admin-concept1-subpage-active #admin-content-start input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]),
+.admin46-shell.admin-concept1-subpage-active #admin-content-start select,
+.admin46-shell.admin-concept1-subpage-active #admin-content-start textarea {
+  min-height: 42px;
+  border: 1px solid #3a454d !important;
+  border-radius: 11px !important;
+  background: #12191f !important;
+  color: #f4f6f7 !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.02) !important;
+}
+.admin46-shell.admin-concept1-subpage-active #admin-content-start textarea { min-height: 84px; }
+.admin46-shell.admin-concept1-subpage-active #admin-content-start .chaos-input:focus,
+.admin46-shell.admin-concept1-subpage-active #admin-content-start input:focus,
+.admin46-shell.admin-concept1-subpage-active #admin-content-start select:focus,
+.admin46-shell.admin-concept1-subpage-active #admin-content-start textarea:focus {
+  border-color: #9f7053 !important;
+  box-shadow: 0 0 0 2px rgba(212,163,129,.10) !important;
+}
+.admin46-shell.admin-concept1-subpage-active #admin-content-start .chaos-button-primary {
+  border: 1px solid #b47d5b !important;
+  border-radius: 11px !important;
+  background: linear-gradient(145deg, #d3a07d, #a86e4b) !important;
+  color: #14181b !important;
+  box-shadow: 0 8px 18px rgba(0,0,0,.18) !important;
+}
+.admin46-shell.admin-concept1-subpage-active #admin-content-start .chaos-button-secondary {
+  border: 1px solid #46525b !important;
+  border-radius: 11px !important;
+  background: #171f25 !important;
+  color: #d7dce0 !important;
+  box-shadow: none !important;
+}
+.admin46-shell.admin-concept1-subpage-active #admin-content-start .chaos-button-secondary:hover {
+  border-color: #8a6249 !important;
+  color: #edb18d !important;
+}
+.admin46-shell.admin-concept1-subpage-active #admin-content-start .chaos-table-heading {
+  background: #11181e !important;
+  border-color: #35414a !important;
+  color: #e5aa82 !important;
+}
+.admin46-shell.admin-concept1-subpage-active #admin-content-start .chaos-table-row {
+  border-color: #303b43 !important;
+}
+.admin46-shell.admin-concept1-subpage-active #admin-content-start h2,
+.admin46-shell.admin-concept1-subpage-active #admin-content-start h3,
+.admin46-shell.admin-concept1-subpage-active #admin-content-start h4 {
+  color: #fff;
+  letter-spacing: -.01em;
+}
+.admin46-shell.admin-concept1-subpage-active #admin-content-start .chaos-label {
+  color: #aeb5bb !important;
+}
+
+@media (max-width: 767px) {
+  .admin46-shell.admin-concept1-subpage-active {
+    padding-left: 8px !important;
+    padding-right: 8px !important;
+  }
+  .admin46-shell .admin-concept1-subpage-hero {
+    min-height: 0;
+    display: grid;
+    grid-template-columns: 52px minmax(0,1fr);
+    gap: 12px;
+    padding: 14px;
+    margin-bottom: 10px;
+    border-radius: 18px;
+    background: linear-gradient(145deg, #151c22 0%, #0d1216 100%);
+    box-shadow: 0 12px 28px rgba(0,0,0,.20);
+  }
+  .admin46-shell .admin-concept1-subpage-hero::after,
+  .admin46-shell .admin-concept1-subpage-hero .admin-concept1-exact-kicker { display: none; }
+  .admin46-shell .admin-concept1-subpage-hero-icon {
+    width: 52px;
+    height: 52px;
+    flex-basis: 52px;
+    border-radius: 12px;
+  }
+  .admin46-shell .admin-concept1-subpage-hero-icon svg { width: 23px; height: 23px; }
+  .admin46-shell .admin-concept1-subpage-heading h2 { font-size: 20px; }
+  .admin46-shell .admin-concept1-subpage-heading p {
+    margin-top: 4px;
+    font-size: 10.5px;
+    line-height: 1.4;
+  }
+  .admin46-shell .admin-concept1-subpage-actions {
+    grid-column: 1 / -1;
+    width: 100%;
+    max-width: none;
+    display: grid;
+    grid-template-columns: minmax(0,1fr) auto;
+    gap: 7px;
+  }
+  .admin46-shell .admin-concept1-subpage-select {
+    min-width: 0;
+    width: 100%;
+    min-height: 40px;
+  }
+  .admin46-shell button.admin-concept1-subpage-home,
+  .admin46-shell .app-content-shell button.admin-concept1-subpage-home,
+  .ui-v12-compact .admin46-shell button.admin-concept1-subpage-home {
+    grid-column: 1 / -1;
+    width: 100% !important;
+    min-height: 40px !important;
+  }
+  .admin46-shell.admin-concept1-subpage-active #admin-content-start .chaos-card {
+    border-radius: 13px !important;
+    box-shadow: none !important;
+  }
+}

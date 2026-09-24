@@ -675,7 +675,13 @@ const isStandalone86ChaosPwa = () => {
   try { if (window.navigator?.standalone === true) return true; } catch (_) {}
   return false;
 };
-const appTabUrl = (tab = 'today') => `?tab=${normalizeRouteTab(tab)}`;
+const appTabUrl = (tab = 'today', adminSubTab = '') => {
+  const normalized = normalizeRouteTab(tab);
+  const params = new URLSearchParams();
+  params.set('tab', normalized);
+  if (normalized === 'godmode' && adminSubTab && adminSubTab !== 'overview') params.set('admin', adminSubTab);
+  return `?${params.toString()}`;
+};
 const buildSafeSessionCache = (user = {}) => user ? {
   id: user.id || user.userId || '',
   userId: user.userId || user.id || '',
@@ -843,7 +849,15 @@ export default function App() {
   });
   const [activeTabState, setActiveTabState] = useState(initialRouteState.topLevelTab);
   const activeTabStateRef = useRef(activeTabState);
-  const pwaBackExitRef = useRef({ armed: false, timer: null, initialized: false, exiting: false });
+  const pwaBackExitRef = useRef({
+    armed: false,
+    timer: null,
+    initialized: false,
+    exiting: false,
+    previousTab: '',
+    currentAdminSubTab: 'overview',
+    previousAdminSubTab: ''
+  });
   const [helpOriginState, setHelpOriginState] = useState('');
   const [clientData, setClientData] = useState(null);
   const clientFeatures = clientData?.features || {};
@@ -1878,15 +1892,16 @@ if (liveAppUser && clientData) {
   const writeTopLevelTabHistory = useCallback((tab, options = {}) => {
     if (typeof window === 'undefined') return;
     const normalized = normalizeRouteTab(tab);
-    const nextUrl = appTabUrl(normalized);
+    const adminSubTab = normalized === 'godmode' ? (pwaBackExitRef.current.currentAdminSubTab || 'overview') : 'overview';
+    const nextUrl = appTabUrl(normalized, adminSubTab);
     try {
       const currentState = window.history.state && typeof window.history.state === 'object' ? window.history.state : {};
       if (isStandalone86ChaosPwa()) {
-        window.history.replaceState({ ...currentState, tab: normalized, chaosAppShell: true, chaosPwaBackGuard: true }, '', nextUrl);
+        window.history.replaceState({ ...currentState, tab: normalized, adminSubTab, chaosAppShell: true, chaosPwaBackGuard: true }, '', nextUrl);
       } else if (options.replace === true) {
-        window.history.replaceState({ ...currentState, tab: normalized }, '', nextUrl);
+        window.history.replaceState({ ...currentState, tab: normalized, adminSubTab }, '', nextUrl);
       } else {
-        window.history.pushState({ tab: normalized }, '', nextUrl);
+        window.history.pushState({ tab: normalized, adminSubTab }, '', nextUrl);
       }
     } catch (_) {}
   }, []);
@@ -1914,6 +1929,22 @@ if (liveAppUser && clientData) {
         localStorage.setItem(key, JSON.stringify([tab, ...current].slice(0, 6)));
       } catch(e) {}
     }
+    const backState = pwaBackExitRef.current;
+    if (tab === 'godmode') {
+      if (previousActiveTab === 'godmode' && backState.currentAdminSubTab && backState.currentAdminSubTab !== 'overview') {
+        backState.previousAdminSubTab = backState.currentAdminSubTab;
+        backState.previousTab = '';
+      } else if (previousActiveTab !== 'godmode') {
+        backState.previousTab = previousActiveTab || '';
+        backState.previousAdminSubTab = '';
+      }
+      backState.currentAdminSubTab = 'overview';
+      try { window.dispatchEvent(new CustomEvent('chaos:system-admin-home')); } catch (_) {}
+    } else if (tab !== previousActiveTab) {
+      backState.previousTab = previousActiveTab || '';
+      backState.currentAdminSubTab = 'overview';
+      backState.previousAdminSubTab = '';
+    }
     disarmPwaBackExit();
     writeTopLevelTabHistory(tab);
     transitionActiveTabState(tab);
@@ -1922,6 +1953,39 @@ if (liveAppUser && clientData) {
   const setActiveTabRef = useRef(setActiveTab);
   useEffect(() => { setActiveTabRef.current = setActiveTab; });
   const stableSetActiveTab = useCallback((tab) => setActiveTabRef.current?.(tab), []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    const handleAdminSubTabChanged = (event) => {
+      const nextSubTab = String(event?.detail?.subTab || 'overview');
+      const previousSubTab = String(event?.detail?.previousSubTab || pwaBackExitRef.current.currentAdminSubTab || 'overview');
+      const state = pwaBackExitRef.current;
+      state.previousAdminSubTab = previousSubTab !== nextSubTab ? previousSubTab : '';
+      state.currentAdminSubTab = nextSubTab;
+      state.previousTab = '';
+      disarmPwaBackExit();
+    };
+    const handleAdminHome = () => {
+      const state = pwaBackExitRef.current;
+      if (state.currentAdminSubTab && state.currentAdminSubTab !== 'overview') state.previousAdminSubTab = state.currentAdminSubTab;
+      state.currentAdminSubTab = 'overview';
+      disarmPwaBackExit();
+      if (!isStandalone86ChaosPwa()) {
+        try {
+          const url = new URL(window.location.href);
+          url.searchParams.set('tab', 'godmode');
+          url.searchParams.delete('admin');
+          window.history.replaceState({ ...(window.history.state || {}), tab: 'godmode', adminSubTab: 'overview' }, '', `${url.pathname}${url.search}${url.hash}`);
+        } catch (_) {}
+      }
+    };
+    window.addEventListener('chaos:system-admin-subtab-changed', handleAdminSubTabChanged);
+    window.addEventListener('chaos:system-admin-home', handleAdminHome);
+    return () => {
+      window.removeEventListener('chaos:system-admin-subtab-changed', handleAdminSubTabChanged);
+      window.removeEventListener('chaos:system-admin-home', handleAdminHome);
+    };
+  }, [disarmPwaBackExit]);
 
   useEffect(() => {
     trackChaosPageView(activeTabState, {
@@ -2255,20 +2319,22 @@ What I clicked / expected:
     const preferredTab = normalizeRouteTab(appUser?.preferences?.defaultTab || 'today');
     const rawTab = params.get('tab') || preferredTab;
     const tab = normalizeRouteTab(rawTab);
+    const initialAdminSubTab = tab === 'godmode' ? (params.get('admin') || 'overview') : 'overview';
+    pwaBackExitRef.current.currentAdminSubTab = initialAdminSubTab;
     transitionActiveTabState(tab);
 
     try {
       if (isStandalone86ChaosPwa()) {
         const currentState = window.history.state && typeof window.history.state === 'object' ? window.history.state : {};
         if (!pwaBackExitRef.current.initialized || !currentState.chaosPwaBackGuard) {
-          window.history.replaceState({ ...currentState, tab, chaosAppShell: true, chaosPwaBackBase: true }, '', appTabUrl(tab));
-          window.history.pushState({ tab, chaosAppShell: true, chaosPwaBackGuard: true }, '', appTabUrl(tab));
+          window.history.replaceState({ ...currentState, tab, adminSubTab: initialAdminSubTab, chaosAppShell: true, chaosPwaBackBase: true }, '', appTabUrl(tab, initialAdminSubTab));
+          window.history.pushState({ tab, adminSubTab: initialAdminSubTab, chaosAppShell: true, chaosPwaBackGuard: true }, '', appTabUrl(tab, initialAdminSubTab));
           pwaBackExitRef.current.initialized = true;
         } else {
-          window.history.replaceState({ ...currentState, tab, chaosAppShell: true, chaosPwaBackGuard: true }, '', appTabUrl(tab));
+          window.history.replaceState({ ...currentState, tab, adminSubTab: initialAdminSubTab, chaosAppShell: true, chaosPwaBackGuard: true }, '', appTabUrl(tab, initialAdminSubTab));
         }
       } else {
-        window.history.replaceState({ ...(window.history.state || {}), tab }, '', appTabUrl(tab));
+        window.history.replaceState({ ...(window.history.state || {}), tab, adminSubTab: initialAdminSubTab }, '', appTabUrl(tab, initialAdminSubTab));
       }
     } catch (_) {}
 
@@ -2287,16 +2353,38 @@ What I clicked / expected:
           return;
         }
 
+        let targetTab = currentTab;
+        let targetAdminSubTab = state.currentAdminSubTab || 'overview';
+        let returnedToPreviousPage = false;
+
+        if (currentTab === 'godmode' && state.previousAdminSubTab) {
+          targetAdminSubTab = state.previousAdminSubTab;
+          state.previousAdminSubTab = '';
+          state.currentAdminSubTab = targetAdminSubTab;
+          returnedToPreviousPage = true;
+          try { window.dispatchEvent(new CustomEvent('chaos:system-admin-back-target', { detail: { subTab: targetAdminSubTab } })); } catch (_) {}
+        } else if (state.previousTab && normalizeRouteTab(state.previousTab) !== currentTab) {
+          targetTab = normalizeRouteTab(state.previousTab);
+          state.previousTab = '';
+          state.currentAdminSubTab = 'overview';
+          state.previousAdminSubTab = '';
+          returnedToPreviousPage = true;
+          transitionActiveTabState(targetTab);
+          if (targetTab === 'godmode') {
+            try { window.dispatchEvent(new CustomEvent('chaos:system-admin-back-target', { detail: { subTab: 'overview' } })); } catch (_) {}
+          }
+        }
+
         state.armed = true;
         if (state.timer) clearTimeout(state.timer);
         state.timer = setTimeout(() => {
           state.armed = false;
           state.timer = null;
         }, CHAOS_PWA_BACK_EXIT_WINDOW_MS);
-        addToast('Exit 86 Chaos', 'Press back again to exit.');
-        transitionActiveTabState(currentTab);
+        addToast(returnedToPreviousPage ? 'Back' : 'Exit 86 Chaos', returnedToPreviousPage ? 'Returned to the previous page. Press back again within 2 seconds to exit.' : 'Press back again within 2 seconds to exit.');
+        if (!returnedToPreviousPage || targetTab === currentTab) transitionActiveTabState(targetTab);
         try {
-          window.history.pushState({ tab: currentTab, chaosAppShell: true, chaosPwaBackGuard: true }, '', appTabUrl(currentTab));
+          window.history.pushState({ tab: targetTab, adminSubTab: targetAdminSubTab, chaosAppShell: true, chaosPwaBackGuard: true }, '', appTabUrl(targetTab, targetAdminSubTab));
         } catch (_) {}
         return;
       }
@@ -2305,7 +2393,12 @@ What I clicked / expected:
       disarmPwaBackExit();
       const nextParams = new URLSearchParams(window.location.search);
       const nextTab = normalizeRouteTab(event?.state?.tab || nextParams.get('tab') || 'published');
+      const nextAdminSubTab = nextTab === 'godmode' ? String(event?.state?.adminSubTab || nextParams.get('admin') || 'overview') : 'overview';
+      state.currentAdminSubTab = nextAdminSubTab;
       transitionActiveTabState(nextTab);
+      if (nextTab === 'godmode') {
+        try { window.dispatchEvent(new CustomEvent('chaos:system-admin-back-target', { detail: { subTab: nextAdminSubTab } })); } catch (_) {}
+      }
     };
 
     window.addEventListener('popstate', handlePopState);

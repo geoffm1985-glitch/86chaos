@@ -3935,7 +3935,23 @@ const ADMIN_TROUBLESHOOTING_ARTICLES = [
 
 const TabGodMode = ({ appUser, addToast, setGhostTenant, setActiveTab }) => {
   const { t } = useI18n();
-  const [subTab, setSubTab] = useState('overview');
+  const [subTab, setSubTab] = useState(() => {
+    if (typeof window === 'undefined') return 'overview';
+    try { return new URLSearchParams(window.location.search).get('admin') || 'overview'; }
+    catch (_) { return 'overview'; }
+  });
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    const returnHome = () => setSubTab('overview');
+    const restoreAdminPage = (event) => setSubTab(String(event?.detail?.subTab || 'overview'));
+    window.addEventListener('chaos:system-admin-home', returnHome);
+    window.addEventListener('chaos:system-admin-back-target', restoreAdminPage);
+    return () => {
+      window.removeEventListener('chaos:system-admin-home', returnHome);
+      window.removeEventListener('chaos:system-admin-back-target', restoreAdminPage);
+    };
+  }, []);
 
   const LEGAL_RETENTION_POLICY = Object.freeze({
     policySource: '86 Chaos Legal Document Packet - Security, Backup, and Data Retention Policy section 6.4',
@@ -7716,6 +7732,20 @@ Type RESTORE to continue.`);
 
   const selectAdminTab = (target = 'overview', scroll = true) => {
     const nextTarget = target || 'overview';
+    const previousTarget = subTab || 'overview';
+    if (typeof window !== 'undefined' && previousTarget !== nextTarget) {
+      try {
+        window.dispatchEvent(new CustomEvent('chaos:system-admin-subtab-changed', { detail: { previousSubTab: previousTarget, subTab: nextTarget } }));
+        const standalone = window.matchMedia?.('(display-mode: standalone)')?.matches || window.navigator?.standalone === true;
+        if (!standalone) {
+          const url = new URL(window.location.href);
+          url.searchParams.set('tab', 'godmode');
+          if (nextTarget === 'overview') url.searchParams.delete('admin');
+          else url.searchParams.set('admin', nextTarget);
+          window.history.pushState({ ...(window.history.state || {}), tab: 'godmode', adminSubTab: nextTarget }, '', `${url.pathname}${url.search}${url.hash}`);
+        }
+      } catch (_) {}
+    }
     setSubTab(nextTarget);
     // Keep the mobile tool directory available. Hiding it after every tap made
     // System Administrator feel like a guessing game.
@@ -7849,7 +7879,7 @@ Type RESTORE to continue.`);
 
 
   return (
-    <div className="admin46-shell max-w-[1500px] mx-auto pb-24 px-2 sm:px-4 lg:px-5 animate-[slideIn_0.2s_ease-out]">
+    <div className={`admin46-shell ${subTab !== 'overview' ? 'admin-concept1-subpage-active' : ''} max-w-[1500px] mx-auto pb-24 px-2 sm:px-4 lg:px-5 animate-[slideIn_0.2s_ease-out]`}>
       <Modal isOpen={!!createdWorkspaceLogin} onClose={() => setCreatedWorkspaceLogin(null)} title="Workspace Login Created">
         {createdWorkspaceLogin && <div className="space-y-4">
           <div className="bg-emerald-900/10 border border-emerald-900/40 rounded-xl p-3 text-xs font-bold text-emerald-200">This owner login is shown one time only. Copy, print, email, or text it before closing.</div>
@@ -8246,21 +8276,22 @@ Type RESTORE to continue.`);
 
 {/* --- TAB: OVERVIEW --- */}
       {subTab !== 'overview' && (
-        <div className="admin46-pagebar">
-          <div className="min-w-0">
-            <div className="admin46-eyebrow">{activeAdminTab.group}</div>
+        <section data-testid="system-admin-concept1-subpage" className="admin-concept1-subpage-hero">
+          <div className="admin-concept1-subpage-hero-icon"><Settings size={28}/></div>
+          <div className="admin-concept1-subpage-heading min-w-0 flex-1">
+            <div className="admin-concept1-exact-kicker">86 CHAOS · {activeAdminTab.group}</div>
             <h2>{activeAdminTab.label}</h2>
             <p>{activeAdminTab.intent}</p>
           </div>
-          <div className="admin46-pagebar-actions">
+          <div className="admin-concept1-subpage-actions">
             <label className="sr-only" htmlFor="system-admin-tool-jump">All System Administrator tools</label>
-            <select id="system-admin-tool-jump" value={subTab} onChange={event => selectAdminTab(event.target.value)} className="admin46-input min-w-[190px]" aria-label="All System Administrator tools">
+            <select id="system-admin-tool-jump" value={subTab} onChange={event => selectAdminTab(event.target.value)} className="admin-concept1-subpage-select" aria-label="All System Administrator tools">
               {adminTabs.map(tab => <option key={tab.id} value={tab.id}>{tab.label}</option>)}
             </select>
             <AdminInfoButton title={activeAdminTab.label} body={activeAdminHelpText} />
-            <button type="button" onClick={() => selectAdminTab('overview')} className="admin46-back-button"><ChevronLeft size={14}/> Console home</button>
+            <button type="button" onClick={() => selectAdminTab('overview')} className="admin-concept1-subpage-home"><ChevronLeft size={14}/> System Administrator</button>
           </div>
-        </div>
+        </section>
       )}
 
       {subTab === 'overview' && (
