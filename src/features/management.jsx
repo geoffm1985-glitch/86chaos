@@ -1907,7 +1907,7 @@ const Toggle = ({ label, desc, checked, onChange, disabled = false }) => (
         {['profile', 'accountSecurity', 'preferences', 'alerts'].concat(canViewBilling ? ['billing'] : [], canManageWorkspaceSettings ? ['workspace'] : [], canManageBranding ? ['branding'] : [], ['integrations']).map((tab) => {
           const integrationLocked = tab === 'integrations' && !canManageIntegrations;
           return (
-<button type="button" key={tab} onClick={() => {
+<button type="button" key={tab} data-concept-subtab-button={tab} onClick={() => {
             setSubTab(tab);
           }} className={`settings-tab-button px-2 sm:px-5 py-2 text-[10px] font-black rounded-xl uppercase tracking-widest transition-all sm:flex-1 flex items-center justify-center gap-1 ${subTab === tab ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-300 hover:text-white'} ${integrationLocked ? 'opacity-80 border border-[#2A353D]' : ''}`}>
             {tab === 'integrations' && integrationLocked ? `🔒 ${t('settings.integrations')}` : tab === 'branding' ? t('settings.branding') : tab === 'accountSecurity' ? t('settings.accountSecurity') : tab === 'billing' ? t('settings.billing') : tab === 'profile' ? t('settings.profile') : tab === 'preferences' ? t('settings.preferences') : tab === 'alerts' ? t('settings.alerts') : tab === 'workspace' ? t('settings.workspace') : tab}
@@ -10570,7 +10570,7 @@ const TabLabor = ({ currentDate, users = [], shifts = [], sales = [], timePunche
       </div>
 
       <div className="concept17-subtab-bar concept17-labor-tabs flex flex-wrap gap-2 border-b border-[#2A353D] pb-3">
-        {[['fixer','Punch Fixer'],['editor', editingPunch ? 'Edit Punch' : 'Add Punch'],['review','Timesheet Review'],['tips','Tips'],['export','Export']].map(([id,label]) => <button key={id} onClick={() => setSubTab(id)} className={`px-3 py-2 rounded-xl text-[10px] uppercase tracking-widest font-black ${subTab === id ? `${T.grad} text-slate-900` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>{label}</button>)}
+        {[['fixer','Punch Fixer'],['editor', editingPunch ? 'Edit Punch' : 'Add Punch'],['review','Timesheet Review'],['tips','Tips'],['export','Export']].map(([id,label]) => <button key={id} data-concept-subtab-button={`labor-${id}`} onClick={() => setSubTab(id)} className={`px-3 py-2 rounded-xl text-[10px] uppercase tracking-widest font-black ${subTab === id ? `${T.grad} text-slate-900` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>{label}</button>)}
       </div>
 
       <div className={`${T.card} p-3 flex flex-col md:flex-row gap-2 md:items-center justify-between`}>
@@ -11120,7 +11120,7 @@ const TabFinancials = ({ currentDate, users = [], shifts = [], sales = [], timeP
       </div>
 
       <div className="concept17-subtab-bar concept17-financial-tabs flex gap-2 overflow-x-auto pb-2 border-b border-[#2A353D] custom-scrollbar">
-        {financeTabs.map(tab => <button key={tab.id} onClick={() => setSubTab(tab.id)} className={`px-4 py-3 rounded-xl text-xs uppercase tracking-widest font-black whitespace-nowrap ${subTab === tab.id ? `${T.grad} text-slate-900` : 'bg-[#1A2126] text-slate-300 hover:text-white border border-[#2A353D]'} ${tab.access?.allowed ? '' : 'opacity-75'}`}>{tab.access?.allowed ? tab.label : `🔒 ${tab.label}`}</button>)}
+        {financeTabs.map(tab => <button key={tab.id} data-concept-subtab-button={tab.id} data-concept-locked={tab.access?.allowed ? 'false' : 'true'} onClick={() => setSubTab(tab.id)} className={`px-4 py-3 rounded-xl text-xs uppercase tracking-widest font-black whitespace-nowrap ${subTab === tab.id ? `${T.grad} text-slate-900` : 'bg-[#1A2126] text-slate-300 hover:text-white border border-[#2A353D]'} ${tab.access?.allowed ? '' : 'opacity-75'}`}>{tab.access?.allowed ? tab.label : `🔒 ${tab.label}`}</button>)}
       </div>
 
       {selectedFinanceAccess && selectedFinanceAccess.allowed === false && (
@@ -11810,7 +11810,7 @@ const TabBackOffice = ({ currentDate, users = [], sales = [], timePunches = [], 
       </div>
 
       <div className="flex flex-wrap gap-2 pb-2 border-b border-[#2A353D]" role="tablist" aria-label="Back Office sections" aria-orientation="horizontal">
-        {[["dashboard","Dashboard"],["deposits","Deposit Log"],["approvals","Approval Queue"],["documents","Document Vault"],["reports","Owner Reports"],["quickbooks","QuickBooks"],["accountant-packet","Accountant Packet"],["owner-rollup","Owner Rollup"]].map(([id,label]) => <button key={id} type="button" role="tab" aria-label={label} title={label} aria-selected={subTab === id} data-chaos-current-state={subTab === id ? 'true' : undefined} onClick={() => setSubTab(id)} className={`px-4 py-3 rounded-xl text-xs uppercase tracking-widest font-black whitespace-nowrap ${subTab === id ? `${T.grad} text-slate-900` : 'bg-[#1A2126] text-slate-300 hover:text-white border border-[#2A353D]'}`}>{label}</button>)}
+        {[["dashboard","Dashboard"],["deposits","Deposit Log"],["approvals","Approval Queue"],["documents","Document Vault"],["reports","Owner Reports"],["quickbooks","QuickBooks"],["accountant-packet","Accountant Packet"],["owner-rollup","Owner Rollup"]].map(([id,label]) => <button key={id} type="button" role="tab" data-concept-subtab-button={id} aria-label={label} title={label} aria-selected={subTab === id} data-chaos-current-state={subTab === id ? 'true' : undefined} onClick={() => setSubTab(id)} className={`px-4 py-3 rounded-xl text-xs uppercase tracking-widest font-black whitespace-nowrap ${subTab === id ? `${T.grad} text-slate-900` : 'bg-[#1A2126] text-slate-300 hover:text-white border border-[#2A353D]'}`}>{label}</button>)}
       </div>
 
       {subTab === 'dashboard' && <div className="grid lg:grid-cols-2 gap-4">

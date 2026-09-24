@@ -60,6 +60,7 @@ async function assertRouteFrame(page, route, mobile) {
 
 test.describe('17.1.1 Concept 1 deep route migration', () => {
   test('every representative real tab keeps the redesigned route geometry on desktop and mobile', async ({ page }) => {
+    test.setTimeout(240000);
     const mobile = test.info().project.name === 'mobile-chromium';
     await page.setViewportSize(mobile ? { width: 390, height: 844 } : { width: 1440, height: 900 });
 

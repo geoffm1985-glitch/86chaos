@@ -2586,3 +2586,50 @@ body {
 @media (min-width: 721px) {
   .voice-command-trigger-label { display: none; }
 }
+
+
+/* 17.1.4 release-gate browser stability repair.
+   The day/date row is the only Schedule Builder surface that should pin over
+   the employee grid. The control deck stays in normal document flow so it can
+   never intercept a grid cell or its own Assign button while scrolling. */
+.schedule-builder-control-deck {
+  position: relative !important;
+  top: auto !important;
+  z-index: 2 !important;
+  overflow: visible !important;
+}
+
+.schedule-builder-assignment-row,
+.schedule-builder-action-row {
+  position: relative;
+  z-index: 1;
+  min-width: 0;
+}
+
+@media (min-width: 1280px) {
+  .schedule-builder-control-deck {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) auto !important;
+    align-items: center !important;
+  }
+}
+
+@media (min-width: 721px) and (max-width: 1279px) {
+  .schedule-builder-control-deck {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+}
+
+.schedule-builder-desktop-table [data-testid='schedule-builder-cell'] {
+  scroll-margin-top: 48px;
+  scroll-margin-left: 104px;
+}
+
+/* The 86Voice trigger is the first bottom-nav slot. Match the exact mobile-nav
+   safe-area baseline on narrow phones so the mic cannot float above the bar. */
+@media (max-width: 420px) {
+  .voice-command-dock.fixed.bottom-5.left-4 {
+    bottom: max(5px, env(safe-area-inset-bottom, 0px)) !important;
+  }
+}

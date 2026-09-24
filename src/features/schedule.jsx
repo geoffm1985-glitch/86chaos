@@ -1558,7 +1558,7 @@ const handleOfferSwap = async (shift) => {
         {['my-schedule', 'full-schedule', 'month-view', 'trade-board', 'time-off', 'availability', ...((appUser?.isAdmin || appUser?.permissions?.schedule) && scheduleBuilderProps ? ['schedule-builder'] : [])].map((tab) => {
           const label = tab === 'my-schedule' ? t('schedule.mySchedule') : tab === 'full-schedule' ? t('schedule.fullSchedule') : tab === 'month-view' ? t('schedule.monthView') : tab === 'time-off' ? t('schedule.requestOff') : tab === 'availability' ? t('schedule.availability') : tab === 'trade-board' ? t('schedule.tradeBoard') : tab === 'schedule-builder' ? t('schedule.builder') : tab.replace('-', ' ');
           return (
-          <button key={tab} type="button" aria-label={label} title={label} onClick={() => setSubTab(tab)} className={`concept17-subtab px-2 sm:px-4 py-2 text-[10px] sm:text-xs font-black rounded-xl uppercase tracking-widest transition-all sm:flex-1 ${subTab === tab ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>
+          <button key={tab} type="button" data-concept-subtab-button={tab} aria-label={label} title={label} onClick={() => setSubTab(tab)} className={`concept17-subtab px-2 sm:px-4 py-2 text-[10px] sm:text-xs font-black rounded-xl uppercase tracking-widest transition-all sm:flex-1 ${subTab === tab ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>
             {label}
           </button>
         );})}

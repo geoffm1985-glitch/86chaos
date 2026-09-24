@@ -1,23 +1,25 @@
 {
-  "version": "17.1.3",
-  "name": "86 Chaos 17.1.3",
-  "build": "17.1.3",
-  "label": "86 Chaos 17.1.3",
-  "releasedAt": "2026-09-24T06:20:00Z",
-  "releaseTitle": "Mobile Workflow and Message Board Repair",
+  "version": "17.1.4",
+  "name": "86 Chaos 17.1.4",
+  "build": "17.1.4",
+  "label": "86 Chaos 17.1.4",
+  "releasedAt": "2026-09-24T08:20:00Z",
+  "releaseTitle": "Release-Gate Browser Stability Repair",
   "notes": [
-    "Pins Schedule Builder day/date headers while staff rows scroll and tightens mobile spacing.",
-    "Repairs Message Board live event loading and immediate post rendering before sending push notifications.",
-    "Moves the existing 86Voice microphone into the first mobile bottom-toolbar slot and fixes Kitchen Tools badge wrapping.",
-    "Repairs the Kitchen Command Center formatFullDate crash and suppresses false push-reconnect banners on healthy devices."
+    "Stops the Schedule Builder control deck from overlaying grid cells or intercepting Assign interactions while keeping the day/date row sticky.",
+    "Adds locale-independent route and subtab identities so Spanish interface tests do not break later release-gate navigation.",
+    "Makes the deployed-version browser assertion follow package.json instead of a retired hard-coded version.",
+    "Aligns 86Voice to the exact first bottom-nav baseline on narrow phones and accepts localized Kitchen Command headings without weakening crash detection.",
+    "Raises exhaustive route-sweep test budgets to match their observed runtime instead of timing out healthy coverage."
   ],
-  "title": "86 Chaos 17.1.3",
-  "summary": "Targeted mobile workflow repair for Schedule Builder, Message Board, 86Voice toolbar placement, Kitchen Tools badges, push repair banner, and Kitchen Command Center date formatting.",
-  "description": "Repairs the 17.1.2 mobile workflow defects while preserving the Concept 1 redesign and production business logic.",
+  "title": "86 Chaos 17.1.4",
+  "summary": "Targeted repair for the 17.1.3 failed+new Play Store release-gate browser failures and timeouts.",
+  "description": "Repairs real Schedule Builder and mobile toolbar geometry defects and hardens locale/version-sensitive Playwright contracts using stable application identities rather than fragile English text selectors.",
   "highlights": [
-    "Pins Schedule Builder day/date headers while staff rows scroll and tightens mobile spacing.",
-    "Repairs Message Board live event loading and immediate post rendering before sending push notifications.",
-    "Moves the existing 86Voice microphone into the first mobile bottom-toolbar slot and fixes Kitchen Tools badge wrapping.",
-    "Repairs the Kitchen Command Center formatFullDate crash and suppresses false push-reconnect banners on healthy devices."
+    "Schedule Builder control deck remains in normal flow; only the requested day/date header stays sticky.",
+    "Drawer, Time Clock, Financials, Prep, Inventory, Maintenance, HR, Settings, and Back Office controls expose stable route/subtab identities.",
+    "Spanish testing uses separate project accounts and waits for preference restoration, preventing cross-project language leakage.",
+    "System Administrator drawer return uses the stable godmode route identity.",
+    "Long Concept 1 route/subtab sweeps receive evidence-based 240-second budgets."
   ]
 }

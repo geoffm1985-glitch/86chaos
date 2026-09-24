@@ -580,7 +580,7 @@ export const TabHrTraining = ({ appUser, users = [], addToast }) => {
           </div>
         </div>
         <div className="concept17-subtab-bar concept17-hr-tabs grid grid-cols-2 gap-2 p-3 sm:flex sm:flex-wrap">
-          {availableTabs.map(([id, label]) => <button key={id} type="button" onClick={() => setActiveTab(id)} className={`min-h-[42px] rounded-xl border px-3 py-2 text-xs font-black transition sm:text-sm ${activeTab === id ? 'border-[#D4A381]/50 bg-[#D4A381]/15 text-white shadow-sm' : 'border-[#2A353D] bg-[#12161A]/55 text-slate-300 hover:border-[#D4A381]/30 hover:text-white'}`}>{label}</button>)}
+          {availableTabs.map(([id, label]) => <button key={id} type="button" data-concept-subtab-button={id} onClick={() => setActiveTab(id)} className={`min-h-[42px] rounded-xl border px-3 py-2 text-xs font-black transition sm:text-sm ${activeTab === id ? 'border-[#D4A381]/50 bg-[#D4A381]/15 text-white shadow-sm' : 'border-[#2A353D] bg-[#12161A]/55 text-slate-300 hover:border-[#D4A381]/30 hover:text-white'}`}>{label}</button>)}
         </div>
       </div>
 

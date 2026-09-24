@@ -381,7 +381,7 @@ const TabPrep = ({ currentDate, appUser, addToast, setLabelsToPrint }) => {
           const label = tab === 'prep' ? t('prep.foodPrep') : tab === 'line-check' ? t('prep.lineCheck') : tab === 'daily' ? t('prep.dailyTasks') : tab === 'weekly' ? t('prep.weeklyTasks') : t('prep.monthlyTasks');
           const stateLabel = tab === 'prep' ? 'prep' : tab === 'line-check' ? 'line check' : tab;
           return (
-          <button key={tab} type="button" aria-label={label} title={label} onClick={() => { setSubTab(tab); if(tab !== 'prep' && tab !== 'line-check') setTaskFreq(tab); }} className={`px-3 sm:px-5 py-2.5 text-[10px] sm:text-xs font-black rounded-xl uppercase tracking-widest transition-all flex-1 sm:flex-none ${subTab === tab ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>
+          <button key={tab} type="button" data-concept-subtab-button={tab} aria-label={label} title={label} onClick={() => { setSubTab(tab); if(tab !== 'prep' && tab !== 'line-check') setTaskFreq(tab); }} className={`px-3 sm:px-5 py-2.5 text-[10px] sm:text-xs font-black rounded-xl uppercase tracking-widest transition-all flex-1 sm:flex-none ${subTab === tab ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>
             {label}
           </button>
         );})}
@@ -1223,8 +1223,8 @@ const TabMaintenance = ({ appUser, addToast }) => {
 
       <div className="concept17-subtab-bar concept17-maintenance-tabs flex flex-col md:flex-row md:items-center justify-between gap-2 border-b border-[#2A353D] pb-2">
         <div className="flex gap-1.5 overflow-x-auto custom-scrollbar">
-          <button onClick={() => setSubTab('issues')} className={`flex-shrink-0 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest ${subTab === 'issues' ? `${T.grad} text-slate-900` : 'bg-[#1A2126] text-slate-400 border border-[#2A353D]'}`}>Repair Board</button>
-          <button onClick={() => setSubTab('pm')} className={`relative flex-shrink-0 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest ${subTab === 'pm' ? `${T.grad} text-slate-900` : 'bg-[#1A2126] text-slate-400 border border-[#2A353D]'}`}>Preventative Maintenance{overdueCount > 0 && <span className="ml-2 inline-flex min-w-4 h-4 px-1 rounded-full bg-red-500 text-white items-center justify-center text-[9px]">{overdueCount}</span>}</button>
+          <button data-concept-subtab-button="issues" onClick={() => setSubTab('issues')} className={`flex-shrink-0 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest ${subTab === 'issues' ? `${T.grad} text-slate-900` : 'bg-[#1A2126] text-slate-400 border border-[#2A353D]'}`}>Repair Board</button>
+          <button data-concept-subtab-button="pm" onClick={() => setSubTab('pm')} className={`relative flex-shrink-0 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest ${subTab === 'pm' ? `${T.grad} text-slate-900` : 'bg-[#1A2126] text-slate-400 border border-[#2A353D]'}`}>Preventative Maintenance{overdueCount > 0 && <span className="ml-2 inline-flex min-w-4 h-4 px-1 rounded-full bg-red-500 text-white items-center justify-center text-[9px]">{overdueCount}</span>}</button>
         </div>
         {subTab === 'issues' && <div className="flex flex-col sm:flex-row gap-2 w-full md:w-auto">
           <input value={issueSearch} onChange={e=>setIssueSearch(e.target.value)} className={`${T.input} md:w-56`} placeholder="Search equipment, issue, vendor" />

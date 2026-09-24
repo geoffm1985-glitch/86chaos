@@ -1,7 +1,7 @@
 'use strict';
 
-const CURRENT_RELEASE_VERSION = '17.1.3';
-const CURRENT_RELEASE_CARRY_FORWARD_NOTE = '17.1.3 repairs the mobile Schedule Builder sticky date header and density, Message Board live posting, first-slot 86Voice toolbar placement, Kitchen Tools badge wrapping, false notification-repair prompts, and the Kitchen Command Center formatFullDate crash while preserving the 17.1.2 Concept 1 migration and all prior safeguards.';
+const CURRENT_RELEASE_VERSION = '17.1.4';
+const CURRENT_RELEASE_CARRY_FORWARD_NOTE = '17.1.4 repairs the failed 17.1.3 release-gate browser cases: Schedule Builder control overlap, locale-safe navigation/subtab selectors, dynamic deployed-version checks, System Administrator drawer navigation, long route-sweep time budgets, 86Voice bottom-nav alignment, and localized Kitchen Command assertions while preserving the 17.1.3 workflow repairs and all prior safeguards.';
 const CURRENT_RELEASE_REPAIR_SCOPE = [
   {
     specPath: '86chaos-new-implementations/20-mobile-workflow-repair.spec.cjs',

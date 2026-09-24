@@ -58,7 +58,7 @@ test.describe('17.1.3 mobile workflow repair', () => {
     requireCreds(account, 'owner-like account');
     await login(page, account.email, account.password);
     const text = await gotoTab(page, 'ops', { settleMs: 900, maxText: 30000 });
-    expect(text).toMatch(/Kitchen Command Center|Shift Snapshot/i);
+    expect(text).toMatch(/Kitchen Command Center|Centro de Mando de Cocina|Shift Snapshot|Resumen de turno/i);
     expect(text).not.toMatch(/formatFullDate is not defined|This section hit a snag/i);
   });
 });

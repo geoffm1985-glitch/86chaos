@@ -1,6 +1,7 @@
 'use strict';
 const { test, expect } = require('@playwright/test');
 const { ownerLikeCreds, requireCreds, login } = require('../86chaos-full-audit/utils/audit-helpers.cjs');
+const { version: expectedVersion } = require('../../package.json');
 
 test.describe('17.0.28 browser-safe i18n bootstrap repair', () => {
   test('application boots through the i18n provider without a translation runtime crash', async ({ page }) => {
@@ -15,7 +16,8 @@ test.describe('17.0.28 browser-safe i18n bootstrap repair', () => {
     await login(page, account.email, account.password, { chooseWorkspace: true });
 
     await expect(page.locator('html')).toHaveAttribute('lang', /^(en|es)$/i, { timeout: 20000 });
-    await expect(page.getByText(/Version 17\.1\.0/i)).toBeAttached({ timeout: 20000 });
+    const escapedVersion = expectedVersion.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    await expect(page.getByText(new RegExp(`Version ${escapedVersion}`, 'i'))).toBeAttached({ timeout: 20000 });
     expect(bootstrapErrors, `translation/bootstrap page errors: ${bootstrapErrors.join(' | ')}`).toEqual([]);
   });
 });

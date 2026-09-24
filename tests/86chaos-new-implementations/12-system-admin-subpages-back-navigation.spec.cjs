@@ -25,7 +25,9 @@ test.describe('17.0.34 System Administrator subpages and navigation', () => {
 
     await page.locator('[data-admin-tab="roles"]').click();
     await page.getByRole('button', { name: /open navigation menu/i }).click();
-    await page.getByRole('button', { name: /^System Administrator$/i }).click();
+    const drawer = page.getByRole('dialog', { name: /main menu|menú principal/i });
+    await expect(drawer).toBeVisible();
+    await drawer.locator('[data-shell-route="godmode"]').click();
     await expect(page.getByTestId('system-admin-concept1-exact-home')).toBeVisible({ timeout: 10000 });
     await expect(page.getByTestId('system-admin-directory-card')).toHaveCount(21);
   });

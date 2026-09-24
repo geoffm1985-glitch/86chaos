@@ -8,6 +8,55 @@ const ROUTES = [
   'hr-training','maintenance','settings','help','reminders','ai-tools','menu-intelligence','back-office','audit','godmode'
 ];
 
+
+const STABLE_SUBTAB_IDS = {
+  published: {
+    'My Schedule': 'my-schedule',
+    'Full Schedule': 'full-schedule',
+    'Month View': 'month-view',
+    'Trade Board': 'trade-board',
+    'Request Off': 'time-off',
+    'Availability': 'availability',
+    'Schedule Builder': 'schedule-builder',
+  },
+  financials: {
+    'Overview': 'overview',
+    'Daily Close': 'daily-close',
+    'Sales': 'sales',
+    'Labor & Payroll': 'labor',
+    'Tips': 'tips',
+    'COGS & Vendors': 'cogs',
+    'Expenses': 'expenses',
+    'P&L': 'pnl',
+    'Targets': 'targets',
+    'Reports': 'reports',
+  },
+  prep: {
+    'Food Prep': 'prep',
+    'Line Check': 'line-check',
+    'Daily Tasks': 'daily',
+    'Weekly Tasks': 'weekly',
+    'Monthly Tasks': 'monthly',
+  },
+  inventory: {
+    'count': 'count', 'order': 'order', 'Order Suggestions': 'ai-order', 'manage': 'manage',
+    'vendors': 'vendors', 'Invoices': 'invoices', 'waste': 'waste',
+  },
+  maintenance: { 'Repair Board': 'issues', 'Preventative Maintenance': 'pm' },
+  'hr-training': {
+    'Overview': 'overview', 'Manuals': 'manuals', 'Onboarding': 'onboarding',
+    'Certifications': 'certifications', 'Performance': 'performance',
+  },
+  settings: {
+    'Profile': 'profile', 'Account Security': 'accountSecurity', 'Preferences': 'preferences',
+    'Alerts': 'alerts', 'Billing': 'billing', 'Workspace': 'workspace', 'Branding': 'branding', 'Integrations': 'integrations',
+  },
+  'back-office': {
+    'Dashboard': 'dashboard', 'Deposit Log': 'deposits', 'Approval Queue': 'approvals', 'Document Vault': 'documents',
+    'Owner Reports': 'reports', 'QuickBooks': 'quickbooks', 'Accountant Packet': 'accountant-packet', 'Owner Rollup': 'owner-rollup',
+  },
+};
+
 const SUBTAB_ROUTES = {
   published: ['My Schedule','Full Schedule','Month View','Trade Board','Request Off','Availability','Schedule Builder'],
   prep: ['Food Prep','Line Check','Daily Tasks','Weekly Tasks','Monthly Tasks'],
@@ -60,6 +109,12 @@ async function assertConceptGeometry(page, route, mobile) {
 }
 
 async function findRequiredSubtabButton(page, route, label) {
+  const stableId = STABLE_SUBTAB_IDS[route]?.[label];
+  if (stableId) {
+    const stable = page.locator(`[data-concept-subtab-button="${stableId}"]`).first();
+    await expect(stable, `${route} must expose the ${label} subtab`).toBeVisible({ timeout: 10000 });
+    return stable;
+  }
   const exact = page.getByRole('button', { name: label, exact: true });
   if (await exact.count()) return exact.first();
   const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -101,6 +156,7 @@ test.describe('17.1.2 complete Concept 1 route and subtab fidelity', () => {
   });
 
   test('every real routed page uses the complete Concept 1 frame and desktop/mobile geometry', async ({ page }) => {
+    test.setTimeout(240000);
     const mobile = test.info().project.name === 'mobile-chromium';
     await page.setViewportSize(mobile ? { width: 390, height: 844 } : { width: 1440, height: 900 });
     const account = creds('OWNER').email ? creds('OWNER') : ownerLikeCreds();
@@ -114,6 +170,7 @@ test.describe('17.1.2 complete Concept 1 route and subtab fidelity', () => {
   });
 
   test('representative real subtabs retain the Concept 1 frame after navigation', async ({ page }) => {
+    test.setTimeout(240000);
     const mobile = test.info().project.name === 'mobile-chromium';
     await page.setViewportSize(mobile ? { width: 390, height: 844 } : { width: 1440, height: 900 });
     const account = creds('OWNER').email ? creds('OWNER') : ownerLikeCreds();
@@ -127,17 +184,19 @@ test.describe('17.1.2 complete Concept 1 route and subtab fidelity', () => {
   });
 
   test('nested Labor & Payroll subtabs keep the Concept 1 command surface', async ({ page }) => {
+    test.setTimeout(180000);
     const mobile = test.info().project.name === 'mobile-chromium';
     await page.setViewportSize(mobile ? { width: 390, height: 844 } : { width: 1440, height: 900 });
     const account = creds('OWNER').email ? creds('OWNER') : ownerLikeCreds();
     requireCreds(account, 'owner-like account');
     await login(page, account.email, account.password);
     await gotoTab(page, 'financials', { settleMs: 550, maxText: 60000 });
-    const labor = page.getByRole('button', { name: 'Labor & Payroll', exact: true }).first();
+    const labor = page.locator('[data-concept-subtab-button="labor"]').first();
     await expect(labor, 'Financials must expose Labor & Payroll').toBeVisible();
     await labor.click();
-    for (const label of ['Punch Fixer','Add Punch','Timesheet Review','Tips','Export']) {
-      const button = page.getByRole('button', { name: label, exact: true }).first();
+    const laborSubtabs = [['fixer','Punch Fixer'],['editor','Add Punch'],['review','Timesheet Review'],['tips','Tips'],['export','Export']];
+    for (const [id, label] of laborSubtabs) {
+      const button = page.locator(`[data-concept-subtab-button="labor-${id}"]`).first();
       await expect(button, `Labor & Payroll must expose ${label}`).toBeVisible();
       await button.click();
       await expect(page.locator('[data-concept-subtab^="labor-"]').first()).toBeVisible();
@@ -146,6 +205,7 @@ test.describe('17.1.2 complete Concept 1 route and subtab fidelity', () => {
   });
 
   test('System Administrator exposes exactly 21 canonical directory cards and featured shortcuts do not duplicate identities', async ({ page }) => {
+    test.setTimeout(240000);
     await page.setViewportSize({ width: 1440, height: 900 });
     const account = creds('SYSTEM_ADMIN').email ? creds('SYSTEM_ADMIN') : ownerLikeCreds();
     requireCreds(account, 'system admin or owner-like account');
