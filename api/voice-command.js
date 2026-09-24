@@ -11,19 +11,34 @@ const {
 
 // Optional AI parser for 86 Voice. The frontend has a safe local parser first.
 // If GEMINI_API_KEY or GOOGLE_API_KEY is present, this route can help classify vague commands.
+function migrateLegacyVoiceModelConfig(value = '') {
+  // Gemini 2.5 access is restricted for newer API projects and may return 404.
+  // Keep any explicitly configured current model, but silently retire legacy 2.5
+  // voice-only overrides so an old Vercel env value cannot break 86Voice.
+  return String(value || '')
+    .split(/[\s,;]+/)
+    .map(model => model.trim())
+    .filter(Boolean)
+    .filter(model => !/^models\/gemini-2\.5-/i.test(model) && !/^gemini-2\.5-/i.test(model))
+    .join(',');
+}
+
 function voiceModelCandidates() {
   return getAllowedGeminiModels({
     feature: 'voice',
-    configured: process.env.VOICE_GEMINI_MODEL || '',
-    defaults: ['gemini-2.5-flash-lite']
+    configured: migrateLegacyVoiceModelConfig(process.env.VOICE_GEMINI_MODEL || ''),
+    defaults: ['gemini-3.5-flash-lite']
   });
 }
 
 function voiceTranscriptionModel() {
+  // Keep transcription independent from the general voice-intent model.
+  // A legacy 2.5 transcription override is deliberately migrated away because
+  // newer Gemini API projects can receive HTTP 404 for that model family.
   return getAllowedGeminiModels({
     feature: 'voice',
-    configured: process.env.VOICE_TRANSCRIBE_GEMINI_MODEL || process.env.VOICE_GEMINI_MODEL || '',
-    defaults: ['gemini-2.5-flash-lite']
+    configured: migrateLegacyVoiceModelConfig(process.env.VOICE_TRANSCRIBE_GEMINI_MODEL || ''),
+    defaults: ['gemini-3.5-flash-lite']
   })[0];
 }
 
@@ -94,8 +109,35 @@ module.exports = async function handler(req, res) {
         clearTimeout(timeout);
       }
       if (!response.ok) {
-        await response.text().catch(() => '');
-        return res.status(response.status || 502).json({ intent: 'unknown', error: 'Voice transcription provider rejected the audio clip.' });
+        const rawProviderError = await response.text().catch(() => '');
+        let providerMessage = '';
+        let providerCode = '';
+        try {
+          const parsed = JSON.parse(rawProviderError || '{}');
+          providerMessage = String(parsed?.error?.message || '').slice(0, 500);
+          providerCode = String(parsed?.error?.status || parsed?.error?.code || '').slice(0, 80);
+        } catch (_) {
+          providerMessage = String(rawProviderError || '').replace(/[\r\n]+/g, ' ').slice(0, 500);
+        }
+        console.warn(JSON.stringify({
+          code: 'VOICE_TRANSCRIPTION_PROVIDER_REJECTED',
+          provider: 'gemini',
+          model,
+          status: response.status || 502,
+          providerCode,
+          providerMessage,
+          mimeType: providerAudioMimeType,
+          audioBytes,
+          uid: String(decoded?.uid || '').slice(0, 100),
+          timestamp: new Date().toISOString()
+        }));
+        const status = response.status || 502;
+        const userMessage = status === 403 || status === 404
+          ? 'The configured voice transcription model is unavailable. Please try again after the server model is updated.'
+          : status === 400 || status === 415 || status === 422
+            ? 'The voice service could not read that recording. Tap Start Listening and try a short command again.'
+            : 'The voice transcription service is temporarily unavailable. Please try again.';
+        return res.status(status).json({ intent: 'unknown', error: userMessage, diagnosticCode: `VOICE_PROVIDER_${status}`, model });
       }
       const data = await response.json().catch(() => null);
       callBudget.recordUsage(data?.usageMetadata?.promptTokenCount, data?.usageMetadata?.candidatesTokenCount);

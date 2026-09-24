@@ -7,14 +7,12 @@ const path = require('path');
 const root = path.resolve(__dirname, '..');
 const read = file => fs.readFileSync(path.join(root, file), 'utf8');
 
-test('17.1.6 starts 86Voice recognition directly from the user microphone gesture', () => {
+test('17.1.6 keeps recognition on an explicit user microphone gesture without a timer', () => {
   const common = read('src/components/common.jsx');
-  const openDock = common.match(/const openDock = \(\) => \{([\s\S]*?)\n  \};\n\n  useImperativeHandle/);
-  assert.ok(openDock, 'openDock implementation should be present');
-  assert.match(openDock[1], /startListening\(\{ autoStart: true, fromUserGesture: true \}\)/);
-  assert.doesNotMatch(openDock[1], /setTimeout|pendingVoiceStartTimerRef\.current\s*=/);
-  assert.match(common, /onClick=\{open \? closeDock : openDock\}/);
-  assert.match(common, /openAndListen: openDock/);
+  assert.match(common, /onClick=\{listening \? \(\) => stopActiveRecognition\('manual-stop'\) : \(\) => startListening\(\{ manual: true \}\)\}/);
+  assert.doesNotMatch(common, /pendingVoiceStartTimerRef\.current = setTimeout[\s\S]{0,250}startListening/);
+  assert.match(common, /openAndListen: openDockAndListen/);
+  assert.match(common, /openPanel: openDock/);
 });
 
 test('17.1.6 Spanish mobile regression targets the visible translated route instead of a hidden desktop duplicate', () => {

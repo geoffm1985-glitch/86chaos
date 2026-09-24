@@ -3,7 +3,7 @@ const { test, expect } = require('@playwright/test');
 const { ownerLikeCreds, requireCreds, login } = require('../86chaos-full-audit/utils/audit-helpers.cjs');
 
 test.describe('17.1.6 microphone and delta-gate interaction repair', () => {
-  test('86Voice starts recognition from the first microphone tap', async ({ page }) => {
+  test('86Voice opens first and explicit Start Listening begins recognition', async ({ page }) => {
     await page.addInitScript(() => {
       window.__voiceFirstTap = { created: 0, started: 0, stopped: 0, aborted: 0 };
       class MockSpeechRecognition {
@@ -43,9 +43,14 @@ test.describe('17.1.6 microphone and delta-gate interaction repair', () => {
     const mic = page.getByTestId('concept17-mobile-voice-button');
     await expect(mic).toBeVisible({ timeout: 15000 });
     await mic.click();
+    await expect(page.getByRole('button', { name: /start listening/i })).toBeVisible({ timeout: 5000 });
+    let state = await page.evaluate(() => window.__voiceFirstTap);
+    expect(state.started, 'opening the panel should not start SpeechRecognition').toBe(0);
+    expect(state.created, 'opening the panel should not create a recognition session').toBe(0);
+    await page.getByRole('button', { name: /start listening/i }).click();
     await expect(page.getByRole('button', { name: /stop listening/i })).toBeVisible({ timeout: 5000 });
-    const state = await page.evaluate(() => window.__voiceFirstTap);
-    expect(state.started, 'first toolbar tap should start SpeechRecognition').toBe(1);
-    expect(state.created, 'first toolbar tap should create one recognition session').toBe(1);
+    state = await page.evaluate(() => window.__voiceFirstTap);
+    expect(state.started, 'Start Listening should start SpeechRecognition').toBe(1);
+    expect(state.created, 'Start Listening should create one recognition session').toBe(1);
   });
 });

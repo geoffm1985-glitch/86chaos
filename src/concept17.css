@@ -2772,3 +2772,16 @@ body {
     pointer-events: auto !important;
   }
 }
+
+/* 17.1.9 panel-first 86Voice repair.
+   The toolbar opens the controller before microphone capture. Keep the dock's
+   stacking context above the app shell so the panel itself cannot disappear
+   behind the bottom bar or page cards. */
+@media (max-width: 720px) {
+  .voice-command-dock.fixed.bottom-5.left-4 {
+    z-index: 90 !important;
+  }
+  .voice-command-dock > .cockpit-panel {
+    z-index: 91 !important;
+  }
+}

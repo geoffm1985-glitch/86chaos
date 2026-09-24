@@ -1,23 +1,25 @@
 {
-  "version": "17.1.8",
-  "name": "86 Chaos 17.1.8",
-  "build": "17.1.8",
-  "label": "86 Chaos 17.1.8",
-  "releasedAt": "2026-09-24T19:05:00Z",
-  "releaseTitle": "86Voice Resilient Mobile Capture Repair",
+  "version": "17.1.9",
+  "name": "86 Chaos 17.1.9",
+  "build": "17.1.9",
+  "label": "86 Chaos 17.1.9",
+  "releasedAt": "2026-09-24T21:15:00Z",
+  "releaseTitle": "86Voice Panel-First Reliability Repair",
   "notes": [
-    "Uses MediaRecorder as the primary mobile/PWA microphone path instead of depending only on browser SpeechRecognition.",
-    "Transcribes short voice clips through the existing authenticated, App Check-aware, rate-limited server voice route.",
-    "Keeps the 86Voice panel visibly anchored above the mobile toolbar with live recording/transcribing/processing status.",
-    "Retains built-in SpeechRecognition on compatible desktop browsers and typed-command fallback everywhere."
+    "The mobile Voice toolbar button now opens the 86Voice command panel first and never starts recording before the panel is visible.",
+    "Microphone capture starts only from the explicit Start Listening control inside 86Voice, with status and errors kept visible in the panel.",
+    "Server transcription no longer inherits the general VOICE_GEMINI_MODEL and defaults to the current audio-capable gemini-3.5-flash-lite model.",
+    "Provider rejection diagnostics now record the model, status, MIME type, audio size, and a safe provider message without exposing credentials.",
+    "Legacy Gemini 2.5 voice model overrides are automatically migrated to the current 3.5 Flash-Lite voice path so stale Vercel configuration cannot force a 404."
   ],
-  "title": "86 Chaos 17.1.8",
-  "summary": "Replaces the fragile mobile Web Speech-only path with direct microphone recording plus authenticated server-side transcription.",
-  "description": "Makes the first mobile Voice button open a visible controller, capture microphone audio with MediaRecorder on mobile/PWA, transcribe short clips through the existing authenticated Gemini voice route, and retain browser SpeechRecognition as a secondary path.",
+  "title": "86 Chaos 17.1.9",
+  "summary": "Makes 86Voice panel-first and separates microphone transcription from legacy voice-intent model configuration.",
+  "description": "Repairs the mobile voice interaction order so the 86Voice controller is always visible before capture starts, keeps errors inside the panel, and uses a dedicated current audio-capable Gemini model for server transcription.",
   "highlights": [
-    "The toolbar microphone has a real mobile recording path even when Web Speech is unavailable or unreliable.",
-    "A single tap visibly opens 86Voice and starts microphone capture on mobile/PWA.",
-    "Recorded audio is size-limited, MIME-allowlisted, authenticated, rate-limited, and transcribed server-side.",
-    "New deployed-browser coverage exercises the no-SpeechRecognition MediaRecorder fallback end to end."
+    "First toolbar tap opens 86Voice only; no microphone request or transcription occurs until Start Listening is pressed.",
+    "Voice failures remain visible in the 86Voice panel with a retry path and typed-command fallback.",
+    "Transcription defaults independently to gemini-3.5-flash-lite instead of inheriting a possibly legacy VOICE_GEMINI_MODEL.",
+    "Mobile browser coverage verifies that opening the panel causes zero microphone requests until Start Listening is pressed.",
+    "86Voice ignores stale Gemini 2.5 voice-only model overrides that are no longer available to newer API projects."
   ]
 }

@@ -41,7 +41,8 @@ test('17.0.28 application mounts the browser-safe provider and release-gate scop
   assert.match(app, /from ['\"]\.\/core\/i18n['\"]/);
   assert.doesNotMatch(app, /core\/i18n\.cjs/);
   assert.match(app, /<I18nProvider language=\{appLanguage\}>/);
-  assert.match(scope, /CURRENT_RELEASE_VERSION = '17\.1\.8'/);
+  const currentVersion = JSON.parse(read('package.json')).version.replace(/\./g, '\\.');
+  assert.match(scope, new RegExp(`CURRENT_RELEASE_VERSION = '${currentVersion}'`));
   assert.match(scope, /08-phase1-spanish-interface\.spec\.cjs/);
   assert.match(scope, /09-schedule-builder-shift-assignment\.spec\.cjs/);
   assert.match(scope, /10-app-bootstrap-i18n-runtime\.spec\.cjs/);

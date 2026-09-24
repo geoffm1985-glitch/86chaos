@@ -1470,6 +1470,7 @@ const VoiceCommandDockBase = React.forwardRef(({ appUser, inventoryItems = [], r
   const [lastUndo, setLastUndo] = useState(null);
   const [voiceResult, setVoiceResult] = useState(null);
   const [voiceStatus, setVoiceStatus] = useState('idle');
+  const [voicePanelError, setVoicePanelError] = useState('');
   const SpeechRecognition = typeof window !== 'undefined' ? (window.SpeechRecognition || window.webkitSpeechRecognition) : null;
   const canUseSpeech = Boolean(SpeechRecognition);
   const canRecordSpeech = typeof window !== 'undefined' && Boolean(navigator?.mediaDevices?.getUserMedia && window.MediaRecorder);
@@ -2099,6 +2100,7 @@ const VoiceCommandDockBase = React.forwardRef(({ appUser, inventoryItems = [], r
       activeRecorderRef.current = null;
       setListening(false);
       setVoiceStatus('error');
+      setVoicePanelError(voiceErrorMessage(event?.error || event) || 'Microphone recording failed.');
       for (const track of activeRecorderStreamRef.current?.getTracks?.() || []) { try { track.stop(); } catch (_) {} }
       activeRecorderStreamRef.current = null;
       addToast?.('Voice Error', voiceErrorMessage(event?.error || event) || 'Microphone recording failed.');
@@ -2121,6 +2123,7 @@ const VoiceCommandDockBase = React.forwardRef(({ appUser, inventoryItems = [], r
         await transcribeRecordedVoice(blob, recorder.mimeType || mimeType || blob.type);
       } catch (error) {
         setVoiceStatus('error');
+        setVoicePanelError(error?.message || 'Voice transcription failed.');
         addToast?.('Voice Error', error?.message || 'Voice transcription failed.');
       }
     };
@@ -2185,9 +2188,31 @@ const VoiceCommandDockBase = React.forwardRef(({ appUser, inventoryItems = [], r
       if (activeRecognitionRef.current !== rec) return;
       activeRecognitionRef.current = null;
       setListening(false);
-      const message = rec._chaosIntentionalStop ? '' : voiceErrorMessage(event);
+      if (rec._chaosIntentionalStop) {
+        setVoiceStatus('idle');
+        return;
+      }
+      const errorCode = String(event?.error || event?.name || event?.message || '').toLowerCase();
+      const canFallbackToRecorder = canRecordSpeech && /network|service-not-allowed|not-supported|language-not-supported/.test(errorCode);
+      if (canFallbackToRecorder) {
+        setVoiceStatus('requesting-permission');
+        setVoicePanelError('');
+        startRecordedVoice().catch(error => {
+          const message = voiceErrorMessage(error) || error?.message || 'Voice fallback recording failed.';
+          if (!voiceMountedRef.current) return;
+          setListening(false);
+          setVoiceStatus('error');
+          setVoicePanelError(message);
+          addToast?.('Voice Error', message);
+        });
+        return;
+      }
+      const message = voiceErrorMessage(event);
       setVoiceStatus(message ? 'error' : 'idle');
-      if (message) addToast?.('Voice Error', message);
+      if (message) {
+        setVoicePanelError(message);
+        addToast?.('Voice Error', message);
+      }
     };
     rec.onend = () => {
       if (activeRecognitionRef.current !== rec) return;
@@ -2211,14 +2236,36 @@ const VoiceCommandDockBase = React.forwardRef(({ appUser, inventoryItems = [], r
     cancelPendingVoiceStart();
     if (!voiceMountedRef.current) return;
     setOpen(true);
+    setVoicePanelError('');
     if (activeRecognitionRef.current || activeRecorderRef.current) {
       addToast?.('Already Listening', '86Voice is already listening. Stop it before starting another microphone session.');
       return;
     }
     setVoiceStatus('requesting-permission');
 
-    // Mobile/PWA uses direct MediaRecorder capture + authenticated server-side
-    // transcription. This does not depend on the browser Web Speech service.
+    // When the user explicitly presses Start Listening inside the visible panel,
+    // prefer the browser's native speech engine if it exists. This stays inside
+    // the direct user gesture and avoids a server round trip on supported Chrome
+    // Android installs. MediaRecorder remains the resilient fallback.
+    if (options.manual && canUseSpeech) {
+      try {
+        startNativeRecognition();
+        return;
+      } catch (error) {
+        activeRecognitionRef.current = null;
+        setListening(false);
+        if (!canRecordSpeech) {
+          const message = voiceErrorMessage(error) || 'Browser voice recognition is unavailable.';
+          setVoiceStatus('error');
+          setVoicePanelError(message);
+          addToast?.('Voice Unavailable', message);
+          return;
+        }
+      }
+    }
+
+    // Mobile/PWA falls back to direct MediaRecorder capture + authenticated
+    // server-side transcription when native Web Speech is unavailable.
     if (canRecordSpeech && (shouldPreferRecordedVoice() || !canUseSpeech)) {
       try {
         await startRecordedVoice();
@@ -2226,7 +2273,9 @@ const VoiceCommandDockBase = React.forwardRef(({ appUser, inventoryItems = [], r
       } catch (error) {
         setListening(false);
         setVoiceStatus('error');
-        addToast?.('Microphone Permission', voiceErrorMessage(error) || error?.message || 'Microphone access was not granted.');
+        const message = voiceErrorMessage(error) || error?.message || 'Microphone access was not granted.';
+        setVoicePanelError(message);
+        addToast?.('Microphone Permission', message);
         return;
       }
     }
@@ -2240,7 +2289,9 @@ const VoiceCommandDockBase = React.forwardRef(({ appUser, inventoryItems = [], r
         setListening(false);
         if (!canRecordSpeech) {
           setVoiceStatus('error');
-          addToast?.('Voice Unavailable', voiceErrorMessage(error) || 'Browser voice recognition is unavailable.');
+          const message = voiceErrorMessage(error) || 'Browser voice recognition is unavailable.';
+          setVoicePanelError(message);
+          addToast?.('Voice Unavailable', message);
           return;
         }
       }
@@ -2253,13 +2304,16 @@ const VoiceCommandDockBase = React.forwardRef(({ appUser, inventoryItems = [], r
       } catch (error) {
         setListening(false);
         setVoiceStatus('error');
-        addToast?.('Voice Error', voiceErrorMessage(error) || error?.message || 'Microphone recording failed.');
+        const message = voiceErrorMessage(error) || error?.message || 'Microphone recording failed.';
+        setVoicePanelError(message);
+        addToast?.('Voice Error', message);
         return;
       }
     }
 
     setListening(false);
     setVoiceStatus('error');
+    setVoicePanelError('This browser cannot capture microphone audio. Type the command instead.');
     addToast?.('Voice Unavailable', 'This browser cannot capture microphone audio. Type the command instead.');
   };
 
@@ -2270,25 +2324,31 @@ const VoiceCommandDockBase = React.forwardRef(({ appUser, inventoryItems = [], r
     setHeardText('');
     setManualText('');
     setVoiceResult(null);
-    setVoiceStatus('opening');
+    setVoicePanelError('');
+    setVoiceStatus('idle');
+  };
+
+  const openDockAndListen = () => {
+    openDock();
     startListening({ autoStart: true, fromUserGesture: true });
   };
 
   useImperativeHandle(ref, () => ({
-    openAndListen: openDock,
-    openPanel: () => {
-      stopActiveRecognition('panel-open');
-      setOpen(true);
-      setVoiceStatus('idle');
-    },
+    openAndListen: openDockAndListen,
+    openPanel: openDock,
     close: closeDock,
   }));
 
   useEffect(() => {
     if (typeof window === 'undefined') return undefined;
-    const launchFromToolbar = () => openDock();
-    window.addEventListener('chaos:voice-open-and-listen', launchFromToolbar);
-    return () => window.removeEventListener('chaos:voice-open-and-listen', launchFromToolbar);
+    const launchPanel = () => openDock();
+    const launchAndListen = () => openDockAndListen();
+    window.addEventListener('chaos:voice-open-panel', launchPanel);
+    window.addEventListener('chaos:voice-open-and-listen', launchAndListen);
+    return () => {
+      window.removeEventListener('chaos:voice-open-panel', launchPanel);
+      window.removeEventListener('chaos:voice-open-and-listen', launchAndListen);
+    };
   });
 
 
@@ -3190,7 +3250,8 @@ const VoiceCommandDockBase = React.forwardRef(({ appUser, inventoryItems = [], r
         <button type="button" aria-label={listening ? 'Stop listening' : 'Start listening'} aria-pressed={listening} onClick={listening ? () => stopActiveRecognition('manual-stop') : () => startListening({ manual: true })} className={`w-full ${listening ? 'bg-red-900/30 text-red-300 border-red-500/40' : 'bg-[#12161A] text-[#D4A381] border-[#2A353D]'} border rounded-xl py-3 font-black uppercase tracking-widest text-xs flex items-center justify-center gap-2`}>
           {listening ? <MicOff size={16}/> : <Mic size={16}/>} {listening ? 'Listening...' : 'Start Listening'}
         </button>
-        <div data-testid="voice-command-status" aria-live="polite" className="text-[10px] font-bold text-slate-400 min-h-[14px]">{voiceStatus === 'requesting-permission' ? 'Requesting microphone permission…' : voiceStatus === 'recording' ? 'Recording… speak your command. Tap Stop when finished.' : voiceStatus === 'transcribing' ? 'Transcribing your command…' : voiceStatus === 'processing' ? 'Processing your command…' : voiceStatus === 'listening' ? 'Listening…' : voiceStatus === 'error' ? 'Voice needs attention. See the message above or type your command.' : ''}</div>
+        <div data-testid="voice-command-status" aria-live="polite" className="text-[10px] font-bold text-slate-400 min-h-[14px]">{voiceStatus === 'requesting-permission' ? 'Requesting microphone permission…' : voiceStatus === 'recording' ? 'Recording… speak your command. Tap Stop when finished.' : voiceStatus === 'transcribing' ? 'Transcribing your command…' : voiceStatus === 'processing' ? 'Processing your command…' : voiceStatus === 'listening' ? 'Listening…' : voiceStatus === 'error' ? 'Voice needs attention. Try again or type your command below.' : 'Tap Start Listening when you are ready.'}</div>
+        {voicePanelError && <div data-testid="voice-command-error" role="alert" className="text-[11px] font-bold text-red-200 bg-red-950/30 border border-red-500/30 rounded-xl p-2">{voicePanelError}</div>}
         <textarea value={manualText} onChange={e=>setManualText(e.target.value)} className={T.input} rows="2" placeholder='Try: "86 salmon", "prep 2 pans tomatoes", "add event Friday at 6pm", "request off next Monday", "set availability Tuesday 10am to 4pm"' />
         <button type="button" onClick={() => processText(manualText)} className={`${T.btnAlt} w-full`}>Check Typed Request</button>
         {heardText && <div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-2 text-xs"><span className="text-slate-500 font-black uppercase tracking-widest">Heard</span><div className="font-bold text-white mt-1">{heardText}</div></div>}

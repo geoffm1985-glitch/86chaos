@@ -1,22 +1,22 @@
 'use strict';
 
-const CURRENT_RELEASE_VERSION = '17.1.8';
-const CURRENT_RELEASE_CARRY_FORWARD_NOTE = '17.1.8 preserves the complete Concept 1 and 17.1.7 interaction repairs while adding a resilient mobile/PWA MediaRecorder capture path with authenticated server-side transcription, visible voice status, and retained native SpeechRecognition fallback.';
+const CURRENT_RELEASE_VERSION = '17.1.9';
+const CURRENT_RELEASE_CARRY_FORWARD_NOTE = '17.1.9 preserves the complete Concept 1 repairs while making 86Voice panel-first, keeping explicit Start Listening inside the user gesture, preferring native speech when available, and retaining MediaRecorder plus authenticated server transcription as fallback.';
 const CURRENT_RELEASE_REPAIR_SCOPE = [
   {
     specPath: '86chaos-new-implementations/24-mobile-voice-resilient-capture.spec.cjs',
-    fullSuitePath: '17.1.8 resilient mobile 86Voice capture',
-    exactTestTitle: 'mobile toolbar records, transcribes, and processes a command without SpeechRecognition',
+    fullSuitePath: '17.1.9 panel-first resilient mobile 86Voice capture',
+    exactTestTitle: 'mobile toolbar opens 86Voice first, then records only after Start Listening',
   },
   {
     specPath: '86chaos-new-implementations/23-mobile-voice-toolbar-interaction.spec.cjs',
     fullSuitePath: '17.1.7 mobile 86Voice toolbar interaction',
-    exactTestTitle: 'first toolbar microphone tap opens 86Voice, requests microphone access, and starts recognition',
+    exactTestTitle: 'first toolbar microphone tap opens 86Voice and Start Listening begins recognition',
   },
   {
     specPath: '86chaos-new-implementations/22-release-gate-mic-delta-repair.spec.cjs',
     fullSuitePath: '17.1.6 microphone and delta-gate interaction repair',
-    exactTestTitle: '86Voice starts recognition from the first microphone tap',
+    exactTestTitle: '86Voice opens first and explicit Start Listening begins recognition',
   },
   {
     specPath: '86chaos-new-implementations/21-mobile-bottom-nav-single-line.spec.cjs',

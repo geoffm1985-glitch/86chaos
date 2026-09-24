@@ -19,14 +19,15 @@ test('17.1.7 makes 86Voice a real first bottom-nav button instead of an overlay 
   assert.match(app, /const voiceCommandDockRef = useRef\(null\)/);
   assert.match(app, /<VoiceCommandDock ref=\{voiceCommandDockRef\}/);
   assert.match(app, /voiceCommandDockRef\.current/);
-  assert.match(app, /controller\?\.openAndListen/);
+  assert.match(app, /controller\?\.openPanel/);
 });
 
 test('17.1.7 exposes a synchronous imperative voice entry point and a real microphone permission path', () => {
   const common = read('src/components/common.jsx');
   assert.match(common, /React\.forwardRef\(/);
   assert.match(common, /useImperativeHandle\(ref, \(\) => \(\{/);
-  assert.match(common, /openAndListen: openDock/);
+  assert.match(common, /openAndListen: openDockAndListen/);
+  assert.match(common, /openPanel: openDock/);
   assert.match(common, /navigator\.mediaDevices/);
   assert.match(common, /getUserMedia\(\{/);
   assert.match(common, /track\.stop\(\)/);

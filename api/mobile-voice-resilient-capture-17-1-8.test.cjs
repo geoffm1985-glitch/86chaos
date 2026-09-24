@@ -37,10 +37,10 @@ test('17.1.8 toolbar has a visible controller panel and direct fallback launch p
   const common = read('src/components/common.jsx');
   const css = read('src/concept17.css');
   assert.match(app, /voiceCommandDockRef\.current/);
-  assert.match(app, /chaos:voice-open-and-listen/);
+  assert.match(app, /chaos:voice-open-panel/);
   assert.match(common, /data-testid="voice-command-panel"/);
   assert.match(common, /data-testid="voice-command-status"/);
-  assert.match(common, /window\.addEventListener\('chaos:voice-open-and-listen'/);
+  assert.match(common, /window\.addEventListener\('chaos:voice-open-panel'/);
   assert.match(css, /17\.1\.8 resilient mobile voice capture/);
   assert.match(css, /bottom: calc\(82px \+ env\(safe-area-inset-bottom, 0px\)\) !important/);
 });

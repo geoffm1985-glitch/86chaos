@@ -2,8 +2,8 @@
 const { test, expect } = require('@playwright/test');
 const { ownerLikeCreds, requireCreds, login } = require('../86chaos-full-audit/utils/audit-helpers.cjs');
 
-test.describe('17.1.8 resilient mobile 86Voice capture', () => {
-  test('mobile toolbar records, transcribes, and processes a command without SpeechRecognition', async ({ page }) => {
+test.describe('17.1.9 panel-first resilient mobile 86Voice capture', () => {
+  test('mobile toolbar opens 86Voice first, then records only after Start Listening', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.addInitScript(() => {
       window.__voice1718 = { permissionRequests: 0, recorderStarts: 0, recorderStops: 0, trackStops: 0 };
@@ -67,13 +67,19 @@ test.describe('17.1.8 resilient mobile 86Voice capture', () => {
     await mic.click();
 
     await expect(page.getByTestId('voice-command-panel')).toBeVisible({ timeout: 5000 });
+    await expect(page.getByTestId('voice-command-status')).toContainText(/tap start listening/i, { timeout: 5000 });
+    let state = await page.evaluate(() => window.__voice1718);
+    expect(state.permissionRequests).toBe(0);
+    expect(state.recorderStarts).toBe(0);
+
+    await page.getByRole('button', { name: /start listening/i }).click();
     await expect(page.getByTestId('voice-command-status')).toContainText(/recording/i, { timeout: 5000 });
     await expect(page.getByRole('button', { name: /stop listening/i })).toBeVisible({ timeout: 5000 });
     await page.getByRole('button', { name: /stop listening/i }).click();
 
     await expect.poll(() => transcribeCalls, { timeout: 10000 }).toBe(1);
     await expect(page.getByText('open help', { exact: true })).toBeVisible({ timeout: 10000 });
-    const state = await page.evaluate(() => window.__voice1718);
+    state = await page.evaluate(() => window.__voice1718);
     expect(state.permissionRequests).toBe(1);
     expect(state.recorderStarts).toBe(1);
     expect(state.recorderStops).toBe(1);
