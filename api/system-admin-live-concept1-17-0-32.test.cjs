@@ -17,7 +17,8 @@ test('17.0.32 applies Concept 1 to the actual System Administrator route compone
   assert.match(management, /data-testid="system-admin-directory-card"/);
   assert.match(management, /data-testid="system-admin-directory-card"/);
   assert.match(management, /admin-concept1-exact-hero/);
-  assert.match(management, /admin-concept1-directory-grid/);
+  assert.match(management, /admin37-featured-grid/);
+  assert.match(management, /admin37-all-tools-grid/);
 });
 
 test('17.0.32 Spanish Phase 2 is wired into the live System Administrator shell', () => {

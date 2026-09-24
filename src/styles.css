@@ -6730,3 +6730,479 @@ span.bg-red-500.text-white,
     white-space: normal;
   }
 }
+
+/* 17.0.37 System Administrator desktop Concept 1 isolation and exact-card hierarchy */
+.admin46-shell {
+  --admin37-bg: #0f151a;
+  --admin37-panel: #1b2329;
+  --admin37-panel-soft: #20292f;
+  --admin37-line: #38434a;
+  --admin37-line-soft: #2d373e;
+  --admin37-ink: #f5f6f7;
+  --admin37-muted: #a9b0b5;
+  --admin37-bronze: #e5a178;
+  --admin37-bronze-soft: #8d6248;
+}
+
+@media (min-width: 768px) {
+  .admin46-shell {
+    max-width: 1260px !important;
+    margin: 0 auto !important;
+    padding-left: 24px !important;
+    padding-right: 24px !important;
+    color: var(--admin37-ink) !important;
+  }
+
+  .admin46-shell #admin-content-start {
+    background: transparent !important;
+  }
+
+  .admin46-shell .admin-concept1-exact-home {
+    max-width: 1180px !important;
+    margin: 0 auto !important;
+    padding: 12px 0 40px !important;
+  }
+
+  .admin46-shell .admin-concept1-exact-hero {
+    min-height: 170px !important;
+    padding: 30px 32px !important;
+    margin-bottom: 28px !important;
+    border: 1px solid #354048 !important;
+    border-radius: 18px !important;
+    background:
+      linear-gradient(90deg, rgba(14,19,23,.97) 0%, rgba(17,23,28,.95) 56%, rgba(22,25,26,.84) 100%),
+      radial-gradient(circle at 88% 44%, rgba(229,161,120,.16), transparent 28rem) !important;
+    box-shadow: 0 22px 50px rgba(0,0,0,.28) !important;
+  }
+
+  .admin46-shell .admin-concept1-exact-hero-icon {
+    width: 76px !important;
+    height: 76px !important;
+    flex-basis: 76px !important;
+    border-radius: 15px !important;
+    border-color: rgba(229,161,120,.22) !important;
+    color: var(--admin37-bronze) !important;
+    background: linear-gradient(145deg, #40352f, #2d2b2a) !important;
+  }
+
+  .admin46-shell .admin-concept1-exact-hero h1 {
+    color: var(--admin37-ink) !important;
+    font-size: clamp(32px, 3.1vw, 46px) !important;
+    line-height: 1.04 !important;
+  }
+
+  .admin46-shell .admin-concept1-exact-hero p {
+    max-width: 670px !important;
+    color: var(--admin37-muted) !important;
+    font-size: 14px !important;
+    line-height: 1.55 !important;
+  }
+
+  .admin46-shell .admin-concept1-exact-kicker {
+    color: #a5aaae !important;
+    font-size: 9px !important;
+  }
+
+  .admin46-shell .admin-concept1-exact-hero-note {
+    color: #d99a73 !important;
+  }
+
+  .admin46-shell .admin37-featured-tools {
+    margin-bottom: 30px;
+  }
+
+  .admin46-shell .admin37-featured-grid {
+    display: grid;
+    gap: 14px;
+  }
+
+  .admin46-shell .admin37-featured-grid-primary {
+    grid-template-columns: repeat(2, minmax(0,1fr));
+    margin-bottom: 14px;
+  }
+
+  .admin46-shell .admin37-featured-grid-secondary {
+    grid-template-columns: repeat(3, minmax(0,1fr));
+  }
+
+  .admin46-shell button.admin37-featured-card,
+  .admin46-shell .app-content-shell button.admin37-featured-card,
+  .ui-v12-compact .admin46-shell button.admin37-featured-card {
+    min-height: 132px !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 18px !important;
+    padding: 20px !important;
+    border: 1px solid #3b464d !important;
+    border-radius: 15px !important;
+    background: linear-gradient(145deg, #242c31 0%, #1a2126 100%) !important;
+    color: inherit !important;
+    text-align: left !important;
+    box-shadow: 0 14px 30px rgba(0,0,0,.2) !important;
+  }
+
+  .admin46-shell button.admin37-featured-card:hover {
+    border-color: #755845 !important;
+    background: linear-gradient(145deg, #2a3238 0%, #20272c 100%) !important;
+    transform: translateY(-1px) !important;
+  }
+
+  .admin46-shell .admin37-featured-card .admin-concept1-exact-card-icon {
+    width: 60px !important;
+    height: 60px !important;
+    flex-basis: 60px !important;
+    border: 1px solid rgba(229,161,120,.2) !important;
+    border-radius: 13px !important;
+    color: var(--admin37-bronze) !important;
+    background: linear-gradient(145deg, #42362f, #30302f) !important;
+  }
+
+  .admin46-shell .admin37-featured-card .admin-concept1-exact-card-copy strong {
+    color: var(--admin37-ink) !important;
+    font-size: 15px !important;
+    line-height: 1.3 !important;
+  }
+
+  .admin46-shell .admin37-featured-card .admin-concept1-exact-card-copy small {
+    color: var(--admin37-muted) !important;
+    font-size: 12px !important;
+    line-height: 1.5 !important;
+  }
+
+  .admin46-shell .admin37-featured-card .admin-concept1-exact-card-arrow {
+    width: 32px !important;
+    height: 32px !important;
+    flex-basis: 32px !important;
+    border-color: var(--admin37-bronze-soft) !important;
+    color: var(--admin37-bronze) !important;
+  }
+
+  .admin46-shell .admin37-all-tools {
+    padding: 20px !important;
+    border: 1px solid var(--admin37-line-soft) !important;
+    border-radius: 18px !important;
+    background: linear-gradient(145deg, rgba(19,25,30,.96), rgba(13,18,22,.98)) !important;
+    box-shadow: 0 16px 34px rgba(0,0,0,.17) !important;
+  }
+
+  .admin46-shell .admin37-all-tools-heading {
+    display: flex;
+    align-items: end;
+    justify-content: space-between;
+    gap: 24px;
+    padding: 0 2px 14px;
+    margin-bottom: 14px;
+    border-bottom: 1px solid var(--admin37-line-soft);
+  }
+
+  .admin46-shell .admin37-all-tools-heading h2 {
+    margin: 0 !important;
+    color: var(--admin37-ink) !important;
+    font-size: 18px !important;
+    font-weight: 900 !important;
+  }
+
+  .admin46-shell .admin37-all-tools-heading p {
+    max-width: 560px;
+    margin: 0 !important;
+    color: #8f999f !important;
+    font-size: 11px !important;
+    font-weight: 650 !important;
+    line-height: 1.45 !important;
+    text-align: right;
+  }
+
+  .admin46-shell .admin37-all-tools-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0,1fr));
+    gap: 10px;
+  }
+
+  .admin46-shell button.admin37-tool-card,
+  .admin46-shell .app-content-shell button.admin37-tool-card,
+  .ui-v12-compact .admin46-shell button.admin37-tool-card {
+    width: 100% !important;
+    min-height: 72px !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 11px !important;
+    padding: 11px 12px !important;
+    border: 1px solid #313d44 !important;
+    border-radius: 12px !important;
+    background: #171f24 !important;
+    color: inherit !important;
+    text-align: left !important;
+    box-shadow: none !important;
+  }
+
+  .admin46-shell button.admin37-tool-card:hover {
+    border-color: #6f5545 !important;
+    background: #1d262c !important;
+  }
+
+  .admin46-shell .admin37-tool-card-icon {
+    width: 38px;
+    height: 38px;
+    flex: 0 0 38px;
+    display: grid;
+    place-items: center;
+    border: 1px solid rgba(229,161,120,.16);
+    border-radius: 10px;
+    color: var(--admin37-bronze);
+    background: #282625;
+  }
+
+  .admin46-shell .admin37-tool-card-copy {
+    min-width: 0;
+    flex: 1 1 auto;
+  }
+
+  .admin46-shell .admin37-tool-card-copy strong {
+    display: block;
+    color: #eef1f2 !important;
+    font-size: 12px !important;
+    font-weight: 900 !important;
+    line-height: 1.25 !important;
+  }
+
+  .admin46-shell .admin37-tool-card-copy small {
+    display: block;
+    margin-top: 3px;
+    overflow: hidden;
+    color: #88949b !important;
+    font-size: 9px !important;
+    font-weight: 800 !important;
+    line-height: 1.2 !important;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .admin46-shell .admin37-tool-card-arrow {
+    width: 26px;
+    height: 26px;
+    flex: 0 0 26px;
+    display: grid;
+    place-items: center;
+    border: 1px solid #6f5545;
+    border-radius: 999px;
+    color: var(--admin37-bronze);
+  }
+
+  /* Isolate every desktop subpage from the legacy compact/light admin CSS. */
+  .admin46-shell.admin-concept1-subpage-active {
+    max-width: 1180px !important;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+  }
+
+  .admin46-shell .admin-concept1-subpage-hero {
+    min-height: 146px !important;
+    padding: 24px 26px !important;
+    border: 1px solid #354048 !important;
+    border-radius: 18px !important;
+    background: linear-gradient(100deg, #11181d 0%, #151d22 65%, #1d1f20 100%) !important;
+    box-shadow: 0 18px 42px rgba(0,0,0,.24) !important;
+  }
+
+  .admin46-shell .admin-concept1-subpage-hero-icon {
+    width: 64px !important;
+    height: 64px !important;
+    flex-basis: 64px !important;
+    border-radius: 14px !important;
+    color: var(--admin37-bronze) !important;
+    background: linear-gradient(145deg, #40342f, #2d2b2a) !important;
+  }
+
+  .admin46-shell .admin-concept1-subpage-heading h2 {
+    color: var(--admin37-ink) !important;
+    font-size: 30px !important;
+  }
+
+  .admin46-shell .admin-concept1-subpage-heading p {
+    color: var(--admin37-muted) !important;
+    font-size: 13px !important;
+  }
+
+  .admin46-shell .admin-concept1-subpage-location {
+    border-color: #354149 !important;
+    background: #12191e !important;
+  }
+
+  .admin46-shell.admin-concept1-subpage-active #admin-content-start > div:not(.chaos-modal-backdrop),
+  .admin46-shell.admin-concept1-subpage-active #admin-content-start > section:not(.admin-concept1-subpage-hero) {
+    max-width: 1180px !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
+  }
+
+  .admin46-shell.admin-concept1-subpage-active #admin-content-start .chaos-card,
+  .admin46-shell.admin-concept1-subpage-active #admin-content-start .cockpit-panel,
+  .admin46-shell.admin-concept1-subpage-active #admin-content-start .admin45-content-card,
+  .admin46-shell.admin-concept1-subpage-active #admin-content-start .admin46-retention-panel,
+  .admin46-shell.admin-concept1-subpage-active #admin-content-start .admin46-retention-hero,
+  .admin46-shell.admin-concept1-subpage-active #admin-content-start .admin46-manual-workbench,
+  .admin46-shell.admin-concept1-subpage-active #admin-content-start .admin46-manual-index,
+  .admin46-shell.admin-concept1-subpage-active #admin-content-start .admin46-article-reader,
+  .admin46-shell.admin-concept1-subpage-active #admin-content-start .admin46-assistant,
+  .admin46-shell.admin-concept1-subpage-active #admin-content-start .admin46-playbook,
+  .admin46-shell.admin-concept1-subpage-active #admin-content-start .admin46-retention-action-card {
+    border: 1px solid #354149 !important;
+    border-radius: 16px !important;
+    background: linear-gradient(145deg, #20282e 0%, #171e23 100%) !important;
+    color: var(--admin37-ink) !important;
+    box-shadow: 0 12px 28px rgba(0,0,0,.18) !important;
+  }
+
+  .admin46-shell.admin-concept1-subpage-active #admin-content-start [class*="bg-[#0B0E11]"],
+  .admin46-shell.admin-concept1-subpage-active #admin-content-start [class*="bg-[#101418]"],
+  .admin46-shell.admin-concept1-subpage-active #admin-content-start [class*="bg-[#12161A]"],
+  .admin46-shell.admin-concept1-subpage-active #admin-content-start [class*="bg-[#151B20]"],
+  .admin46-shell.admin-concept1-subpage-active #admin-content-start [class*="bg-[#161C21]"],
+  .admin46-shell.admin-concept1-subpage-active #admin-content-start [class*="bg-[#1A2126]"] {
+    background: #151d22 !important;
+    background-image: none !important;
+  }
+
+  .admin46-shell.admin-concept1-subpage-active #admin-content-start h2 {
+    color: #f5f6f7 !important;
+    font-size: 22px !important;
+    line-height: 1.2 !important;
+  }
+
+  .admin46-shell.admin-concept1-subpage-active #admin-content-start h3 {
+    color: #eef1f2 !important;
+    font-size: 16px !important;
+    line-height: 1.25 !important;
+  }
+
+  .admin46-shell.admin-concept1-subpage-active #admin-content-start .text-base { font-size: 13px !important; }
+  .admin46-shell.admin-concept1-subpage-active #admin-content-start .text-sm { font-size: 12px !important; }
+  .admin46-shell.admin-concept1-subpage-active #admin-content-start .text-xs { font-size: 11px !important; }
+  .admin46-shell.admin-concept1-subpage-active #admin-content-start .text-\[10px\] { font-size: 10px !important; }
+  .admin46-shell.admin-concept1-subpage-active #admin-content-start .text-\[9px\] { font-size: 9px !important; }
+
+  .admin46-shell.admin-concept1-subpage-active #admin-content-start p,
+  .admin46-shell.admin-concept1-subpage-active #admin-content-start li {
+    line-height: 1.5 !important;
+  }
+
+  .admin46-shell.admin-concept1-subpage-active #admin-content-start button:not(.drawer-icon-button):not(.voice-fab):not(.voice-command-fab) {
+    min-height: 38px !important;
+    border-radius: 10px !important;
+  }
+
+  .admin46-shell.admin-concept1-subpage-active #admin-content-start input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]),
+  .admin46-shell.admin-concept1-subpage-active #admin-content-start select,
+  .admin46-shell.admin-concept1-subpage-active #admin-content-start textarea {
+    min-height: 40px !important;
+    border: 1px solid #40505a !important;
+    border-radius: 10px !important;
+    background: #10171c !important;
+    color: #f5f6f7 !important;
+    font-size: 12px !important;
+  }
+
+  .admin46-shell.admin-concept1-subpage-active #admin-content-start th {
+    background: #182127 !important;
+    color: #e1a47d !important;
+    font-size: 10px !important;
+  }
+
+  .admin46-shell.admin-concept1-subpage-active #admin-content-start td {
+    background: #12191e !important;
+    color: #dce1e4 !important;
+    font-size: 11px !important;
+  }
+
+  .admin46-shell .admin-concept1-metric-grid {
+    grid-template-columns: repeat(4, minmax(0,1fr)) !important;
+    gap: 12px !important;
+  }
+
+  .admin46-shell .admin-concept1-metric-grid-five {
+    grid-template-columns: repeat(5, minmax(0,1fr)) !important;
+  }
+}
+
+@media (min-width: 768px) and (max-width: 1100px) {
+  .admin46-shell .admin37-all-tools-grid { grid-template-columns: repeat(2, minmax(0,1fr)); }
+  .admin46-shell .admin-concept1-metric-grid,
+  .admin46-shell .admin-concept1-metric-grid-five { grid-template-columns: repeat(2, minmax(0,1fr)) !important; }
+}
+
+@media (max-width: 767px) {
+  .admin46-shell .admin37-featured-tools { margin-bottom: 14px; }
+  .admin46-shell .admin37-featured-grid {
+    display: grid;
+    grid-template-columns: minmax(0,1fr);
+    gap: 8px;
+  }
+  .admin46-shell .admin37-featured-grid-primary { margin-bottom: 8px; }
+  .admin46-shell .admin37-all-tools {
+    padding: 11px;
+    border: 1px solid #2f3941;
+    border-radius: 16px;
+    background: #11181d;
+  }
+  .admin46-shell .admin37-all-tools-heading {
+    display: block;
+    padding-bottom: 9px;
+    margin-bottom: 8px;
+    border-bottom: 1px solid #28333b;
+  }
+  .admin46-shell .admin37-all-tools-heading h2 {
+    margin: 0;
+    color: #f4f6f7;
+    font-size: 14px;
+    font-weight: 900;
+  }
+  .admin46-shell .admin37-all-tools-heading p {
+    margin: 4px 0 0;
+    color: #8f999f;
+    font-size: 9.5px;
+    line-height: 1.4;
+  }
+  .admin46-shell .admin37-all-tools-grid {
+    display: grid;
+    grid-template-columns: minmax(0,1fr);
+    gap: 7px;
+  }
+  .admin46-shell button.admin37-tool-card,
+  .admin46-shell .app-content-shell button.admin37-tool-card,
+  .ui-v12-compact .admin46-shell button.admin37-tool-card {
+    width: 100% !important;
+    min-height: 64px !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 10px !important;
+    padding: 9px 10px !important;
+    border: 1px solid #303b42 !important;
+    border-radius: 12px !important;
+    background: #171f24 !important;
+    text-align: left !important;
+  }
+  .admin46-shell .admin37-tool-card-icon {
+    width: 38px;
+    height: 38px;
+    flex: 0 0 38px;
+    display: grid;
+    place-items: center;
+    border: 1px solid rgba(229,161,120,.16);
+    border-radius: 10px;
+    color: #e5a178;
+    background: #282625;
+  }
+  .admin46-shell .admin37-tool-card-copy { min-width: 0; flex: 1; }
+  .admin46-shell .admin37-tool-card-copy strong { display:block; color:#f2f4f5; font-size:11px; font-weight:900; }
+  .admin46-shell .admin37-tool-card-copy small { display:block; margin-top:2px; color:#8c979e; font-size:8.5px; font-weight:800; }
+  .admin46-shell .admin37-tool-card-arrow {
+    width: 25px;
+    height: 25px;
+    flex: 0 0 25px;
+    display:grid;
+    place-items:center;
+    border:1px solid #6f5545;
+    border-radius:999px;
+    color:#e5a178;
+  }
+}

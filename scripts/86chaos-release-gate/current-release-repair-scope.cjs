@@ -1,8 +1,13 @@
 'use strict';
 
-const CURRENT_RELEASE_VERSION = '17.0.36';
-const CURRENT_RELEASE_CARRY_FORWARD_NOTE = '17.0.36 completes the System Administrator home directory, removes the desktop-breaking native tool selector, further unifies every admin subpage under Concept 1 styling, and preserves the 17.0.35 QA seed host repair, 17.0.34 drawer/PWA Back behavior, Spanish Phase 2, Schedule Builder coverage, presence retirement, and canonical testing-domain pin.';
+const CURRENT_RELEASE_VERSION = '17.0.37';
+const CURRENT_RELEASE_CARRY_FORWARD_NOTE = '17.0.37 isolates the desktop System Administrator from legacy compact CSS, restores the Concept 1 two-two-three featured-card hierarchy, keeps all 21 real admin pages reachable from the home directory, and preserves the 17.0.36 complete-directory repair, 17.0.35 QA seed host repair, 17.0.34 drawer/PWA Back behavior, Spanish Phase 2, Schedule Builder coverage, presence retirement, and canonical testing-domain pin.';
 const CURRENT_RELEASE_REPAIR_SCOPE = [
+  {
+    specPath: '86chaos-new-implementations/15-system-admin-desktop-concept1.spec.cjs',
+    fullSuitePath: '17.0.37 System Administrator desktop Concept 1 fidelity',
+    exactTestTitle: 'desktop keeps the two-two-three featured hierarchy and every admin page stays reachable',
+  },
   {
     specPath: '86chaos-new-implementations/14-system-admin-complete-directory-desktop.spec.cjs',
     fullSuitePath: '17.0.36 System Administrator complete directory and desktop repair',

@@ -7728,6 +7728,9 @@ Type RESTORE to continue.`);
   }));
   const adminTabs = localizedAdminTabGroups.flatMap(group => group.tabs.map(tab => ({ ...tab, group: group.title, groupSummary: group.summary })));
   const activeAdminTab = adminTabs.find(tab => tab.id === subTab) || adminTabs[0];
+  const featuredAdminTabIds = ['roles', 'push', 'security', 'forensics', 'support', 'deployment', 'history'];
+  const featuredAdminTabs = featuredAdminTabIds.map(id => adminTabs.find(tab => tab.id === id)).filter(Boolean);
+  const additionalAdminTabs = adminTabs.filter(tab => tab.id !== 'overview' && !featuredAdminTabIds.includes(tab.id));
   const adminTabIcons = {
     overview: Settings,
     health: Wrench,
@@ -8334,35 +8337,54 @@ Type RESTORE to continue.`);
             </div>
           </section>
 
-          <div className="admin-concept1-directory" data-testid="system-admin-complete-directory">
-            {localizedAdminTabGroups.map(group => {
-              const directoryTabs = group.tabs.filter(tab => tab.id !== 'overview');
-              if (!directoryTabs.length) return null;
-              return (
-                <section key={group.title} className={`admin-concept1-directory-group ${group.danger ? 'is-danger' : ''}`} data-testid="system-admin-directory-group">
-                  <div className="admin-concept1-directory-heading">
-                    <div>
-                      <div className="admin-concept1-exact-kicker">{group.title}</div>
-                      <h2>{group.title}</h2>
-                    </div>
-                    <p>{group.summary}</p>
-                  </div>
-                  <div className="admin-concept1-directory-grid">
-                    {directoryTabs.map(tab => {
-                      const Icon = adminTabIcons[tab.id] || Settings;
-                      return (
-                        <button key={tab.id} type="button" onClick={() => selectAdminTab(tab.id)} className="admin-concept1-exact-card" data-testid="system-admin-directory-card" data-admin-tab={tab.id}>
-                          <span className="admin-concept1-exact-card-icon"><Icon size={27}/></span>
-                          <span className="admin-concept1-exact-card-copy"><strong>{tab.label}</strong><small>{tab.intent}</small></span>
-                          <span className="admin-concept1-exact-card-arrow"><ChevronRight size={17}/></span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </section>
-              );
-            })}
-          </div>
+          <section className="admin37-featured-tools" aria-label="Primary System Administrator tools">
+            <div className="admin37-featured-grid admin37-featured-grid-primary">
+              {featuredAdminTabs.slice(0, 4).map(tab => {
+                const Icon = adminTabIcons[tab.id] || Settings;
+                return (
+                  <button key={tab.id} type="button" onClick={() => selectAdminTab(tab.id)} className="admin-concept1-exact-card admin37-featured-card" data-testid="system-admin-featured-card" data-admin-tab={tab.id}>
+                    <span className="admin-concept1-exact-card-icon"><Icon size={27}/></span>
+                    <span className="admin-concept1-exact-card-copy"><strong>{tab.label}</strong><small>{tab.intent}</small></span>
+                    <span className="admin-concept1-exact-card-arrow"><ChevronRight size={17}/></span>
+                  </button>
+                );
+              })}
+            </div>
+            <div className="admin37-featured-grid admin37-featured-grid-secondary">
+              {featuredAdminTabs.slice(4, 7).map(tab => {
+                const Icon = adminTabIcons[tab.id] || Settings;
+                return (
+                  <button key={tab.id} type="button" onClick={() => selectAdminTab(tab.id)} className="admin-concept1-exact-card admin37-featured-card" data-testid="system-admin-featured-card" data-admin-tab={tab.id}>
+                    <span className="admin-concept1-exact-card-icon"><Icon size={27}/></span>
+                    <span className="admin-concept1-exact-card-copy"><strong>{tab.label}</strong><small>{tab.intent}</small></span>
+                    <span className="admin-concept1-exact-card-arrow"><ChevronRight size={17}/></span>
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+
+          <section className="admin37-all-tools" data-testid="system-admin-complete-directory">
+            <div className="admin37-all-tools-heading">
+              <div>
+                <div className="admin-concept1-exact-kicker">COMPLETE DIRECTORY</div>
+                <h2>All System Administrator Tools</h2>
+              </div>
+              <p>Every internal System Administrator page stays available here without changing the Concept 1 desktop layout above.</p>
+            </div>
+            <div className="admin37-all-tools-grid">
+              {additionalAdminTabs.map(tab => {
+                const Icon = adminTabIcons[tab.id] || Settings;
+                return (
+                  <button key={tab.id} type="button" onClick={() => selectAdminTab(tab.id)} className="admin37-tool-card" data-testid="system-admin-directory-card" data-admin-tab={tab.id}>
+                    <span className="admin37-tool-card-icon"><Icon size={20}/></span>
+                    <span className="admin37-tool-card-copy"><strong>{tab.label}</strong><small>{tab.group}</small></span>
+                    <span className="admin37-tool-card-arrow"><ChevronRight size={15}/></span>
+                  </button>
+                );
+              })}
+            </div>
+          </section>
         </div>
       )}
 

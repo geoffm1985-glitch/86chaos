@@ -10,9 +10,10 @@ test.describe('17.0.36 System Administrator complete directory and desktop repai
     const text = await gotoTab(page, 'godmode', { settleMs: 2200, maxText: 70000 });
     if (/permission gate|not authorized|does not include/i.test(text)) return;
 
+    const featured = page.getByTestId('system-admin-featured-card');
     const cards = page.getByTestId('system-admin-directory-card');
-    await expect(cards).toHaveCount(21, { timeout: 15000 });
-    await expect(page.getByTestId('system-admin-directory-group')).toHaveCount(7);
+    await expect(featured).toHaveCount(7, { timeout: 15000 });
+    await expect(cards).toHaveCount(14, { timeout: 15000 });
 
     const homeOverflow = await page.getByTestId('system-admin-complete-directory').evaluate(el => ({ scrollWidth: el.scrollWidth, clientWidth: el.clientWidth }));
     expect(homeOverflow.scrollWidth).toBeLessThanOrEqual(homeOverflow.clientWidth + 2);

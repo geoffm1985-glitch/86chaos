@@ -1,16 +1,16 @@
 {
-  "version": "17.0.36",
-  "name": "86 Chaos 17.0.36",
-  "build": "17.0.36",
-  "label": "86 Chaos 17.0.36",
-  "releasedAt": "2026-09-23T21:30:00Z",
-  "releaseTitle": "Complete System Administrator Directory and Desktop Repair",
+  "version": "17.0.37",
+  "name": "86 Chaos 17.0.37",
+  "build": "17.0.37",
+  "label": "86 Chaos 17.0.37",
+  "releasedAt": "2026-09-24T01:05:00Z",
+  "releaseTitle": "Desktop System Administrator Concept 1 Isolation",
   "notes": [
-    "Expands the main System Administrator page from the incomplete seven-card subset to all 21 internal admin subpages, grouped by purpose in the same Concept 1 card language.",
-    "Removes the native all-tools select from admin subpages so desktop can no longer expand a giant browser selector over the page; subpages now show a stable current-location panel and one-click return to the complete admin directory.",
-    "Further unifies desktop and mobile subpage panels, tables, forms, diagnostic cards, and navigation surfaces under the same charcoal/bronze Concept 1 styling while preserving all existing tools and navigation behavior."
+    "Rebuilds the desktop System Administrator home around the original Concept 1 hierarchy: two primary cards, two primary cards, then three cards, instead of the grouped console layout that drifted away from the approved mockup.",
+    "Keeps every real System Administrator subpage reachable from the same home screen through a compact complete directory below the seven featured Concept 1 cards.",
+    "Adds a final desktop-only Concept 1 style layer that overrides legacy compact/light System Administrator CSS so desktop subpages keep the same charcoal, bronze, rounded-card visual language as the home page."
   ],
-  "title": "86 Chaos 17.0.36",
-  "summary": "Restores a complete System Administrator home directory, removes the desktop-breaking native tool selector, and keeps every admin subpage in one Concept 1 visual system.",
-  "description": "Shows all System Administrator tools on the main page in grouped Concept 1 cards, replaces the desktop-breaking all-tools native select with a stable location/home control, and tightens responsive styling so every internal admin page follows the same charcoal/bronze design language."
+  "title": "86 Chaos 17.0.37",
+  "summary": "Restores the approved Concept 1 desktop System Administrator layout while preserving complete access to all 21 admin pages.",
+  "description": "Uses the approved Concept 1 two-two-three featured-card desktop hierarchy, moves the remaining tools into a compact complete directory, and isolates desktop admin pages from legacy compact CSS that was overriding the new design."
 }

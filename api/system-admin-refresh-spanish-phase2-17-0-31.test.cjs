@@ -19,7 +19,8 @@ test('17.0.31 System Administrator concept 1 refresh keeps the same tools but us
   assert.match(source, /admin\.title/);
   assert.match(source, /admin\.concept\.subtitle/);
   assert.match(source, /admin-concept1-exact-hero/);
-  assert.match(source, /admin-concept1-directory-grid/);
+  assert.match(source, /admin37-featured-grid/);
+  assert.match(source, /admin37-all-tools-grid/);
 });
 
 test('17.0.31 Spanish Phase 2 extends translation coverage into the refreshed System Administrator tab', () => {
