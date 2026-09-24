@@ -7458,17 +7458,17 @@ Type RESTORE to continue.`);
       tabIndex={onClick ? 0 : undefined}
       onClick={onClick}
       onKeyDown={(event) => { if (onClick && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); onClick(); } }}
-      className={`w-full text-left cockpit-panel cockpit-grid rounded-xl p-3 min-h-[92px] flex flex-col justify-between ${onClick ? 'hover:border-[#D4A381]/50 hover:bg-[#12161A]/70 transition-all cursor-pointer' : ''}`}
+      className={`admin-concept1-metric admin-concept1-metric-${tone} ${hot ? 'is-hot' : ''} ${onClick ? 'is-clickable' : ''}`}
     >
-      <div className="flex items-center justify-between gap-2">
-        <span className="text-[9px] font-black uppercase tracking-widest text-slate-500 truncate">{label}</span>
-        <div className="flex items-center gap-2">
+      <div className="admin-concept1-metric-top">
+        <span className="admin-concept1-metric-label">{label}</span>
+        <div className="admin-concept1-metric-tools">
           <AdminInfoButton title={label} body={metricHelp} />
           <SignalPip tone={tone} label={hot ? 'HOT' : 'SYNC'} hot={hot} />
         </div>
       </div>
-      <div className="text-2xl font-black text-white leading-none mt-2">{adminSafeText(value, '—')}</div>
-      <div className="text-[10px] text-slate-400 font-bold mt-2 truncate">{adminSafeText(detail, '')}</div>
+      <div className="admin-concept1-metric-value">{adminSafeText(value, '—')}</div>
+      <div className="admin-concept1-metric-detail">{adminSafeText(detail, '')}</div>
     </div>
     );
   };
@@ -7728,6 +7728,31 @@ Type RESTORE to continue.`);
   }));
   const adminTabs = localizedAdminTabGroups.flatMap(group => group.tabs.map(tab => ({ ...tab, group: group.title, groupSummary: group.summary })));
   const activeAdminTab = adminTabs.find(tab => tab.id === subTab) || adminTabs[0];
+  const adminTabIcons = {
+    overview: Settings,
+    health: Wrench,
+    deployment: Globe,
+    manual: BookOpen,
+    forensics: Package,
+    retention: Calendar,
+    data: Repeat,
+    security: Shield,
+    admins: Users,
+    roles: Users,
+    tenants: Globe,
+    users: Users,
+    setup: Plus,
+    support: Bug,
+    'ai-usage': Sparkles,
+    automation: Sparkles,
+    push: Bell,
+    maintenance: Wrench,
+    v14: Shield,
+    history: ClipboardList,
+    ops: Send,
+    danger: Trash2,
+  };
+  const ActiveAdminTabIcon = adminTabIcons[activeAdminTab.id] || Settings;
   const activeAdminHelpText = `${activeAdminTab.label} lives under ${activeAdminTab.group}. ${activeAdminTab.intent || ''} ${localizedAdminTabGroups.find(group => group.title === activeAdminTab.group)?.helper || ''}`.trim();
 
   const selectAdminTab = (target = 'overview', scroll = true) => {
@@ -8277,7 +8302,7 @@ Type RESTORE to continue.`);
 {/* --- TAB: OVERVIEW --- */}
       {subTab !== 'overview' && (
         <section data-testid="system-admin-concept1-subpage" className="admin-concept1-subpage-hero">
-          <div className="admin-concept1-subpage-hero-icon"><Settings size={28}/></div>
+          <div className="admin-concept1-subpage-hero-icon"><ActiveAdminTabIcon size={28}/></div>
           <div className="admin-concept1-subpage-heading min-w-0 flex-1">
             <div className="admin-concept1-exact-kicker">86 CHAOS · {activeAdminTab.group}</div>
             <h2>{activeAdminTab.label}</h2>
@@ -8461,7 +8486,7 @@ Type RESTORE to continue.`);
       {subTab === 'push' && (
         <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
           {systemAdminPeopleState.error && <div className="bg-red-950/20 border border-red-800/50 text-red-100 rounded-xl p-3 text-xs font-bold">Authoritative platform user roster could not load: {systemAdminPeopleState.error}</div>}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <div className="admin-concept1-metric-grid">
             <CockpitMetric label="Connected Devices" value={totalPushDeviceCount} detail={`${pushEnabledUsers.length} user(s), ${allUsers.length - pushEnabledUsers.length} missing`} tone={pushEnabledUsers.length ? 'emerald' : 'amber'} />
             <CockpitMetric label="Stale Tokens" value={stalePushUsers.length} detail="30+ days since sync" tone={stalePushUsers.length ? 'amber' : 'emerald'} hot={stalePushUsers.length > 0} />
             <CockpitMetric label="Browser Permission" value={envReport.notifications} detail={`This admin device • ${envReport.host}`} tone={envReport.notifications === 'granted' ? 'emerald' : 'amber'} />
@@ -8673,7 +8698,7 @@ Type RESTORE to continue.`);
             {healthError && <div className="mt-4 bg-red-900/20 border border-red-900/50 rounded-xl p-3 text-xs font-bold text-red-200">{healthError}</div>}
           </div>
 
-          <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+          <div className="admin-concept1-metric-grid admin-concept1-metric-grid-five">
             <CockpitMetric label="Firestore Latency" value={healthSnapshot?.firestoreLatencyMs != null ? `${healthSnapshot.firestoreLatencyMs}ms` : healthSnapshot ? 'Unavailable' : 'Run Check'} detail={healthSnapshot?.firestoreStatus || 'Not tested yet'} tone={!healthSnapshot ? 'blue' : healthSnapshot.firestoreReadOk === false ? 'red' : healthSnapshot.firestoreReadOk !== true || healthSnapshot.firestoreLatencyMs == null ? 'amber' : healthSnapshot.firestoreLatencyMs > 1800 ? 'red' : healthSnapshot.firestoreLatencyMs > 800 ? 'amber' : 'emerald'} hot={!!healthSnapshot && healthSnapshot.firestoreLatencyMs > 1800} />
             <CockpitMetric label="Backup Storage" value={healthSnapshot?.storageUsage ? formatBackupBytes(healthSnapshot.storageUsage.totalBytes) : healthSnapshot ? 'Unavailable' : 'Run Check'} detail={healthSnapshot?.storageUsage ? `${healthSnapshot.storageUsage.totalFiles} Storage file(s) • ${healthSnapshot.storageUsage.backupFiles} backup(s)` : 'Storage totals require a successful server check.'} tone="blue" />
             <CockpitMetric label="API Routes" value={healthSnapshot ? healthSnapshot.apiRouteManifest?.length ? `${healthSnapshot.apiRouteManifest.filter(r => r.status === 'ready').length}/${healthSnapshot.apiRouteManifest.length}` : `${(healthSnapshot.apiChecks || []).filter(c => c.ok).length}/${(healthSnapshot.apiChecks || []).length}` : 'Run Check'} detail={healthSnapshot ? `${Math.round((healthSnapshot.apiChecks || []).reduce((sum, c) => sum + (c.ms || 0), 0) / Math.max(1, (healthSnapshot.apiChecks || []).length))}ms avg` : 'whoami / security / backups / route manifest'} tone={healthSnapshot && (healthSnapshot.apiChecks || []).some(c => !c.ok) ? 'amber' : 'emerald'} />
@@ -9307,7 +9332,7 @@ another@email.com"></textarea>
               </div>
             </div>
 
-            <div className="relative z-10 grid grid-cols-2 md:grid-cols-4 gap-2 mb-4">
+            <div className="admin-concept1-metric-grid relative z-10 mb-4">
               <CockpitMetric label="Permission Denied" value={permissionDeniedLogs.length} detail="Firestore rule hits" tone={permissionDeniedLogs.length ? 'red' : 'emerald'} hot={permissionDeniedLogs.length > 0} />
               <CockpitMetric label="Missing Owners" value={missingOwnerAccounts.length} detail="Owner email no user doc" tone={missingOwnerAccounts.length ? 'amber' : 'emerald'} hot={missingOwnerAccounts.length > 0} />
               <CockpitMetric label="No Restaurant ID" value={usersWithoutRestaurant.length} detail="Users orphaned from tenant" tone={usersWithoutRestaurant.length ? 'amber' : 'emerald'} hot={usersWithoutRestaurant.length > 0} />
@@ -9437,7 +9462,7 @@ another@email.com"></textarea>
       </Modal>
       {subTab === 'forensics' && (
         <div id="admin-forensics" className="space-y-4 animate-[slideIn_0.2s_ease-out]">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+          <div className="admin-concept1-metric-grid">
             <CockpitMetric label="Audit Logs" value={auditLogs.length} detail="Recent global records" tone="blue" />
             <CockpitMetric label="Ghost Actions" value={ghostAuditLogs.length} detail="Support/possess edits" tone={ghostAuditLogs.length ? 'purple' : 'emerald'} />
             <CockpitMetric label="Destructive" value={destructiveAuditLogs.length} detail="Deletes, nukes, locks" tone={destructiveAuditLogs.length ? 'amber' : 'emerald'} hot={destructiveAuditLogs.length > 0} />
@@ -9448,7 +9473,7 @@ another@email.com"></textarea>
             <CockpitMetric label="Backup Status" value={backupStatusLabel} detail={backupDetail} tone={backupIsStale ? 'amber' : 'emerald'} hot={backupIsStale} />
           </div>
 
-          <div className={`${T.card} overflow-hidden border-purple-900/30`}>
+          <div className={`${T.card} admin-concept1-session-timeline overflow-hidden border-purple-900/30`}>
             <div className={`bg-[#12161A] p-4 border-b ${T.border} flex flex-col sm:flex-row sm:items-center justify-between gap-3`}>
               <div>
                 <h3 className="font-black text-sm text-white flex items-center gap-2"><Shield className="text-purple-400" size={18}/> Administrator Session Timeline</h3>
@@ -9456,10 +9481,10 @@ another@email.com"></textarea>
               </div>
               <span className="text-[9px] font-black uppercase tracking-widest text-purple-300 bg-purple-900/20 border border-purple-900/50 rounded-lg px-2 py-1">{adminAuditSessionGroups.length} session group(s)</span>
             </div>
-            <div className="max-h-[420px] overflow-y-auto custom-scrollbar divide-y divide-[#2A353D]">
+            <div className="admin-concept1-timeline-list custom-scrollbar">
               {adminAuditSessionGroups.length === 0 && <div className="p-6 text-center text-xs font-bold text-slate-500">No administrator actions found yet.</div>}
               {adminAuditSessionGroups.map(group => (
-                <div key={group.id} className="p-4 space-y-3">
+                <div key={group.id} className="admin-concept1-timeline-group space-y-3">
                   <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2">
                     <div>
                       <div className="font-black text-white text-sm">{group.actor}</div>
@@ -9472,7 +9497,7 @@ another@email.com"></textarea>
                   </div>
                   <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-2">
                     {group.logs.slice(0, 6).map(log => (
-                      <div key={log.id} className="bg-[#0B0E11] border border-[#2A353D] rounded-lg p-2">
+                      <div key={log.id} className="admin-concept1-timeline-event">
                         <div className="flex items-center justify-between gap-2"><span className="text-[9px] font-black uppercase tracking-widest text-blue-300 truncate">{adminSafeText(log.action, 'UNKNOWN')}</span><span className="text-[8px] text-slate-600 font-bold whitespace-nowrap">{formatBackupTimestamp(log.timestamp || log.time || log.createdAt)}</span></div>
                         <div className="text-[10px] font-bold text-slate-400 mt-1 line-clamp-2">{adminSafeText(log.details || log.target, 'No details')}</div>
                       </div>

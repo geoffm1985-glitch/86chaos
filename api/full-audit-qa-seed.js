@@ -1,4 +1,5 @@
 const { admin, initAdmin, authorize, readBody, writeAudit, clean, norm, memberDocId } = require('./_chaos-admin');
+const { normalizeRequestHost, isProductionQaHost } = require('./_qa-host-safety.cjs');
 
 const TESTING_PROJECT_ID = 'chaos-test-d1601';
 const QA_PREFIX = '86 Chaos Release Gate QA ';
@@ -34,11 +35,11 @@ function validateBase({ req, auth, body, projectId }) {
   const restaurantId = safeId(body.restaurantId || '', 180);
   const workspaceName = clean(body.workspaceName || body.restaurantName || '', '');
   const expectedProjectId = clean(body.expectedProjectId || TESTING_PROJECT_ID, '');
-  const host = clean(req.headers['x-forwarded-host'] || req.headers.host || '', '').toLowerCase();
+  const host = normalizeRequestHost(req.headers['x-forwarded-host'] || req.headers.host || '');
   if (!auth.isSuperAdmin) errors.push('System Administrator authority is required.');
   if (projectId !== TESTING_PROJECT_ID) errors.push(`QA seed route only runs against ${TESTING_PROJECT_ID}; current project is ${projectId || '(missing)'}.`);
   if (expectedProjectId !== TESTING_PROJECT_ID) errors.push(`expectedProjectId must be ${TESTING_PROJECT_ID}.`);
-  if (/app\.86chaos\.com|(^|\.)86chaos\.com/i.test(host)) errors.push('QA seed route refused a production host.');
+  if (isProductionQaHost(host)) errors.push('QA seed route refused a production host.');
   if (!isSafeRunId(runId)) errors.push('runId is missing or unsafe.');
   if (!restaurantId) errors.push('restaurantId is missing.');
   if (workspaceName && !isSafeQaWorkspaceName(workspaceName, runId)) errors.push(`workspaceName must be exactly "${QA_PREFIX}${runId}".`);
@@ -539,6 +540,9 @@ module.exports = async function handler(req, res) {
 
 module.exports.config = { maxDuration: 300 };
 module.exports.validateDocuments = validateDocuments;
+module.exports.validateBase = validateBase;
+module.exports.normalizeRequestHost = normalizeRequestHost;
+module.exports.isProductionQaHost = isProductionQaHost;
 module.exports.cleanupCurrentRunDocumentVaultStorage = cleanupCurrentRunDocumentVaultStorage;
 module.exports.storageObjectSafetyErrors = storageObjectSafetyErrors;
 module.exports.documentVaultPrefix = documentVaultPrefix;

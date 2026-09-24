@@ -6177,3 +6177,366 @@ span.bg-red-500.text-white,
     box-shadow: none !important;
   }
 }
+
+/* 17.0.35 System Administrator subpage visual rebuild */
+.admin46-shell.admin-concept1-subpage-active #admin-content-start {
+  --admin35-panel: linear-gradient(145deg, #242c32 0%, #1b2228 100%);
+  --admin35-panel-soft: linear-gradient(145deg, #1d252b 0%, #151c22 100%);
+  --admin35-border: #39434a;
+  --admin35-border-soft: #303b43;
+  --admin35-bronze: #e6a176;
+  --admin35-bronze-soft: rgba(212, 163, 129, .12);
+  --admin35-muted: #aab1b7;
+}
+
+/* Reuse the Concept 1 card language across every legacy admin surface. */
+.admin46-shell.admin-concept1-subpage-active #admin-content-start .chaos-card,
+.admin46-shell.admin-concept1-subpage-active #admin-content-start .cockpit-panel,
+.admin46-shell.admin-concept1-subpage-active #admin-content-start .admin45-content-card,
+.admin46-shell.admin-concept1-subpage-active #admin-content-start .admin45-number-card,
+.admin46-shell.admin-concept1-subpage-active #admin-content-start .admin46-retention-panel,
+.admin46-shell.admin-concept1-subpage-active #admin-content-start .admin46-retention-hero,
+.admin46-shell.admin-concept1-subpage-active #admin-content-start .admin46-manual-workbench,
+.admin46-shell.admin-concept1-subpage-active #admin-content-start .admin46-manual-index,
+.admin46-shell.admin-concept1-subpage-active #admin-content-start .admin46-article-reader,
+.admin46-shell.admin-concept1-subpage-active #admin-content-start .admin46-assistant,
+.admin46-shell.admin-concept1-subpage-active #admin-content-start .admin46-playbook,
+.admin46-shell.admin-concept1-subpage-active #admin-content-start .admin46-retention-action-card {
+  border: 1px solid var(--admin35-border) !important;
+  border-radius: 16px !important;
+  background: var(--admin35-panel) !important;
+  box-shadow: 0 12px 26px rgba(0,0,0,.16) !important;
+}
+
+.admin46-shell.admin-concept1-subpage-active #admin-content-start .chaos-card .chaos-card,
+.admin46-shell.admin-concept1-subpage-active #admin-content-start .cockpit-panel .chaos-card,
+.admin46-shell.admin-concept1-subpage-active #admin-content-start .admin45-content-card .chaos-card,
+.admin46-shell.admin-concept1-subpage-active #admin-content-start [class*="bg-[#0B0E11]"],
+.admin46-shell.admin-concept1-subpage-active #admin-content-start [class*="bg-[#12161A]"] {
+  border-color: var(--admin35-border-soft) !important;
+  background: #151c22 !important;
+}
+
+.admin46-shell.admin-concept1-subpage-active #admin-content-start > .space-y-4,
+.admin46-shell.admin-concept1-subpage-active #admin-content-start > .space-y-6,
+.admin46-shell.admin-concept1-subpage-active #admin-content-start > [class*="space-y-4"],
+.admin46-shell.admin-concept1-subpage-active #admin-content-start > [class*="space-y-6"] {
+  max-width: 1180px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.admin46-shell.admin-concept1-subpage-active #admin-content-start h2,
+.admin46-shell.admin-concept1-subpage-active #admin-content-start h3,
+.admin46-shell.admin-concept1-subpage-active #admin-content-start h4 {
+  color: #fff !important;
+  letter-spacing: -.018em !important;
+}
+.admin46-shell.admin-concept1-subpage-active #admin-content-start p {
+  line-height: 1.55;
+}
+.admin46-shell.admin-concept1-subpage-active #admin-content-start [class~="uppercase"][class~="tracking-widest"] {
+  letter-spacing: .095em !important;
+}
+
+/* Metrics now behave like real cards instead of cramped diagnostic tiles. */
+.admin46-shell .admin-concept1-metric-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.admin46-shell .admin-concept1-metric-grid-five {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.admin46-shell .admin-concept1-metric {
+  position: relative;
+  min-width: 0;
+  min-height: 128px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 16px 16px 15px;
+  overflow: hidden;
+  border: 1px solid #39434a;
+  border-radius: 16px;
+  background: linear-gradient(145deg, #242c32 0%, #1b2228 100%);
+  box-shadow: 0 10px 24px rgba(0,0,0,.15);
+}
+.admin46-shell .admin-concept1-metric::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 16px;
+  right: 16px;
+  height: 2px;
+  border-radius: 99px;
+  background: rgba(212,163,129,.48);
+}
+.admin46-shell .admin-concept1-metric.is-clickable {
+  cursor: pointer;
+  transition: transform .16s ease, border-color .16s ease, background .16s ease;
+}
+.admin46-shell .admin-concept1-metric.is-clickable:hover {
+  transform: translateY(-1px);
+  border-color: #705744;
+  background: linear-gradient(145deg, #293139 0%, #20272d 100%);
+}
+.admin46-shell .admin-concept1-metric.is-hot::before { background: #dca54a; }
+.admin46-shell .admin-concept1-metric-red.is-hot::before { background: #db6a6a; }
+.admin46-shell .admin-concept1-metric-blue::before { background: #72aef0; }
+.admin46-shell .admin-concept1-metric-purple::before { background: #bc8bea; }
+.admin46-shell .admin-concept1-metric-emerald::before { background: #54c79a; }
+.admin46-shell .admin-concept1-metric-top {
+  min-width: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.admin46-shell .admin-concept1-metric-label {
+  min-width: 0;
+  color: #e5e9ec;
+  font-size: 11px;
+  font-weight: 900;
+  line-height: 1.35;
+  letter-spacing: .085em;
+  text-transform: uppercase;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.admin46-shell .admin-concept1-metric-tools {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  white-space: nowrap;
+}
+.admin46-shell .admin-concept1-metric-tools > button {
+  width: 28px !important;
+  height: 28px !important;
+  min-width: 28px !important;
+  min-height: 28px !important;
+  border-color: #47535b !important;
+  background: #141b20 !important;
+  color: #c7cdd1 !important;
+}
+.admin46-shell .admin-concept1-metric-tools .inline-flex {
+  flex-wrap: nowrap !important;
+  white-space: nowrap !important;
+  letter-spacing: .07em !important;
+}
+.admin46-shell .admin-concept1-metric-value {
+  margin-top: 18px;
+  color: #fff;
+  font-size: clamp(28px, 2.5vw, 38px);
+  font-weight: 900;
+  line-height: 1;
+  letter-spacing: -.025em;
+  overflow-wrap: anywhere;
+}
+.admin46-shell .admin-concept1-metric-detail {
+  margin-top: 12px;
+  color: #abb3b9;
+  font-size: 11px;
+  font-weight: 650;
+  line-height: 1.45;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+/* Make major panel headers read like the main Concept 1 cards. */
+.admin46-shell.admin-concept1-subpage-active #admin-content-start .chaos-card > :first-child,
+.admin46-shell.admin-concept1-subpage-active #admin-content-start .admin45-content-card > :first-child {
+  border-color: #303b43 !important;
+}
+.admin46-shell.admin-concept1-subpage-active #admin-content-start .chaos-card > :first-child h2,
+.admin46-shell.admin-concept1-subpage-active #admin-content-start .chaos-card > :first-child h3,
+.admin46-shell.admin-concept1-subpage-active #admin-content-start .admin45-content-card > :first-child h2,
+.admin46-shell.admin-concept1-subpage-active #admin-content-start .admin45-content-card > :first-child h3 {
+  font-size: 16px !important;
+  font-weight: 900 !important;
+}
+
+/* Form controls and buttons share the same rounded treatment as the main screen. */
+.admin46-shell.admin-concept1-subpage-active #admin-content-start button:not(.drawer-icon-button):not(.voice-fab):not(.voice-command-fab),
+.admin46-shell.admin-concept1-subpage-active #admin-content-start .admin45-primary-action,
+.admin46-shell.admin-concept1-subpage-active #admin-content-start .admin45-secondary-action,
+.admin46-shell.admin-concept1-subpage-active #admin-content-start .admin46-primary,
+.admin46-shell.admin-concept1-subpage-active #admin-content-start .admin46-secondary {
+  border-radius: 11px !important;
+}
+.admin46-shell.admin-concept1-subpage-active #admin-content-start input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]),
+.admin46-shell.admin-concept1-subpage-active #admin-content-start select,
+.admin46-shell.admin-concept1-subpage-active #admin-content-start textarea,
+.admin46-shell.admin-concept1-subpage-active #admin-content-start .admin46-input,
+.admin46-shell.admin-concept1-subpage-active #admin-content-start .admin46-textarea {
+  border: 1px solid #3a454d !important;
+  border-radius: 11px !important;
+  background: #12191f !important;
+  color: #f4f6f7 !important;
+}
+
+/* Forensics timeline: card groups instead of one long debug ledger. */
+.admin46-shell .admin-concept1-session-timeline {
+  overflow: hidden;
+}
+.admin46-shell .admin-concept1-timeline-list {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  max-height: 520px;
+  overflow-y: auto;
+}
+.admin46-shell .admin-concept1-timeline-group {
+  padding: 14px;
+  border: 1px solid #303b43;
+  border-radius: 14px;
+  background: linear-gradient(145deg, #1c242a, #151c22);
+}
+.admin46-shell .admin-concept1-timeline-event {
+  border: 1px solid #303b43 !important;
+  border-radius: 11px !important;
+  background: #12191f !important;
+  padding: 10px !important;
+}
+
+/* The subpage header now mirrors the exact-home hero instead of looking like a toolbar. */
+.admin46-shell .admin-concept1-subpage-hero {
+  min-height: 154px;
+  padding: 25px 28px;
+  border-radius: 20px;
+  background:
+    linear-gradient(90deg, rgba(12,17,21,.95) 0%, rgba(16,22,27,.92) 52%, rgba(19,23,25,.74) 100%),
+    radial-gradient(circle at 90% 42%, rgba(212,163,129,.14), transparent 29rem);
+}
+.admin46-shell .admin-concept1-subpage-hero-icon {
+  width: 68px;
+  height: 68px;
+  flex-basis: 68px;
+  border-radius: 15px;
+}
+.admin46-shell .admin-concept1-subpage-heading h2 {
+  font-size: clamp(28px, 2.8vw, 40px);
+}
+.admin46-shell .admin-concept1-subpage-actions {
+  padding: 9px;
+  border: 1px solid #303b43;
+  border-radius: 14px;
+  background: rgba(15,21,26,.82);
+}
+
+@media (max-width: 1100px) {
+  .admin46-shell .admin-concept1-metric-grid,
+  .admin46-shell .admin-concept1-metric-grid-five {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 767px) {
+  .admin46-shell.admin-concept1-subpage-active {
+    padding-left: 10px !important;
+    padding-right: 10px !important;
+  }
+  .admin46-shell .admin-concept1-subpage-hero {
+    grid-template-columns: 54px minmax(0,1fr);
+    gap: 13px;
+    padding: 15px 14px;
+    margin-bottom: 12px;
+    border-radius: 18px;
+  }
+  .admin46-shell .admin-concept1-subpage-hero-icon {
+    width: 54px;
+    height: 54px;
+    flex-basis: 54px;
+  }
+  .admin46-shell .admin-concept1-subpage-heading h2 {
+    font-size: 21px;
+    line-height: 1.15;
+  }
+  .admin46-shell .admin-concept1-subpage-heading p {
+    font-size: 11px;
+    line-height: 1.45;
+  }
+  .admin46-shell .admin-concept1-subpage-actions {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: minmax(0,1fr) 42px;
+    gap: 8px;
+    padding: 8px;
+    margin-top: 2px;
+  }
+  .admin46-shell .admin-concept1-subpage-actions > button:not(.admin-concept1-subpage-home) {
+    width: 42px !important;
+    height: 42px !important;
+    min-width: 42px !important;
+    min-height: 42px !important;
+  }
+  .admin46-shell .admin-concept1-subpage-select {
+    min-height: 42px;
+    font-size: 12px;
+  }
+  .admin46-shell button.admin-concept1-subpage-home,
+  .admin46-shell .app-content-shell button.admin-concept1-subpage-home,
+  .ui-v12-compact .admin46-shell button.admin-concept1-subpage-home {
+    grid-column: 1 / -1;
+    min-height: 44px !important;
+    font-size: 11px !important;
+  }
+
+  .admin46-shell .admin-concept1-metric-grid,
+  .admin46-shell .admin-concept1-metric-grid-five {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 9px;
+  }
+  .admin46-shell .admin-concept1-metric {
+    min-height: 112px;
+    padding: 14px;
+    border-radius: 14px;
+    box-shadow: none;
+  }
+  .admin46-shell .admin-concept1-metric::before {
+    left: 14px;
+    right: 14px;
+  }
+  .admin46-shell .admin-concept1-metric-label {
+    font-size: 11px;
+    line-height: 1.35;
+  }
+  .admin46-shell .admin-concept1-metric-value {
+    margin-top: 14px;
+    font-size: 29px;
+  }
+  .admin46-shell .admin-concept1-metric-detail {
+    margin-top: 9px;
+    font-size: 11px;
+  }
+
+  /* Phone layouts should breathe. Two- and three-column admin forms/stat groups become one column. */
+  .admin46-shell.admin-concept1-subpage-active #admin-content-start .grid.grid-cols-2,
+  .admin46-shell.admin-concept1-subpage-active #admin-content-start .grid.grid-cols-3 {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+  .admin46-shell.admin-concept1-subpage-active #admin-content-start .chaos-card,
+  .admin46-shell.admin-concept1-subpage-active #admin-content-start .cockpit-panel,
+  .admin46-shell.admin-concept1-subpage-active #admin-content-start .admin45-content-card,
+  .admin46-shell.admin-concept1-subpage-active #admin-content-start .admin46-retention-panel,
+  .admin46-shell.admin-concept1-subpage-active #admin-content-start .admin46-manual-workbench,
+  .admin46-shell.admin-concept1-subpage-active #admin-content-start .admin46-manual-index,
+  .admin46-shell.admin-concept1-subpage-active #admin-content-start .admin46-article-reader,
+  .admin46-shell.admin-concept1-subpage-active #admin-content-start .admin46-assistant,
+  .admin46-shell.admin-concept1-subpage-active #admin-content-start .admin46-playbook {
+    border-radius: 14px !important;
+    box-shadow: none !important;
+  }
+  .admin46-shell.admin-concept1-subpage-active #admin-content-start button:not(.drawer-icon-button):not(.voice-fab):not(.voice-command-fab) {
+    min-height: 42px;
+  }
+  .admin46-shell .admin-concept1-timeline-list {
+    padding: 9px;
+    max-height: 480px;
+  }
+  .admin46-shell .admin-concept1-timeline-group {
+    padding: 12px;
+    border-radius: 13px;
+  }
+}

@@ -1,8 +1,13 @@
 'use strict';
 
-const CURRENT_RELEASE_VERSION = '17.0.34';
-const CURRENT_RELEASE_CARRY_FORWARD_NOTE = '17.0.34 unifies every System Administrator subpage with Concept 1 styling, resets the drawer System Administrator route to the seven-card home, adds one-page-back plus double-back PWA exit behavior, and preserves Spanish Phase 2, Schedule Builder coverage, presence retirement, and the testing.86chaos.com delta-runner pin.';
+const CURRENT_RELEASE_VERSION = '17.0.35';
+const CURRENT_RELEASE_CARRY_FORWARD_NOTE = '17.0.35 makes every System Administrator subpage substantially more readable in the Concept 1 visual language, repairs the full-audit QA seed host guard for testing.86chaos.com, and preserves the 17.0.34 drawer reset/PWA Back behavior, Spanish Phase 2, Schedule Builder coverage, presence retirement, and canonical testing-domain pin.';
 const CURRENT_RELEASE_REPAIR_SCOPE = [
+  {
+    specPath: '86chaos-new-implementations/13-system-admin-subpage-polish.spec.cjs',
+    fullSuitePath: '17.0.35 System Administrator subpage polish',
+    exactTestTitle: 'admin tools use readable Concept 1 subpages and mobile metrics no longer collapse into cramped two-column tiles',
+  },
   {
     specPath: '86chaos-new-implementations/12-system-admin-subpages-back-navigation.spec.cjs',
     fullSuitePath: '17.0.34 System Administrator subpages and navigation',

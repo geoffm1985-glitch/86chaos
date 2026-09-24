@@ -1,16 +1,16 @@
 {
-  "version": "17.0.34",
-  "name": "86 Chaos 17.0.34",
-  "build": "17.0.34",
-  "label": "86 Chaos 17.0.34",
+  "version": "17.0.35",
+  "name": "86 Chaos 17.0.35",
+  "build": "17.0.35",
+  "label": "86 Chaos 17.0.35",
   "releasedAt": "2026-09-23T21:30:00Z",
-  "releaseTitle": "System Administrator Subpage Unification and PWA Back Navigation",
+  "releaseTitle": "System Administrator Subpage Polish and QA Seed Host Repair",
   "notes": [
-    "Restyles every System Administrator subpage with the same Concept 1 charcoal cards, bronze accents, headers, spacing, inputs, buttons, and mobile treatment as the seven-card home.",
-    "Tapping System Administrator in the drawer always resets the internal admin view to the main seven-card page, even when already inside an admin subpage.",
-    "On the installed PWA, the first Back press returns to the previous in-app page; pressing Back again within two seconds exits through the normal Android/PWA history edge."
+    "Reworks System Administrator subpages with larger Concept 1 metric cards, active-tool icons, consistent charcoal/bronze surfaces, and single-column mobile diagnostic layouts instead of cramped two-column tiles.",
+    "Restyles legacy admin panels, timelines, forms, and support/backup surfaces so internal tools visually match the main System Administrator page more closely on desktop and mobile.",
+    "Fixes /api/full-audit-qa-seed host classification so testing.86chaos.com is allowed while 86chaos.com, app.86chaos.com, staging/custom 86chaos subdomains, and production Firebase remain blocked."
   ],
-  "title": "86 Chaos 17.0.34",
-  "summary": "Unifies every System Administrator subpage with Concept 1 styling and repairs drawer/back navigation.",
-  "description": "Applies the approved charcoal/bronze Concept 1 visual system across every System Administrator internal page, makes the drawer System Administrator button always return to the seven-card home, and adds one-level previous-page plus double-back-to-exit behavior for the installed PWA."
+  "title": "86 Chaos 17.0.35",
+  "summary": "Rebuilds System Administrator subtabs into the Concept 1 visual language and fixes QA seeding on testing.86chaos.com.",
+  "description": "Makes every System Administrator internal page substantially more readable on mobile and desktop with the same spacious charcoal/bronze card language as the main admin page, while correcting the full-audit QA seed host guard so testing.86chaos.com is treated as testing without weakening production protection."
 }
