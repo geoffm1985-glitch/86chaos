@@ -1,17 +1,24 @@
 {
-  "version": "17.1.0",
-  "name": "86 Chaos 17.1.0",
-  "build": "17.1.0",
-  "label": "86 Chaos 17.1.0",
-  "releasedAt": "2026-09-24T03:30:00Z",
-  "releaseTitle": "Full-App Concept 1 Responsive Redesign",
+  "version": "17.1.1",
+  "name": "86 Chaos 17.1.1",
+  "build": "17.1.1",
+  "label": "86 Chaos 17.1.1",
+  "releasedAt": "2026-09-24T04:20:00Z",
+  "releaseTitle": "Full-App Concept 1 Deep Workflow Redesign",
   "notes": [
     "Introduces a shared app-wide Concept 1 design system with charcoal command-center surfaces, bronze accents, unified controls, desktop navigation rail, responsive command header, and mobile bottom navigation.",
     "Migrates the application shell so existing real 86 Chaos tabs and subpages inherit the same desktop/mobile visual language without adding Orders & Tickets.",
     "Repairs the System Administrator 21-tool directory contract while preserving the seven featured cards and established PWA Back behavior.",
     "Adds deployed desktop/mobile layout regressions for width, overflow, touch targets, navigation geometry, and removal of the unintended Orders & Tickets entry."
   ],
-  "title": "86 Chaos 17.1.0",
-  "summary": "App-wide Concept 1 visual baseline with responsive desktop/mobile navigation and shared component styling.",
-  "description": "Rebuilds the presentation layer around the approved charcoal-and-bronze Concept 1 while preserving mature application logic, access controls, testing-domain boundaries, Spanish preferences, and recent schedule/admin repairs."
+  "title": "86 Chaos 17.1.1",
+  "summary": "Complete Concept 1 deep-workflow presentation migration across the real 86 Chaos routes, with the Vercel 17.1 import failure repaired.",
+  "description": "Extends the approved charcoal-and-bronze Concept 1 from the shell into every routed workflow, deep cards, forms, tables, tabs, schedule surfaces and mobile layouts while preserving the existing 86 Chaos branding and mature application logic.",
+  "highlights": [
+    "Applies the Concept 1 route frame and deep visual system across every real routed tab and subtab without adding Orders & Tickets.",
+    "Normalizes desktop widths, page cards, forms, tables, tabs, Schedule Builder surfaces, Inventory, Financials, Staff, Help, Settings, maintenance and administrative workflows.",
+    "Preserves the existing 86 Chaos icon and wordmark assets in the redesigned shell and mobile navigation.",
+    "Repairs the failed Vercel 17.1 build caused by the incompatible CircleHelp Lucide export by using the pinned-version-compatible HelpCircle export.",
+    "Adds source-contract and deployed desktop/mobile route-layout regressions for the deep migration."
+  ]
 }

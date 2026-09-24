@@ -1,11 +1,16 @@
 'use strict';
 
-const CURRENT_RELEASE_VERSION = '17.1.0';
-const CURRENT_RELEASE_CARRY_FORWARD_NOTE = '17.1.0 establishes the app-wide Concept 1 responsive visual baseline, repairs the 21-tool System Administrator directory contract, and preserves PWA Back behavior, Spanish support, schedule repairs, presence retirement, testing-domain safety, and production security boundaries.';
+const CURRENT_RELEASE_VERSION = '17.1.1';
+const CURRENT_RELEASE_CARRY_FORWARD_NOTE = '17.1.1 completes the Concept 1 deep workflow migration across the real application routes, preserves the 86 Chaos brand assets, repairs the Vercel Lucide named-import failure, and carries forward the System Administrator, PWA Back, Spanish, schedule, presence-retirement, testing-domain, and production security safeguards.';
 const CURRENT_RELEASE_REPAIR_SCOPE = [
   {
+    specPath: '86chaos-new-implementations/18-app-wide-deep-route-layout.spec.cjs',
+    fullSuitePath: '17.1.1 Concept 1 deep route migration',
+    exactTestTitle: 'every representative real tab keeps the redesigned route geometry on desktop and mobile',
+  },
+  {
     specPath: '86chaos-new-implementations/17-app-wide-concept1-layout.spec.cjs',
-    fullSuitePath: '17.1.0 app-wide Concept 1 responsive shell',
+    fullSuitePath: '17.1.1 app-wide Concept 1 responsive shell',
     exactTestTitle: 'shared desktop/mobile shell keeps real application content wide, touchable, and overflow-safe',
   },
   {

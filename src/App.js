@@ -3670,9 +3670,14 @@ return (
           surfaceContext={`${activeTabState}${['schedule','published'].includes(activeTabState) ? `/${activeScheduleSubTab}` : ''}`}
         >
           <React.Suspense fallback={<RouteLoading />} >
-            <React.Fragment key={`${activeTabState}-${liveAppUser?.restaurantId || 'no-restaurant'}-${surfaceRetryKey}`}>
+            <div
+              key={`${activeTabState}-${liveAppUser?.restaurantId || 'no-restaurant'}-${surfaceRetryKey}`}
+              className={`concept17-route-page concept17-route-${String(activeTabState || 'today').replace(/[^a-z0-9_-]/gi, '-')}`}
+              data-concept-route={activeTabState}
+              data-concept-subroute={['schedule','published'].includes(activeTabState) ? activeScheduleSubTab : ''}
+            >
               {renderMainContent()}
-            </React.Fragment>
+            </div>
           </React.Suspense>
         </AppSurfaceErrorBoundary>
       </main>

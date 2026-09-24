@@ -5,7 +5,7 @@ import {
   CalendarClock,
   ChefHat,
   ChevronRight,
-  CircleHelp,
+  HelpCircle,
   ClipboardCheck,
   Home,
   MessageSquare,
@@ -28,7 +28,7 @@ const ICONS = {
   messages: MessageSquare,
   godmode: Settings,
   settings: Settings,
-  help: CircleHelp,
+  help: HelpCircle,
 };
 
 const NavIcon = ({ id, size = 18 }) => {

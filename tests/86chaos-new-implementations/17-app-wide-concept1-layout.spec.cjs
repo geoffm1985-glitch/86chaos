@@ -2,7 +2,7 @@
 const { test, expect } = require('@playwright/test');
 const { ownerLikeCreds, creds, requireCreds, login, gotoTab } = require('../86chaos-full-audit/utils/audit-helpers.cjs');
 
-test.describe('17.1.0 app-wide Concept 1 responsive shell', () => {
+test.describe('17.1.1 app-wide Concept 1 responsive shell', () => {
   test('shared desktop/mobile shell keeps real application content wide, touchable, and overflow-safe', async ({ page }) => {
     const mobile = test.info().project.name === 'mobile-chromium';
     await page.setViewportSize(mobile ? { width: 390, height: 844 } : { width: 1440, height: 900 });

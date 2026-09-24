@@ -1,5 +1,5 @@
 /* ========================================================================== */
-/* 86 Chaos 17.1.0 shared Concept 1 design system                             */
+/* 86 Chaos 17.1.1 shared Concept 1 design system                             */
 /* Visual target: charcoal restaurant command center + warm bronze accents.   */
 /* This layer intentionally styles shared primitives instead of page-specific  */
 /* one-offs so every mature workflow inherits one coherent visual language.    */
@@ -809,5 +809,494 @@ body {
     border-color: var(--c17-line) !important;
     background: linear-gradient(145deg, #20282d, #151c20) !important;
     box-shadow: inset 0 1px 0 rgba(255,255,255,.025);
+  }
+}
+
+/* ========================================================================== */
+/* 17.1.1 deep-page migration                                                  */
+/* Every routed workflow now sits inside .concept17-route-page. These rules    */
+/* migrate mature tab/subtab surfaces without replacing their business logic.  */
+/* ========================================================================== */
+
+.concept17-route-page {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  margin: 0 auto;
+  color: var(--c17-ink);
+}
+
+.concept17-route-page > * {
+  min-width: 0;
+}
+
+/* Remove the old narrow-page ceilings so desktop always feels like the concept. */
+@media (min-width: 1180px) {
+  .concept17-route-page > .max-w-2xl,
+  .concept17-route-page > .max-w-3xl,
+  .concept17-route-page > .max-w-4xl,
+  .concept17-route-page > .max-w-5xl,
+  .concept17-route-page > .max-w-6xl,
+  .concept17-route-page > .max-w-7xl,
+  .concept17-route-page > .desktop-management-page,
+  .concept17-route-page > .desktop-ops-page,
+  .concept17-route-page > .financial-center-desktop,
+  .concept17-route-page > .inventory-desktop,
+  .concept17-route-page > .recipes-desktop,
+  .concept17-route-page > .schedule-desktop,
+  .concept17-route-page > .settings-page,
+  .concept17-route-page > .intelligence-desktop,
+  .concept17-route-page > .hr-desktop {
+    width: 100% !important;
+    max-width: 1480px !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
+  }
+}
+
+/* Deep legacy color migration. The selectors intentionally key off the mature
+   utility classes already used by the app, so nested subpages inherit Concept 1. */
+.concept17-route-page [class*="bg-[#0B0E11]"],
+.concept17-route-page [class*="bg-[#090C0F]"],
+.concept17-route-page [class*="bg-[#12161A]"] {
+  background-color: #10171b !important;
+}
+
+.concept17-route-page [class*="bg-[#161D22]"],
+.concept17-route-page [class*="bg-[#171D22]"],
+.concept17-route-page [class*="bg-[#1A2126]"],
+.concept17-route-page [class*="bg-[#1B242B]"] {
+  background-color: #182126 !important;
+}
+
+.concept17-route-page [class*="border-[#2A353D]"] {
+  border-color: var(--c17-line) !important;
+}
+
+.concept17-route-page [class*="text-[#D4A381]"],
+.concept17-route-page [class*="text-[#E6BB9F]"] {
+  color: var(--c17-bronze) !important;
+}
+
+.concept17-route-page [class*="from-[#C59373]"],
+.concept17-route-page [class*="from-[#D4A381]"] {
+  --tw-gradient-from: #e3a06f var(--tw-gradient-from-position) !important;
+  --tw-gradient-to: rgb(227 160 111 / 0) var(--tw-gradient-to-position) !important;
+}
+
+.concept17-route-page [class*="to-[#8F6040]"] {
+  --tw-gradient-to: #8f5b3f var(--tw-gradient-to-position) !important;
+}
+
+/* Shared deep cards, panels, drawers and workflow containers. */
+.concept17-route-page .chaos-card,
+.concept17-route-page .cockpit-panel,
+.concept17-route-page .maintenance-record-card,
+.concept17-route-page .schedule-builder-publish-strip,
+.concept17-route-page .schedule-builder-control-deck,
+.concept17-route-page article[class*="border"][class*="rounded"],
+.concept17-route-page section[class*="border"][class*="rounded"],
+.concept17-route-page div[class*="border"][class*="rounded-2xl"][class*="p-"],
+.concept17-route-page div[class*="border"][class*="rounded-xl"][class*="p-4"],
+.concept17-route-page div[class*="border"][class*="rounded-xl"][class*="p-5"] {
+  border-color: var(--c17-line) !important;
+  background-image: linear-gradient(145deg, rgba(28, 37, 43, .97), rgba(17, 24, 29, .98)) !important;
+  background-color: #171f24 !important;
+  box-shadow: 0 10px 30px rgba(0,0,0,.18), inset 0 1px 0 rgba(255,255,255,.025) !important;
+}
+
+.concept17-route-page .chaos-card:hover,
+.concept17-route-page article[class*="border"][class*="rounded"]:hover {
+  border-color: rgba(227,154,108,.32) !important;
+}
+
+/* Page-title language. Existing headings are kept, but receive one hierarchy. */
+.concept17-route-page h1,
+.concept17-route-page h2,
+.concept17-route-page h3 {
+  color: #f5f2ed !important;
+  letter-spacing: -.018em;
+}
+
+.concept17-route-page h1,
+.concept17-route-page > div > div:first-child h2.text-2xl {
+  font-family: Georgia, 'Times New Roman', serif;
+}
+
+.concept17-route-page h1 {
+  font-size: clamp(1.65rem, 2vw, 2.35rem) !important;
+  line-height: 1.05 !important;
+  font-weight: 760 !important;
+}
+
+.concept17-route-page h2 {
+  font-weight: 820 !important;
+}
+
+.concept17-route-page p,
+.concept17-route-page .text-slate-300,
+.concept17-route-page .text-slate-400,
+.concept17-route-page .text-slate-500 {
+  color: var(--c17-muted) !important;
+}
+
+/* Icon tiles found throughout the older pages now match the concept's bronze wells. */
+.concept17-route-page :is(.chaos-card, .cockpit-panel, article, section) > div :is(svg.text-\[\#D4A381\], svg.text-\[\#E6BB9F\]) {
+  color: var(--c17-bronze) !important;
+}
+
+/* Navigation inside every page: Inventory, Schedule, Settings, HR, Financials,
+   Back Office and any semantic role=tab surface share the same segmented deck. */
+.concept17-route-page .settings-tab-bar,
+.concept17-route-page .inventory-subtabs,
+.concept17-route-page [role="tablist"] {
+  gap: 6px !important;
+  padding: 5px !important;
+  border: 1px solid var(--c17-line) !important;
+  border-radius: 13px !important;
+  background: rgba(12,18,22,.78) !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.02) !important;
+}
+
+.concept17-route-page .settings-tab-button,
+.concept17-route-page .inventory-subtabs > button,
+.concept17-route-page [role="tab"] {
+  min-height: 38px !important;
+  border: 1px solid transparent !important;
+  border-radius: 9px !important;
+  padding: 8px 12px !important;
+  background: transparent !important;
+  color: #9da7ac !important;
+  font-size: 10px !important;
+  font-weight: 800 !important;
+  letter-spacing: .05em !important;
+  box-shadow: none !important;
+}
+
+.concept17-route-page .settings-tab-button:hover,
+.concept17-route-page .inventory-subtabs > button:hover,
+.concept17-route-page [role="tab"]:hover {
+  border-color: #344149 !important;
+  background: #171f24 !important;
+  color: #fff !important;
+}
+
+.concept17-route-page .settings-tab-button[class*="from-[#C59373]"],
+.concept17-route-page .inventory-subtabs > button[class*="from-[#C59373]"],
+.concept17-route-page [role="tab"][aria-selected="true"],
+.concept17-route-page [role="tab"][data-chaos-current-state="true"] {
+  border-color: rgba(227,154,108,.30) !important;
+  background: linear-gradient(135deg, rgba(198,119,72,.30), rgba(114,75,53,.18)) !important;
+  color: #f2b48d !important;
+  box-shadow: inset 2px 0 0 var(--c17-bronze), inset 0 1px 0 rgba(255,255,255,.03) !important;
+}
+
+/* Generic subtab strips that predate semantic tab roles. */
+.concept17-route-page .schedule-desktop > .grid.grid-cols-2,
+.concept17-route-page .financial-center-desktop > div:has(> button),
+.concept17-route-page .settings-page > .settings-tab-bar {
+  border-color: var(--c17-line-soft) !important;
+}
+
+.concept17-route-page .schedule-desktop > .grid.grid-cols-2 > button,
+.concept17-route-page .financial-center-desktop > div:has(> button) > button,
+.concept17-route-page .schedule-builder-workbench button,
+.concept17-route-page .maintenance-desktop button {
+  border-radius: 9px !important;
+}
+
+/* Buttons and actions. Preserve explicit danger/success colors while normalizing
+   geometry and neutral secondary actions. */
+.concept17-route-page button:not(.concept17-mobile-nav-item):not(.concept17-sidebar-item) {
+  font-family: inherit;
+}
+
+.concept17-route-page .chaos-button,
+.concept17-route-page button[class*="border-[#2A353D]"]:not([class*="red-"]):not([class*="emerald-"]):not([class*="amber-"]) {
+  border-color: var(--c17-line) !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.018) !important;
+}
+
+.concept17-route-page .chaos-button-secondary,
+.concept17-route-page button[class*="bg-[#12161A]"]:not([class*="from-[#C59373]"]) {
+  background: linear-gradient(180deg, #182126, #12191d) !important;
+  color: #d7dcdf !important;
+}
+
+.concept17-route-page .chaos-button-secondary:hover,
+.concept17-route-page button[class*="bg-[#12161A]"]:hover {
+  border-color: rgba(227,154,108,.40) !important;
+  color: #fff !important;
+}
+
+/* Inputs/selects: bespoke dark controls instead of browser-default slabs. */
+.concept17-route-page input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='color']),
+.concept17-route-page textarea,
+.concept17-route-page select {
+  border: 1px solid var(--c17-line) !important;
+  border-radius: 9px !important;
+  background-color: #10171b !important;
+  color: #eef1f1 !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.015) !important;
+}
+
+.concept17-route-page select {
+  appearance: none !important;
+  padding-right: 2.2rem !important;
+  background-image: linear-gradient(45deg, transparent 50%, #89949a 50%), linear-gradient(135deg, #89949a 50%, transparent 50%) !important;
+  background-position: calc(100% - 15px) 50%, calc(100% - 10px) 50% !important;
+  background-size: 5px 5px, 5px 5px !important;
+  background-repeat: no-repeat !important;
+}
+
+.concept17-route-page input:focus,
+.concept17-route-page textarea:focus,
+.concept17-route-page select:focus {
+  border-color: rgba(227,154,108,.78) !important;
+  outline: none !important;
+  box-shadow: 0 0 0 3px rgba(227,154,108,.10), inset 0 1px 0 rgba(255,255,255,.02) !important;
+}
+
+/* Tables become command-center data decks. */
+.concept17-route-page .overflow-x-auto:has(table) {
+  border: 1px solid var(--c17-line) !important;
+  border-radius: 12px !important;
+  background: #12191e !important;
+}
+
+.concept17-route-page table {
+  width: 100%;
+  border-collapse: separate !important;
+  border-spacing: 0 !important;
+  background: transparent !important;
+}
+
+.concept17-route-page table thead,
+.concept17-route-page table th {
+  background: #11181c !important;
+}
+
+.concept17-route-page table th {
+  color: #dca079 !important;
+  border-bottom: 1px solid var(--c17-line) !important;
+  font-size: 9px !important;
+  letter-spacing: .08em !important;
+  text-transform: uppercase;
+}
+
+.concept17-route-page table td {
+  color: #d9dde0;
+  border-bottom-color: var(--c17-line-soft) !important;
+}
+
+.concept17-route-page table tbody tr:hover td {
+  background: rgba(227,154,108,.035) !important;
+}
+
+/* Inventory deep surfaces */
+.concept17-route-inventory .inventory-subtabs {
+  width: min(100%, 860px) !important;
+}
+
+.concept17-route-inventory #below-par-focus-panel {
+  padding: 10px;
+  border: 1px solid var(--c17-line);
+  border-radius: 12px;
+  background: linear-gradient(145deg, #171f24, #11181c);
+}
+
+/* Schedule / Time Clock deep surfaces */
+.concept17-route-schedule .schedule-desktop,
+.concept17-route-published .schedule-desktop,
+.concept17-route-events .schedule-desktop {
+  max-width: 1480px !important;
+}
+
+.concept17-route-page .schedule-builder-workbench {
+  --schedule-grid-line: #344048;
+}
+
+.concept17-route-page .schedule-builder-control-deck,
+.concept17-route-page .schedule-builder-publish-strip {
+  border-color: var(--c17-line) !important;
+  background: linear-gradient(145deg, #182126, #11181c) !important;
+}
+
+.concept17-route-page [data-testid="schedule-builder-cell"] {
+  border-color: #303b42 !important;
+  background-color: #12191d;
+}
+
+.concept17-route-page [data-testid="schedule-builder-cell"]:hover {
+  background-color: #1b2429 !important;
+}
+
+/* Financials and Back Office */
+.concept17-route-financials .financial-center-desktop,
+.concept17-route-sales .financial-center-desktop,
+.concept17-route-labor .financial-center-desktop,
+.concept17-route-back-office > * {
+  max-width: 1480px !important;
+}
+
+/* Settings was historically narrow. It now uses the same desktop canvas. */
+.concept17-route-settings .settings-page {
+  max-width: 1480px !important;
+}
+
+.concept17-route-settings .settings-tab-bar {
+  position: sticky;
+  top: 78px;
+  z-index: 12;
+  margin-bottom: 14px !important;
+  backdrop-filter: blur(16px);
+}
+
+/* HR, Help, Intelligence, reminders and auxiliary workflow pages. */
+.concept17-route-hr-training .hr-desktop,
+.concept17-route-help .desktop-management-page,
+.concept17-route-ai-tools .intelligence-desktop,
+.concept17-route-menu-intelligence .intelligence-desktop,
+.concept17-route-reminders .intelligence-desktop {
+  max-width: 1480px !important;
+}
+
+/* Preserve System Administrator's bespoke Concept 1 directory as the visual
+   anchor while making its route wrapper participate in the same wide canvas. */
+.concept17-route-godmode {
+  max-width: 100% !important;
+}
+
+.concept17-route-godmode .admin-concept1-exact-home,
+.concept17-route-godmode [data-testid="system-admin-concept1-subpage"] {
+  width: 100% !important;
+}
+
+/* Alerts, toasts and empty states are visually part of the same product. */
+.concept17-route-page [class*="border-amber-"][class*="bg-amber-"],
+.concept17-route-page [class*="border-red-"][class*="bg-red-"],
+.concept17-route-page [class*="border-emerald-"][class*="bg-emerald-"] {
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.018), 0 8px 20px rgba(0,0,0,.12);
+}
+
+/* Desktop rhythm and multi-column proportions mirror the approved concept. */
+@media (min-width: 1180px) {
+  .concept17-route-page {
+    padding: 2px 2px 20px;
+  }
+
+  .concept17-route-page .grid.lg\:grid-cols-4,
+  .concept17-route-page .grid.xl\:grid-cols-4 {
+    gap: 12px !important;
+  }
+
+  .concept17-route-page .grid.lg\:grid-cols-3,
+  .concept17-route-page .grid.xl\:grid-cols-3 {
+    gap: 12px !important;
+  }
+
+  .concept17-route-page .grid.lg\:grid-cols-2,
+  .concept17-route-page .grid.xl\:grid-cols-2 {
+    gap: 12px !important;
+  }
+
+  .concept17-route-page .chaos-card {
+    min-width: 0;
+  }
+
+  .concept17-route-page .settings-tab-bar,
+  .concept17-route-page .inventory-subtabs {
+    flex-wrap: wrap !important;
+  }
+}
+
+/* Touch layout: one readable column unless a deliberate compact metric grid is
+   already present. Controls never squeeze into legacy desktop geometry. */
+@media (max-width: 767px) {
+  .concept17-route-page {
+    width: 100%;
+    max-width: 100%;
+    padding: 0;
+  }
+
+  .concept17-route-page > .max-w-2xl,
+  .concept17-route-page > .max-w-3xl,
+  .concept17-route-page > .max-w-4xl,
+  .concept17-route-page > .max-w-5xl,
+  .concept17-route-page > .max-w-6xl,
+  .concept17-route-page > .max-w-7xl,
+  .concept17-route-page > .desktop-management-page,
+  .concept17-route-page > .desktop-ops-page,
+  .concept17-route-page > .financial-center-desktop,
+  .concept17-route-page > .inventory-desktop,
+  .concept17-route-page > .recipes-desktop,
+  .concept17-route-page > .schedule-desktop,
+  .concept17-route-page > .settings-page,
+  .concept17-route-page > .intelligence-desktop,
+  .concept17-route-page > .hr-desktop {
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+  }
+
+  .concept17-route-page h1 {
+    font-size: clamp(1.45rem, 7vw, 2rem) !important;
+  }
+
+  .concept17-route-page .settings-tab-bar,
+  .concept17-route-page .inventory-subtabs,
+  .concept17-route-page [role="tablist"] {
+    width: 100% !important;
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    position: static !important;
+  }
+
+  .concept17-route-page .settings-tab-button,
+  .concept17-route-page .inventory-subtabs > button,
+  .concept17-route-page [role="tab"] {
+    width: 100% !important;
+    min-width: 0 !important;
+    min-height: 44px !important;
+    white-space: normal !important;
+    line-height: 1.15 !important;
+  }
+
+  .concept17-route-page .chaos-card,
+  .concept17-route-page .cockpit-panel,
+  .concept17-route-page article[class*="border"][class*="rounded"] {
+    border-radius: 13px !important;
+  }
+
+  .concept17-route-page .grid.md\:grid-cols-2:not(.concept17-keep-mobile-grid),
+  .concept17-route-page .grid.lg\:grid-cols-2:not(.concept17-keep-mobile-grid),
+  .concept17-route-page .grid.lg\:grid-cols-3:not(.concept17-keep-mobile-grid),
+  .concept17-route-page .grid.lg\:grid-cols-4:not(.concept17-keep-mobile-grid),
+  .concept17-route-page .grid.xl\:grid-cols-2:not(.concept17-keep-mobile-grid),
+  .concept17-route-page .grid.xl\:grid-cols-3:not(.concept17-keep-mobile-grid),
+  .concept17-route-page .grid.xl\:grid-cols-4:not(.concept17-keep-mobile-grid) {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .concept17-route-page table {
+    min-width: 640px;
+  }
+
+  .concept17-route-page .overflow-x-auto:has(table) {
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .concept17-route-page select,
+  .concept17-route-page input:not([type='checkbox']):not([type='radio']):not([type='range']),
+  .concept17-route-page textarea {
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .concept17-route-settings .settings-tab-bar {
+    top: auto;
   }
 }
