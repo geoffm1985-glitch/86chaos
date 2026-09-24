@@ -13,11 +13,11 @@ test('17.0.32 applies Concept 1 to the actual System Administrator route compone
   assert.match(app, /lazyFeature\(\(\) => import\('\.\/features\/management'\), 'TabGodMode'\)/);
   assert.match(management, /const TabGodMode = \(\{ appUser, addToast, setGhostTenant, setActiveTab \}\) => \{/);
   assert.match(management, /data-testid="system-admin-concept1-exact-home"/);
-  assert.match(management, /data-testid="system-admin-concept1-card"/);
-  assert.match(management, /data-testid="system-admin-concept1-card"/);
-  assert.match(management, /data-testid="system-admin-concept1-card"/);
+  assert.match(management, /data-testid="system-admin-directory-card"/);
+  assert.match(management, /data-testid="system-admin-directory-card"/);
+  assert.match(management, /data-testid="system-admin-directory-card"/);
   assert.match(management, /admin-concept1-exact-hero/);
-  assert.match(management, /admin-concept1-exact-grid-secondary/);
+  assert.match(management, /admin-concept1-directory-grid/);
 });
 
 test('17.0.32 Spanish Phase 2 is wired into the live System Administrator shell', () => {

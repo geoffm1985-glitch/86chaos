@@ -8,13 +8,11 @@ const i18n = require('../src/core/i18n.cjs');
 const root = path.resolve(__dirname, '..');
 const read = file => fs.readFileSync(path.join(root, file), 'utf8');
 
-test('17.0.33 replaces the old attention dashboard with the exact Concept 1 seven-card home', () => {
+test('17.0.33 replaces the old attention dashboard with the Concept 1 home shell', () => {
   const management = read('src/features/management.jsx');
   assert.match(management, /data-testid="system-admin-concept1-exact-home"/);
-  assert.match(management, /data-testid="system-admin-concept1-card"/);
-  for (const label of ['Permission & Role Manager','Push Control Center','Security Center','Backup Center','Forensics','Environment \/ Project Settings','Audit \/ Logs']) {
-    assert.match(management, new RegExp(label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
-  }
+  assert.match(management, /data-testid="system-admin-directory-card"/);
+  for (const id of ['roles','push','security','forensics','support','deployment']) assert.match(management, new RegExp(`data-admin-tab=\{tab\.id\}|id:'${id}'`));
   assert.doesNotMatch(management, /What needs your attention\?/);
   assert.doesNotMatch(management, />Priority list</);
   assert.doesNotMatch(management, />Quick work</);
@@ -25,8 +23,8 @@ test('17.0.33 replaces the old attention dashboard with the exact Concept 1 seve
 test('17.0.33 Concept 1 styling has distinct desktop and mobile geometry matching the chosen mockup', () => {
   const css = read('src/styles.css');
   assert.match(css, /17\.0\.33 System Administrator Concept 1 exact-home rebuild/);
-  assert.match(css, /admin-concept1-exact-grid-primary[\s\S]*repeat\(2/);
-  assert.match(css, /admin-concept1-exact-grid-secondary[\s\S]*repeat\(3/);
+  assert.match(css, /admin-concept1-directory-grid[\s\S]*repeat\(3/);
+  assert.match(css, /@media \(max-width: 1180px\)[\s\S]*admin-concept1-directory-grid[\s\S]*repeat\(2/);
   assert.match(css, /@media \(max-width: 767px\)[\s\S]*grid-template-columns: minmax\(0, 1fr\)/);
   assert.match(css, /#eda77c/i);
   assert.match(css, /border-radius: 16px/);

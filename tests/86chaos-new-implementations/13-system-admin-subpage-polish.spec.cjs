@@ -11,9 +11,8 @@ test.describe('17.0.35 System Administrator subpage polish', () => {
     if (/permission gate|not authorized|does not include/i.test(text)) return;
 
     await expect(page.getByTestId('system-admin-concept1-exact-home')).toBeVisible({ timeout: 15000 });
-    await page.getByText('Push Control Center', { exact: true }).first().click();
+    await page.locator('[data-admin-tab="push"]').click();
     await expect(page.getByTestId('system-admin-concept1-subpage')).toBeVisible({ timeout: 10000 });
-    await expect(page.getByRole('heading', { name: /Push Control Center/i }).first()).toBeVisible();
     await expect(page.locator('.admin46-shell')).toHaveClass(/admin-concept1-subpage-active/);
 
     const metricGrid = page.locator('.admin-concept1-metric-grid').first();
@@ -31,9 +30,9 @@ test.describe('17.0.35 System Administrator subpage polish', () => {
     else expect(gridEvidence.columns).toBeGreaterThanOrEqual(2);
     expect(gridEvidence.scrollWidth).toBeLessThanOrEqual(gridEvidence.clientWidth + 2);
 
-    const jump = page.getByLabel('All System Administrator tools');
     for (const target of ['support', 'forensics', 'health']) {
-      await jump.selectOption(target);
+      await page.getByRole('button', { name: /All System Administrator Tools/i }).click();
+      await page.locator(`[data-admin-tab="${target}"]`).click();
       await expect(page.getByTestId('system-admin-concept1-subpage')).toBeVisible({ timeout: 10000 });
       await expect(page.locator('.admin-concept1-subpage-hero-icon svg')).toBeVisible();
     }

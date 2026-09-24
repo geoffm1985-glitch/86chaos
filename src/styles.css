@@ -6540,3 +6540,193 @@ span.bg-red-500.text-white,
     border-radius: 13px;
   }
 }
+
+/* 17.0.36 complete System Administrator directory + desktop repair */
+.admin46-shell .admin-concept1-directory {
+  display: grid;
+  gap: 18px;
+}
+.admin46-shell .admin-concept1-directory-group {
+  padding: 18px;
+  border: 1px solid #2f3941;
+  border-radius: 18px;
+  background: linear-gradient(145deg, rgba(18,24,29,.96), rgba(12,17,21,.98));
+  box-shadow: 0 14px 34px rgba(0,0,0,.16);
+}
+.admin46-shell .admin-concept1-directory-group.is-danger {
+  border-color: rgba(153,71,66,.55);
+  background: linear-gradient(145deg, rgba(35,24,24,.96), rgba(17,15,16,.98));
+}
+.admin46-shell .admin-concept1-directory-heading {
+  display: grid;
+  grid-template-columns: minmax(190px,.55fr) minmax(0,1fr);
+  align-items: end;
+  gap: 20px;
+  margin-bottom: 13px;
+  padding: 0 2px 12px;
+  border-bottom: 1px solid #28333b;
+}
+.admin46-shell .admin-concept1-directory-heading h2 {
+  margin: 0;
+  color: #f6f7f8;
+  font-size: 17px;
+  font-weight: 900;
+  letter-spacing: -.015em;
+}
+.admin46-shell .admin-concept1-directory-heading p {
+  margin: 0;
+  color: #8f9aa2;
+  font-size: 11px;
+  font-weight: 650;
+  line-height: 1.45;
+  text-align: right;
+}
+.admin46-shell .admin-concept1-directory-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 11px;
+}
+.admin46-shell .admin-concept1-directory-grid button.admin-concept1-exact-card,
+.admin46-shell .app-content-shell .admin-concept1-directory-grid button.admin-concept1-exact-card,
+.ui-v12-compact .admin46-shell .admin-concept1-directory-grid button.admin-concept1-exact-card {
+  min-height: 106px !important;
+  padding: 16px !important;
+  gap: 14px !important;
+  border-radius: 14px !important;
+}
+.admin46-shell .admin-concept1-directory-grid .admin-concept1-exact-card-icon {
+  width: 50px;
+  height: 50px;
+  flex-basis: 50px;
+  border-radius: 12px;
+}
+.admin46-shell .admin-concept1-directory-grid .admin-concept1-exact-card-copy strong {
+  font-size: 13px;
+}
+.admin46-shell .admin-concept1-directory-grid .admin-concept1-exact-card-copy small {
+  font-size: 10.5px;
+  line-height: 1.4;
+}
+
+/* Remove the native tool selector that could expand over the desktop UI. */
+.admin46-shell .admin-concept1-subpage-location {
+  min-width: 210px;
+  max-width: 290px;
+  min-height: 42px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 7px 11px;
+  border: 1px solid #34414a;
+  border-radius: 11px;
+  background: #12191f;
+}
+.admin46-shell .admin-concept1-subpage-location span {
+  color: #9ba4aa;
+  font-size: 8px;
+  font-weight: 900;
+  letter-spacing: .13em;
+  text-transform: uppercase;
+}
+.admin46-shell .admin-concept1-subpage-location strong {
+  margin-top: 2px;
+  overflow: hidden;
+  color: #f4f6f7;
+  font-size: 11px;
+  font-weight: 900;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Keep all internal tools in the same Concept 1 panel system. */
+.admin46-shell.admin-concept1-subpage-active #admin-content-start > div:not(.chaos-modal-backdrop),
+.admin46-shell.admin-concept1-subpage-active #admin-content-start > section:not(.admin-concept1-subpage-hero) {
+  max-width: 1180px;
+  margin-left: auto;
+  margin-right: auto;
+}
+.admin46-shell.admin-concept1-subpage-active #admin-content-start .chaos-card,
+.admin46-shell.admin-concept1-subpage-active #admin-content-start .cockpit-panel,
+.admin46-shell.admin-concept1-subpage-active #admin-content-start .admin45-content-card,
+.admin46-shell.admin-concept1-subpage-active #admin-content-start .admin46-retention-panel,
+.admin46-shell.admin-concept1-subpage-active #admin-content-start .admin46-retention-hero,
+.admin46-shell.admin-concept1-subpage-active #admin-content-start .admin46-manual-workbench,
+.admin46-shell.admin-concept1-subpage-active #admin-content-start .admin46-manual-index,
+.admin46-shell.admin-concept1-subpage-active #admin-content-start .admin46-article-reader,
+.admin46-shell.admin-concept1-subpage-active #admin-content-start .admin46-assistant,
+.admin46-shell.admin-concept1-subpage-active #admin-content-start .admin46-playbook,
+.admin46-shell.admin-concept1-subpage-active #admin-content-start .admin46-retention-action-card {
+  border-color: #344049 !important;
+  background: linear-gradient(145deg, #20282e 0%, #171e23 100%) !important;
+  box-shadow: 0 10px 26px rgba(0,0,0,.16) !important;
+}
+.admin46-shell.admin-concept1-subpage-active #admin-content-start table {
+  border-collapse: separate;
+  border-spacing: 0;
+}
+.admin46-shell.admin-concept1-subpage-active #admin-content-start th {
+  background: #151c22 !important;
+  color: #dba17d !important;
+}
+.admin46-shell.admin-concept1-subpage-active #admin-content-start td {
+  background: #11181d !important;
+}
+
+@media (max-width: 1180px) {
+  .admin46-shell .admin-concept1-directory-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 767px) {
+  .admin46-shell .admin-concept1-directory {
+    gap: 12px;
+  }
+  .admin46-shell .admin-concept1-directory-group {
+    padding: 11px;
+    border-radius: 16px;
+    box-shadow: none;
+  }
+  .admin46-shell .admin-concept1-directory-heading {
+    grid-template-columns: minmax(0,1fr);
+    gap: 4px;
+    margin-bottom: 8px;
+    padding: 1px 2px 8px;
+  }
+  .admin46-shell .admin-concept1-directory-heading h2 {
+    font-size: 14px;
+  }
+  .admin46-shell .admin-concept1-directory-heading p {
+    font-size: 9.5px;
+    line-height: 1.4;
+    text-align: left;
+  }
+  .admin46-shell .admin-concept1-directory-grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 7px;
+  }
+  .admin46-shell .admin-concept1-directory-grid button.admin-concept1-exact-card,
+  .admin46-shell .app-content-shell .admin-concept1-directory-grid button.admin-concept1-exact-card,
+  .ui-v12-compact .admin46-shell .admin-concept1-directory-grid button.admin-concept1-exact-card {
+    min-height: 76px !important;
+    padding: 10px !important;
+    gap: 11px !important;
+  }
+  .admin46-shell .admin-concept1-directory-grid .admin-concept1-exact-card-icon {
+    width: 47px;
+    height: 47px;
+    flex-basis: 47px;
+  }
+  .admin46-shell .admin-concept1-subpage-actions {
+    grid-template-columns: minmax(0,1fr) 42px;
+  }
+  .admin46-shell .admin-concept1-subpage-location {
+    min-width: 0;
+    max-width: none;
+    width: 100%;
+  }
+  .admin46-shell .admin-concept1-subpage-location strong {
+    white-space: normal;
+  }
+}

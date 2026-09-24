@@ -13,7 +13,7 @@ test('17.0.34 applies the Concept 1 visual system to every System Administrator 
   assert.match(management, /admin-concept1-subpage-active/);
   assert.match(management, /data-testid="system-admin-concept1-subpage"/);
   assert.match(management, /admin-concept1-subpage-hero/);
-  assert.match(management, /admin-concept1-subpage-select/);
+  assert.match(management, /admin-concept1-subpage-location/);
   assert.match(management, /admin-concept1-subpage-home/);
   assert.match(css, /17\.0\.34 System Administrator Concept 1 subpage unification/);
   assert.match(css, /admin-concept1-subpage-active[\s\S]*\.chaos-card/);

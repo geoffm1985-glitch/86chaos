@@ -8309,12 +8309,12 @@ Type RESTORE to continue.`);
             <p>{activeAdminTab.intent}</p>
           </div>
           <div className="admin-concept1-subpage-actions">
-            <label className="sr-only" htmlFor="system-admin-tool-jump">All System Administrator tools</label>
-            <select id="system-admin-tool-jump" value={subTab} onChange={event => selectAdminTab(event.target.value)} className="admin-concept1-subpage-select" aria-label="All System Administrator tools">
-              {adminTabs.map(tab => <option key={tab.id} value={tab.id}>{tab.label}</option>)}
-            </select>
+            <div className="admin-concept1-subpage-location" aria-label="Current System Administrator section">
+              <span>{activeAdminTab.group}</span>
+              <strong>{activeAdminTab.label}</strong>
+            </div>
             <AdminInfoButton title={activeAdminTab.label} body={activeAdminHelpText} />
-            <button type="button" onClick={() => selectAdminTab('overview')} className="admin-concept1-subpage-home"><ChevronLeft size={14}/> System Administrator</button>
+            <button type="button" onClick={() => selectAdminTab('overview')} className="admin-concept1-subpage-home"><ChevronLeft size={14}/> All System Administrator Tools</button>
           </div>
         </section>
       )}
@@ -8334,36 +8334,35 @@ Type RESTORE to continue.`);
             </div>
           </section>
 
-          <section className="admin-concept1-exact-grid admin-concept1-exact-grid-primary">
-            {[
-              { id:'roles', label:t('admin.concept.roles', {}, 'Permission & Role Manager'), desc:t('admin.concept.rolesDesc', {}, 'Manage user permissions, roles, and access levels.'), icon:Users },
-              { id:'push', label:t('admin.concept.push', {}, 'Push Control Center'), desc:t('admin.concept.pushDesc', {}, 'Send messages, updates, and notifications to your locations.'), icon:Send },
-              { id:'security', label:t('admin.concept.security', {}, 'Security Center'), desc:t('admin.concept.securityDesc', {}, 'Manage security settings, authentication, and access controls.'), icon:Shield },
-              { id:'forensics', label:t('admin.concept.backup', {}, 'Backup Center'), desc:t('admin.concept.backupDesc', {}, 'Configure and manage data backups and recovery.'), icon:Package },
-            ].map(card => {
-              const Icon = card.icon;
-              return <button key={card.label} type="button" onClick={() => selectAdminTab(card.id)} className="admin-concept1-exact-card" data-testid="system-admin-concept1-card">
-                <span className="admin-concept1-exact-card-icon"><Icon size={27}/></span>
-                <span className="admin-concept1-exact-card-copy"><strong>{card.label}</strong><small>{card.desc}</small></span>
-                <span className="admin-concept1-exact-card-arrow"><ChevronRight size={17}/></span>
-              </button>;
+          <div className="admin-concept1-directory" data-testid="system-admin-complete-directory">
+            {localizedAdminTabGroups.map(group => {
+              const directoryTabs = group.tabs.filter(tab => tab.id !== 'overview');
+              if (!directoryTabs.length) return null;
+              return (
+                <section key={group.title} className={`admin-concept1-directory-group ${group.danger ? 'is-danger' : ''}`} data-testid="system-admin-directory-group">
+                  <div className="admin-concept1-directory-heading">
+                    <div>
+                      <div className="admin-concept1-exact-kicker">{group.title}</div>
+                      <h2>{group.title}</h2>
+                    </div>
+                    <p>{group.summary}</p>
+                  </div>
+                  <div className="admin-concept1-directory-grid">
+                    {directoryTabs.map(tab => {
+                      const Icon = adminTabIcons[tab.id] || Settings;
+                      return (
+                        <button key={tab.id} type="button" onClick={() => selectAdminTab(tab.id)} className="admin-concept1-exact-card" data-testid="system-admin-directory-card" data-admin-tab={tab.id}>
+                          <span className="admin-concept1-exact-card-icon"><Icon size={27}/></span>
+                          <span className="admin-concept1-exact-card-copy"><strong>{tab.label}</strong><small>{tab.intent}</small></span>
+                          <span className="admin-concept1-exact-card-arrow"><ChevronRight size={17}/></span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </section>
+              );
             })}
-          </section>
-
-          <section className="admin-concept1-exact-grid admin-concept1-exact-grid-secondary">
-            {[
-              { id:'support', label:t('admin.concept.forensics', {}, 'Forensics'), desc:t('admin.concept.forensicsDesc', {}, 'Investigate system activity and historical data.'), icon:Search },
-              { id:'deployment', label:t('admin.concept.environment', {}, 'Environment / Project Settings'), desc:t('admin.concept.environmentDesc', {}, 'Manage environment settings, project configuration, and system preferences.'), icon:Settings },
-              { id:'forensics', label:t('admin.concept.audit', {}, 'Audit / Logs'), desc:t('admin.concept.auditDesc', {}, 'View and search system audit logs and activity history.'), icon:ClipboardList },
-            ].map(card => {
-              const Icon = card.icon;
-              return <button key={card.label} type="button" onClick={() => selectAdminTab(card.id)} className="admin-concept1-exact-card" data-testid="system-admin-concept1-card">
-                <span className="admin-concept1-exact-card-icon"><Icon size={27}/></span>
-                <span className="admin-concept1-exact-card-copy"><strong>{card.label}</strong><small>{card.desc}</small></span>
-                <span className="admin-concept1-exact-card-arrow"><ChevronRight size={17}/></span>
-              </button>;
-            })}
-          </section>
+          </div>
         </div>
       )}
 

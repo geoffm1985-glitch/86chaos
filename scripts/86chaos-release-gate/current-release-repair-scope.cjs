@@ -1,8 +1,13 @@
 'use strict';
 
-const CURRENT_RELEASE_VERSION = '17.0.35';
-const CURRENT_RELEASE_CARRY_FORWARD_NOTE = '17.0.35 makes every System Administrator subpage substantially more readable in the Concept 1 visual language, repairs the full-audit QA seed host guard for testing.86chaos.com, and preserves the 17.0.34 drawer reset/PWA Back behavior, Spanish Phase 2, Schedule Builder coverage, presence retirement, and canonical testing-domain pin.';
+const CURRENT_RELEASE_VERSION = '17.0.36';
+const CURRENT_RELEASE_CARRY_FORWARD_NOTE = '17.0.36 completes the System Administrator home directory, removes the desktop-breaking native tool selector, further unifies every admin subpage under Concept 1 styling, and preserves the 17.0.35 QA seed host repair, 17.0.34 drawer/PWA Back behavior, Spanish Phase 2, Schedule Builder coverage, presence retirement, and canonical testing-domain pin.';
 const CURRENT_RELEASE_REPAIR_SCOPE = [
+  {
+    specPath: '86chaos-new-implementations/14-system-admin-complete-directory-desktop.spec.cjs',
+    fullSuitePath: '17.0.36 System Administrator complete directory and desktop repair',
+    exactTestTitle: 'main page exposes every internal admin page and subpages never use the native all-tools selector',
+  },
   {
     specPath: '86chaos-new-implementations/13-system-admin-subpage-polish.spec.cjs',
     fullSuitePath: '17.0.35 System Administrator subpage polish',
@@ -11,12 +16,12 @@ const CURRENT_RELEASE_REPAIR_SCOPE = [
   {
     specPath: '86chaos-new-implementations/12-system-admin-subpages-back-navigation.spec.cjs',
     fullSuitePath: '17.0.34 System Administrator subpages and navigation',
-    exactTestTitle: 'admin subpages share Concept 1 styling and drawer System Administrator returns to the seven-card home',
+    exactTestTitle: 'admin subpages share Concept 1 styling and drawer System Administrator returns to the complete home',
   },
   {
     specPath: '86chaos-new-implementations/11-system-admin-concept1-exact.spec.cjs',
     fullSuitePath: '17.0.33 System Administrator Concept 1 exact home',
-    exactTestTitle: 'System Administrator home uses the seven-card Concept 1 layout and removes the attention dashboard',
+    exactTestTitle: 'System Administrator home uses the complete Concept 1 directory and removes the attention dashboard',
   },
   {
     specPath: '86chaos-full-audit/10-presence-system-admin.spec.cjs',

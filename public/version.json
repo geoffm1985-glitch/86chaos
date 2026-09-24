@@ -1,16 +1,16 @@
 {
-  "version": "17.0.35",
-  "name": "86 Chaos 17.0.35",
-  "build": "17.0.35",
-  "label": "86 Chaos 17.0.35",
+  "version": "17.0.36",
+  "name": "86 Chaos 17.0.36",
+  "build": "17.0.36",
+  "label": "86 Chaos 17.0.36",
   "releasedAt": "2026-09-23T21:30:00Z",
-  "releaseTitle": "System Administrator Subpage Polish and QA Seed Host Repair",
+  "releaseTitle": "Complete System Administrator Directory and Desktop Repair",
   "notes": [
-    "Reworks System Administrator subpages with larger Concept 1 metric cards, active-tool icons, consistent charcoal/bronze surfaces, and single-column mobile diagnostic layouts instead of cramped two-column tiles.",
-    "Restyles legacy admin panels, timelines, forms, and support/backup surfaces so internal tools visually match the main System Administrator page more closely on desktop and mobile.",
-    "Fixes /api/full-audit-qa-seed host classification so testing.86chaos.com is allowed while 86chaos.com, app.86chaos.com, staging/custom 86chaos subdomains, and production Firebase remain blocked."
+    "Expands the main System Administrator page from the incomplete seven-card subset to all 21 internal admin subpages, grouped by purpose in the same Concept 1 card language.",
+    "Removes the native all-tools select from admin subpages so desktop can no longer expand a giant browser selector over the page; subpages now show a stable current-location panel and one-click return to the complete admin directory.",
+    "Further unifies desktop and mobile subpage panels, tables, forms, diagnostic cards, and navigation surfaces under the same charcoal/bronze Concept 1 styling while preserving all existing tools and navigation behavior."
   ],
-  "title": "86 Chaos 17.0.35",
-  "summary": "Rebuilds System Administrator subtabs into the Concept 1 visual language and fixes QA seeding on testing.86chaos.com.",
-  "description": "Makes every System Administrator internal page substantially more readable on mobile and desktop with the same spacious charcoal/bronze card language as the main admin page, while correcting the full-audit QA seed host guard so testing.86chaos.com is treated as testing without weakening production protection."
+  "title": "86 Chaos 17.0.36",
+  "summary": "Restores a complete System Administrator home directory, removes the desktop-breaking native tool selector, and keeps every admin subpage in one Concept 1 visual system.",
+  "description": "Shows all System Administrator tools on the main page in grouped Concept 1 cards, replaces the desktop-breaking all-tools native select with a stable location/home control, and tightens responsive styling so every internal admin page follows the same charcoal/bronze design language."
 }
