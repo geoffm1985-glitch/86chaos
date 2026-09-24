@@ -29,13 +29,18 @@ test.describe('17.1.6 microphone and delta-gate interaction repair', () => {
       }
       window.SpeechRecognition = MockSpeechRecognition;
       window.webkitSpeechRecognition = MockSpeechRecognition;
+      Object.defineProperty(navigator, 'mediaDevices', {
+        configurable: true,
+        value: { getUserMedia: async () => ({ getTracks: () => [{ stop() {} }] }) },
+      });
     });
 
+    await page.setViewportSize({ width: 390, height: 844 });
     const account = ownerLikeCreds();
     requireCreds(account, 'owner/admin-like');
     await login(page, account.email, account.password, { chooseWorkspace: true });
 
-    const mic = page.getByRole('button', { name: /open 86voice/i }).first();
+    const mic = page.getByTestId('concept17-mobile-voice-button');
     await expect(mic).toBeVisible({ timeout: 15000 });
     await mic.click();
     await expect(page.getByRole('button', { name: /stop listening/i })).toBeVisible({ timeout: 5000 });

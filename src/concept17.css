@@ -2703,3 +2703,35 @@ body {
     justify-content: flex-start !important;
   }
 }
+
+/* 17.1.7 mobile 86Voice interaction repair.
+   The microphone is a real first-class bottom-nav button now. The legacy
+   floating trigger is hidden on phones so no fixed overlay can steal taps. */
+@media (max-width: 720px) {
+  .concept17-mobile-nav-voice-slot {
+    display: none !important;
+  }
+
+  .voice-command-dock.fixed.bottom-5.left-4 {
+    width: 0 !important;
+    height: 0 !important;
+    left: 0 !important;
+    bottom: 0 !important;
+    pointer-events: none !important;
+  }
+
+  .voice-command-dock > .voice-command-trigger {
+    display: none !important;
+    pointer-events: none !important;
+  }
+
+  .voice-command-dock > .cockpit-panel {
+    pointer-events: auto !important;
+    z-index: 70 !important;
+  }
+
+  .concept17-mobile-voice-button {
+    touch-action: manipulation;
+    pointer-events: auto !important;
+  }
+}

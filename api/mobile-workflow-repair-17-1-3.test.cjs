@@ -49,13 +49,12 @@ test('17.1.3 puts 86Voice in the first visual slot of the mobile bottom toolbar'
   const common = read('src/components/common.jsx');
   const css = read('src/concept17.css');
   const navStart = shell.indexOf('data-testid="concept17-mobile-bottom-nav"');
-  const slot = shell.indexOf('concept17-mobile-nav-voice-slot', navStart);
+  const voiceButton = shell.indexOf('data-testid="concept17-mobile-voice-button"', navStart);
   const items = shell.indexOf('items.slice(0, 4).map', navStart);
-  assert.ok(slot > navStart && items > slot, 'reserved voice slot is first in the mobile toolbar');
+  assert.ok(voiceButton > navStart && items > voiceButton, 'real 86Voice button is first in the mobile toolbar');
+  assert.match(shell, /data-shell-action="voice"/);
   assert.match(common, /className="voice-command-trigger no-compact/);
-  assert.match(common, /voice-command-trigger-label">Voice</);
   assert.match(css, /\.concept17-mobile-nav[\s\S]*grid-template-columns: repeat\(6, minmax\(0, 1fr\)\)/);
-  assert.match(css, /\.voice-command-dock\.fixed\.bottom-5\.left-4[\s\S]*width: calc\(\(100vw - 16px/);
 });
 
 test('17.1.3 Kitchen Tools badges stay horizontal instead of stacking letters', () => {

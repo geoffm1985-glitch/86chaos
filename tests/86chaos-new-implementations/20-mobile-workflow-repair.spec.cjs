@@ -13,7 +13,7 @@ test.describe('17.1.3 mobile workflow repair', () => {
     await gotoTab(page, 'ai-tools', { settleMs: 800, maxText: 30000 });
     const nav = page.getByTestId('concept17-mobile-bottom-nav');
     await expect(nav).toBeVisible();
-    const mic = page.getByRole('button', { name: /open 86voice/i }).first();
+    const mic = page.getByTestId('concept17-mobile-voice-button');
     await expect(mic).toBeVisible();
     const [navBox, micBox] = await Promise.all([nav.boundingBox(), mic.boundingBox()]);
     expect(navBox).toBeTruthy();

@@ -11,6 +11,7 @@ import {
   HelpCircle,
   Home,
   MessageSquare,
+  Mic,
   MoreHorizontal,
   Network,
   Package,
@@ -123,10 +124,22 @@ export const Concept17MobileNav = ({
   activeTab = 'today',
   onNavigate,
   onMore,
+  onVoice,
+  voiceLabel = 'Voice',
   moreLabel = 'More',
 }) => (
   <nav className="concept17-mobile-nav" data-testid="concept17-mobile-bottom-nav" aria-label="Primary navigation">
-    <div className="concept17-mobile-nav-voice-slot" aria-hidden="true" />
+    <button
+      type="button"
+      className="concept17-mobile-nav-item concept17-mobile-voice-button"
+      data-testid="concept17-mobile-voice-button"
+      data-shell-action="voice"
+      onClick={onVoice}
+      aria-label={voiceLabel}
+    >
+      <span className="concept17-mobile-nav-icon"><Mic size={20} aria-hidden="true" /></span>
+      <span className="concept17-mobile-nav-label">{voiceLabel}</span>
+    </button>
     {items.slice(0, 4).map(item => {
       const selected = activeTab === item.id || (item.id === 'published' && ['published', 'schedule'].includes(activeTab)) || (item.id === 'financials' && ['sales', 'labor', 'back-office'].includes(activeTab));
       return (

@@ -14,9 +14,9 @@ test.describe('17.1.5 mobile bottom navigation label fit', () => {
     await expect(nav).toBeVisible({ timeout: 15000 });
 
     const labels = nav.locator('.concept17-mobile-nav-label');
-    await expect(labels).toHaveCount(5);
+    await expect(labels).toHaveCount(6);
 
-    for (let index = 0; index < 5; index += 1) {
+    for (let index = 0; index < 6; index += 1) {
       const metrics = await labels.nth(index).evaluate(el => {
         const style = getComputedStyle(el);
         return {
@@ -33,14 +33,5 @@ test.describe('17.1.5 mobile bottom navigation label fit', () => {
         expect(metrics.height, `bottom-nav label ${index + 1} must remain one line`).toBeLessThanOrEqual(metrics.lineHeight + 2);
       }
     }
-
-    const voiceLabel = page.locator('.voice-command-trigger-label:visible').first();
-    await expect(voiceLabel).toBeVisible();
-    const voiceMetrics = await voiceLabel.evaluate(el => {
-      const style = getComputedStyle(el);
-      return { whiteSpace: style.whiteSpace, clientWidth: el.clientWidth, scrollWidth: el.scrollWidth };
-    });
-    expect(voiceMetrics.whiteSpace).toBe('nowrap');
-    expect(voiceMetrics.scrollWidth).toBeLessThanOrEqual(voiceMetrics.clientWidth + 1);
   });
 });

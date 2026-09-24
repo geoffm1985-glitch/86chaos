@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo, useDeferredValue, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useDeferredValue, useCallback, useImperativeHandle } from 'react';
 import { Bell, Check, Camera, ChevronLeft, ChevronRight, MessageSquare, Plus, Trash2, Users, Calendar, Clock, X, Loader2, Package, ClipboardList, Menu, Settings, LogOut, Shield, Send, Repeat, Edit, Moon, Sun, TrendingUp, BookOpen, Search, ChefHat, Scale, Coffee, Star, Bug, Wrench, Globe, Mic, MicOff, Sparkles, Network } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, orderBy, limit, getDoc, setDoc, getDocs } from 'firebase/firestore';
@@ -1461,7 +1461,7 @@ const parseVoiceAvailabilityPayload = (text = '') => {
   return { intent:'submit_availability_change', label:'Submit availability change', weeklyAvailability, maxHoursPerWeek:maxHours ? Number(maxHours) : null, maxShiftsPerWeek:maxShifts ? Number(maxShifts) : null, effectiveStartDate: effective.date && effective.date >= getToday() ? effective.date : getToday(), effectiveEndDate:'', notes:`Created by 86Voice from: ${text}`, summary:`Submit availability change${uniqueDays.length ? ` for ${uniqueDays.join(', ')}` : ''}${range && !unavailable ? ` ${formatShortTime(range.start)}-${formatShortTime(range.end)}` : ''}${unavailable ? ' as unavailable' : ''}${preferred ? ' as preferred' : ''}. Manager approval may be required.`, needsConfirmation:true, safe:true };
 };
 
-const VoiceCommandDockBase = ({ appUser, inventoryItems = [], recipes = [], users = [], prepItems = [], tasks = [], events = [], maintenanceLogs = [], menuDependencies = [], shifts = [], timePunches = [], timeOffRequests = [], sales = [], invoices = [], wasteLogs = [], clientFeatures = {}, clientData = {}, setActiveTab, setCurrentDate, setScheduleSubTabTarget, setHelpSearchTarget, setRecipeTarget, addToast }) => {
+const VoiceCommandDockBase = React.forwardRef(({ appUser, inventoryItems = [], recipes = [], users = [], prepItems = [], tasks = [], events = [], maintenanceLogs = [], menuDependencies = [], shifts = [], timePunches = [], timeOffRequests = [], sales = [], invoices = [], wasteLogs = [], clientFeatures = {}, clientData = {}, setActiveTab, setCurrentDate, setScheduleSubTabTarget, setHelpSearchTarget, setRecipeTarget, addToast }, ref) => {
   const [open, setOpen] = useState(false);
   const [listening, setListening] = useState(false);
   const [heardText, setHeardText] = useState('');
@@ -1582,11 +1582,20 @@ const VoiceCommandDockBase = ({ appUser, inventoryItems = [], recipes = [], user
     setHeardText('');
     setManualText('');
     setVoiceResult(null);
-    // Start recognition inside the actual tap/click handler. Android Chrome/PWA
-    // can reject microphone-backed speech recognition after transient user
-    // activation has been lost to a timer.
+    // Keep the speech start inside the original pointer/click stack. On Android
+    // PWA installs this preserves the browser user activation needed to prompt
+    // for microphone access.
     startListening({ autoStart: true, fromUserGesture: true });
   };
+
+  useImperativeHandle(ref, () => ({
+    openAndListen: openDock,
+    openPanel: () => {
+      stopActiveRecognition('panel-open');
+      setOpen(true);
+    },
+    close: closeDock,
+  }));
 
   const parseCommand = async (spokenText) => {
     const raw = String(spokenText || '').trim();
@@ -2022,11 +2031,32 @@ const VoiceCommandDockBase = ({ appUser, inventoryItems = [], recipes = [], user
     }
   };
 
-  const startListening = (options = {}) => {
+  const requestMicrophoneAccess = async () => {
+    const mediaDevices = typeof navigator !== 'undefined' ? navigator.mediaDevices : null;
+    if (!mediaDevices?.getUserMedia) return true;
+    try {
+      const stream = await mediaDevices.getUserMedia({
+        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
+      });
+      for (const track of stream?.getTracks?.() || []) {
+        try { track.stop(); } catch (_) {}
+      }
+      return true;
+    } catch (error) {
+      if (voiceMountedRef.current) {
+        setOpen(true);
+        setListening(false);
+        addToast?.('Microphone Permission', voiceErrorMessage(error) || 'Microphone access was not granted.');
+      }
+      return false;
+    }
+  };
+
+  const startListening = async (options = {}) => {
     cancelPendingVoiceStart();
     if (!voiceMountedRef.current) return;
+    setOpen(true);
     if (!canUseSpeech) {
-      setOpen(true);
       addToast?.('Voice Unavailable', 'This browser does not support built-in speech recognition. Type the command instead.');
       return;
     }
@@ -2034,6 +2064,15 @@ const VoiceCommandDockBase = ({ appUser, inventoryItems = [], recipes = [], user
       addToast?.('Already Listening', '86Voice is already listening. Stop it before starting another microphone session.');
       return;
     }
+
+    // Ask the browser for microphone access from the same tap path before
+    // constructing recognition. This gives Android/PWA installs a reliable
+    // permission prompt and a visible failure path instead of a dead button.
+    setListening(true);
+    const microphoneReady = await requestMicrophoneAccess();
+    if (!microphoneReady || !voiceMountedRef.current) return;
+    if (activeRecognitionRef.current) return;
+
     try {
       const voiceSessionId = resetVoiceReminderSession();
       const rec = new SpeechRecognition();
@@ -3048,7 +3087,8 @@ const VoiceCommandDockBase = ({ appUser, inventoryItems = [], recipes = [], user
     </div>}
     <button type="button" aria-label={open ? 'Hide 86Voice assistant' : 'Open 86Voice'} aria-expanded={open} onClick={open ? closeDock : openDock} className="voice-command-trigger no-compact w-14 h-14 rounded-full bg-[#0B0E11] border border-[#D4A381]/70 text-[#D4A381] shadow-2xl flex items-center justify-center hover:scale-105 transition-transform" title={open ? 'Hide 86Voice assistant' : 'Open 86Voice'}><Mic size={24}/><span className="voice-command-trigger-label">Voice</span></button>
   </div>;
-};
+});
+VoiceCommandDockBase.displayName = 'VoiceCommandDock';
 
 const VoiceCommandDock = VoiceCommandDockBase;
 

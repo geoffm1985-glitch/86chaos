@@ -9,11 +9,12 @@ const read = file => fs.readFileSync(path.join(root, file), 'utf8');
 
 test('17.1.6 starts 86Voice recognition directly from the user microphone gesture', () => {
   const common = read('src/components/common.jsx');
-  const openDock = common.match(/const openDock = \(\) => \{([\s\S]*?)\n  \};\n\n  const parseCommand/);
+  const openDock = common.match(/const openDock = \(\) => \{([\s\S]*?)\n  \};\n\n  useImperativeHandle/);
   assert.ok(openDock, 'openDock implementation should be present');
   assert.match(openDock[1], /startListening\(\{ autoStart: true, fromUserGesture: true \}\)/);
   assert.doesNotMatch(openDock[1], /setTimeout|pendingVoiceStartTimerRef\.current\s*=/);
   assert.match(common, /onClick=\{open \? closeDock : openDock\}/);
+  assert.match(common, /openAndListen: openDock/);
 });
 
 test('17.1.6 Spanish mobile regression targets the visible translated route instead of a hidden desktop duplicate', () => {
@@ -40,5 +41,5 @@ test('17.1.6 keeps 17.1.5 single-line mobile toolbar protections intact', () => 
   const shell = read('src/components/concept17.jsx');
   assert.match(css, /white-space:\s*nowrap !important/);
   assert.match(css, /grid-template-columns:\s*repeat\(6, minmax\(0, 1fr\)\)/);
-  assert.match(shell, /concept17-mobile-nav-voice-slot/);
+  assert.match(shell, /data-testid="concept17-mobile-voice-button"/);
 });

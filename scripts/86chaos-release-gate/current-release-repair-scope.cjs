@@ -1,8 +1,13 @@
 'use strict';
 
-const CURRENT_RELEASE_VERSION = '17.1.6';
-const CURRENT_RELEASE_CARRY_FORWARD_NOTE = '17.1.6 preserves the complete Concept 1/mobile-toolbar work while repairing first-tap 86Voice activation, the visible Spanish mobile assertion, and Schedule Builder control overlap found by the 17.1.5 failed+new gate.';
+const CURRENT_RELEASE_VERSION = '17.1.7';
+const CURRENT_RELEASE_CARRY_FORWARD_NOTE = '17.1.7 preserves the complete Concept 1 and 17.1.6 release-gate repairs while replacing the fragile mobile 86Voice overlay with a real first toolbar button, direct controller wiring, and explicit microphone-permission handling.';
 const CURRENT_RELEASE_REPAIR_SCOPE = [
+  {
+    specPath: '86chaos-new-implementations/23-mobile-voice-toolbar-interaction.spec.cjs',
+    fullSuitePath: '17.1.7 mobile 86Voice toolbar interaction',
+    exactTestTitle: 'first toolbar microphone tap opens 86Voice, requests microphone access, and starts recognition',
+  },
   {
     specPath: '86chaos-new-implementations/22-release-gate-mic-delta-repair.spec.cjs',
     fullSuitePath: '17.1.6 microphone and delta-gate interaction repair',

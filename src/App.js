@@ -877,6 +877,7 @@ export default function App() {
   const [voiceScheduleSubTabTarget, setVoiceScheduleSubTabTarget] = useState(null);
   const [voiceHelpSearchTarget, setVoiceHelpSearchTarget] = useState(null);
   const [voiceRecipeTarget, setVoiceRecipeTarget] = useState(null);
+  const voiceCommandDockRef = useRef(null);
   const [inventorySubTabTarget, setInventorySubTabTarget] = useState(null);
   const [isWorkspaceSwitcherOpen, setIsWorkspaceSwitcherOpen] = useState(false);
   const [workspaceMembershipRefreshKey, setWorkspaceMembershipRefreshKey] = useState(0);
@@ -3539,12 +3540,14 @@ return (
       <GlobalSearchModal isOpen={isGlobalSearchOpen} onClose={closeGlobalSearch} queryText={globalSearchQuery} setQueryText={setGlobalSearchQuery} users={displayUsers} events={events} shifts={shifts} recipes={recipes} inventoryItems={inventoryItems} maintenanceLogs={maintenanceLogs} setActiveTab={stableSetActiveTab} appUser={liveAppUser} clientData={displayClientData} clientFeatures={displayClientFeatures} />
       <KitchenTVMode isOpen={isKitchenTVOpen} onClose={closeKitchenTV} shifts={shifts} events={events} prepItems={prepItems} maintenanceLogs={maintenanceLogs} inventoryItems={inventoryItems} />
       <UndoBar undoItem={undoItem} clearUndo={clearUndoItem} />
-      <VoiceCommandDock appUser={liveAppUser} inventoryItems={inventoryItems} recipes={recipes} users={displayUsers} prepItems={prepItems} tasks={tasks} events={events} maintenanceLogs={maintenanceLogs} menuDependencies={menuDependencies} shifts={shifts} timePunches={timePunches} timeOffRequests={timeOffRequests} sales={sales} clientFeatures={displayClientFeatures} clientData={displayClientData} setActiveTab={stableSetActiveTab} setCurrentDate={setCurrentDate} setScheduleSubTabTarget={setVoiceScheduleSubTabTarget} setHelpSearchTarget={setVoiceHelpSearchTarget} setRecipeTarget={setVoiceRecipeTarget} addToast={addToast} />
+      <VoiceCommandDock ref={voiceCommandDockRef} appUser={liveAppUser} inventoryItems={inventoryItems} recipes={recipes} users={displayUsers} prepItems={prepItems} tasks={tasks} events={events} maintenanceLogs={maintenanceLogs} menuDependencies={menuDependencies} shifts={shifts} timePunches={timePunches} timeOffRequests={timeOffRequests} sales={sales} clientFeatures={displayClientFeatures} clientData={displayClientData} setActiveTab={stableSetActiveTab} setCurrentDate={setCurrentDate} setScheduleSubTabTarget={setVoiceScheduleSubTabTarget} setHelpSearchTarget={setVoiceHelpSearchTarget} setRecipeTarget={setVoiceRecipeTarget} addToast={addToast} />
 
       <Concept17MobileNav
         items={shellMobileNavItems}
         activeTab={activeTabState}
         onNavigate={stableSetActiveTab}
+        onVoice={() => voiceCommandDockRef.current?.openAndListen?.()}
+        voiceLabel={shellText('shell.voice', 'Voice')}
         onMore={openMenu}
         moreLabel={shellText('shell.more', 'More')}
       />
