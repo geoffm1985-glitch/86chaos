@@ -2416,9 +2416,10 @@ const TabToday = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequ
     <div className="brief-hero cockpit-panel rounded-2xl p-4 sm:p-5 cockpit-grid overflow-hidden relative">
       <div className="absolute -right-8 -top-8 text-[9rem] font-black text-white/5 leading-none">86</div>
       <div className="relative z-10 flex flex-col sm:flex-row sm:items-start justify-between gap-3">
-        <div>
+        <div className="concept17-brief-identity">
           <div className="text-[10px] font-black uppercase tracking-widest text-[#D4A381]">{formatFullDate(today)}</div>
-          <h1 className="text-2xl sm:text-3xl font-black text-white mt-1">{heroTitle}</h1>
+          <h1 className="text-2xl sm:text-3xl font-black text-white mt-1">{clientData?.name || heroTitle}</h1>
+          <div className="concept17-brief-role-title">{heroTitle}</div>
           <p className="text-sm text-slate-300 font-bold mt-2 max-w-2xl leading-snug">{topPriority}</p>
           <p className="text-[10px] text-slate-500 font-black uppercase tracking-widest mt-2" data-testid="manager-brief-math-summary">{managerBriefMathText}</p>
         </div>

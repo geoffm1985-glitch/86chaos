@@ -7228,3 +7228,16 @@ span.bg-red-500.text-white,
     color:#e5a178;
   }
 }
+
+/* 17.1.0 complete System Administrator directory test contract repair.
+   The seven featured cards are also part of the 21-page complete directory,
+   while the outer frame preserves the established featured-card geometry locator. */
+.admin46-shell .admin37-featured-test-frame {
+  min-width: 0;
+  width: 100%;
+  height: 100%;
+}
+.admin46-shell .admin37-featured-test-frame > button.admin37-featured-card {
+  width: 100% !important;
+  height: 100% !important;
+}

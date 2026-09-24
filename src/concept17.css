@@ -1,0 +1,813 @@
+/* ========================================================================== */
+/* 86 Chaos 17.1.0 shared Concept 1 design system                             */
+/* Visual target: charcoal restaurant command center + warm bronze accents.   */
+/* This layer intentionally styles shared primitives instead of page-specific  */
+/* one-offs so every mature workflow inherits one coherent visual language.    */
+/* ========================================================================== */
+
+:root {
+  --c17-bg-0: #090d10;
+  --c17-bg-1: #0e1418;
+  --c17-bg-2: #12191e;
+  --c17-surface: #171f24;
+  --c17-surface-2: #1d262c;
+  --c17-surface-3: #242e34;
+  --c17-line: #303b42;
+  --c17-line-soft: #263139;
+  --c17-ink: #f3f1ec;
+  --c17-muted: #98a2a8;
+  --c17-muted-2: #6f7b82;
+  --c17-bronze: #e39a6c;
+  --c17-bronze-soft: #c9845c;
+  --c17-bronze-deep: #8f5b3f;
+  --c17-good: #67d8a3;
+  --c17-warn: #f2b46d;
+  --c17-bad: #ff6d6d;
+  --c17-sidebar-width: 224px;
+  --c17-radius-sm: 10px;
+  --c17-radius: 14px;
+  --c17-radius-lg: 18px;
+  --c17-shadow: 0 18px 48px rgba(0, 0, 0, .28), inset 0 1px 0 rgba(255, 255, 255, .025);
+}
+
+html, body, #root {
+  min-height: 100%;
+  background: var(--c17-bg-0);
+}
+
+body {
+  color: var(--c17-ink);
+}
+
+.concept17-shell {
+  --chaos-copper: var(--chaos-accent, var(--c17-bronze));
+  --chaos-panel: var(--c17-surface);
+  --chaos-deck: var(--c17-bg-1);
+  position: relative;
+  isolation: isolate;
+  min-height: 100vh;
+  background:
+    radial-gradient(900px 520px at 98% -8%, rgba(146, 88, 52, .17), transparent 62%),
+    radial-gradient(720px 500px at 35% -18%, rgba(54, 67, 76, .20), transparent 68%),
+    linear-gradient(180deg, #0b1014 0%, #090d10 100%);
+  color: var(--c17-ink);
+}
+
+.concept17-shell::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  opacity: .20;
+  background-image: linear-gradient(rgba(255,255,255,.012) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.009) 1px, transparent 1px);
+  background-size: 48px 48px;
+  z-index: -1;
+}
+
+/* Shared cards and panels */
+.concept17-shell .chaos-card,
+.concept17-shell .cockpit-panel,
+.concept17-shell .admin46-content > section,
+.concept17-shell .admin46-content > div:not(.admin-concept1-exact-home) {
+  border-color: var(--c17-line) !important;
+  border-radius: var(--c17-radius) !important;
+  background: linear-gradient(145deg, rgba(27, 36, 42, .98), rgba(18, 25, 30, .98)) !important;
+  box-shadow: var(--c17-shadow) !important;
+}
+
+.concept17-shell .chaos-card:hover {
+  border-color: color-mix(in srgb, var(--chaos-accent, var(--c17-bronze)) 34%, var(--c17-line)) !important;
+}
+
+/* Shared typography */
+.concept17-shell h1,
+.concept17-shell h2,
+.concept17-shell h3,
+.concept17-shell h4 {
+  color: var(--c17-ink);
+  text-wrap: balance;
+}
+
+.concept17-shell h1 {
+  letter-spacing: -.025em;
+}
+
+.concept17-shell p,
+.concept17-shell .text-slate-400,
+.concept17-shell .text-slate-500 {
+  color: var(--c17-muted) !important;
+}
+
+/* Shared controls */
+.concept17-shell .chaos-button,
+.concept17-shell button:not(.concept17-sidebar-item):not(.concept17-mobile-nav-item):not(.concept17-workspace-mini) {
+  border-radius: var(--c17-radius-sm);
+}
+
+.concept17-shell .chaos-button-primary {
+  border: 1px solid rgba(242, 171, 124, .45) !important;
+  background: linear-gradient(135deg, #e7a174 0%, #b97550 58%, #8a573d 100%) !important;
+  color: #14110f !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.24), 0 8px 20px rgba(104,61,35,.18) !important;
+}
+
+.concept17-shell .chaos-button-secondary {
+  border-color: var(--c17-line) !important;
+  background: linear-gradient(180deg, #1b242a, #131a1f) !important;
+  color: #d8dcde !important;
+}
+
+.concept17-shell .chaos-button-secondary:hover {
+  border-color: rgba(227,154,108,.45) !important;
+  color: #fff !important;
+}
+
+.concept17-shell .chaos-input,
+.concept17-shell input:not([type='checkbox']):not([type='radio']):not([type='range']),
+.concept17-shell textarea,
+.concept17-shell select {
+  max-width: 100%;
+  border-color: var(--c17-line) !important;
+  border-radius: var(--c17-radius-sm) !important;
+  background-color: #10171b !important;
+  color: #f1f3f3 !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.018) !important;
+}
+
+.concept17-shell select {
+  appearance: auto;
+}
+
+.concept17-shell .chaos-input:focus,
+.concept17-shell input:focus,
+.concept17-shell textarea:focus,
+.concept17-shell select:focus {
+  border-color: color-mix(in srgb, var(--chaos-accent, var(--c17-bronze)) 72%, white 8%) !important;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--chaos-accent, var(--c17-bronze)) 17%, transparent) !important;
+  outline: none !important;
+}
+
+.concept17-shell table {
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.concept17-shell .chaos-table-heading,
+.concept17-shell th {
+  border-color: var(--c17-line) !important;
+  background: #11181d !important;
+  color: color-mix(in srgb, var(--chaos-accent, var(--c17-bronze)) 88%, white) !important;
+}
+
+.concept17-shell .chaos-table-row,
+.concept17-shell td {
+  border-color: var(--c17-line-soft) !important;
+}
+
+/* Desktop left rail */
+.concept17-sidebar {
+  display: none;
+}
+
+.concept17-sidebar-brand {
+  min-height: 74px;
+  display: flex;
+  align-items: center;
+  padding: 16px 18px 13px;
+  border-bottom: 1px solid var(--c17-line-soft);
+}
+
+.concept17-sidebar-brand .brand-logo-stack {
+  width: 100%;
+}
+
+.concept17-sidebar-brand .brand-logo-stack > div:first-child img:first-child {
+  width: 35px;
+  height: 35px;
+}
+
+.concept17-sidebar-brand .brand-logo-stack > div:first-child img:nth-child(2) {
+  max-width: 126px;
+  height: 23px;
+}
+
+.concept17-sidebar-nav {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 14px 10px 12px;
+  scrollbar-width: thin;
+  scrollbar-color: #39464e transparent;
+}
+
+.concept17-sidebar-item {
+  position: relative;
+  width: 100%;
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 2px 0;
+  padding: 8px 10px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  color: #bac1c5;
+  text-align: left;
+  transition: border-color .16s ease, background .16s ease, color .16s ease, transform .16s ease;
+}
+
+.concept17-sidebar-item:hover {
+  border-color: #313b42;
+  background: rgba(255,255,255,.025);
+  color: #fff;
+}
+
+.concept17-sidebar-item.is-active {
+  border-color: rgba(228,154,107,.18);
+  background: linear-gradient(90deg, rgba(188,112,67,.22), rgba(122,78,52,.12));
+  color: #f1b58e;
+  box-shadow: inset 2px 0 0 var(--chaos-accent, var(--c17-bronze));
+}
+
+.concept17-sidebar-icon {
+  width: 25px;
+  height: 25px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 25px;
+  color: currentColor;
+}
+
+.concept17-sidebar-label {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  font-weight: 780;
+  letter-spacing: .005em;
+}
+
+.concept17-nav-alert {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 7px;
+  border-radius: 999px;
+  background: #ff745f;
+  box-shadow: 0 0 0 2px #11181d, 0 0 9px rgba(255,116,95,.55);
+}
+
+.concept17-sidebar-footer {
+  padding: 10px;
+  border-top: 1px solid var(--c17-line-soft);
+  background: linear-gradient(180deg, rgba(11,16,20,.2), rgba(10,15,18,.92));
+}
+
+.concept17-workspace-mini,
+.concept17-user-mini {
+  width: 100%;
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 9px;
+  border: 1px solid transparent;
+  border-radius: 11px;
+  color: #cbd0d2;
+  text-align: left;
+}
+
+.concept17-workspace-mini {
+  background: rgba(255,255,255,.018);
+}
+
+.concept17-workspace-mini.is-switchable:hover {
+  border-color: #354148;
+  background: #151d22;
+}
+
+.concept17-workspace-home,
+.concept17-user-avatar {
+  width: 31px;
+  height: 31px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 31px;
+  border: 1px solid #39444a;
+  border-radius: 9px;
+  background: #1b2328;
+  color: var(--chaos-accent, var(--c17-bronze));
+}
+
+.concept17-user-avatar {
+  border-radius: 999px;
+  color: #ecf0f1;
+  background: #364149;
+  font-size: 9px;
+  font-weight: 900;
+}
+
+.concept17-workspace-mini strong,
+.concept17-user-mini strong,
+.concept17-workspace-mini small,
+.concept17-user-mini small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.concept17-workspace-mini strong,
+.concept17-user-mini strong {
+  color: #e5e8e9;
+  font-size: 10px;
+  font-weight: 850;
+}
+
+.concept17-workspace-mini small,
+.concept17-user-mini small {
+  margin-top: 1px;
+  color: #6f7b82;
+  font-size: 8px;
+  font-weight: 750;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+}
+
+/* Top command bar */
+.concept17-shell .app-header {
+  min-height: 68px !important;
+  height: 68px !important;
+  padding: 9px 14px !important;
+  border-color: var(--c17-line-soft) !important;
+  background: rgba(12, 18, 22, .92) !important;
+  box-shadow: 0 10px 30px rgba(0,0,0,.14) !important;
+  backdrop-filter: blur(18px) saturate(120%) !important;
+}
+
+.concept17-header-center {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+.concept17-header-search {
+  display: none;
+  min-width: 0;
+  align-items: center;
+  gap: 9px;
+  min-height: 38px;
+  padding: 0 13px;
+  border: 1px solid var(--c17-line);
+  border-radius: 9px !important;
+  background: linear-gradient(180deg, #1a2227, #151c21);
+  color: #849097;
+  text-align: left;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.025);
+}
+
+.concept17-header-search:hover {
+  border-color: #46535b;
+  color: #b8c0c4;
+}
+
+.concept17-header-search-label {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.concept17-header-search-kbd {
+  border: 1px solid #39454c;
+  border-radius: 5px;
+  padding: 2px 5px;
+  color: #6f7a81;
+  font-size: 8px;
+  font-weight: 800;
+}
+
+.concept17-workspace-header {
+  min-width: 0;
+  max-width: 250px;
+  min-height: 38px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 11px;
+  border: 1px solid var(--c17-line) !important;
+  border-radius: 9px !important;
+  background: #141b20 !important;
+  color: #e7e9e9 !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.02) !important;
+}
+
+.concept17-workspace-header:hover {
+  border-color: rgba(227,154,108,.42) !important;
+}
+
+.concept17-workspace-header svg {
+  color: var(--chaos-accent, var(--c17-bronze));
+}
+
+.concept17-workspace-header span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 10px;
+  font-weight: 820;
+}
+
+.concept17-header-action {
+  min-width: 38px;
+  min-height: 38px !important;
+  display: inline-grid !important;
+  place-items: center;
+  padding: 0 !important;
+  border: 1px solid var(--c17-line) !important;
+  border-radius: 10px !important;
+  background: #171f24 !important;
+  color: #c4cacc !important;
+}
+
+.concept17-header-action:hover {
+  border-color: rgba(227,154,108,.4) !important;
+  color: #fff !important;
+}
+
+.concept17-header-avatar {
+  width: 37px;
+  height: 37px;
+  display: none;
+  place-items: center;
+  padding: 0 !important;
+  border: 1px solid #465159 !important;
+  border-radius: 999px !important;
+  background: linear-gradient(145deg, #46515a, #2d383f) !important;
+  color: #f5f6f6 !important;
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: .03em;
+}
+
+/* Date / period bar */
+.concept17-shell .desktop-date-strip {
+  min-height: 58px;
+  padding: 9px 18px !important;
+  border-color: var(--c17-line-soft) !important;
+  background: rgba(16, 23, 28, .95) !important;
+  box-shadow: 0 8px 24px rgba(0,0,0,.10) !important;
+}
+
+.concept17-shell .desktop-date-strip h2 {
+  font-size: clamp(16px, 1.35vw, 21px) !important;
+  letter-spacing: -.01em !important;
+  text-transform: none !important;
+}
+
+/* Main workspace */
+.concept17-shell .app-content-shell {
+  position: relative;
+  max-width: 1640px !important;
+  padding: 14px !important;
+}
+
+.concept17-shell .app-content-shell > * {
+  min-width: 0;
+}
+
+.concept17-shell .app-content-shell [class*='max-w-7xl'],
+.concept17-shell .app-content-shell [class*='max-w-6xl'],
+.concept17-shell .app-content-shell [class*='max-w-5xl'] {
+  width: 100%;
+}
+
+.concept17-shell .app-footer {
+  border-color: var(--c17-line-soft) !important;
+  background: #0d1317 !important;
+}
+
+/* Manager Brief gains the same roomy command-center proportions as the concept. */
+.concept17-shell .manager-brief-compact.desktop-ops-page {
+  max-width: none !important;
+}
+
+.concept17-shell .manager-brief-compact .brief-hero {
+  min-height: 152px;
+  border-radius: 17px !important;
+  background:
+    radial-gradient(420px 190px at 82% 30%, rgba(180,108,62,.16), transparent 72%),
+    linear-gradient(120deg, #151d22 0%, #11181c 56%, #151a1d 100%) !important;
+}
+
+.concept17-shell .manager-brief-compact .brief-hero h1,
+.concept17-shell .manager-brief-compact .brief-hero h2 {
+  font-family: Georgia, 'Times New Roman', serif;
+  font-weight: 750 !important;
+}
+
+/* Modal system */
+.concept17-shell .chaos-modal-backdrop {
+  background: rgba(4, 8, 10, .78) !important;
+  backdrop-filter: blur(10px) !important;
+}
+
+.concept17-shell .chaos-modal-panel {
+  border-radius: 18px !important;
+  border-color: #39454d !important;
+  background: linear-gradient(150deg, #1b242a, #11181d) !important;
+  box-shadow: 0 30px 90px rgba(0,0,0,.55) !important;
+}
+
+/* Mobile bottom command bar */
+.concept17-mobile-nav {
+  position: fixed;
+  z-index: 48;
+  left: max(8px, env(safe-area-inset-left));
+  right: max(8px, env(safe-area-inset-right));
+  bottom: max(8px, env(safe-area-inset-bottom));
+  height: 64px;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  overflow: hidden;
+  border: 1px solid #303a41;
+  border-radius: 16px;
+  background: rgba(13, 19, 23, .96);
+  box-shadow: 0 16px 48px rgba(0,0,0,.42), inset 0 1px 0 rgba(255,255,255,.025);
+  backdrop-filter: blur(18px);
+}
+
+.concept17-mobile-nav-item {
+  position: relative;
+  min-width: 0;
+  min-height: 58px !important;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 5px 2px !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  color: #879198 !important;
+  font-size: 8px;
+  font-weight: 750;
+  line-height: 1.1;
+}
+
+.concept17-mobile-nav-item.is-active {
+  color: var(--chaos-accent, var(--c17-bronze)) !important;
+}
+
+.concept17-mobile-nav-item.is-active::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 28%;
+  right: 28%;
+  height: 2px;
+  border-radius: 0 0 3px 3px;
+  background: var(--chaos-accent, var(--c17-bronze));
+}
+
+.concept17-mobile-nav-icon {
+  width: 25px;
+  height: 25px;
+  display: grid;
+  place-items: center;
+}
+
+.concept17-mobile-nav-item .concept17-nav-alert {
+  position: absolute;
+  top: 8px;
+  right: calc(50% - 17px);
+}
+
+/* Responsive rules */
+@media (min-width: 1180px) {
+  .concept17-sidebar {
+    position: fixed;
+    z-index: 45;
+    inset: 0 auto 0 0;
+    width: var(--c17-sidebar-width);
+    display: flex;
+    flex-direction: column;
+    border-right: 1px solid var(--c17-line-soft);
+    background:
+      radial-gradient(310px 220px at 10% -5%, rgba(172,99,58,.10), transparent 72%),
+      linear-gradient(180deg, #10171b 0%, #0b1114 100%);
+    box-shadow: 16px 0 44px rgba(0,0,0,.12);
+  }
+
+  .concept17-shell .app-header,
+  .concept17-shell .desktop-date-strip,
+  .concept17-shell .app-content-shell,
+  .concept17-shell .app-footer {
+    width: calc(100% - var(--c17-sidebar-width)) !important;
+    max-width: none !important;
+    margin-left: var(--c17-sidebar-width) !important;
+    margin-right: 0 !important;
+  }
+
+  .concept17-shell .app-content-shell {
+    padding: 18px 20px 26px !important;
+  }
+
+  .concept17-header-brand {
+    display: none;
+  }
+
+  .concept17-header-center {
+    justify-content: space-between;
+  }
+
+  .concept17-header-search {
+    width: min(410px, 42vw);
+    display: flex;
+  }
+
+  .concept17-workspace-header {
+    margin-left: auto;
+  }
+
+  .concept17-header-avatar {
+    display: grid;
+  }
+
+  .concept17-mobile-nav {
+    display: none;
+  }
+
+  .concept17-shell .manager-brief-compact .grid.lg\:grid-cols-3 {
+    gap: 14px !important;
+  }
+}
+
+@media (min-width: 768px) and (max-width: 1179px) {
+  .concept17-mobile-nav {
+    display: none;
+  }
+
+  .concept17-header-search {
+    width: min(330px, 36vw);
+    display: flex;
+  }
+
+  .concept17-header-avatar {
+    display: grid;
+  }
+
+  .concept17-shell .app-content-shell {
+    padding: 14px 16px 22px !important;
+  }
+}
+
+@media (max-width: 767px) {
+  .concept17-shell {
+    padding-bottom: 78px;
+    background:
+      radial-gradient(500px 260px at 90% -3%, rgba(146,88,52,.13), transparent 70%),
+      linear-gradient(180deg, #0b1014, #090d10);
+  }
+
+  .concept17-shell .app-header {
+    height: 62px !important;
+    min-height: 62px !important;
+    padding: 8px 10px !important;
+  }
+
+  .concept17-header-brand .brand-logo-stack > div:first-child img:first-child {
+    width: 30px;
+    height: 30px;
+  }
+
+  .concept17-header-brand .brand-logo-stack > div:first-child img:nth-child(2) {
+    height: 20px;
+    max-width: 108px;
+  }
+
+  .concept17-header-center {
+    justify-content: flex-end;
+    padding-left: 6px;
+  }
+
+  .concept17-header-search,
+  .concept17-header-avatar,
+  .concept17-header-report {
+    display: none !important;
+  }
+
+  .concept17-workspace-header {
+    max-width: min(47vw, 182px);
+    min-height: 36px;
+    padding: 0 9px;
+  }
+
+  .concept17-shell .desktop-date-strip {
+    min-height: 52px;
+    padding: 7px 10px !important;
+  }
+
+  .concept17-shell .app-content-shell,
+  .concept17-shell.ui-v12-compact main {
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 10px 10px 92px !important;
+    overflow-x: clip;
+  }
+
+  .concept17-shell .app-content-shell .chaos-card,
+  .concept17-shell .app-content-shell .cockpit-panel {
+    border-radius: 14px !important;
+  }
+
+  .concept17-shell .manager-brief-compact .brief-hero {
+    min-height: 0;
+    padding: 14px !important;
+  }
+
+  .concept17-shell .manager-brief-compact .brief-hero h1,
+  .concept17-shell .manager-brief-compact .brief-hero h2 {
+    font-size: clamp(26px, 8vw, 34px) !important;
+  }
+
+  .concept17-shell button,
+  .concept17-shell [role='button'] {
+    min-height: 44px;
+  }
+
+  .concept17-shell input:not([type='checkbox']):not([type='radio']):not([type='range']),
+  .concept17-shell select,
+  .concept17-shell textarea {
+    min-height: 44px;
+    font-size: 16px !important;
+  }
+
+  .concept17-shell .overflow-x-auto {
+    max-width: 100%;
+  }
+
+  .concept17-shell .app-footer {
+    padding-bottom: 84px !important;
+  }
+}
+
+@media (max-width: 420px) {
+  .concept17-mobile-nav {
+    left: 5px;
+    right: 5px;
+    bottom: max(5px, env(safe-area-inset-bottom));
+    border-radius: 14px;
+  }
+
+  .concept17-mobile-nav-item {
+    font-size: 7.5px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .concept17-shell *,
+  .concept17-shell *::before,
+  .concept17-shell *::after {
+    scroll-behavior: auto !important;
+  }
+}
+
+.concept17-brief-role-title {
+  margin-top: 4px;
+  color: #b8c0c4;
+  font-size: 11px;
+  font-weight: 760;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+@media (min-width: 768px) {
+  .concept17-shell .manager-brief-compact .brief-hero > .relative {
+    align-items: center;
+  }
+  .concept17-shell .manager-brief-compact .brief-hero .grid.grid-cols-3 {
+    min-width: 330px !important;
+    gap: 9px !important;
+  }
+  .concept17-shell .manager-brief-compact .brief-hero .grid.grid-cols-3 > div {
+    min-height: 80px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    border-color: var(--c17-line) !important;
+    background: linear-gradient(145deg, #20282d, #151c20) !important;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.025);
+  }
+}

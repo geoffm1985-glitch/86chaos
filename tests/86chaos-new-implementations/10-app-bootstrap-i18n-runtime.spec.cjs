@@ -15,7 +15,7 @@ test.describe('17.0.28 browser-safe i18n bootstrap repair', () => {
     await login(page, account.email, account.password, { chooseWorkspace: true });
 
     await expect(page.locator('html')).toHaveAttribute('lang', /^(en|es)$/i, { timeout: 20000 });
-    await expect(page.getByText(/Version 17\.0\.38/i)).toBeAttached({ timeout: 20000 });
+    await expect(page.getByText(/Version 17\.1\.0/i)).toBeAttached({ timeout: 20000 });
     expect(bootstrapErrors, `translation/bootstrap page errors: ${bootstrapErrors.join(' | ')}`).toEqual([]);
   });
 });

@@ -13,7 +13,7 @@ test.describe('17.0.36 System Administrator complete directory and desktop repai
     const featured = page.getByTestId('system-admin-featured-card');
     const cards = page.getByTestId('system-admin-directory-card');
     await expect(featured).toHaveCount(7, { timeout: 15000 });
-    await expect(cards).toHaveCount(14, { timeout: 15000 });
+    await expect(cards).toHaveCount(21, { timeout: 15000 });
 
     const homeOverflow = await page.getByTestId('system-admin-complete-directory').evaluate(el => ({ scrollWidth: el.scrollWidth, clientWidth: el.clientWidth }));
     expect(homeOverflow.scrollWidth).toBeLessThanOrEqual(homeOverflow.clientWidth + 2);

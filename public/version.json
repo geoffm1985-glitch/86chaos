@@ -1,16 +1,17 @@
 {
-  "version": "17.0.38",
-  "name": "86 Chaos 17.0.38",
-  "build": "17.0.38",
-  "label": "86 Chaos 17.0.38",
-  "releasedAt": "2026-09-24T02:10:00Z",
-  "releaseTitle": "Desktop System Administrator Full-Width Layout Repair",
+  "version": "17.1.0",
+  "name": "86 Chaos 17.1.0",
+  "build": "17.1.0",
+  "label": "86 Chaos 17.1.0",
+  "releasedAt": "2026-09-24T03:30:00Z",
+  "releaseTitle": "Full-App Concept 1 Responsive Redesign",
   "notes": [
-    "Removes the obsolete 232px System Administrator desktop navigation rail from the live one-child layout, fixing the narrow phone-like PC rendering.",
-    "Keeps the approved Concept 1 two-two-three featured-card hierarchy and complete 21-page System Administrator directory intact.",
-    "Adds a deployed 1440px regression that requires the admin shell, layout, content, and home to exceed 900px and featured cards to render at true desktop widths."
+    "Introduces a shared app-wide Concept 1 design system with charcoal command-center surfaces, bronze accents, unified controls, desktop navigation rail, responsive command header, and mobile bottom navigation.",
+    "Migrates the application shell so existing real 86 Chaos tabs and subpages inherit the same desktop/mobile visual language without adding Orders & Tickets.",
+    "Repairs the System Administrator 21-tool directory contract while preserving the seven featured cards and established PWA Back behavior.",
+    "Adds deployed desktop/mobile layout regressions for width, overflow, touch targets, navigation geometry, and removal of the unintended Orders & Tickets entry."
   ],
-  "title": "86 Chaos 17.0.38",
-  "summary": "Removes the retired 232px System Administrator navigation rail so the approved Concept 1 desktop layout uses the full workspace.",
-  "description": "Corrects the live desktop System Administrator grid so the current one-child admin shell occupies the full desktop content width instead of being trapped in the obsolete navigation column."
+  "title": "86 Chaos 17.1.0",
+  "summary": "App-wide Concept 1 visual baseline with responsive desktop/mobile navigation and shared component styling.",
+  "description": "Rebuilds the presentation layer around the approved charcoal-and-bronze Concept 1 while preserving mature application logic, access controls, testing-domain boundaries, Spanish preferences, and recent schedule/admin repairs."
 }

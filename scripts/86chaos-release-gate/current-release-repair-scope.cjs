@@ -1,8 +1,13 @@
 'use strict';
 
-const CURRENT_RELEASE_VERSION = '17.0.38';
-const CURRENT_RELEASE_CARRY_FORWARD_NOTE = '17.0.38 removes the obsolete 232px System Administrator desktop navigation rail from the current one-child layout, preserving the 17.0.37 Concept 1 desktop hierarchy, all 21 admin pages, the 17.0.35 QA seed host repair, 17.0.34 drawer/PWA Back behavior, Spanish Phase 2, Schedule Builder coverage, presence retirement, and canonical testing-domain pin.';
+const CURRENT_RELEASE_VERSION = '17.1.0';
+const CURRENT_RELEASE_CARRY_FORWARD_NOTE = '17.1.0 establishes the app-wide Concept 1 responsive visual baseline, repairs the 21-tool System Administrator directory contract, and preserves PWA Back behavior, Spanish support, schedule repairs, presence retirement, testing-domain safety, and production security boundaries.';
 const CURRENT_RELEASE_REPAIR_SCOPE = [
+  {
+    specPath: '86chaos-new-implementations/17-app-wide-concept1-layout.spec.cjs',
+    fullSuitePath: '17.1.0 app-wide Concept 1 responsive shell',
+    exactTestTitle: 'shared desktop/mobile shell keeps real application content wide, touchable, and overflow-safe',
+  },
   {
     specPath: '86chaos-new-implementations/16-system-admin-desktop-full-width.spec.cjs',
     fullSuitePath: '17.0.38 System Administrator desktop full-width repair',

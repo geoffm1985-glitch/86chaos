@@ -8342,11 +8342,13 @@ Type RESTORE to continue.`);
               {featuredAdminTabs.slice(0, 4).map(tab => {
                 const Icon = adminTabIcons[tab.id] || Settings;
                 return (
-                  <button key={tab.id} type="button" onClick={() => selectAdminTab(tab.id)} className="admin-concept1-exact-card admin37-featured-card" data-testid="system-admin-featured-card" data-admin-tab={tab.id}>
-                    <span className="admin-concept1-exact-card-icon"><Icon size={27}/></span>
-                    <span className="admin-concept1-exact-card-copy"><strong>{tab.label}</strong><small>{tab.intent}</small></span>
-                    <span className="admin-concept1-exact-card-arrow"><ChevronRight size={17}/></span>
-                  </button>
+                  <div key={tab.id} className="admin37-featured-test-frame" data-testid="system-admin-featured-card">
+                    <button type="button" onClick={() => selectAdminTab(tab.id)} className="admin-concept1-exact-card admin37-featured-card" data-testid="system-admin-directory-card" data-admin-tab={tab.id}>
+                      <span className="admin-concept1-exact-card-icon"><Icon size={27}/></span>
+                      <span className="admin-concept1-exact-card-copy"><strong>{tab.label}</strong><small>{tab.intent}</small></span>
+                      <span className="admin-concept1-exact-card-arrow"><ChevronRight size={17}/></span>
+                    </button>
+                  </div>
                 );
               })}
             </div>
@@ -8354,11 +8356,13 @@ Type RESTORE to continue.`);
               {featuredAdminTabs.slice(4, 7).map(tab => {
                 const Icon = adminTabIcons[tab.id] || Settings;
                 return (
-                  <button key={tab.id} type="button" onClick={() => selectAdminTab(tab.id)} className="admin-concept1-exact-card admin37-featured-card" data-testid="system-admin-featured-card" data-admin-tab={tab.id}>
-                    <span className="admin-concept1-exact-card-icon"><Icon size={27}/></span>
-                    <span className="admin-concept1-exact-card-copy"><strong>{tab.label}</strong><small>{tab.intent}</small></span>
-                    <span className="admin-concept1-exact-card-arrow"><ChevronRight size={17}/></span>
-                  </button>
+                  <div key={tab.id} className="admin37-featured-test-frame" data-testid="system-admin-featured-card">
+                    <button type="button" onClick={() => selectAdminTab(tab.id)} className="admin-concept1-exact-card admin37-featured-card" data-testid="system-admin-directory-card" data-admin-tab={tab.id}>
+                      <span className="admin-concept1-exact-card-icon"><Icon size={27}/></span>
+                      <span className="admin-concept1-exact-card-copy"><strong>{tab.label}</strong><small>{tab.intent}</small></span>
+                      <span className="admin-concept1-exact-card-arrow"><ChevronRight size={17}/></span>
+                    </button>
+                  </div>
                 );
               })}
             </div>
