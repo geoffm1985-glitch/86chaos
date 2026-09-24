@@ -1,8 +1,13 @@
 'use strict';
 
-const CURRENT_RELEASE_VERSION = '17.1.4';
-const CURRENT_RELEASE_CARRY_FORWARD_NOTE = '17.1.4 repairs the failed 17.1.3 release-gate browser cases: Schedule Builder control overlap, locale-safe navigation/subtab selectors, dynamic deployed-version checks, System Administrator drawer navigation, long route-sweep time budgets, 86Voice bottom-nav alignment, and localized Kitchen Command assertions while preserving the 17.1.3 workflow repairs and all prior safeguards.';
+const CURRENT_RELEASE_VERSION = '17.1.5';
+const CURRENT_RELEASE_CARRY_FORWARD_NOTE = '17.1.5 keeps every six-slot mobile bottom-toolbar label on one line under narrow-phone and Android text scaling while preserving the complete 17.1.4 browser-stability repair and all prior safeguards.';
 const CURRENT_RELEASE_REPAIR_SCOPE = [
+  {
+    specPath: '86chaos-new-implementations/21-mobile-bottom-nav-single-line.spec.cjs',
+    fullSuitePath: '17.1.5 mobile bottom navigation label fit',
+    exactTestTitle: 'all six bottom-toolbar labels stay on one line at narrow-phone width',
+  },
   {
     specPath: '86chaos-new-implementations/20-mobile-workflow-repair.spec.cjs',
     fullSuitePath: '17.1.3 mobile workflow repair',

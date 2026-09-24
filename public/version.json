@@ -1,25 +1,22 @@
 {
-  "version": "17.1.4",
-  "name": "86 Chaos 17.1.4",
-  "build": "17.1.4",
-  "label": "86 Chaos 17.1.4",
-  "releasedAt": "2026-09-24T08:20:00Z",
-  "releaseTitle": "Release-Gate Browser Stability Repair",
+  "version": "17.1.5",
+  "name": "86 Chaos 17.1.5",
+  "build": "17.1.5",
+  "label": "86 Chaos 17.1.5",
+  "releasedAt": "2026-09-24T13:15:00Z",
+  "releaseTitle": "Mobile Bottom Toolbar Single-Line Label Repair",
   "notes": [
-    "Stops the Schedule Builder control deck from overlaying grid cells or intercepting Assign interactions while keeping the day/date row sticky.",
-    "Adds locale-independent route and subtab identities so Spanish interface tests do not break later release-gate navigation.",
-    "Makes the deployed-version browser assertion follow package.json instead of a retired hard-coded version.",
-    "Aligns 86Voice to the exact first bottom-nav baseline on narrow phones and accepts localized Kitchen Command headings without weakening crash detection.",
-    "Raises exhaustive route-sweep test budgets to match their observed runtime instead of timing out healthy coverage."
+    "Keeps Voice, Schedule, Home, Kitchen, Staff, and More on one line in the six-slot mobile bottom toolbar.",
+    "Adds explicit nowrap, keep-all, and Android text-size handling for mobile navigation labels.",
+    "Preserves the first-slot 86Voice control and existing 17.1.4 release-gate stability repairs."
   ],
-  "title": "86 Chaos 17.1.4",
-  "summary": "Targeted repair for the 17.1.3 failed+new Play Store release-gate browser failures and timeouts.",
-  "description": "Repairs real Schedule Builder and mobile toolbar geometry defects and hardens locale/version-sensitive Playwright contracts using stable application identities rather than fragile English text selectors.",
+  "title": "86 Chaos 17.1.5",
+  "summary": "Precision mobile toolbar typography repair so every bottom-navigation label remains on one line.",
+  "description": "Hardens the six-slot mobile command bar against narrow-phone and Android text scaling without reducing touch target size or changing route behavior.",
   "highlights": [
-    "Schedule Builder control deck remains in normal flow; only the requested day/date header stays sticky.",
-    "Drawer, Time Clock, Financials, Prep, Inventory, Maintenance, HR, Settings, and Back Office controls expose stable route/subtab identities.",
-    "Spanish testing uses separate project accounts and waits for preference restoration, preventing cross-project language leakage.",
-    "System Administrator drawer return uses the stable godmode route identity.",
-    "Long Concept 1 route/subtab sweeps receive evidence-based 240-second budgets."
+    "Schedule and Kitchen no longer wrap into two lines.",
+    "All six toolbar labels use dedicated single-line geometry.",
+    "86Voice remains the first bottom-toolbar control.",
+    "No business logic, permissions, schedule data, or Message Board behavior is changed."
   ]
 }

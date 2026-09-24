@@ -139,14 +139,14 @@ export const Concept17MobileNav = ({
           onClick={() => onNavigate?.(item.id)}
         >
           <span className="concept17-mobile-nav-icon"><NavIcon id={item.id} size={19} /></span>
-          <span>{item.mobileLabel || item.label}</span>
+          <span className="concept17-mobile-nav-label">{item.mobileLabel || item.label}</span>
           {item.alert && <i className="concept17-nav-alert" aria-label="New activity" />}
         </button>
       );
     })}
     <button type="button" className="concept17-mobile-nav-item" onClick={onMore} aria-label={moreLabel}>
       <span className="concept17-mobile-nav-icon"><MoreHorizontal size={20} aria-hidden="true" /></span>
-      <span>{moreLabel}</span>
+      <span className="concept17-mobile-nav-label">{moreLabel}</span>
     </button>
   </nav>
 );

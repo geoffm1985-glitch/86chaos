@@ -2633,3 +2633,46 @@ body {
     bottom: max(5px, env(safe-area-inset-bottom, 0px)) !important;
   }
 }
+
+
+/* 17.1.5 mobile bottom-nav single-line label repair.
+   Keep all six toolbar words readable on one line, including Android text scaling. */
+.concept17-mobile-nav {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+.concept17-mobile-nav-label,
+.voice-command-trigger-label {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  white-space: nowrap !important;
+  word-break: keep-all !important;
+  overflow-wrap: normal !important;
+  hyphens: none !important;
+  text-align: center;
+  letter-spacing: -0.015em;
+}
+
+@media (max-width: 767px) {
+  .concept17-mobile-nav-item {
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+  }
+
+  .concept17-mobile-nav-label,
+  .voice-command-trigger-label {
+    font-size: 8px !important;
+    line-height: 1 !important;
+  }
+}
+
+@media (max-width: 420px) {
+  .concept17-mobile-nav-label,
+  .voice-command-trigger-label {
+    font-size: 7px !important;
+    letter-spacing: -0.025em;
+  }
+}
