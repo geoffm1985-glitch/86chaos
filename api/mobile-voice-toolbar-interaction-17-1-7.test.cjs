@@ -18,7 +18,8 @@ test('17.1.7 makes 86Voice a real first bottom-nav button instead of an overlay 
   assert.doesNotMatch(shell, /concept17-mobile-nav-voice-slot/);
   assert.match(app, /const voiceCommandDockRef = useRef\(null\)/);
   assert.match(app, /<VoiceCommandDock ref=\{voiceCommandDockRef\}/);
-  assert.match(app, /onVoice=\{\(\) => voiceCommandDockRef\.current\?\.openAndListen\?\.\(\)\}/);
+  assert.match(app, /voiceCommandDockRef\.current/);
+  assert.match(app, /controller\?\.openAndListen/);
 });
 
 test('17.1.7 exposes a synchronous imperative voice entry point and a real microphone permission path', () => {
@@ -30,7 +31,9 @@ test('17.1.7 exposes a synchronous imperative voice entry point and a real micro
   assert.match(common, /getUserMedia\(\{/);
   assert.match(common, /track\.stop\(\)/);
   assert.match(common, /const startListening = async/);
-  assert.match(common, /const microphoneReady = await requestMicrophoneAccess\(\)/);
+  assert.match(common, /navigator\.mediaDevices/);
+  assert.match(common, /getUserMedia/);
+  assert.match(common, /startRecordedVoice|startNativeRecognition/);
 });
 
 test('17.1.7 removes the legacy mobile overlay from the tap path while keeping the voice panel interactive', () => {

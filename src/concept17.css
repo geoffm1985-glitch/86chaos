@@ -2735,3 +2735,40 @@ body {
     pointer-events: auto !important;
   }
 }
+
+
+/* 17.1.8 resilient mobile voice capture.
+   Keep the controller panel visibly anchored above the bottom command bar and
+   let the real toolbar button own the tap. Mobile/PWA audio is captured with
+   MediaRecorder and transcribed server-side, so voice does not depend on the
+   browser Web Speech service. */
+@media (max-width: 720px) {
+  .voice-command-dock.fixed.bottom-5.left-4 {
+    left: 0 !important;
+    bottom: 0 !important;
+    width: auto !important;
+    height: auto !important;
+    overflow: visible !important;
+    pointer-events: none !important;
+  }
+
+  .voice-command-dock > .cockpit-panel {
+    position: fixed !important;
+    left: max(10px, env(safe-area-inset-left, 0px)) !important;
+    right: max(10px, env(safe-area-inset-right, 0px)) !important;
+    bottom: calc(82px + env(safe-area-inset-bottom, 0px)) !important;
+    width: auto !important;
+    max-width: 420px !important;
+    max-height: calc(100dvh - 170px) !important;
+    overflow-y: auto !important;
+    pointer-events: auto !important;
+    z-index: 72 !important;
+  }
+
+  .concept17-mobile-voice-button {
+    position: relative;
+    z-index: 2;
+    touch-action: manipulation;
+    pointer-events: auto !important;
+  }
+}

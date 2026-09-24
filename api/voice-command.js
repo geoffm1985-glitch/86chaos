@@ -19,6 +19,31 @@ function voiceModelCandidates() {
   });
 }
 
+function voiceTranscriptionModel() {
+  return getAllowedGeminiModels({
+    feature: 'voice',
+    configured: process.env.VOICE_TRANSCRIBE_GEMINI_MODEL || process.env.VOICE_GEMINI_MODEL || '',
+    defaults: ['gemini-2.5-flash-lite']
+  })[0];
+}
+
+const VOICE_AUDIO_MAX_BYTES = 1_500_000;
+const VOICE_AUDIO_MIME_TYPES = new Set([
+  'audio/webm', 'audio/webm;codecs=opus', 'audio/mp4', 'audio/ogg', 'audio/ogg;codecs=opus',
+  'audio/wav', 'audio/x-wav', 'audio/mpeg', 'audio/mp3', 'audio/aac', 'audio/flac', 'audio/m4a'
+]);
+
+function normalizeVoiceAudioMime(value = '') {
+  return String(value || '').trim().toLowerCase().slice(0, 80);
+}
+
+function estimateBase64Bytes(value = '') {
+  const clean = String(value || '').replace(/\s+/g, '');
+  if (!clean) return 0;
+  const padding = clean.endsWith('==') ? 2 : clean.endsWith('=') ? 1 : 0;
+  return Math.max(0, Math.floor(clean.length * 3 / 4) - padding);
+}
+
 module.exports = async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
   try {
@@ -33,6 +58,51 @@ module.exports = async function handler(req, res) {
     enforceClientAiSelection(req, resolveAiPolicy({ feature: 'voice', route: '/api/voice-command', provider: 'gemini' }), { uid: decoded.uid });
     const voiceRate = await enforceRateLimit({ db, req, decoded, routeName: 'voice-command', limit: getHardRateLimit('voice', process.env.VOICE_COMMAND_RATE_LIMIT), windowMs: 60 * 1000 });
     if (!voiceRate.ok) return sendRateLimited(res, voiceRate);
+
+    const mode = String(req.body?.mode || '').trim().toLowerCase();
+    const audioBase64 = String(req.body?.audioBase64 || '').replace(/^data:[^,]+,/, '').replace(/\s+/g, '');
+    const audioMimeType = normalizeVoiceAudioMime(req.body?.mimeType || 'audio/webm');
+    const providerAudioMimeType = audioMimeType.split(';')[0];
+
+    if (mode === 'transcribe' || audioBase64) {
+      if (!apiKey) return res.status(503).json({ intent: 'unknown', error: 'Voice transcription is not configured on the server.' });
+      if (!audioBase64) return res.status(400).json({ intent: 'unknown', error: 'Voice audio is missing.' });
+      if (!VOICE_AUDIO_MIME_TYPES.has(audioMimeType)) return res.status(415).json({ intent: 'unknown', error: 'This microphone audio format is not supported.' });
+      const audioBytes = estimateBase64Bytes(audioBase64);
+      if (!audioBytes || audioBytes > VOICE_AUDIO_MAX_BYTES) return res.status(413).json({ intent: 'unknown', error: 'Voice clips must be short and under 1.5 MB.' });
+
+      const model = voiceTranscriptionModel();
+      const callBudget = createProviderCallBudget('voice');
+      callBudget.consume({ model, attempt: 'voice-transcription' });
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 20 * 1000);
+      let response;
+      try {
+        response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${apiKey}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          signal: controller.signal,
+          body: JSON.stringify({
+            contents: [{ role: 'user', parts: [
+              { text: 'Transcribe the spoken restaurant command exactly. Return only the transcript text, with no labels, explanation, markdown, or quotation marks.' },
+              { inlineData: { mimeType: providerAudioMimeType, data: audioBase64 } }
+            ] }],
+            generationConfig: { temperature: 0, maxOutputTokens: 256 }
+          })
+        });
+      } finally {
+        clearTimeout(timeout);
+      }
+      if (!response.ok) {
+        await response.text().catch(() => '');
+        return res.status(response.status || 502).json({ intent: 'unknown', error: 'Voice transcription provider rejected the audio clip.' });
+      }
+      const data = await response.json().catch(() => null);
+      callBudget.recordUsage(data?.usageMetadata?.promptTokenCount, data?.usageMetadata?.candidatesTokenCount);
+      const transcript = String(data?.candidates?.[0]?.content?.parts?.map(part => part?.text || '').join(' ') || '').trim().replace(/^['"]|['"]$/g, '');
+      if (!transcript) return res.status(422).json({ intent: 'unknown', error: 'No clear speech was detected in the microphone clip.' });
+      return res.status(200).json({ intent: 'transcript', transcript });
+    }
 
     const text = String(req.body?.text || '').trim();
     if (!apiKey || !text) return res.status(200).json({ intent: 'unknown' });

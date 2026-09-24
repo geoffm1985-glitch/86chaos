@@ -1,8 +1,13 @@
 'use strict';
 
-const CURRENT_RELEASE_VERSION = '17.1.7';
-const CURRENT_RELEASE_CARRY_FORWARD_NOTE = '17.1.7 preserves the complete Concept 1 and 17.1.6 release-gate repairs while replacing the fragile mobile 86Voice overlay with a real first toolbar button, direct controller wiring, and explicit microphone-permission handling.';
+const CURRENT_RELEASE_VERSION = '17.1.8';
+const CURRENT_RELEASE_CARRY_FORWARD_NOTE = '17.1.8 preserves the complete Concept 1 and 17.1.7 interaction repairs while adding a resilient mobile/PWA MediaRecorder capture path with authenticated server-side transcription, visible voice status, and retained native SpeechRecognition fallback.';
 const CURRENT_RELEASE_REPAIR_SCOPE = [
+  {
+    specPath: '86chaos-new-implementations/24-mobile-voice-resilient-capture.spec.cjs',
+    fullSuitePath: '17.1.8 resilient mobile 86Voice capture',
+    exactTestTitle: 'mobile toolbar records, transcribes, and processes a command without SpeechRecognition',
+  },
   {
     specPath: '86chaos-new-implementations/23-mobile-voice-toolbar-interaction.spec.cjs',
     fullSuitePath: '17.1.7 mobile 86Voice toolbar interaction',

@@ -1,23 +1,23 @@
 {
-  "version": "17.1.7",
-  "name": "86 Chaos 17.1.7",
-  "build": "17.1.7",
-  "label": "86 Chaos 17.1.7",
-  "releasedAt": "2026-09-24T18:30:00Z",
-  "releaseTitle": "86Voice Mobile Toolbar Interaction Repair",
+  "version": "17.1.8",
+  "name": "86 Chaos 17.1.8",
+  "build": "17.1.8",
+  "label": "86 Chaos 17.1.8",
+  "releasedAt": "2026-09-24T19:05:00Z",
+  "releaseTitle": "86Voice Resilient Mobile Capture Repair",
   "notes": [
-    "Turns the first mobile toolbar slot into the actual 86Voice button instead of reserving an empty slot beneath a floating overlay.",
-    "Wires the toolbar button synchronously to 86Voice through an imperative ref so the tap reaches the voice controller directly.",
-    "Requests microphone access with getUserMedia before speech recognition starts and shows a visible permission/error path when access is blocked.",
-    "Keeps the old floating trigger on desktop only and removes it from the mobile tap path."
+    "Uses MediaRecorder as the primary mobile/PWA microphone path instead of depending only on browser SpeechRecognition.",
+    "Transcribes short voice clips through the existing authenticated, App Check-aware, rate-limited server voice route.",
+    "Keeps the 86Voice panel visibly anchored above the mobile toolbar with live recording/transcribing/processing status.",
+    "Retains built-in SpeechRecognition on compatible desktop browsers and typed-command fallback everywhere."
   ],
-  "title": "86 Chaos 17.1.7",
-  "summary": "Rebuilds the mobile microphone as a real first toolbar button with direct 86Voice wiring and explicit microphone-permission handling.",
-  "description": "Replaces the fragile floating-overlay microphone path with a true bottom-navigation control wired directly to 86Voice, adds explicit microphone access handling, and preserves all 17.1.6 release-gate repairs.",
+  "title": "86 Chaos 17.1.8",
+  "summary": "Replaces the fragile mobile Web Speech-only path with direct microphone recording plus authenticated server-side transcription.",
+  "description": "Makes the first mobile Voice button open a visible controller, capture microphone audio with MediaRecorder on mobile/PWA, transcribe short clips through the existing authenticated Gemini voice route, and retain browser SpeechRecognition as a secondary path.",
   "highlights": [
-    "Voice is now a real first-class mobile navigation button.",
-    "The legacy floating mobile microphone can no longer steal or swallow taps.",
-    "Microphone permission is explicitly requested and released before recognition begins.",
-    "New browser coverage verifies one tap opens 86Voice, requests microphone access, and starts recognition."
+    "The toolbar microphone has a real mobile recording path even when Web Speech is unavailable or unreliable.",
+    "A single tap visibly opens 86Voice and starts microphone capture on mobile/PWA.",
+    "Recorded audio is size-limited, MIME-allowlisted, authenticated, rate-limited, and transcribed server-side.",
+    "New deployed-browser coverage exercises the no-SpeechRecognition MediaRecorder fallback end to end."
   ]
 }

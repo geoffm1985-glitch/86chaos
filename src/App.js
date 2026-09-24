@@ -3546,7 +3546,16 @@ return (
         items={shellMobileNavItems}
         activeTab={activeTabState}
         onNavigate={stableSetActiveTab}
-        onVoice={() => voiceCommandDockRef.current?.openAndListen?.()}
+        onVoice={() => {
+          try { navigator?.vibrate?.(18); } catch (_) {}
+          const controller = voiceCommandDockRef.current;
+          if (controller?.openAndListen) {
+            controller.openAndListen();
+            return;
+          }
+          try { window.dispatchEvent(new CustomEvent('chaos:voice-open-and-listen', { detail: { source: 'mobile-toolbar' } })); } catch (_) {}
+          addToast?.('86Voice', 'Opening voice controls…');
+        }}
         voiceLabel={shellText('shell.voice', 'Voice')}
         onMore={openMenu}
         moreLabel={shellText('shell.more', 'More')}
