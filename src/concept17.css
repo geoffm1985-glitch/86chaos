@@ -2785,3 +2785,23 @@ body {
     z-index: 91 !important;
   }
 }
+
+/* 17.1.11 mobile 86Voice physical-touch repair.
+   Mobile Voice activates on pointer-down before the global touchend zoom guard
+   can cancel a synthesized click. Disable browser callout/selection behavior on
+   this one control so long-press/context handling cannot turn the mic into a
+   page/link copy gesture. */
+@media (max-width: 720px) {
+  .concept17-mobile-voice-button,
+  .concept17-mobile-voice-button * {
+    -webkit-touch-callout: none !important;
+    -webkit-user-select: none !important;
+    user-select: none !important;
+    -webkit-tap-highlight-color: transparent !important;
+  }
+
+  .concept17-mobile-voice-button {
+    touch-action: manipulation !important;
+    pointer-events: auto !important;
+  }
+}

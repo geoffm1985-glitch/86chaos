@@ -1,23 +1,23 @@
 {
-  "version": "17.1.10",
-  "name": "86 Chaos 17.1.10",
-  "build": "17.1.10",
-  "label": "86 Chaos 17.1.10",
-  "releasedAt": "2026-09-24T23:15:00Z",
-  "releaseTitle": "86Voice Production 17.0.29 Lifecycle Restoration",
+  "version": "17.1.11",
+  "name": "86 Chaos 17.1.11",
+  "build": "17.1.11",
+  "label": "86 Chaos 17.1.11",
+  "releasedAt": "2026-09-24T23:50:00Z",
+  "releaseTitle": "86Voice Mobile Physical Touch Activation Repair",
   "notes": [
-    "Restores the microphone activation lifecycle proven in production 17.0.29: open 86Voice, wait 80 ms, create SpeechRecognition/webkitSpeechRecognition, then call recognition.start().",
-    "Keeps the new six-button Concept 1 mobile toolbar unchanged; its first Voice button now invokes the restored production voice controller.",
-    "Removes MediaRecorder and Gemini server transcription from the active client microphone path so mobile voice no longer depends on the experimental 17.1.8/17.1.9 pipeline.",
-    "Preserves the current 86Voice command parser, safety confirmations, typed fallback, new UI, Spanish support, and all non-voice redesign work."
+    "Activates the mobile Voice control on touch/pen pointer-down, before the global mobile touchend guard can cancel the synthesized click.",
+    "Deduplicates the follow-up compatibility click so one physical tap starts exactly one 86Voice session.",
+    "Blocks context-menu, drag, touch callout, and text selection behavior on the Voice control so the browser cannot turn the microphone gesture into a page/link address copy action.",
+    "Routes the toolbar through the same openAndListen controller used by the restored production 17.0.29 SpeechRecognition lifecycle."
   ],
-  "title": "86 Chaos 17.1.10",
-  "summary": "Restores the exact production 17.0.29 Web Speech microphone lifecycle inside the new Concept 1 toolbar and panel.",
-  "description": "Keeps the 17.1.x Concept 1 UI unchanged while replacing the experimental MediaRecorder/server-transcription activation path with the known-working 17.0.29 SpeechRecognition/webkitSpeechRecognition lifecycle.",
+  "title": "86 Chaos 17.1.11",
+  "summary": "Makes the mobile 86Voice toolbar react to the physical touch/pen press before mobile touchend cancellation and blocks browser URL-copy callouts.",
+  "description": "Preserves the production 17.0.29 Web Speech lifecycle and Concept 1 UI while repairing the mobile toolbar event path that could lose the synthesized click or trigger a browser copy-address callout.",
   "highlights": [
-    "Voice first remains the first bottom-toolbar button with the existing Concept 1 styling.",
-    "One Voice tap follows the same browser speech-recognition lifecycle as production 17.0.29.",
-    "The current command parser and new 86Voice panel remain in place after the restored microphone capture step.",
-    "No Concept 1 navigation, layout, or visual shell files are changed by this repair."
+    "Mobile Voice uses the physical touch event instead of depending only on onClick.",
+    "The browser copy-address/context-callout path is suppressed only on the Voice button.",
+    "Desktop voice behavior and the new six-button Concept 1 toolbar layout are unchanged.",
+    "The 17.0.29 SpeechRecognition/webkitSpeechRecognition lifecycle remains the microphone engine."
   ]
 }

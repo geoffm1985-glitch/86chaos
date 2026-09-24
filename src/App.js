@@ -3549,11 +3549,15 @@ return (
         onVoice={() => {
           try { navigator?.vibrate?.(18); } catch (_) {}
           const controller = voiceCommandDockRef.current;
+          if (controller?.openAndListen) {
+            controller.openAndListen();
+            return;
+          }
           if (controller?.openPanel) {
             controller.openPanel();
             return;
           }
-          try { window.dispatchEvent(new CustomEvent('chaos:voice-open-panel', { detail: { source: 'mobile-toolbar' } })); } catch (_) {}
+          try { window.dispatchEvent(new CustomEvent('chaos:voice-open-and-listen', { detail: { source: 'mobile-toolbar' } })); } catch (_) {}
           addToast?.('86Voice', 'Opening voice controls…');
         }}
         voiceLabel={shellText('shell.voice', 'Voice')}

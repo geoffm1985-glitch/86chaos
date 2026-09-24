@@ -1,8 +1,13 @@
 'use strict';
 
-const CURRENT_RELEASE_VERSION = '17.1.10';
-const CURRENT_RELEASE_CARRY_FORWARD_NOTE = '17.1.10 preserves the complete Concept 1 redesign while restoring the known-working production 17.0.29 SpeechRecognition/webkitSpeechRecognition microphone lifecycle behind the new first-position Voice toolbar button.';
+const CURRENT_RELEASE_VERSION = '17.1.11';
+const CURRENT_RELEASE_CARRY_FORWARD_NOTE = '17.1.11 preserves the complete Concept 1 redesign and production 17.0.29 speech lifecycle while repairing the physical mobile touch path so the first-position Voice toolbar button cannot lose its click or fall into a browser copy-address callout.';
 const CURRENT_RELEASE_REPAIR_SCOPE = [
+  {
+    specPath: '86chaos-new-implementations/26-mobile-voice-physical-touch.spec.cjs',
+    fullSuitePath: '17.1.11 mobile 86Voice physical touch repair',
+    exactTestTitle: 'real touchscreen tap opens 86Voice and starts one production recognition session',
+  },
   {
     specPath: '86chaos-new-implementations/25-mobile-voice-production-parity.spec.cjs',
     fullSuitePath: '17.1.10 production 17.0.29 86Voice parity',

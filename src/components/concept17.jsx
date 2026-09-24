@@ -127,15 +127,46 @@ export const Concept17MobileNav = ({
   onVoice,
   voiceLabel = 'Voice',
   moreLabel = 'More',
-}) => (
+}) => {
+  // Mobile browsers can cancel the synthetic click during touchend handling
+  // (86 Chaos also has a global double-tap zoom guard). Start Voice from the
+  // real touch/pen pointer press, then suppress the compatibility click so one
+  // physical tap produces exactly one activation. Blocking context-menu/drag
+  // also prevents the browser URL/link-copy callout from stealing this control.
+  const activateVoiceFromPointer = (event) => {
+    if (!event || event.pointerType === 'mouse') return;
+    event.preventDefault();
+    event.stopPropagation();
+    event.currentTarget.dataset.voicePointerActivatedAt = String(Date.now());
+    onVoice?.();
+  };
+
+  const activateVoiceFromClick = (event) => {
+    event?.preventDefault?.();
+    event?.stopPropagation?.();
+    const lastPointerActivation = Number(event?.currentTarget?.dataset?.voicePointerActivatedAt || 0);
+    if (lastPointerActivation && Date.now() - lastPointerActivation < 1200) return;
+    onVoice?.();
+  };
+
+  const suppressVoiceBrowserCallout = (event) => {
+    event?.preventDefault?.();
+    event?.stopPropagation?.();
+  };
+
+  return (
   <nav className="concept17-mobile-nav" data-testid="concept17-mobile-bottom-nav" aria-label="Primary navigation">
     <button
       type="button"
       className="concept17-mobile-nav-item concept17-mobile-voice-button"
       data-testid="concept17-mobile-voice-button"
       data-shell-action="voice"
-      onClick={onVoice}
+      onPointerDown={activateVoiceFromPointer}
+      onClick={activateVoiceFromClick}
+      onContextMenu={suppressVoiceBrowserCallout}
+      onDragStart={suppressVoiceBrowserCallout}
       aria-label={voiceLabel}
+      aria-haspopup="dialog"
     >
       <span className="concept17-mobile-nav-icon"><Mic size={20} aria-hidden="true" /></span>
       <span className="concept17-mobile-nav-label">{voiceLabel}</span>
@@ -162,7 +193,8 @@ export const Concept17MobileNav = ({
       <span className="concept17-mobile-nav-label">{moreLabel}</span>
     </button>
   </nav>
-);
+  );
+};
 
 
 const ROUTE_COPY = {
