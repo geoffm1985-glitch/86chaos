@@ -1,16 +1,16 @@
 {
-  "version": "17.0.37",
-  "name": "86 Chaos 17.0.37",
-  "build": "17.0.37",
-  "label": "86 Chaos 17.0.37",
-  "releasedAt": "2026-09-24T01:05:00Z",
-  "releaseTitle": "Desktop System Administrator Concept 1 Isolation",
+  "version": "17.0.38",
+  "name": "86 Chaos 17.0.38",
+  "build": "17.0.38",
+  "label": "86 Chaos 17.0.38",
+  "releasedAt": "2026-09-24T02:10:00Z",
+  "releaseTitle": "Desktop System Administrator Full-Width Layout Repair",
   "notes": [
-    "Rebuilds the desktop System Administrator home around the original Concept 1 hierarchy: two primary cards, two primary cards, then three cards, instead of the grouped console layout that drifted away from the approved mockup.",
-    "Keeps every real System Administrator subpage reachable from the same home screen through a compact complete directory below the seven featured Concept 1 cards.",
-    "Adds a final desktop-only Concept 1 style layer that overrides legacy compact/light System Administrator CSS so desktop subpages keep the same charcoal, bronze, rounded-card visual language as the home page."
+    "Removes the obsolete 232px System Administrator desktop navigation rail from the live one-child layout, fixing the narrow phone-like PC rendering.",
+    "Keeps the approved Concept 1 two-two-three featured-card hierarchy and complete 21-page System Administrator directory intact.",
+    "Adds a deployed 1440px regression that requires the admin shell, layout, content, and home to exceed 900px and featured cards to render at true desktop widths."
   ],
-  "title": "86 Chaos 17.0.37",
-  "summary": "Restores the approved Concept 1 desktop System Administrator layout while preserving complete access to all 21 admin pages.",
-  "description": "Uses the approved Concept 1 two-two-three featured-card desktop hierarchy, moves the remaining tools into a compact complete directory, and isolates desktop admin pages from legacy compact CSS that was overriding the new design."
+  "title": "86 Chaos 17.0.38",
+  "summary": "Removes the retired 232px System Administrator navigation rail so the approved Concept 1 desktop layout uses the full workspace.",
+  "description": "Corrects the live desktop System Administrator grid so the current one-child admin shell occupies the full desktop content width instead of being trapped in the obsolete navigation column."
 }

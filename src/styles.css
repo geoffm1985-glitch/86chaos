@@ -6753,6 +6753,28 @@ span.bg-red-500.text-white,
     color: var(--admin37-ink) !important;
   }
 
+  /*
+   * 17.0.38 desktop width repair:
+   * the legacy System Administrator console used a 232px navigation rail.
+   * That rail no longer exists, but an older desktop rule still declared
+   * `grid-template-columns: 232px minmax(0, 1fr)`, which placed the only
+   * remaining child (the entire admin page) into the obsolete 232px column.
+   * Force the current one-child shell to a single full-width column.
+   */
+  .admin46-shell .admin46-layout {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) !important;
+    width: 100% !important;
+    max-width: none !important;
+  }
+
+  .admin46-shell .admin46-content {
+    grid-column: 1 / -1 !important;
+    width: 100% !important;
+    max-width: none !important;
+    min-width: 0 !important;
+  }
+
   .admin46-shell #admin-content-start {
     background: transparent !important;
   }

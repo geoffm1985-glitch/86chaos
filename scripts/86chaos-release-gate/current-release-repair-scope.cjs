@@ -1,8 +1,13 @@
 'use strict';
 
-const CURRENT_RELEASE_VERSION = '17.0.37';
-const CURRENT_RELEASE_CARRY_FORWARD_NOTE = '17.0.37 isolates the desktop System Administrator from legacy compact CSS, restores the Concept 1 two-two-three featured-card hierarchy, keeps all 21 real admin pages reachable from the home directory, and preserves the 17.0.36 complete-directory repair, 17.0.35 QA seed host repair, 17.0.34 drawer/PWA Back behavior, Spanish Phase 2, Schedule Builder coverage, presence retirement, and canonical testing-domain pin.';
+const CURRENT_RELEASE_VERSION = '17.0.38';
+const CURRENT_RELEASE_CARRY_FORWARD_NOTE = '17.0.38 removes the obsolete 232px System Administrator desktop navigation rail from the current one-child layout, preserving the 17.0.37 Concept 1 desktop hierarchy, all 21 admin pages, the 17.0.35 QA seed host repair, 17.0.34 drawer/PWA Back behavior, Spanish Phase 2, Schedule Builder coverage, presence retirement, and canonical testing-domain pin.';
 const CURRENT_RELEASE_REPAIR_SCOPE = [
+  {
+    specPath: '86chaos-new-implementations/16-system-admin-desktop-full-width.spec.cjs',
+    fullSuitePath: '17.0.38 System Administrator desktop full-width repair',
+    exactTestTitle: 'desktop System Administrator occupies the desktop workspace instead of the retired 232px navigation rail',
+  },
   {
     specPath: '86chaos-new-implementations/15-system-admin-desktop-concept1.spec.cjs',
     fullSuitePath: '17.0.37 System Administrator desktop Concept 1 fidelity',
