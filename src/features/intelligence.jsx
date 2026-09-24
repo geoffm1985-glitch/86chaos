@@ -1145,8 +1145,8 @@ const TabAITools = ({ appUser, clientData, setActiveTab, setInventorySubTabTarge
         {cards.map(card => (
           <div key={card.title} className={`${T.card} p-4 space-y-3 ${card.enabled ? '' : 'opacity-80'}`}>
             <div className="flex items-start justify-between gap-3">
-              <div><h3 className="font-black text-white text-lg">{card.title}</h3><p className="text-xs font-bold text-slate-400 mt-1 leading-relaxed">{card.desc}</p></div>
-              <span className={`px-2 py-1 rounded-lg border text-[9px] font-black uppercase tracking-widest ${card.enabled ? 'bg-emerald-900/20 text-emerald-300 border-emerald-900/50' : 'bg-amber-900/20 text-amber-300 border-amber-900/50'}`}>{card.tag}</span>
+              <div className="min-w-0 flex-1"><h3 className="font-black text-white text-lg">{card.title}</h3><p className="text-xs font-bold text-slate-400 mt-1 leading-relaxed">{card.desc}</p></div>
+              <span className={`kitchen-tool-status-badge px-2 py-1 rounded-lg border text-[9px] font-black uppercase tracking-widest whitespace-nowrap shrink-0 ${card.enabled ? 'bg-emerald-900/20 text-emerald-300 border-emerald-900/50' : 'bg-amber-900/20 text-amber-300 border-amber-900/50'}`}>{card.tag}</span>
             </div>
             <p className="text-[10px] font-bold text-slate-500 leading-snug">{card.note}</p>
             <button type="button" onClick={() => { if (!card.enabled) return addToast?.('Access Needed', card.lockedMessage || 'Ask the account owner to enable this tool first.'); if (card.tab === 'inventory' && card.subTab) setInventorySubTabTarget?.(card.subTab); setActiveTab(card.tab); }} className={card.enabled ? T.btn : T.btnAlt}>{card.action}</button>

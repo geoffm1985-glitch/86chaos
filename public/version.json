@@ -1,25 +1,23 @@
 {
-  "version": "17.1.2",
-  "name": "86 Chaos 17.1.2",
-  "build": "17.1.2",
-  "label": "86 Chaos 17.1.2",
-  "releasedAt": "2026-09-24T04:20:00Z",
-  "releaseTitle": "Complete Concept 1 Page-by-Page Redesign",
+  "version": "17.1.3",
+  "name": "86 Chaos 17.1.3",
+  "build": "17.1.3",
+  "label": "86 Chaos 17.1.3",
+  "releasedAt": "2026-09-24T06:20:00Z",
+  "releaseTitle": "Mobile Workflow and Message Board Repair",
   "notes": [
-    "Makes Time Clock & Schedule the first primary desktop, mobile, and drawer navigation destination.",
-    "Adds an explicit bilingual Concept 1 route frame and deep presentation migration for all real routed workflows and their mature subtab families.",
-    "Repairs the System Administrator exact-home regression so seven featured shortcuts are separate from one canonical 21-card directory.",
-    "Preserves the existing 86 Chaos icon and wordmark, the Vercel HelpCircle import repair, PWA Back behavior, Spanish support, testing-domain safety, and production security boundaries.",
-    "Adds deployed desktop/mobile route-and-subtab regressions for width, overflow, controls, Time Clock ordering, and the 21-card admin contract."
+    "Pins Schedule Builder day/date headers while staff rows scroll and tightens mobile spacing.",
+    "Repairs Message Board live event loading and immediate post rendering before sending push notifications.",
+    "Moves the existing 86Voice microphone into the first mobile bottom-toolbar slot and fixes Kitchen Tools badge wrapping.",
+    "Repairs the Kitchen Command Center formatFullDate crash and suppresses false push-reconnect banners on healthy devices."
   ],
-  "title": "86 Chaos 17.1.2",
-  "summary": "Explicit Concept 1 page-and-subtab migration across the real 86 Chaos application, with Time Clock first and the System Administrator 21-card contract repaired.",
-  "description": "Rebuilds every routed workflow through the approved charcoal-and-bronze Concept 1 frame, normalizes deep cards, forms, tables, subtabs, modals and responsive geometry, preserves the 86 Chaos logos and mature application logic, and repairs the System Administrator directory regression.",
+  "title": "86 Chaos 17.1.3",
+  "summary": "Targeted mobile workflow repair for Schedule Builder, Message Board, 86Voice toolbar placement, Kitchen Tools badges, push repair banner, and Kitchen Command Center date formatting.",
+  "description": "Repairs the 17.1.2 mobile workflow defects while preserving the Concept 1 redesign and production business logic.",
   "highlights": [
-    "Time Clock & Schedule is primary navigation item number one.",
-    "Every top-level route receives the same Concept 1 command header, full-width workspace, card system, controls, tables, forms and mobile geometry.",
-    "Schedule, Prep, Inventory, Financials, Settings, HR & Training, Maintenance and administrative subtabs use the shared segmented-control design.",
-    "System Administrator contains exactly 21 canonical directory identities plus seven presentation-only featured shortcuts.",
-    "86 Chaos logos remain intact and Orders & Tickets remains absent."
+    "Pins Schedule Builder day/date headers while staff rows scroll and tightens mobile spacing.",
+    "Repairs Message Board live event loading and immediate post rendering before sending push notifications.",
+    "Moves the existing 86Voice microphone into the first mobile bottom-toolbar slot and fixes Kitchen Tools badge wrapping.",
+    "Repairs the Kitchen Command Center formatFullDate crash and suppresses false push-reconnect banners on healthy devices."
   ]
 }

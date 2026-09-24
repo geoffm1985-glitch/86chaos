@@ -326,6 +326,7 @@ export function buildScheduleQueryPlan({ activeTabState = '', activeScheduleSubT
   const authUserId = safeAppUser.authUid || safeAppUser.uid || safeAppUser.userId || safeAppUser.id || '';
   const canManageSchedule = canManageScheduleForPlanner(safeAppUser);
   const ownUserClause = scheduleUserId ? [['scheduleUserId', '==', scheduleUserId]] : [['scheduleUserId', '==', '__none__']];
+  const wantsOperationalEvents = wantsToday || activeTabState === 'messages' || activeTabState === 'ops';
   const plan = {
     shiftClauses: [['date','>=', today], ['date','<=', todayOpsWindowEnd]],
     shiftsEnabled: true,
@@ -336,8 +337,8 @@ export function buildScheduleQueryPlan({ activeTabState = '', activeScheduleSubT
     timeOffHistoryEnabled: false,
     timeOffHistoryClauses: [],
     timeOffHistoryLimit: 40,
-    eventsEnabled: wantsToday,
-    eventEnabled: wantsToday,
+    eventsEnabled: wantsOperationalEvents,
+    eventEnabled: wantsOperationalEvents,
     eventClauses: [['date', '>=', messageRangeStart || recentWindowStart], ['date', '<=', todayOpsWindowEnd]],
     eventLimit: 35,
     swapsEnabled: false,

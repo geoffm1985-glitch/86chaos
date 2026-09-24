@@ -4346,9 +4346,9 @@ const handleExportTimesheets = () => {
           </div>
 
           <div className={`schedule-builder-grid-card ${T.card} w-full overflow-hidden`}>
-            <div className="overflow-x-auto w-full no-scrollbar">
+            <div className="schedule-builder-grid-scroll overflow-x-auto w-full no-scrollbar">
               <table className="schedule-builder-desktop-table w-full text-left text-[10px] border-collapse table-fixed min-w-[1200px] xl:min-w-full" style={{ '--schedule-builder-min-width': `${82 + (schedulePeriodDays.length * 56)}px` }}>
-                <thead>
+                <thead className="schedule-builder-sticky-head">
                   <tr className="bg-[#12161A] border-b border-[#2A353D]">
                     <th className={`p-1 sm:p-2 font-bold bg-[#12161A] sticky left-0 z-20 w-16 sm:w-24 border-r border-[#2A353D] ${T.copper} truncate`}>Staff</th>
                     {schedulePeriodDays.map(d => {

@@ -1,8 +1,23 @@
 'use strict';
 
-const CURRENT_RELEASE_VERSION = '17.1.2';
-const CURRENT_RELEASE_CARRY_FORWARD_NOTE = '17.1.2 completes the explicit Concept 1 page-and-subtab migration, makes Time Clock & Schedule the first primary tab, repairs the System Administrator unique 21-card directory contract, preserves the 86 Chaos brand assets and Vercel Lucide import repair, and carries forward PWA Back, Spanish, schedule, presence-retirement, testing-domain, and production security safeguards.';
+const CURRENT_RELEASE_VERSION = '17.1.3';
+const CURRENT_RELEASE_CARRY_FORWARD_NOTE = '17.1.3 repairs the mobile Schedule Builder sticky date header and density, Message Board live posting, first-slot 86Voice toolbar placement, Kitchen Tools badge wrapping, false notification-repair prompts, and the Kitchen Command Center formatFullDate crash while preserving the 17.1.2 Concept 1 migration and all prior safeguards.';
 const CURRENT_RELEASE_REPAIR_SCOPE = [
+  {
+    specPath: '86chaos-new-implementations/20-mobile-workflow-repair.spec.cjs',
+    fullSuitePath: '17.1.3 mobile workflow repair',
+    exactTestTitle: 'mobile toolbar starts with 86Voice and Kitchen Tools badges do not stack',
+  },
+  {
+    specPath: '86chaos-new-implementations/20-mobile-workflow-repair.spec.cjs',
+    fullSuitePath: '17.1.3 mobile workflow repair',
+    exactTestTitle: 'Schedule Builder day/date row remains pinned while employee rows scroll',
+  },
+  {
+    specPath: '86chaos-new-implementations/20-mobile-workflow-repair.spec.cjs',
+    fullSuitePath: '17.1.3 mobile workflow repair',
+    exactTestTitle: 'Kitchen Command Center opens without the formatFullDate recovery crash',
+  },
   {
     specPath: '86chaos-new-implementations/19-concept1-complete-route-subtab-fidelity.spec.cjs',
     fullSuitePath: '17.1.2 complete Concept 1 route and subtab fidelity',

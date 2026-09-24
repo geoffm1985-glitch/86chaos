@@ -3048,7 +3048,7 @@ const VoiceCommandDockBase = ({ appUser, inventoryItems = [], recipes = [], user
         {!canUseSpeech && <div className="text-[10px] text-amber-300 bg-amber-900/10 border border-amber-900/40 rounded-xl p-2 font-bold">This browser does not support built-in speech recognition. Type the command here, or use Chrome/Android for voice.</div>}
       </div>
     </div>}
-    <button type="button" aria-label={open ? 'Hide 86Voice assistant' : 'Open 86Voice'} aria-expanded={open} onClick={open ? closeDock : openDock} className="no-compact w-14 h-14 rounded-full bg-[#0B0E11] border border-[#D4A381]/70 text-[#D4A381] shadow-2xl flex items-center justify-center hover:scale-105 transition-transform" title={open ? 'Hide 86Voice assistant' : 'Open 86Voice'}><Mic size={24}/></button>
+    <button type="button" aria-label={open ? 'Hide 86Voice assistant' : 'Open 86Voice'} aria-expanded={open} onClick={open ? closeDock : openDock} className="voice-command-trigger no-compact w-14 h-14 rounded-full bg-[#0B0E11] border border-[#D4A381]/70 text-[#D4A381] shadow-2xl flex items-center justify-center hover:scale-105 transition-transform" title={open ? 'Hide 86Voice assistant' : 'Open 86Voice'}><Mic size={24}/><span className="voice-command-trigger-label">Voice</span></button>
   </div>;
 };
 

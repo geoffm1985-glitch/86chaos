@@ -1281,6 +1281,7 @@ const TabMaintenance = ({ appUser, addToast }) => {
 };
 
 const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = [], sales = [], timePunches = [], addToast, setActiveTab, clientData = {} }) => {
+  const { formatFullDate } = useI18n();
   const opsPlanAccess = usePlanAccess(appUser, clientData);
   const canUseBasicInventory = opsPlanAccess.canUse(FEATURE_KEYS.BASIC_INVENTORY).allowed || opsPlanAccess.canUse(FEATURE_KEYS.BURN_LOG).allowed;
   const canUseMenuIntelligence = opsPlanAccess.canUse(FEATURE_KEYS.MENU_INTELLIGENCE).allowed || opsPlanAccess.canUse(FEATURE_KEYS.DEPENDENCY_TOOLS).allowed;

@@ -126,6 +126,7 @@ export const Concept17MobileNav = ({
   moreLabel = 'More',
 }) => (
   <nav className="concept17-mobile-nav" data-testid="concept17-mobile-bottom-nav" aria-label="Primary navigation">
+    <div className="concept17-mobile-nav-voice-slot" aria-hidden="true" />
     {items.slice(0, 4).map(item => {
       const selected = activeTab === item.id || (item.id === 'published' && ['published', 'schedule'].includes(activeTab)) || (item.id === 'financials' && ['sales', 'labor', 'back-office'].includes(activeTab));
       return (

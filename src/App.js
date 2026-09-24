@@ -1197,7 +1197,7 @@ const [currentDate, setCurrentDate] = useState(getToday());
   // and the staff-up row cannot show banquets, parties, holidays, or special events that affect coverage.
   const eventRangeClauses = schedulePlan.eventClauses;
   const eventOrderDirection = wantsScheduleScreen ? 'asc' : 'desc';
-  const eventLimitCount = schedulePlan.eventLimit || (activeTabState === 'messages' ? 90 : 35);
+  const eventLimitCount = activeTabState === 'messages' ? Math.max(schedulePlan.eventLimit || 0, 90) : (schedulePlan.eventLimit || 35);
   const prepDateWindow = Array.from(new Set([currentDate, getToday(), 'MASTER']));
   const canViewTeamScheduleData = Boolean(appUser?.isSuperAdmin || appUser?.isAdmin || appUser?.isOwner || appUser?.accountOwner || appUser?.workspaceOwner || appUser?.permissions?.schedule || appUser?.permissions?.team);
   const wantsFullRosterData = Boolean(rId && !ghostTenant && (
@@ -2869,7 +2869,15 @@ What I clicked / expected:
   }, []);
 
   const pushRepairRequestedByLink = Boolean(pushRepairLinkRequest.requested);
-  const pushRepairRequested = Boolean(!ghostTenant && !isDemoMode && liveAppUser?.id && (pushRepairRequestedByLink || liveAppUser?.pushNeedsRepair === true || liveAppUser?.pushForceServiceWorkerRefresh === true));
+  const currentPushDeviceId = typeof window !== 'undefined' ? getPushDeviceId() : '';
+  const currentPushDevice = currentPushDeviceId ? liveAppUser?.pushDevices?.[currentPushDeviceId] : null;
+  const notificationPermissionGranted = typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted';
+  const currentDevicePushHealthy = Boolean(notificationPermissionGranted && (
+    (currentPushDevice?.token && currentPushDevice?.active !== false && (!currentPushDevice?.host || currentPushDevice.host === window.location.hostname)) ||
+    (liveAppUser?.fcmToken && liveAppUser?.pushRepairStatus === 'connected' && (!liveAppUser?.pushTokenHost || liveAppUser.pushTokenHost === window.location.hostname))
+  ));
+  const pushRepairFlagged = Boolean(pushRepairRequestedByLink || liveAppUser?.pushNeedsRepair === true || liveAppUser?.pushForceServiceWorkerRefresh === true);
+  const pushRepairRequested = Boolean(!ghostTenant && !isDemoMode && liveAppUser?.id && pushRepairFlagged && !currentDevicePushHealthy);
   useEffect(() => {
     if (!pushRepairRequested || typeof window === 'undefined') {
       setPushRepairDismissed(false);

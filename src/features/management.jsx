@@ -634,6 +634,7 @@ const TabMessages = ({ events, appUser, users, addToast }) => {
   const [categoryFilter, setCategoryFilter] = useState('All');
   const [searchTerm, setSearchTerm] = useState('');
   const [expandedReplies, setExpandedReplies] = useState({});
+  const [optimisticPosts, setOptimisticPosts] = useState([]);
   const messageRetentionDays = parseInt(appUser?.systemSettings?.messageRetentionDays || 30, 10);
 
   const toggleReplies = (id) => setExpandedReplies(prev => ({ ...prev, [id]: !prev[id] }));
@@ -652,7 +653,13 @@ const TabMessages = ({ events, appUser, users, addToast }) => {
     if (events.length > 0) cleanOldMessages();
   }, [events, messageRetentionDays]);
 
-  const allNotes = events
+  useEffect(() => {
+    if (!optimisticPosts.length) return;
+    const liveIds = new Set((events || []).map(row => row?.id).filter(Boolean));
+    setOptimisticPosts(current => current.filter(row => !liveIds.has(row.id)));
+  }, [events, optimisticPosts.length]);
+
+  const allNotes = [...optimisticPosts, ...events.filter(e => !optimisticPosts.some(local => local.id === e.id))]
     .filter(e => e.type === 'note')
     .filter(e => {
       const term = searchTerm.toLowerCase();
@@ -693,19 +700,30 @@ const TabMessages = ({ events, appUser, users, addToast }) => {
     const isCritical = isImportant || message.trim().toLowerCase().includes('!critical');
     const finalMessage = message.trim().replace(/!critical/ig, '').trim();
 
-    await addDoc(collection(db, "events"), {
-      date: new Date().toISOString(),
-      title: finalMessage,
-      type: 'note',
-      author: appUser.name,
-      isImportant: isCritical,
-      restaurantId: appUser.restaurantId,
-      replies: [],
-      imageUrl: photoUrl,
-      messageCategory,
-      readBy: isCritical ? [{ userId: appUser.id, name: appUser.name, at: new Date().toISOString() }] : [],
-      likes: []
-    });
+    const postedAt = new Date().toISOString();
+    let postedRef = null;
+    try {
+      const postedData = {
+        date: postedAt,
+        title: finalMessage,
+        type: 'note',
+        author: appUser.name,
+        isImportant: isCritical,
+        restaurantId: appUser.restaurantId,
+        replies: [],
+        imageUrl: photoUrl,
+        messageCategory,
+        readBy: isCritical ? [{ userId: appUser.id, name: appUser.name, at: postedAt }] : [],
+        likes: []
+      };
+      postedRef = await addDoc(collection(db, "events"), postedData);
+      setOptimisticPosts(current => [{ id: postedRef.id, ...postedData }, ...current.filter(row => row.id !== postedRef.id)]);
+    } catch (err) {
+      console.error('Message Board post failed:', err);
+      setIsUploading(false);
+      addToast('Post Failed', err?.message || 'The message could not be saved to the Message Board. No notification was sent.');
+      return;
+    }
 
     try {
       await secureFetch('/api/send-push', {
