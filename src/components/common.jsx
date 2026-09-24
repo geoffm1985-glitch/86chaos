@@ -1473,15 +1473,10 @@ const VoiceCommandDockBase = React.forwardRef(({ appUser, inventoryItems = [], r
   const [voicePanelError, setVoicePanelError] = useState('');
   const SpeechRecognition = typeof window !== 'undefined' ? (window.SpeechRecognition || window.webkitSpeechRecognition) : null;
   const canUseSpeech = Boolean(SpeechRecognition);
-  const canRecordSpeech = typeof window !== 'undefined' && Boolean(navigator?.mediaDevices?.getUserMedia && window.MediaRecorder);
   const eightySixContextRef = useRef({ restaurantId: '', loadedAt: 0, inventoryItems: [], menuDependencies: [] });
   const voiceSessionRef = useRef({ id: '', startedAt: 0, commits: 0, finalFingerprint: '' });
   const processedVoiceCommandRef = useRef(new Set());
   const activeRecognitionRef = useRef(null);
-  const activeRecorderRef = useRef(null);
-  const activeRecorderStreamRef = useRef(null);
-  const recorderChunksRef = useRef([]);
-  const recorderStopTimerRef = useRef(null);
   const pendingVoiceStartTimerRef = useRef(null);
   const voiceMountedRef = useRef(false);
   const voiceSessionOrdinalRef = useRef(0);
@@ -1501,31 +1496,14 @@ const VoiceCommandDockBase = React.forwardRef(({ appUser, inventoryItems = [], r
 
   const stopActiveRecognition = (reason = 'closed') => {
     cancelPendingVoiceStart();
-    if (recorderStopTimerRef.current) {
-      clearTimeout(recorderStopTimerRef.current);
-      recorderStopTimerRef.current = null;
-    }
-    const recorder = activeRecorderRef.current;
-    if (recorder) {
-      try {
-        if (recorder.state && recorder.state !== 'inactive') recorder.stop();
-      } catch (_) {}
-      if (reason === 'closed' || reason === 'unmount' || reason === 'reopen') activeRecorderRef.current = null;
-    }
     const rec = activeRecognitionRef.current;
     if (rec) {
       try { rec._chaosIntentionalStop = true; } catch (_) {}
       try { rec.abort?.(); } catch (_) { try { rec.stop?.(); } catch (e) {} }
       if (activeRecognitionRef.current === rec) activeRecognitionRef.current = null;
     }
-    if (reason === 'closed' || reason === 'unmount' || reason === 'reopen') {
-      const stream = activeRecorderStreamRef.current;
-      for (const track of stream?.getTracks?.() || []) { try { track.stop(); } catch (_) {} }
-      activeRecorderStreamRef.current = null;
-      recorderChunksRef.current = [];
-      setVoiceStatus('idle');
-    }
     setListening(false);
+    if (reason !== 'processing') setVoiceStatus('idle');
   };
 
   const closeDock = () => {
@@ -2036,285 +2014,96 @@ const VoiceCommandDockBase = React.forwardRef(({ appUser, inventoryItems = [], r
     }
   };
 
-  const requestMicrophoneStream = async () => {
-    const mediaDevices = typeof navigator !== 'undefined' ? navigator.mediaDevices : null;
-    if (!mediaDevices?.getUserMedia) throw new Error('Microphone capture is unavailable in this browser.');
-    return mediaDevices.getUserMedia({
-      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
-    });
-  };
-
-  const blobToBase64 = async (blob) => {
-    const buffer = await blob.arrayBuffer();
-    const bytes = new Uint8Array(buffer);
-    let binary = '';
-    const step = 0x8000;
-    for (let i = 0; i < bytes.length; i += step) binary += String.fromCharCode(...bytes.subarray(i, i + step));
-    return btoa(binary);
-  };
-
-  const transcribeRecordedVoice = async (blob, mimeType) => {
-    if (!blob?.size) throw new Error('No microphone audio was captured.');
-    if (blob.size > 1_500_000) throw new Error('Voice clip is too large. Try a shorter command.');
-    setVoiceStatus('transcribing');
-    const audioBase64 = await blobToBase64(blob);
-    const response = await secureFetch('/api/voice-command', {
-      method: 'POST',
-      headers: { 'Content-Type':'application/json' },
-      body: JSON.stringify({ mode:'transcribe', audioBase64, mimeType: mimeType || blob.type || 'audio/webm' })
-    });
-    const payload = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(payload?.error || `Voice transcription failed (${response.status}).`);
-    const transcript = String(payload?.transcript || '').trim();
-    if (!transcript) throw new Error('I did not hear a clear command. Try again.');
-    setHeardText(transcript);
-    setVoiceStatus('processing');
-    await processText(transcript, { fromVoice: true, isFinal: true, voiceSessionId: resetVoiceReminderSession(), source:'server-transcription' });
-    setVoiceStatus('idle');
-  };
-
-  const chooseRecorderMimeType = () => {
-    const MediaRecorderCtor = typeof window !== 'undefined' ? window.MediaRecorder : null;
-    if (!MediaRecorderCtor) return '';
-    const candidates = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg;codecs=opus'];
-    if (typeof MediaRecorderCtor.isTypeSupported !== 'function') return '';
-    return candidates.find(type => MediaRecorderCtor.isTypeSupported(type)) || '';
-  };
-
-  const startRecordedVoice = async () => {
-    if (!canRecordSpeech) throw new Error('Microphone recording is unavailable in this browser.');
-    const stream = await requestMicrophoneStream();
-    if (!voiceMountedRef.current) {
-      for (const track of stream?.getTracks?.() || []) { try { track.stop(); } catch (_) {} }
-      return;
-    }
-    activeRecorderStreamRef.current = stream;
-    recorderChunksRef.current = [];
-    const mimeType = chooseRecorderMimeType();
-    const recorder = mimeType ? new window.MediaRecorder(stream, { mimeType }) : new window.MediaRecorder(stream);
-    activeRecorderRef.current = recorder;
-    recorder.ondataavailable = (event) => {
-      if (event?.data?.size) recorderChunksRef.current.push(event.data);
-    };
-    recorder.onerror = (event) => {
-      activeRecorderRef.current = null;
-      setListening(false);
-      setVoiceStatus('error');
-      setVoicePanelError(voiceErrorMessage(event?.error || event) || 'Microphone recording failed.');
-      for (const track of activeRecorderStreamRef.current?.getTracks?.() || []) { try { track.stop(); } catch (_) {} }
-      activeRecorderStreamRef.current = null;
-      addToast?.('Voice Error', voiceErrorMessage(event?.error || event) || 'Microphone recording failed.');
-    };
-    recorder.onstop = async () => {
-      if (recorderStopTimerRef.current) {
-        clearTimeout(recorderStopTimerRef.current);
-        recorderStopTimerRef.current = null;
-      }
-      if (activeRecorderRef.current === recorder) activeRecorderRef.current = null;
-      const streamToStop = activeRecorderStreamRef.current;
-      activeRecorderStreamRef.current = null;
-      for (const track of streamToStop?.getTracks?.() || []) { try { track.stop(); } catch (_) {} }
-      setListening(false);
-      const chunks = recorderChunksRef.current.slice();
-      recorderChunksRef.current = [];
-      if (!voiceMountedRef.current || !chunks.length) return;
-      const blob = new Blob(chunks, { type: recorder.mimeType || mimeType || 'audio/webm' });
-      try {
-        await transcribeRecordedVoice(blob, recorder.mimeType || mimeType || blob.type);
-      } catch (error) {
-        setVoiceStatus('error');
-        setVoicePanelError(error?.message || 'Voice transcription failed.');
-        addToast?.('Voice Error', error?.message || 'Voice transcription failed.');
-      }
-    };
-    recorder.start(250);
-    setListening(true);
-    setVoiceStatus('recording');
-    recorderStopTimerRef.current = setTimeout(() => {
-      const current = activeRecorderRef.current;
-      if (current && current.state !== 'inactive') {
-        try { current.stop(); } catch (_) {}
-      }
-    }, 8000);
-  };
-
-  const startNativeRecognition = () => {
-    if (!SpeechRecognition) throw new Error('Built-in speech recognition is unavailable.');
-    const voiceSessionId = resetVoiceReminderSession();
-    const rec = new SpeechRecognition();
-    const sessionOrdinal = voiceSessionOrdinalRef.current + 1;
-    voiceSessionOrdinalRef.current = sessionOrdinal;
-    rec._chaosSessionOrdinal = sessionOrdinal;
-    rec._chaosIntentionalStop = false;
-    activeRecognitionRef.current = rec;
-    rec.lang = 'en-US';
-    rec.interimResults = true;
-    rec.maxAlternatives = 1;
-    setListening(true);
-    setVoiceStatus('listening');
-    rec.onstart = () => {
-      if (activeRecognitionRef.current === rec && voiceMountedRef.current) {
-        setListening(true);
-        setVoiceStatus('listening');
-      }
-    };
-    rec.onresult = (event) => {
-      if (activeRecognitionRef.current !== rec || !voiceMountedRef.current) return;
-      for (let i = event.resultIndex || 0; i < event.results.length; i += 1) {
-        const result = event.results[i];
-        const text = result?.[0]?.transcript || '';
-        if (!result?.isFinal) {
-          setHeardText(text);
-          continue;
-        }
-        const fingerprint = normalizeVoiceText(text);
-        if (!fingerprint) continue;
-        if (voiceSessionRef.current.finalFingerprint === fingerprint) {
-          logAudit(appUser, 'VOICE_DUPLICATE_FINAL_BLOCKED', 'Duplicate final transcript', text);
-          continue;
-        }
-        voiceSessionRef.current.finalFingerprint = fingerprint;
-        setListening(false);
-        setVoiceStatus('processing');
-        activeRecognitionRef.current = null;
-        try { rec.stop(); } catch (e) {}
-        processText(text, { fromVoice: true, isFinal: true, voiceSessionId }).finally(() => {
-          if (voiceMountedRef.current) setVoiceStatus('idle');
-        });
-        break;
-      }
-    };
-    rec.onerror = (event) => {
-      if (activeRecognitionRef.current !== rec) return;
-      activeRecognitionRef.current = null;
-      setListening(false);
-      if (rec._chaosIntentionalStop) {
-        setVoiceStatus('idle');
-        return;
-      }
-      const errorCode = String(event?.error || event?.name || event?.message || '').toLowerCase();
-      const canFallbackToRecorder = canRecordSpeech && /network|service-not-allowed|not-supported|language-not-supported/.test(errorCode);
-      if (canFallbackToRecorder) {
-        setVoiceStatus('requesting-permission');
-        setVoicePanelError('');
-        startRecordedVoice().catch(error => {
-          const message = voiceErrorMessage(error) || error?.message || 'Voice fallback recording failed.';
-          if (!voiceMountedRef.current) return;
-          setListening(false);
-          setVoiceStatus('error');
-          setVoicePanelError(message);
-          addToast?.('Voice Error', message);
-        });
-        return;
-      }
-      const message = voiceErrorMessage(event);
-      setVoiceStatus(message ? 'error' : 'idle');
-      if (message) {
-        setVoicePanelError(message);
-        addToast?.('Voice Error', message);
-      }
-    };
-    rec.onend = () => {
-      if (activeRecognitionRef.current !== rec) return;
-      activeRecognitionRef.current = null;
-      setListening(false);
-      setVoiceStatus('idle');
-    };
-    rec.start();
-  };
-
-  const shouldPreferRecordedVoice = () => {
-    if (typeof window === 'undefined') return false;
-    return Boolean(
-      window.matchMedia?.('(max-width: 767px)')?.matches ||
-      window.matchMedia?.('(display-mode: standalone)')?.matches ||
-      window.navigator?.standalone === true
-    );
-  };
-
-  const startListening = async (options = {}) => {
+  // 17.1.10 production voice restoration:
+  // This intentionally restores the microphone lifecycle from production 17.0.29.
+  // The new Concept 1 UI remains unchanged; only the activation/recognition path is restored.
+  const startListening = (options = {}) => {
     cancelPendingVoiceStart();
     if (!voiceMountedRef.current) return;
     setOpen(true);
     setVoicePanelError('');
-    if (activeRecognitionRef.current || activeRecorderRef.current) {
+    if (!canUseSpeech) {
+      setVoiceStatus('error');
+      const message = 'This browser does not support built-in speech recognition. Type the command instead.';
+      setVoicePanelError(message);
+      addToast?.('Voice Unavailable', message);
+      return;
+    }
+    if (activeRecognitionRef.current) {
       addToast?.('Already Listening', '86Voice is already listening. Stop it before starting another microphone session.');
       return;
     }
-    setVoiceStatus('requesting-permission');
-
-    // When the user explicitly presses Start Listening inside the visible panel,
-    // prefer the browser's native speech engine if it exists. This stays inside
-    // the direct user gesture and avoids a server round trip on supported Chrome
-    // Android installs. MediaRecorder remains the resilient fallback.
-    if (options.manual && canUseSpeech) {
-      try {
-        startNativeRecognition();
-        return;
-      } catch (error) {
+    try {
+      const voiceSessionId = resetVoiceReminderSession();
+      const rec = new SpeechRecognition();
+      const sessionOrdinal = voiceSessionOrdinalRef.current + 1;
+      voiceSessionOrdinalRef.current = sessionOrdinal;
+      rec._chaosSessionOrdinal = sessionOrdinal;
+      rec._chaosIntentionalStop = false;
+      activeRecognitionRef.current = rec;
+      rec.lang = 'en-US';
+      rec.interimResults = true;
+      rec.maxAlternatives = 1;
+      setListening(true);
+      setVoiceStatus('listening');
+      setOpen(true);
+      rec.onstart = () => {
+        if (activeRecognitionRef.current === rec && voiceMountedRef.current) {
+          setListening(true);
+          setVoiceStatus('listening');
+        }
+      };
+      rec.onresult = (event) => {
+        if (activeRecognitionRef.current !== rec || !voiceMountedRef.current) return;
+        for (let i = event.resultIndex || 0; i < event.results.length; i += 1) {
+          const result = event.results[i];
+          const text = result?.[0]?.transcript || '';
+          if (!result?.isFinal) {
+            setHeardText(text);
+            continue;
+          }
+          const fingerprint = normalizeVoiceText(text);
+          if (!fingerprint) continue;
+          if (voiceSessionRef.current.finalFingerprint === fingerprint) {
+            logAudit(appUser, 'VOICE_DUPLICATE_FINAL_BLOCKED', 'Duplicate final transcript', text);
+            continue;
+          }
+          voiceSessionRef.current.finalFingerprint = fingerprint;
+          setListening(false);
+          setVoiceStatus('processing');
+          activeRecognitionRef.current = null;
+          try { rec.stop(); } catch (e) {}
+          Promise.resolve(processText(text, { fromVoice: true, isFinal: true, voiceSessionId }))
+            .finally(() => {
+              if (voiceMountedRef.current) setVoiceStatus('idle');
+            });
+          break;
+        }
+      };
+      rec.onerror = (event) => {
+        if (activeRecognitionRef.current !== rec) return;
         activeRecognitionRef.current = null;
         setListening(false);
-        if (!canRecordSpeech) {
-          const message = voiceErrorMessage(error) || 'Browser voice recognition is unavailable.';
-          setVoiceStatus('error');
-          setVoicePanelError(message);
-          addToast?.('Voice Unavailable', message);
-          return;
-        }
-      }
-    }
-
-    // Mobile/PWA falls back to direct MediaRecorder capture + authenticated
-    // server-side transcription when native Web Speech is unavailable.
-    if (canRecordSpeech && (shouldPreferRecordedVoice() || !canUseSpeech)) {
-      try {
-        await startRecordedVoice();
-        return;
-      } catch (error) {
-        setListening(false);
-        setVoiceStatus('error');
-        const message = voiceErrorMessage(error) || error?.message || 'Microphone access was not granted.';
-        setVoicePanelError(message);
-        addToast?.('Microphone Permission', message);
-        return;
-      }
-    }
-
-    if (canUseSpeech) {
-      try {
-        startNativeRecognition();
-        return;
-      } catch (error) {
+        const message = rec._chaosIntentionalStop ? '' : voiceErrorMessage(event);
+        setVoiceStatus(message ? 'error' : 'idle');
+        setVoicePanelError(message || '');
+        if (message) addToast?.('Voice Error', message);
+      };
+      rec.onend = () => {
+        if (activeRecognitionRef.current !== rec) return;
         activeRecognitionRef.current = null;
         setListening(false);
-        if (!canRecordSpeech) {
-          setVoiceStatus('error');
-          const message = voiceErrorMessage(error) || 'Browser voice recognition is unavailable.';
-          setVoicePanelError(message);
-          addToast?.('Voice Unavailable', message);
-          return;
-        }
-      }
+        setVoiceStatus(prev => prev === 'error' || prev === 'processing' ? prev : 'idle');
+      };
+      rec.start();
+    } catch (err) {
+      activeRecognitionRef.current = null;
+      setListening(false);
+      const message = voiceErrorMessage(err) || 'Browser voice recognition is unavailable. Use the text box instead.';
+      setVoiceStatus('error');
+      setVoicePanelError(message);
+      addToast?.('Voice Unavailable', message);
     }
-
-    if (canRecordSpeech) {
-      try {
-        await startRecordedVoice();
-        return;
-      } catch (error) {
-        setListening(false);
-        setVoiceStatus('error');
-        const message = voiceErrorMessage(error) || error?.message || 'Microphone recording failed.';
-        setVoicePanelError(message);
-        addToast?.('Voice Error', message);
-        return;
-      }
-    }
-
-    setListening(false);
-    setVoiceStatus('error');
-    setVoicePanelError('This browser cannot capture microphone audio. Type the command instead.');
-    addToast?.('Voice Unavailable', 'This browser cannot capture microphone audio. Type the command instead.');
   };
 
   const openDock = () => {
@@ -2326,12 +2115,18 @@ const VoiceCommandDockBase = React.forwardRef(({ appUser, inventoryItems = [], r
     setVoiceResult(null);
     setVoicePanelError('');
     setVoiceStatus('idle');
+    cancelPendingVoiceStart();
+    // Production 17.0.29 behavior: opening the mic waits one short paint, then starts Web Speech.
+    pendingVoiceStartTimerRef.current = setTimeout(() => {
+      pendingVoiceStartTimerRef.current = null;
+      if (!voiceMountedRef.current) return;
+      startListening({ autoStart: true });
+    }, 80);
   };
 
-  const openDockAndListen = () => {
-    openDock();
-    startListening({ autoStart: true, fromUserGesture: true });
-  };
+  // Both imperative entry points intentionally use the same production activation path.
+  // The new bottom toolbar can call openPanel without changing its UI markup.
+  const openDockAndListen = openDock;
 
   useImperativeHandle(ref, () => ({
     openAndListen: openDockAndListen,
@@ -2342,7 +2137,7 @@ const VoiceCommandDockBase = React.forwardRef(({ appUser, inventoryItems = [], r
   useEffect(() => {
     if (typeof window === 'undefined') return undefined;
     const launchPanel = () => openDock();
-    const launchAndListen = () => openDockAndListen();
+    const launchAndListen = () => openDock();
     window.addEventListener('chaos:voice-open-panel', launchPanel);
     window.addEventListener('chaos:voice-open-and-listen', launchAndListen);
     return () => {
@@ -3304,7 +3099,7 @@ const VoiceCommandDockBase = React.forwardRef(({ appUser, inventoryItems = [], r
             <button onClick={() => setPending(null)} className={`${T.btnAlt} ${['eighty_six_review','complete_list_review','task_upsert_review','shared_reminder_review'].includes(pending.intent) ? 'w-full' : ''}`}>Cancel</button>
           </div>
         </div>}
-        {!canUseSpeech && !canRecordSpeech && <div className="text-[10px] text-amber-300 bg-amber-900/10 border border-amber-900/40 rounded-xl p-2 font-bold">This browser cannot capture microphone audio. Type the command here instead.</div>}
+        {!canUseSpeech && <div className="text-[10px] text-amber-300 bg-amber-900/10 border border-amber-900/40 rounded-xl p-2 font-bold">This browser does not support built-in speech recognition. Type the command here, or use Chrome/Android for voice.</div>}
       </div>
     </div>}
     <button type="button" aria-label={open ? 'Hide 86Voice assistant' : 'Open 86Voice'} aria-expanded={open} onClick={open ? closeDock : openDock} className="voice-command-trigger no-compact w-14 h-14 rounded-full bg-[#0B0E11] border border-[#D4A381]/70 text-[#D4A381] shadow-2xl flex items-center justify-center hover:scale-105 transition-transform" title={open ? 'Hide 86Voice assistant' : 'Open 86Voice'}><Mic size={24}/><span className="voice-command-trigger-label">Voice</span></button>

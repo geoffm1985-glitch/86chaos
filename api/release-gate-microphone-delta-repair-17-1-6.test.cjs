@@ -7,10 +7,10 @@ const path = require('path');
 const root = path.resolve(__dirname, '..');
 const read = file => fs.readFileSync(path.join(root, file), 'utf8');
 
-test('17.1.6 keeps recognition on an explicit user microphone gesture without a timer', () => {
+test('17.1.6 toolbar repair remains compatible with the restored production 17.0.29 microphone lifecycle', () => {
   const common = read('src/components/common.jsx');
   assert.match(common, /onClick=\{listening \? \(\) => stopActiveRecognition\('manual-stop'\) : \(\) => startListening\(\{ manual: true \}\)\}/);
-  assert.doesNotMatch(common, /pendingVoiceStartTimerRef\.current = setTimeout[\s\S]{0,250}startListening/);
+  assert.match(common, /pendingVoiceStartTimerRef\.current = setTimeout[\s\S]{0,350}startListening\(\{ autoStart: true \}\)/);
   assert.match(common, /openAndListen: openDockAndListen/);
   assert.match(common, /openPanel: openDock/);
 });

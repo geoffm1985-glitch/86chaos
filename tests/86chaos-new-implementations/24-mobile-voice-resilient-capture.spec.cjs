@@ -2,60 +2,20 @@
 const { test, expect } = require('@playwright/test');
 const { ownerLikeCreds, requireCreds, login } = require('../86chaos-full-audit/utils/audit-helpers.cjs');
 
-test.describe('17.1.9 panel-first resilient mobile 86Voice capture', () => {
-  test('mobile toolbar opens 86Voice first, then records only after Start Listening', async ({ page }) => {
+test.describe('17.1.8/17.1.9 voice regression superseded by 17.1.10 production parity', () => {
+  test('mobile voice uses the production Web Speech path instead of the retired recorder provider path', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.addInitScript(() => {
-      window.__voice1718 = { permissionRequests: 0, recorderStarts: 0, recorderStops: 0, trackStops: 0 };
-      Object.defineProperty(navigator, 'mediaDevices', {
-        configurable: true,
-        value: {
-          getUserMedia: async () => {
-            window.__voice1718.permissionRequests += 1;
-            return { getTracks: () => [{ stop() { window.__voice1718.trackStops += 1; } }] };
-          },
-        },
-      });
-      window.SpeechRecognition = undefined;
-      window.webkitSpeechRecognition = undefined;
-      class MockMediaRecorder {
-        static isTypeSupported(type) { return /audio\/webm/.test(type); }
-        constructor(stream, options = {}) {
-          this.stream = stream;
-          this.mimeType = options.mimeType || 'audio/webm';
-          this.state = 'inactive';
-          this.ondataavailable = null;
-          this.onstop = null;
-          this.onerror = null;
-        }
-        start() {
-          this.state = 'recording';
-          window.__voice1718.recorderStarts += 1;
-        }
-        stop() {
-          if (this.state === 'inactive') return;
-          this.state = 'inactive';
-          window.__voice1718.recorderStops += 1;
-          this.ondataavailable?.({ data: new Blob(['fake restaurant voice audio'], { type: this.mimeType }) });
-          this.onstop?.();
-        }
+      window.__voiceParity = { created: 0, started: 0 };
+      class MockSpeechRecognition {
+        constructor() { window.__voiceParity.created += 1; this.onstart = null; this.onend = null; this.onerror = null; this.onresult = null; }
+        start() { window.__voiceParity.started += 1; this.onstart?.(); }
+        stop() { this.onend?.(); }
+        abort() { this.onend?.(); }
       }
-      window.MediaRecorder = MockMediaRecorder;
-    });
-
-    let transcribeCalls = 0;
-    await page.route('**/api/voice-command', async route => {
-      const request = route.request();
-      let payload = {};
-      try { payload = JSON.parse(request.postData() || '{}'); } catch (_) {}
-      if (payload.mode === 'transcribe') {
-        transcribeCalls += 1;
-        expect(payload.audioBase64).toBeTruthy();
-        expect(payload.mimeType).toContain('audio/webm');
-        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ intent: 'transcript', transcript: 'open help' }) });
-        return;
-      }
-      await route.continue();
+      window.SpeechRecognition = MockSpeechRecognition;
+      window.webkitSpeechRecognition = MockSpeechRecognition;
+      window.MediaRecorder = undefined;
     });
 
     const account = ownerLikeCreds();
@@ -65,24 +25,11 @@ test.describe('17.1.9 panel-first resilient mobile 86Voice capture', () => {
     const mic = page.getByTestId('concept17-mobile-voice-button');
     await expect(mic).toBeVisible({ timeout: 15000 });
     await mic.click();
-
     await expect(page.getByTestId('voice-command-panel')).toBeVisible({ timeout: 5000 });
-    await expect(page.getByTestId('voice-command-status')).toContainText(/tap start listening/i, { timeout: 5000 });
-    let state = await page.evaluate(() => window.__voice1718);
-    expect(state.permissionRequests).toBe(0);
-    expect(state.recorderStarts).toBe(0);
-
-    await page.getByRole('button', { name: /start listening/i }).click();
-    await expect(page.getByTestId('voice-command-status')).toContainText(/recording/i, { timeout: 5000 });
     await expect(page.getByRole('button', { name: /stop listening/i })).toBeVisible({ timeout: 5000 });
-    await page.getByRole('button', { name: /stop listening/i }).click();
-
-    await expect.poll(() => transcribeCalls, { timeout: 10000 }).toBe(1);
-    await expect(page.getByText('open help', { exact: true })).toBeVisible({ timeout: 10000 });
-    state = await page.evaluate(() => window.__voice1718);
-    expect(state.permissionRequests).toBe(1);
-    expect(state.recorderStarts).toBe(1);
-    expect(state.recorderStops).toBe(1);
-    expect(state.trackStops).toBeGreaterThanOrEqual(1);
+    await expect.poll(async () => (await page.evaluate(() => window.__voiceParity)).started, { timeout: 3000 }).toBe(1);
+    const state = await page.evaluate(() => window.__voiceParity);
+    expect(state.created).toBe(1);
+    expect(state.started).toBe(1);
   });
 });

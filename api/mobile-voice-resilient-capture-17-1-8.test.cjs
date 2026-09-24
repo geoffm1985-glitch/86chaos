@@ -6,17 +6,13 @@ const path = require('path');
 const root = path.resolve(__dirname, '..');
 const read = file => fs.readFileSync(path.join(root, file), 'utf8');
 
-test('17.1.8 mobile voice uses MediaRecorder server transcription instead of depending only on Web Speech', () => {
+test('17.1.8 experimental MediaRecorder path is retired from the active client by the 17.1.10 production restoration', () => {
   const common = read('src/components/common.jsx');
-  assert.match(common, /const canRecordSpeech = .*window\.MediaRecorder/);
-  assert.match(common, /const startRecordedVoice = async/);
-  assert.match(common, /new window\.MediaRecorder/);
-  assert.match(common, /mode:'transcribe'/);
-  assert.match(common, /audioBase64/);
-  assert.match(common, /await transcribeRecordedVoice/);
-  assert.match(common, /shouldPreferRecordedVoice/);
-  assert.match(common, /display-mode: standalone/);
-  assert.match(common, /max-width: 767px/);
+  assert.match(common, /window\.SpeechRecognition \|\| window\.webkitSpeechRecognition/);
+  assert.match(common, /rec\.start\(\)/);
+  assert.doesNotMatch(common, /new window\.MediaRecorder/);
+  assert.doesNotMatch(common, /startRecordedVoice/);
+  assert.doesNotMatch(common, /mode:'transcribe'/);
 });
 
 test('17.1.8 voice server route accepts a short authenticated audio clip and returns transcript text', () => {

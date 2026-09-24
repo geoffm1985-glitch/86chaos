@@ -1,25 +1,23 @@
 {
-  "version": "17.1.9",
-  "name": "86 Chaos 17.1.9",
-  "build": "17.1.9",
-  "label": "86 Chaos 17.1.9",
-  "releasedAt": "2026-09-24T21:15:00Z",
-  "releaseTitle": "86Voice Panel-First Reliability Repair",
+  "version": "17.1.10",
+  "name": "86 Chaos 17.1.10",
+  "build": "17.1.10",
+  "label": "86 Chaos 17.1.10",
+  "releasedAt": "2026-09-24T23:15:00Z",
+  "releaseTitle": "86Voice Production 17.0.29 Lifecycle Restoration",
   "notes": [
-    "The mobile Voice toolbar button now opens the 86Voice command panel first and never starts recording before the panel is visible.",
-    "Microphone capture starts only from the explicit Start Listening control inside 86Voice, with status and errors kept visible in the panel.",
-    "Server transcription no longer inherits the general VOICE_GEMINI_MODEL and defaults to the current audio-capable gemini-3.5-flash-lite model.",
-    "Provider rejection diagnostics now record the model, status, MIME type, audio size, and a safe provider message without exposing credentials.",
-    "Legacy Gemini 2.5 voice model overrides are automatically migrated to the current 3.5 Flash-Lite voice path so stale Vercel configuration cannot force a 404."
+    "Restores the microphone activation lifecycle proven in production 17.0.29: open 86Voice, wait 80 ms, create SpeechRecognition/webkitSpeechRecognition, then call recognition.start().",
+    "Keeps the new six-button Concept 1 mobile toolbar unchanged; its first Voice button now invokes the restored production voice controller.",
+    "Removes MediaRecorder and Gemini server transcription from the active client microphone path so mobile voice no longer depends on the experimental 17.1.8/17.1.9 pipeline.",
+    "Preserves the current 86Voice command parser, safety confirmations, typed fallback, new UI, Spanish support, and all non-voice redesign work."
   ],
-  "title": "86 Chaos 17.1.9",
-  "summary": "Makes 86Voice panel-first and separates microphone transcription from legacy voice-intent model configuration.",
-  "description": "Repairs the mobile voice interaction order so the 86Voice controller is always visible before capture starts, keeps errors inside the panel, and uses a dedicated current audio-capable Gemini model for server transcription.",
+  "title": "86 Chaos 17.1.10",
+  "summary": "Restores the exact production 17.0.29 Web Speech microphone lifecycle inside the new Concept 1 toolbar and panel.",
+  "description": "Keeps the 17.1.x Concept 1 UI unchanged while replacing the experimental MediaRecorder/server-transcription activation path with the known-working 17.0.29 SpeechRecognition/webkitSpeechRecognition lifecycle.",
   "highlights": [
-    "First toolbar tap opens 86Voice only; no microphone request or transcription occurs until Start Listening is pressed.",
-    "Voice failures remain visible in the 86Voice panel with a retry path and typed-command fallback.",
-    "Transcription defaults independently to gemini-3.5-flash-lite instead of inheriting a possibly legacy VOICE_GEMINI_MODEL.",
-    "Mobile browser coverage verifies that opening the panel causes zero microphone requests until Start Listening is pressed.",
-    "86Voice ignores stale Gemini 2.5 voice-only model overrides that are no longer available to newer API projects."
+    "Voice first remains the first bottom-toolbar button with the existing Concept 1 styling.",
+    "One Voice tap follows the same browser speech-recognition lifecycle as production 17.0.29.",
+    "The current command parser and new 86Voice panel remain in place after the restored microphone capture step.",
+    "No Concept 1 navigation, layout, or visual shell files are changed by this repair."
   ]
 }

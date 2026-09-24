@@ -22,19 +22,16 @@ test('17.1.7 makes 86Voice a real first bottom-nav button instead of an overlay 
   assert.match(app, /controller\?\.openPanel/);
 });
 
-test('17.1.7 exposes a synchronous imperative voice entry point and a real microphone permission path', () => {
+test('17.1.7 real toolbar entry point now drives the proven production Web Speech controller', () => {
   const common = read('src/components/common.jsx');
   assert.match(common, /React\.forwardRef\(/);
   assert.match(common, /useImperativeHandle\(ref, \(\) => \(\{/);
   assert.match(common, /openAndListen: openDockAndListen/);
   assert.match(common, /openPanel: openDock/);
-  assert.match(common, /navigator\.mediaDevices/);
-  assert.match(common, /getUserMedia\(\{/);
-  assert.match(common, /track\.stop\(\)/);
-  assert.match(common, /const startListening = async/);
-  assert.match(common, /navigator\.mediaDevices/);
-  assert.match(common, /getUserMedia/);
-  assert.match(common, /startRecordedVoice|startNativeRecognition/);
+  assert.match(common, /window\.SpeechRecognition \|\| window\.webkitSpeechRecognition/);
+  assert.match(common, /const rec = new SpeechRecognition\(\)/);
+  assert.match(common, /rec\.start\(\)/);
+  assert.doesNotMatch(common, /new window\.MediaRecorder/);
 });
 
 test('17.1.7 removes the legacy mobile overlay from the tap path while keeping the voice panel interactive', () => {
