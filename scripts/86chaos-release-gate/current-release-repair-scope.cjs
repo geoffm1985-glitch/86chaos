@@ -1,7 +1,7 @@
 'use strict';
 
-const CURRENT_RELEASE_VERSION = '17.1.20';
-const CURRENT_RELEASE_CARRY_FORWARD_NOTE = '17.1.20 preserves existing application behavior while repairing deterministic source-manifest certification and ensuring both experimental release-target validation passes remain branch-aware.';
+const CURRENT_RELEASE_VERSION = '17.1.21';
+const CURRENT_RELEASE_CARRY_FORWARD_NOTE = '17.1.21 preserves existing application behavior while repairing deterministic source-manifest certification and ensuring both experimental release-target validation passes remain branch-aware.';
 const CURRENT_RELEASE_REPAIR_SCOPE = [
   {
     specPath: '86chaos-new-implementations/31-footer-version-copyright.spec.cjs',
