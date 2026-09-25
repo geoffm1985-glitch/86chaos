@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
-  "version": "17.1.20",
-  "sourceHash": "66c170ba59ddc0bf9163b67140903239eb93d5424da63f03b9d2646da70f5af1",
+  "version": "17.1.21",
+  "sourceHash": "c6c28384d67771e93c7ee4086399554494da03c965703c879f912132f647de7e",
   "files": [
     {
       "file": ".gitattributes",
@@ -461,7 +461,7 @@
     },
     {
       "file": "api/_version.js",
-      "sha256": "fafa12360457756f931b0c482efa652cce2edd2f1fb7536598aa99cd8d788664"
+      "sha256": "df31d64a43249c693c09901ded59dd760b6c3bea48537752c661d75cc96db3c7"
     },
     {
       "file": "api/account-deletion-request.js",
@@ -1089,7 +1089,7 @@
     },
     {
       "file": "api/release-gate-expected-version-17-0-19.test.cjs",
-      "sha256": "50a11ebb85e9040e31315a50907f29774acb6f5c75b72912027c78043046da52"
+      "sha256": "e9e2d9bb23c3cc30f0c3ea6c5a866e2e5849885207d28c74c35a42142a5693c5"
     },
     {
       "file": "api/release-gate-failure-extractor.test.cjs",
@@ -1669,11 +1669,11 @@
     },
     {
       "file": "package-lock.json",
-      "sha256": "bb514ba3022e8531ce5f008609f4b7d75ac0dc005f12eec22379886bc24df038"
+      "sha256": "f50fc8c18406327b369cee42333ad2b83dfeab9b514623564f494a63b451da97"
     },
     {
       "file": "package.json",
-      "sha256": "caad27c4f2c3f093cbe8e1d530d702253c2a59261cc698ca94f15720376e6b56"
+      "sha256": "550d34f15756b26d3b75bd2c0043dfde2cf6d3e1ab2c2c6a5932fa4db8fdaaa0"
     },
     {
       "file": "playwright.config.js",
@@ -1901,7 +1901,7 @@
     },
     {
       "file": "public/version.json",
-      "sha256": "f53fa095bf87868297d63141ad418ce029c40de2314b7ee2aaff8e722bb47dee"
+      "sha256": "75ae66e96270257da23ce366d4ac8dfbbfae44f5bea542ce024cb042fa2cecf2"
     },
     {
       "file": "public/wisco.png",
@@ -1949,7 +1949,7 @@
     },
     {
       "file": "scripts/86chaos-release-gate/current-release-repair-scope.cjs",
-      "sha256": "329d57ff9ea4a77e166496f9a84d82a315ff4481803e79152a469c9be5687391"
+      "sha256": "4e22d6a8ca69a0496781b317416390c86f94100ace904624282721ef2d6a7076"
     },
     {
       "file": "scripts/86chaos-release-gate/dependency-preflight.cjs",
@@ -3209,7 +3209,7 @@
     },
     {
       "file": "src/core/appCore.js",
-      "sha256": "9cd60eb9a5c1defa9b5685d31a6b3f01be76520d11e16ffd82c21bdbe510ee72"
+      "sha256": "338ebbc6a33d51fc5fb0af3392b2fdedc01d0f2e8b7ebf42739cfcc3f3e9c298"
     },
     {
       "file": "src/core/csvSafety.test.js",
@@ -3605,11 +3605,11 @@
     },
     {
       "file": "test-tools/certification/cost-performance-baselines.json",
-      "sha256": "ef997877473c3550e27c927e9f34442f22329c621658ed49fe9adcfb9034d344"
+      "sha256": "b0c50dd1489031495329308959dc0be4b8a6930809b41b25a0089429275a68c4"
     },
     {
       "file": "test-tools/certification/groups.json",
-      "sha256": "a9e7e6bb22144395a5bff408f735aa769fae706f217d878898ef903066812f58"
+      "sha256": "f8ac57552a5bedd877f17aeb12acd5c1341fa044acc564993dac2d2df647b38d"
     },
     {
       "file": "test-tools/certification/permission-matrix.json",
@@ -3657,7 +3657,7 @@
     },
     {
       "file": "test-tools/regressions/registry.json",
-      "sha256": "3857e596d137aa2ea7cc045616fa0483b4517c738cf942fc600e8df065a8f6ad"
+      "sha256": "bfec85e5f03578573c415c6b7e115e13eb33bf81bb597b55e4d36b7cfc1bcdbd"
     },
     {
       "file": "test-tools/reporters/chaos-release-gate-reporter.cjs",
