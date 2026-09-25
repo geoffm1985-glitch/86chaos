@@ -1,7 +1,7 @@
 'use strict';
 
-const CURRENT_RELEASE_VERSION = '17.1.13';
-const CURRENT_RELEASE_CARRY_FORWARD_NOTE = '17.1.13 preserves every production workflow and prior 86Voice repair while applying the approved reference visual system across every desktop/mobile route and subtab, removing duplicate desktop menus, and moving visible mobile Voice access into More without deleting the hardened touch path.';
+const CURRENT_RELEASE_VERSION = '17.1.14';
+const CURRENT_RELEASE_CARRY_FORWARD_NOTE = '17.1.14 preserves the complete 17.1.13 approved-reference redesign and every production workflow while repairing only the Vercel CSS asset-resolution failure; the exact approved JPEG bytes remain visually identical and prior 86Voice/mobile protections are unchanged.';
 const CURRENT_RELEASE_REPAIR_SCOPE = [
   {
     specPath: '86chaos-new-implementations/28-approved-reference-full-app-parity.spec.cjs',

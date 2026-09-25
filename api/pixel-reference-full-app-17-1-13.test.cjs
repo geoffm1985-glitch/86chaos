@@ -73,7 +73,7 @@ test('17.1.13 applies the approved photo-backed visual frame to every route and 
   assert.match(app, /data-concept-route=\{activeTabState\}/);
   assert.match(shell, /export const Concept17RouteFrame/);
   assert.match(shell, /data-testid="concept17-route-heading"/);
-  assert.match(css, /url\('\/concept17-kitchen-reference\.jpg'\)/);
+  assert.match(css, /var\(--c17-ref-kitchen-image\)/);
   assert.match(css, /Universal visual language for every existing page, nested tab, table, form/);
   assert.match(css, /\.concept17-route-page table/);
   assert.match(css, /\.concept17-subtab-bar/);
