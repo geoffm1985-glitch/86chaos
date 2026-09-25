@@ -1,0 +1,378 @@
+name: Repair deploy and gate 17.0.31 manifest parity
+
+on:
+  push:
+    branches:
+      - ci-diagnose-17-0-30-manifest
+
+permissions:
+  contents: write
+
+concurrency:
+  group: repair-17-0-31-manifest-parity
+  cancel-in-progress: false
+
+jobs:
+  prepare-repair:
+    runs-on: ubuntu-latest
+    outputs:
+      candidate_sha: ${{ steps.identity.outputs.candidate_sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: repair-17-0-31-manifest-parity
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Verify exact 17.0.30 baseline
+        shell: bash
+        run: |
+          test "$(git rev-parse HEAD)" = "7dafa2927e15c6ee0704c43b75d8d0bb66a2f418"
+          test "$(node -p "require('./package.json').version")" = "17.0.30"
+      - name: Apply 17.0.31 cross-platform source parity repair
+        shell: bash
+        run: |
+          node <<'NODE'
+          const fs=require('fs');
+          const path=require('path');
+          const read=f=>fs.readFileSync(f,'utf8');
+          const write=(f,s)=>fs.writeFileSync(f,s.endsWith('\n')?s:s+'\n');
+          const replace=(f,a,b)=>{
+            const s=read(f);
+            if(!s.includes(a)) throw new Error(`${f}: missing expected text ${a}`);
+            write(f,s.split(a).join(b));
+          };
+          const VERSION='17.0.31';
+          const OLD='17.0.30';
+          const TITLE='Cross-Platform Source Manifest Parity Repair';
+
+          let attrs=read('.gitattributes');
+          if(!/^\*\.ts text eol=lf$/m.test(attrs)) attrs += '\n*.ts text eol=lf';
+          if(!/^\*\.tsx text eol=lf$/m.test(attrs)) attrs += '\n*.tsx text eol=lf';
+          write('.gitattributes',attrs);
+
+          replace(
+            'scripts/86chaos-release-gate/source-identity.cjs',
+            'json|css|html|md|txt|ps1|cmd|yml|yaml|rules|py|toml|sh)$/i',
+            'json|css|html|md|txt|ps1|cmd|yml|yaml|rules|py|toml|sh|ts|tsx)$/i'
+          );
+
+          const directVersionFiles=[
+            'api/_pos-bridge-config.js',
+            'api/_version.js',
+            'api/customer-help-intelligence.test.cjs',
+            'api/merged-release-17-0-30.test.cjs',
+            'api/release-gate-maturity-16-0-207.test.cjs',
+            'api/release-gate-maturity-16-0-208.test.cjs',
+            'api/release-gate-maturity-16-0-209.test.cjs',
+            'api/release-gate-maturity-16-0-210.test.cjs',
+            'api/i18n-browser-runtime-17-0-28.test.cjs',
+            'scripts/86chaos-release-gate/current-release-repair-scope.cjs',
+            'src/core/appCore.js',
+            'src/core/customerHelpKnowledge.cjs',
+            'src/core/customerHelpKnowledge.js',
+            'src/core/schedulePdf.js',
+            'tests/86chaos-new-implementations/10-app-bootstrap-i18n-runtime.spec.cjs',
+            'tests/86chaos-release-gate/42-merged-17-0-30-parity.spec.cjs'
+          ];
+          for(const f of directVersionFiles) replace(f,OLD,VERSION);
+
+          const pkg=JSON.parse(read('package.json'));
+          pkg.version=VERSION;
+          pkg.scripts['test:source']='node scripts/validate-17-0-31.js';
+          pkg.scripts['validate:17.0.31']='node scripts/validate-17-0-31.js';
+          pkg.scripts['test:repair:17.0.31']='npm run test:current-release-targeted';
+          for(const [k,v] of Object.entries(pkg.scripts)){
+            if(typeof v==='string') pkg.scripts[k]=v
+              .replaceAll('validate:17.0.30','validate:17.0.31')
+              .replaceAll('validate-17-0-30.js','validate-17-0-31.js');
+          }
+          pkg.scripts['test:current-release-targeted']=pkg.scripts['test:current-release-targeted']
+            .replace('node --test ','node --test api/source-manifest-parity-17-0-31.test.cjs ');
+          write('package.json',JSON.stringify(pkg,null,2));
+
+          const lock=JSON.parse(read('package-lock.json'));
+          lock.version=VERSION;
+          if(lock.packages?.['']) lock.packages[''].version=VERSION;
+          write('package-lock.json',JSON.stringify(lock,null,2));
+
+          const version=JSON.parse(read('public/version.json'));
+          for(const k of ['version','build']) version[k]=VERSION;
+          for(const k of ['name','label','title']) if(version[k]) version[k]=String(version[k]).replaceAll(OLD,VERSION);
+          version.releaseTitle=TITLE;
+          write('public/version.json',JSON.stringify(version,null,2));
+
+          for(const f of [
+            'test-tools/certification/cost-performance-baselines.json',
+            'test-tools/certification/groups.json',
+            'test-tools/regressions/registry.json'
+          ]){
+            const j=JSON.parse(read(f)); j.release=VERSION; write(f,JSON.stringify(j,null,2));
+          }
+
+          const oldValidator=read('scripts/validate-17-0-30.js');
+          let newValidator=oldValidator.replaceAll(OLD,VERSION)
+            .replaceAll('Unified Feature and Release-Gate Parity Merge',TITLE);
+          write('scripts/validate-17-0-31.js',newValidator);
+
+          write('RELEASE_17_0_31.md', `# 86 Chaos 17.0.31
+
+## Cross-Platform Source Manifest Parity Repair
+
+17.0.31 preserves the complete 17.0.30 unified feature set and repairs certification source identity parity across Linux/Vercel and Windows release-gate runners.
+
+- Adds explicit LF normalization for TypeScript and TSX source files.
+- Adds explicit Git EOL rules for .ts and .tsx files.
+- Regenerates the bundled release source manifest only after the final source is assembled.
+- Adds unit and Play Store release-gate coverage that fails if cross-platform source hashing diverges again.
+- Makes no intentional restaurant workflow or UI feature removals.
+`);
+
+          write('api/source-manifest-parity-17-0-31.test.cjs', `'use strict';
+const test=require('node:test');
+const assert=require('node:assert/strict');
+const fs=require('fs');
+const path=require('path');
+const identity=require('../scripts/86chaos-release-gate/source-identity.cjs');
+const root=path.resolve(__dirname,'..');
+
+test('17.0.31 normalizes TypeScript CRLF and LF identically',()=>{
+  for(const file of ['functions/src/example.ts','src/example.tsx']){
+    const lf=Buffer.from('const value = 1;\\nexport default value;\\n','utf8');
+    const crlf=Buffer.from('const value = 1;\\r\\nexport default value;\\r\\n','utf8');
+    assert.equal(identity.hash(identity.sourceBytes(file,crlf)),identity.hash(identity.sourceBytes(file,lf)),file);
+  }
+});
+
+test('17.0.31 declares deterministic TypeScript Git line endings',()=>{
+  const attrs=fs.readFileSync(path.join(root,'.gitattributes'),'utf8');
+  assert.match(attrs,/^\\*\\.ts text eol=lf$/m);
+  assert.match(attrs,/^\\*\\.tsx text eol=lf$/m);
+});
+
+test('17.0.31 bundled manifest exactly matches tracked certification source',()=>{
+  const captured=identity.captureSourceIdentity(root);
+  const bundled=identity.readBundledSourceManifest(root);
+  assert.ok(bundled);
+  assert.equal(captured.sourceHash,bundled.sourceHash);
+  assert.equal(captured.files.length,bundled.files.length);
+});
+`);
+
+          write('tests/86chaos-release-gate/43-source-manifest-cross-platform-parity.spec.cjs', `'use strict';
+const {test,expect}=require('@playwright/test');
+const fs=require('fs');
+const path=require('path');
+const identity=require('../../scripts/86chaos-release-gate/source-identity.cjs');
+const root=path.resolve(__dirname,'../..');
+
+test.describe('17.0.31 source manifest cross-platform parity',()=>{
+  test('tracked source, bundled manifest, and TypeScript newline normalization remain deterministic',async()=>{
+    const captured=identity.captureSourceIdentity(root);
+    const bundled=identity.readBundledSourceManifest(root);
+    expect(bundled).toBeTruthy();
+    expect(captured.sourceHash).toBe(bundled.sourceHash);
+    const lf=Buffer.from('export const x = 1;\\n','utf8');
+    const crlf=Buffer.from('export const x = 1;\\r\\n','utf8');
+    expect(identity.hash(identity.sourceBytes('functions/src/x.ts',crlf))).toBe(identity.hash(identity.sourceBytes('functions/src/x.ts',lf)));
+    const attrs=fs.readFileSync(path.join(root,'.gitattributes'),'utf8');
+    expect(attrs).toMatch(/^\\*\\.ts text eol=lf$/m);
+    expect(attrs).toMatch(/^\\*\\.tsx text eol=lf$/m);
+  });
+});
+`);
+
+          const scopePath='scripts/86chaos-release-gate/current-release-repair-scope.cjs';
+          let scope=read(scopePath);
+          scope=scope.replace(
+            /const CURRENT_RELEASE_CARRY_FORWARD_NOTE = '[^']*';/,
+            "const CURRENT_RELEASE_CARRY_FORWARD_NOTE = '17.0.31 preserves the complete 17.0.30 unified feature set and adds cross-platform source-manifest parity coverage for Windows and Vercel/Linux certification runners.';"
+          );
+          write(scopePath,scope);
+          NODE
+
+          git add -A
+          node <<'NODE'
+          const fs=require('fs');
+          const id=require('./scripts/86chaos-release-gate/source-identity.cjs');
+          const captured=id.captureSourceIdentity(process.cwd());
+          fs.writeFileSync('release-source-manifest.json',JSON.stringify({
+            schemaVersion:1,
+            sourceHash:captured.sourceHash,
+            files:captured.files
+          },null,2)+'\n');
+          console.log('Generated manifest',captured.sourceHash,'files',captured.files.length);
+          NODE
+          git add release-source-manifest.json
+      - name: Validate repaired source before commit
+        shell: bash
+        run: |
+          node scripts/validate-17-0-31.js
+          node --test api/source-manifest-parity-17-0-31.test.cjs
+          node - <<'NODE'
+          const id=require('./scripts/86chaos-release-gate/source-identity.cjs');
+          const a=id.captureSourceIdentity(process.cwd());
+          const b=id.readBundledSourceManifest(process.cwd());
+          if(a.sourceHash!==b.sourceHash) throw new Error(`manifest mismatch before commit: ${a.sourceHash} != ${b.sourceHash}`);
+          console.log('Pre-commit manifest parity:',a.sourceHash);
+          NODE
+      - name: Commit and push repair candidate
+        id: identity
+        shell: bash
+        run: |
+          git config user.name "86 Chaos Release Bot"
+          git config user.email "actions@users.noreply.github.com"
+          git commit -m "Release 17.0.31: repair cross-platform source manifest parity"
+          SHA="$(git rev-parse HEAD)"
+          git push origin HEAD:repair-17-0-31-manifest-parity
+          echo "candidate_sha=$SHA" >> "$GITHUB_OUTPUT"
+          echo "Candidate $SHA"
+
+  validate-linux:
+    needs: prepare-repair
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare-repair.outputs.candidate_sha }}
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Verify Linux manifest parity
+        run: |
+          node - <<'NODE'
+          const id=require('./scripts/86chaos-release-gate/source-identity.cjs');
+          const a=id.captureSourceIdentity(process.cwd()), b=id.readBundledSourceManifest(process.cwd());
+          if(a.sourceHash!==b.sourceHash) throw new Error(`Linux manifest mismatch: ${a.sourceHash} != ${b.sourceHash}`);
+          console.log(a.sourceHash);
+          NODE
+      - run: npm ci --include=dev --no-audit --no-fund --progress=false
+      - run: npm run test:current-release-targeted
+      - run: npm run build
+        env:
+          CI: "true"
+
+  validate-windows:
+    needs: prepare-repair
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare-repair.outputs.candidate_sha }}
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Verify Windows manifest parity
+        shell: pwsh
+        run: |
+          @'
+          const id=require('./scripts/86chaos-release-gate/source-identity.cjs');
+          const a=id.captureSourceIdentity(process.cwd()), b=id.readBundledSourceManifest(process.cwd());
+          if(a.sourceHash!==b.sourceHash) throw new Error(`Windows manifest mismatch: ${a.sourceHash} != ${b.sourceHash}`);
+          console.log(a.sourceHash);
+          '@ | node
+      - run: npm ci --include=dev --no-audit --no-fund --progress=false
+      - run: npm run test:current-release-targeted
+
+  deploy-testing:
+    needs: [prepare-repair, validate-linux, validate-windows]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare-repair.outputs.candidate_sha }}
+          fetch-depth: 0
+      - name: Fast-forward validated candidate to testing
+        shell: bash
+        run: |
+          git fetch origin testing
+          test "$(git rev-parse origin/testing)" = "7dafa2927e15c6ee0704c43b75d8d0bb66a2f418"
+          git push origin HEAD:testing
+
+  full-release-gate:
+    needs: [prepare-repair, deploy-testing]
+    runs-on: windows-latest
+    timeout-minutes: 360
+    env:
+      APP_URL: https://testing.86chaos.com
+      CHAOS_BASE_URL: https://testing.86chaos.com
+      PLAYWRIGHT_BASE_URL: https://testing.86chaos.com
+      CHAOS_EXPECTED_BRANCH: testing
+      CHAOS_EXPECTED_VERSION: 17.0.31
+      CHAOS_EXPECTED_GIT_COMMIT: ${{ needs.prepare-repair.outputs.candidate_sha }}
+      CHAOS_EXPECTED_VERCEL_PROJECT_SLUG: 86chaos
+      REACT_APP_FIREBASE_PROJECT_ID: chaos-test-d1601
+      REACT_APP_TEST_FIREBASE_PROJECT_ID: chaos-test-d1601
+      REACT_APP_FIREBASE_API_KEY: AIzaSyBIRGMeLnVE3w3i1WZJzurcp-LkeaNZ3hw
+      REACT_APP_TEST_FIREBASE_API_KEY: AIzaSyBIRGMeLnVE3w3i1WZJzurcp-LkeaNZ3hw
+      REACT_APP_FIREBASE_AUTH_DOMAIN: chaos-test-d1601.firebaseapp.com
+      REACT_APP_TEST_FIREBASE_AUTH_DOMAIN: chaos-test-d1601.firebaseapp.com
+      REACT_APP_FIREBASE_APP_ID: 1:534993379994:web:9fefb6e10309223afe7523
+      REACT_APP_TEST_FIREBASE_APP_ID: 1:534993379994:web:9fefb6e10309223afe7523
+      REACT_APP_FIREBASE_STORAGE_BUCKET: chaos-test-d1601.firebasestorage.app
+      REACT_APP_TEST_FIREBASE_STORAGE_BUCKET: chaos-test-d1601.firebasestorage.app
+      REACT_APP_FIREBASE_MESSAGING_SENDER_ID: '534993379994'
+      REACT_APP_TEST_FIREBASE_MESSAGING_SENDER_ID: '534993379994'
+      REACT_APP_TEST_FIREBASE_DATABASE_URL: https://chaos-test-d1601-default-rtdb.firebaseio.com
+      FIREBASE_TEST_SERVICE_ACCOUNT_KEY: ${{ secrets.FIREBASE_TEST_SERVICE_ACCOUNT_KEY }}
+      FIREBASE_SERVICE_ACCOUNT_KEY: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_KEY }}
+      SYSTEM_ADMIN_EMAIL: ${{ secrets.SYSTEM_ADMIN_EMAIL }}
+      SYSTEM_ADMIN_PASSWORD: ${{ secrets.SYSTEM_ADMIN_PASSWORD }}
+      OWNER_EMAIL: ${{ secrets.OWNER_EMAIL }}
+      OWNER_PASSWORD: ${{ secrets.OWNER_PASSWORD }}
+      MANAGER_EMAIL: ${{ secrets.MANAGER_EMAIL }}
+      MANAGER_PASSWORD: ${{ secrets.MANAGER_PASSWORD }}
+      STAFF_EMAIL: ${{ secrets.STAFF_EMAIL }}
+      STAFF_PASSWORD: ${{ secrets.STAFF_PASSWORD }}
+      MASTER_ADMIN_EMAIL: ${{ secrets.MASTER_ADMIN_EMAIL }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: testing
+          fetch-depth: 0
+      - name: Verify testing identity
+        shell: pwsh
+        run: |
+          if ((git rev-parse HEAD).Trim() -ne $env:CHAOS_EXPECTED_GIT_COMMIT) { throw "testing commit mismatch" }
+          if ((Get-Content package.json -Raw | ConvertFrom-Json).version -ne '17.0.31') { throw "version mismatch" }
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Wait for exact 17.0.31 testing deployment
+        shell: pwsh
+        run: |
+          $matched=$false
+          for($i=0;$i -lt 240;$i++){
+            $stamp=[DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
+            try{
+              $v=Invoke-RestMethod "$env:APP_URL/version.json?ci=$stamp" -Headers @{"Cache-Control"="no-cache";"Pragma"="no-cache"}
+              try{$id=Invoke-RestMethod "$env:APP_URL/build-identity.json?ci=$stamp" -Headers @{"Cache-Control"="no-cache";"Pragma"="no-cache"}}
+              catch{$id=Invoke-RestMethod "$env:APP_URL/api/build-identity?ci=$stamp" -Headers @{"Cache-Control"="no-cache";"Pragma"="no-cache"}}
+              $commit=if($id.gitCommit){[string]$id.gitCommit}elseif($id.commit){[string]$id.commit}else{""}
+              if([string]$v.version -eq '17.0.31' -and $commit -eq $env:CHAOS_EXPECTED_GIT_COMMIT){$matched=$true;Write-Host "Exact deployment READY";break}
+              Write-Host "Waiting: version=$($v.version) commit=$commit"
+            }catch{Write-Host "Deployment not ready: $($_.Exception.Message)"}
+            Start-Sleep -Seconds 15
+          }
+          if(-not $matched){throw "Timed out waiting for exact 17.0.31 deployment"}
+      - name: Run full Play Store Release Gate
+        shell: pwsh
+        run: npm run test:play-store
+      - name: Upload full Release Gate artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: 86chaos-testing-17.0.31-full-release-gate
+          if-no-files-found: warn
+          retention-days: 30
+          path: |
+            test-results/**
+            86chaos-release-gate-SLIM-UPLOAD-ME.zip
+            playwright-report/**
