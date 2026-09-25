@@ -70,7 +70,7 @@ replace('api/release-gate-expected-version-17-0-19.test.cjs',
   "  assert.match(packageVersion, /^\\d+\\.\\d+\\.\\d+$/);");
 replace('api/release-gate-expected-version-17-0-19.test.cjs',
   "    const env = { CHAOS_EXPECTED_VERSION: '17.0.29' };",
-  "    const env = { CHAOS_EXPECTED_VERSION: packageVersion };");
+  "    const env = { CHAOS_EXPECTED_VERSION: JSON.parse(read('package.json')).version };");
 
 // Current-version historical maturity assertions move with the release.
 for(const p of [
@@ -79,6 +79,12 @@ for(const p of [
   'api/release-gate-maturity-16-0-209.test.cjs',
   'api/release-gate-maturity-16-0-210.test.cjs'
 ]) replaceAll(p,'17.0.31','17.0.32');
+for(const p of [
+  'api/release-gate-maturity-16-0-207.test.cjs',
+  'api/release-gate-maturity-16-0-208.test.cjs',
+  'api/release-gate-maturity-16-0-209.test.cjs',
+  'api/release-gate-maturity-16-0-210.test.cjs'
+]) replaceAll(p,'node scripts/validate-17-0-30.js','node scripts/validate-17-0-32.js');
 
 // Translated Request Off control remains accessible and role-grouped.
 replace('api/availability-delete-responsive-density-16-0-163.test.cjs',
@@ -89,6 +95,9 @@ replace('api/availability-delete-responsive-density-16-0-163.test.cjs',
 replace('api/copy-clarity-16-0-232.test.cjs',
   "  assert.match(source, /Review & Publish/);",
   "  assert.match(source, /t\\('builder\\.reviewPublish'\\)/);");
+replace('api/copy-clarity-16-0-232.test.cjs',
+  "  assert.match(source, /Copy Month/);",
+  "  assert.match(source, /t\\('builder\\.copyMonth'\\)/);");
 
 // All Dates remains the default; obsolete explanatory sentence was removed.
 replace('api/request-off-workflow-visibility-16-0-188.test.cjs',
