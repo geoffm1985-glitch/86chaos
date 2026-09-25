@@ -1,0 +1,22 @@
+name: List active 17.0.30 markers
+
+on:
+  push:
+    branches:
+      - ci-diagnose-17-0-30-manifest
+
+permissions:
+  contents: read
+
+jobs:
+  list:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: testing
+          fetch-depth: 0
+      - name: List markers
+        shell: bash
+        run: |
+          git grep -n -I -E '17\.0\.30|17_0_30' -- . ':!release-source-manifest.json' || true
