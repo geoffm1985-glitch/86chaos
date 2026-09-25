@@ -56,7 +56,7 @@ jobs:
 
       - name: Run 16.0.244 source validator
         shell: pwsh
-        run: node scripts/validate-16-0-243.js
+        run: node scripts/validate-16-0-244.js
 
       - name: Run QA credential bootstrap Node regression
         shell: pwsh
