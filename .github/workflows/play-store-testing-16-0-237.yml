@@ -1,4 +1,4 @@
-name: 86 Chaos Testing Final Limited Gate
+name: 86 Chaos Targeted Validation - testing 16.0.243
 
 on:
   push:
@@ -9,19 +9,19 @@ permissions:
   contents: read
 
 concurrency:
-  group: 86chaos-testing-final-limited-gate
+  group: 86chaos-testing-targeted-16-0-243
   cancel-in-progress: true
 
 jobs:
-  final-targeted-gate:
+  targeted-validation:
     runs-on: windows-latest
-    timeout-minutes: 60
+    timeout-minutes: 90
     env:
       APP_URL: https://testing.86chaos.com
       CHAOS_BASE_URL: https://testing.86chaos.com
       PLAYWRIGHT_BASE_URL: https://testing.86chaos.com
-      CHAOS_EXPECTED_GIT_COMMIT: 56acb89da0b7079af54fb3688c78e2adb5554558
-      CHAOS_EXPECTED_VERSION: 16.0.242
+      CHAOS_EXPECTED_GIT_COMMIT: c772217e285440766bb82537ae22783c3896af20
+      CHAOS_EXPECTED_VERSION: 16.0.243
     steps:
       - name: Check out exact testing branch
         uses: actions/checkout@v4
@@ -46,26 +46,54 @@ jobs:
         shell: pwsh
         run: npm ci --include=dev --no-audit --no-fund --progress=false
 
-      - name: Verify exact deployed identity
+      - name: Parse full release-gate PowerShell
         shell: pwsh
         run: |
-          $stamp = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
-          $v = Invoke-RestMethod "$env:APP_URL/version.json?ci=$stamp" -Headers @{ "Cache-Control" = "no-cache"; "Pragma" = "no-cache" }
-          $id = Invoke-RestMethod "$env:APP_URL/build-identity.json?ci=$stamp" -Headers @{ "Cache-Control" = "no-cache"; "Pragma" = "no-cache" }
-          $commit = if ($id.gitCommit) { [string]$id.gitCommit } elseif ($id.commit) { [string]$id.commit } else { "" }
-          if ([string]$v.version -ne $env:CHAOS_EXPECTED_VERSION) { throw "Deployed version mismatch: $($v.version)" }
-          if ($commit -ne $env:CHAOS_EXPECTED_GIT_COMMIT) { throw "Deployed commit mismatch: $commit" }
-          Write-Host "Exact testing deployment verified."
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path '.\RUN_86CHAOS_PLAY_STORE_RELEASE_GATE.ps1'), [ref]$tokens, [ref]$errors) | Out-Null
+          if ($errors.Count -gt 0) { $errors | Format-List | Out-String | Write-Host; throw "Release-gate PowerShell has parse errors." }
 
-      - name: Run exactly 4 targeted Play Store release-gate cases
+      - name: Run 16.0.243 source validator
         shell: pwsh
-        run: .\node_modules\.bin\playwright.cmd test --config=playwright.inventory.config.cjs tests/86chaos-release-gate/38-release-identity-deployment-parity.spec.cjs tests/86chaos-release-gate/39-testing-alias-mutation-safety.spec.cjs tests/86chaos-release-gate/40-validator-line-ending-safety.spec.cjs --project=chromium
+        run: node scripts/validate-16-0-243.js
 
-      - name: Upload final targeted evidence
+      - name: Run QA credential bootstrap Node regression
+        shell: pwsh
+        run: node --test api/release-gate-auto-provision-role-env.test.cjs
+
+      - name: Wait for exact deployed identity
+        shell: pwsh
+        run: |
+          $matched = $false
+          for ($i = 0; $i -lt 180; $i++) {
+            $stamp = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
+            try {
+              $v = Invoke-RestMethod "$env:APP_URL/version.json?ci=$stamp" -Headers @{ "Cache-Control" = "no-cache"; "Pragma" = "no-cache" }
+              $id = Invoke-RestMethod "$env:APP_URL/build-identity.json?ci=$stamp" -Headers @{ "Cache-Control" = "no-cache"; "Pragma" = "no-cache" }
+              $commit = if ($id.gitCommit) { [string]$id.gitCommit } elseif ($id.commit) { [string]$id.commit } else { "" }
+              if ([string]$v.version -eq $env:CHAOS_EXPECTED_VERSION -and $commit -eq $env:CHAOS_EXPECTED_GIT_COMMIT) {
+                Write-Host "Exact testing deployment verified: version=$($v.version) commit=$commit"
+                $matched = $true
+                break
+              }
+              Write-Host "Waiting. Saw version=$($v.version) commit=$commit"
+            } catch {
+              Write-Host "Deployment not ready: $($_.Exception.Message)"
+            }
+            Start-Sleep -Seconds 10
+          }
+          if (-not $matched) { throw "Timed out waiting for exact testing deployment." }
+
+      - name: Run targeted Play Store release-gate regressions
+        shell: pwsh
+        run: .\node_modules\.bin\playwright.cmd test --config=playwright.inventory.config.cjs tests/86chaos-release-gate/39-testing-alias-mutation-safety.spec.cjs tests/86chaos-release-gate/40-validator-line-ending-safety.spec.cjs tests/86chaos-release-gate/41-auto-provision-role-env.spec.cjs --project=chromium
+
+      - name: Upload targeted validation evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: 86chaos-testing-16.0.242-final-targeted-gate
+          name: 86chaos-testing-16.0.243-targeted-validation
           if-no-files-found: ignore
           retention-days: 30
           path: |
