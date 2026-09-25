@@ -1,16 +1,16 @@
 {
-  "version": "16.0.241",
-  "name": "86 Chaos 16.0.241",
-  "build": "16.0.241",
-  "label": "86 Chaos 16.0.241",
+  "version": "16.0.242",
+  "name": "86 Chaos 16.0.242",
+  "build": "16.0.242",
+  "label": "86 Chaos 16.0.242",
   "releasedAt": "2026-09-25T00:00:00.000Z",
-  "releaseTitle": "Cross-Platform Validator Hash Repair",
+  "releaseTitle": "Testing Alias Overlay Safety Repair",
   "notes": [
-    "Normalizes CRLF/CR line endings to LF before SHA-256 checks in the inherited 16.0.231 and 16.0.233 validators.",
-    "Preserves every existing freeze assertion instead of deleting or loosening protected-file coverage.",
-    "Adds Node and Play Store regressions that fail if raw platform-specific text hashing returns."
+    "Replaces the final SAFE_TESTING_URL_RE/PRODUCTION_URL_RE use in the preview-overlay helper with the shared host classifier.",
+    "Retains explicit non-production support only for testing.86chaos.com and experimental.86chaos.com while production/unknown custom hosts remain blocked.",
+    "Validation is limited to the targeted repair set and will not run more than 20 tests."
   ],
-  "title": "86 Chaos 16.0.241",
-  "summary": "Makes inherited source-freeze validation deterministic across Windows and Linux while retaining the testing-alias safety repair.",
-  "description": "Normalizes text line endings before legacy SHA-256 freeze comparisons, preserving the original protected-file checks without false Windows failures."
+  "title": "86 Chaos 16.0.242",
+  "summary": "Completes the shared testing-host classifier migration in the full-audit overlay helper.",
+  "description": "Removes the final stale testing/production regex from the full-audit helper so all release-gate host decisions use the same fail-closed classifier."
 }

@@ -660,7 +660,8 @@ async function collectTextNear(page, needle, radius = 1200) {
 async function neutralizeTestingPreviewOverlays(page, options = {}) {
   const evidence = [];
   const url = page.url?.() || BASE_URL || '';
-  if (!SAFE_TESTING_URL_RE.test(url) || PRODUCTION_URL_RE.test(url)) {
+  const overlayHost = parseHost(url);
+  if (!isTestingPreviewHost(overlayHost) || isProductionHost(overlayHost)) {
     return { ok: true, skipped: true, reason: 'not a safe testing-preview URL', evidence };
   }
   const result = await page.evaluate(() => {

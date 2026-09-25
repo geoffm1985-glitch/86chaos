@@ -20,6 +20,8 @@ test.describe('39 testing alias mutation safety',()=>{
     const auditSource=fs.readFileSync(path.join(process.cwd(),'tests/86chaos-full-audit/utils/audit-helpers.cjs'),'utf8');
     expect(seedSource).toContain('isTestingPreviewHost'); expect(seedSource).toContain('isProductionHost');
     expect(auditSource).toContain('isTestingPreviewHost(BASE_HOST)'); expect(auditSource).toContain('isProductionHost(BASE_HOST)');
+    expect(auditSource).toContain('isTestingPreviewHost(overlayHost)'); expect(auditSource).toContain('isProductionHost(overlayHost)');
+    expect(auditSource).not.toContain('PRODUCTION_URL_RE'); expect(auditSource).not.toContain('SAFE_TESTING_URL_RE');
     evidence.push({sharedConsumers:{qaSeedSharedClassifier:true,auditHelperSharedClassifier:true}});
     await testInfo.attach('39-testing-alias-mutation-safety.json',{body:JSON.stringify(evidence,null,2),contentType:'application/json'});
   });
