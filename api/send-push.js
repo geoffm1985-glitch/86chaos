@@ -17,7 +17,7 @@ async function requireAppCheckIfEnforced(req, res, app) {
     await getAppCheck(app).verifyToken(token);
     return true;
   } catch (err) {
-    res.status(401).json({ error: `App Check verification failed: ${err.message}` });
+    res.status(401).json({ error: 'App Check verification failed.' });
     return false;
   }
 }
@@ -209,7 +209,7 @@ export default async function handler(req, res) {
   try {
     authContext = await verifyRequestToken(req, { requireProjectCredentials: true });
   } catch (error) {
-    return res.status(403).json({ error: `Push authorization failed: ${error.message}` });
+    return res.status(403).json({ error: 'Push authorization failed.' });
   }
 
   const { app, decoded, projectId } = authContext;
@@ -364,7 +364,7 @@ export default async function handler(req, res) {
       if (r.success) return;
       const record = tokenRecords[idx];
       const code = r.error?.code || 'unknown';
-      failures.push({ userId: record?.userId, code, message: r.error?.message || '' });
+      failures.push({ userId: record?.userId, code, message: 'Delivery failed.' });
       if (record?.userId && staleCodes.has(code)) {
         const patch = { pushNeedsRepair: true, pushRepairFlaggedAt: new Date().toISOString(), lastPushFailureCode: code };
         if (record.source === 'primary') patch.fcmToken = null;
@@ -400,6 +400,6 @@ export default async function handler(req, res) {
 
   } catch (error) {
     console.error('Push Error:', error);
-    return res.status(500).json({ error: error.message || 'Failed to send notifications', firebaseProject: projectId });
+    return res.status(500).json({ error: 'Failed to send notifications', firebaseProject: projectId });
   }
 }

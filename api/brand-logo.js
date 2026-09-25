@@ -62,7 +62,7 @@ function extensionFor(contentType, originalName = '') {
 async function verifyCaller(req, db, auth) {
   const token = (req.headers.authorization || '').replace('Bearer ', '').trim();
   if (!token) throw new Error('Missing Firebase ID token. Log out and back in, then try again.');
-  const decoded = await auth.verifyIdToken(token);
+  const decoded = await auth.verifyIdToken(token, true);
   const callerEmail = norm(decoded.email);
 
   let callerSnap = await db.collection('users').doc(decoded.uid).get();

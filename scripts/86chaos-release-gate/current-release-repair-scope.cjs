@@ -1,21 +1,27 @@
 'use strict';
 
-const CURRENT_RELEASE_VERSION = '16.0.156';
-const CURRENT_RELEASE_CARRY_FORWARD_NOTE = 'Schedule runtime function repair scope for 16.0.156, with carried-forward Schedule warning and Request Off checks until a successful repair or full baseline proves them.';
+const CURRENT_RELEASE_VERSION = '17.0.30';
+const CURRENT_RELEASE_CARRY_FORWARD_NOTE = 'Current release coverage preserves the 17.0.29 Spanish, Schedule Builder and browser-safe i18n repairs while carrying forward the 16.0.244 testing-alias, validator portability, QA bootstrap, backup-watchdog and deployment-identity hardening. These tests run in failed+new/repair selection until a later release replaces this scope.';
 const CURRENT_RELEASE_REPAIR_SCOPE = [
-  'Schedule Builder warning runtime renders without Runtime Recovery or TypeError',
-  'Schedule Builder requested-off warning shows employee name and never Someone',
-  'Schedule Builder coverage warnings show under and over target math',
-  'Schedule Builder warning dismissal hides only the warning',
-  'Request Off employee filter narrows and clears manager-visible requests',
-  'Approve All Visible updates only filtered visible pending requests',
-  'Archive All Visible archives only filtered visible eligible requests',
-].flatMap(title => ['chromium', 'mobile-chromium'].map(project => ({
-  specPath: 'e2e/schedule-request-off-management.spec.cjs',
-  fullSuitePath: '16.0.153 Schedule warnings and Request Off management',
-  exactTestTitle: title,
-  title,
-  leafTitle: title,
+  {
+    specPath: '86chaos-new-implementations/08-phase1-spanish-interface.spec.cjs',
+    fullSuitePath: '17.0.26 Phase 1 Spanish interface',
+    exactTestTitle: 'a user can switch their own interface to Spanish and core Phase 1 navigation follows it',
+  },
+  {
+    specPath: '86chaos-new-implementations/09-schedule-builder-shift-assignment.spec.cjs',
+    fullSuitePath: '17.0.27 Schedule Builder shift assignment emergency repair',
+    exactTestTitle: 'manager can assign one future shift through Schedule Builder and remove the QA shift afterward',
+  },
+  {
+    specPath: '86chaos-new-implementations/10-app-bootstrap-i18n-runtime.spec.cjs',
+    fullSuitePath: '17.0.28 browser-safe i18n bootstrap repair',
+    exactTestTitle: 'application boots through the i18n provider without a translation runtime crash',
+  },
+].flatMap(row => ['chromium', 'mobile-chromium'].map(project => ({
+  ...row,
+  title: row.exactTestTitle,
+  leafTitle: row.exactTestTitle,
   project,
   projects: [project],
 })));

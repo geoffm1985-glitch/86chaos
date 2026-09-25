@@ -28,7 +28,7 @@ module.exports = async function handler(req, res) {
     if (!appCheck.ok) return res.status(appCheck.status || 401).json({ intent: 'unknown', error: appCheck.error });
     const token = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim();
     if (!token) return res.status(401).json({ intent: 'unknown', error: 'Sign in before using AI voice parsing.' });
-    const decoded = await app.auth().verifyIdToken(token);
+    const decoded = await app.auth().verifyIdToken(token, true);
     const db = app.firestore();
     enforceClientAiSelection(req, resolveAiPolicy({ feature: 'voice', route: '/api/voice-command', provider: 'gemini' }), { uid: decoded.uid });
     const voiceRate = await enforceRateLimit({ db, req, decoded, routeName: 'voice-command', limit: getHardRateLimit('voice', process.env.VOICE_COMMAND_RATE_LIMIT), windowMs: 60 * 1000 });

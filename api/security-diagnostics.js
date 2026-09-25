@@ -54,7 +54,7 @@ module.exports = async function handler(req, res) {
     const token = (req.headers.authorization || '').replace('Bearer ', '').trim();
     if (!token) return res.status(401).json({ ok: false, error: 'Missing token' });
     const app = initAdmin(req);
-    const decoded = await app.auth().verifyIdToken(token);
+    const decoded = await app.auth().verifyIdToken(token, true);
     const db = app.firestore();
     const callerSnap = await db.collection('users').doc(decoded.uid).get();
     const caller = callerSnap.exists ? (callerSnap.data() || {}) : {};

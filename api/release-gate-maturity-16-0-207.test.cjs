@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
+const { captureSourceIdentity } = require('../scripts/86chaos-release-gate/source-identity.cjs');
 const root = path.resolve(__dirname, '..');
 const read = file => fs.readFileSync(path.join(root, file), 'utf8');
 const writeJson = (file, data) => {
@@ -86,6 +87,7 @@ test('16.0.207 failed-only run with matching selected/executed tests is PASS eve
     errors: [],
     stats: { expected: 1, skipped: 0, unexpected: 0, flaky: 0, duration: 7, startTime: new Date().toISOString() },
   });
+  writeJson(path.join(runDir, 'source-identity-start.json'), captureSourceIdentity(root));
 
   execFileSync(process.execPath, ['scripts/86chaos-release-gate/collect-release-gate-report.cjs'], {
     cwd: root,
@@ -96,6 +98,7 @@ test('16.0.207 failed-only run with matching selected/executed tests is PASS eve
       CHAOS_RELEASE_GATE_SELECTION_MODE: 'reported-failed-only',
       CHAOS_FAILED_ONLY_RELEASE_GATE: 'true',
       CHAOS_EXPECTED_VERSION: '16.0.207',
+      CHAOS_CERTIFICATION_MODE: 'false',
       CHAOS_RELEASE_GATE_STEP_FAILURES: '0',
     },
     stdio: 'pipe',
@@ -145,19 +148,19 @@ test('16.0.207 Schedule Builder tools have valid tablist semantics and the seed 
   assert.match(oracle, /test\.setTimeout\(4 \* 60 \* 1000\)/);
 });
 
-test('16.0.208 historical maturity assertions coexist with current 16.0.235 version metadata', () => {
+test('16.0.208 historical maturity assertions coexist with current 17.0.30 version metadata', () => {
   const pkg = JSON.parse(read('package.json'));
   const lock = JSON.parse(read('package-lock.json'));
   const version = JSON.parse(read('public/version.json'));
   const apiVersion = read('api/_version.js');
   const appCore = read('src/core/appCore.js');
-  assert.equal(pkg.version, '16.0.235');
-  assert.equal(lock.version, '16.0.235');
-  assert.equal(lock.packages[''].version, '16.0.235');
-  assert.equal(pkg.scripts['test:source'], 'node scripts/validate-16-0-235.js');
-  assert.equal(version.version, '16.0.235');
-  assert.equal(version.build, '16.0.235');
-  assert.match(apiVersion, /APP_VERSION = '16.0.235'/);
-  assert.match(apiVersion, /SECURITY_SCHEMA_VERSION = '16.0.235'/);
-  assert.match(appCore, /CURRENT_VERSION = '16.0.235'/);
+  assert.equal(pkg.version, '17.0.30');
+  assert.equal(lock.version, '17.0.30');
+  assert.equal(lock.packages[''].version, '17.0.30');
+  assert.equal(pkg.scripts['test:source'], 'node scripts/validate-17-0-30.js');
+  assert.equal(version.version, '17.0.30');
+  assert.equal(version.build, '17.0.30');
+  assert.match(apiVersion, /APP_VERSION = '17.0.30'/);
+  assert.match(apiVersion, /SECURITY_SCHEMA_VERSION = '17.0.30'/);
+  assert.match(appCore, /CURRENT_VERSION = '17.0.30'/);
 });

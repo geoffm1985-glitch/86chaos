@@ -165,6 +165,7 @@ $RunnerState = [ordered]@{
   currentPhase = 'created'
   mode = $SelectionMode
   noFailedOnlyTestsRemain = $false
+  noScopedPlaywrightTestsRemain = $false
   dependencyInstallAttempted = $false
   dependencyInstallPassed = $false
   dependencyPreflightPassed = $false
@@ -417,7 +418,7 @@ if ($PreflightExit -ne 0) {
               Stop-BeforePlaywright $ManifestReason
             } else {
               $ManifestValidationPath = Join-Path $RunDir 'failed-only-manifest-validation.json'
-              $NoFailedOnlyRemain = $false
+              $NoScopedPlaywrightRemain = $false
               if (Test-Path $ManifestValidationPath) {
                 try {
                   $ManifestValidation = Get-Content $ManifestValidationPath -Raw | ConvertFrom-Json
@@ -426,18 +427,25 @@ if ($PreflightExit -ne 0) {
                   if ($ManifestValidation.PSObject.Properties.Name -contains 'duplicateIdentitiesRemoved') { $RunnerState.duplicateIdentitiesRemoved = [int]$ManifestValidation.duplicateIdentitiesRemoved }
                   if ($ManifestValidation.PSObject.Properties.Name -contains 'totalSelected') { $RunnerState.totalSelected = [int]$ManifestValidation.totalSelected }
                   if ($SelectionMode -eq 'failed-only' -and ([bool]$ManifestValidation.noFailedOrTimedOutTestsRemain -or [int]$ManifestValidation.totalSelected -eq 0)) {
-                    $NoFailedOnlyRemain = $true
+                    $NoScopedPlaywrightRemain = $true
+                    $RunnerState.noFailedOnlyTestsRemain = $true
                   }
+                  if ($SelectionMode -eq 'failed+new' -and ([bool]$ManifestValidation.noFailedOrNewPlaywrightTestsRemain -or [int]$ManifestValidation.totalSelected -eq 0)) {
+                    $NoScopedPlaywrightRemain = $true
+                  }
+                  if ($NoScopedPlaywrightRemain) { $RunnerState.noScopedPlaywrightTestsRemain = $true }
                 } catch {
                   # Do not block a legitimate selected-test run merely because optional manifest metadata could not be copied to runner-state.
                 }
               }
               Save-RunnerState
-              if ($NoFailedOnlyRemain) {
-                $RunnerState.noFailedOnlyTestsRemain = $true
-                Save-RunnerState
-                Set-RunnerPhase 'no-failed-tests-remain'
-                Write-Host "No failed or timed-out Playwright tests remain." -ForegroundColor Green
+              if ($NoScopedPlaywrightRemain) {
+                Set-RunnerPhase 'no-scoped-playwright-tests-remain'
+                if ($SelectionMode -eq 'failed+new') {
+                  Write-Host "No failed, timed-out, or new Playwright identities remain. Current-release targeted regressions already passed before this delta runner." -ForegroundColor Green
+                } else {
+                  Write-Host "No failed or timed-out Playwright tests remain." -ForegroundColor Green
+                }
               } else {
                 $PlaywrightExe = Join-Path $Root "node_modules\.bin\playwright.cmd"
                 Set-RunnerPhase 'install-chromium'

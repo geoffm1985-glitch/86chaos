@@ -4,7 +4,7 @@ async function verifyUser(req, app) {
   const token = String(req.headers.authorization || '').replace('Bearer ', '').trim();
   if (!token) return { ok: false, status: 401, error: 'Missing Firebase authorization token.' };
   try {
-    const decoded = await app.auth().verifyIdToken(token);
+    const decoded = await app.auth().verifyIdToken(token, true);
     return { ok: true, decoded, uid: decoded.uid, email: decoded.email || '' };
   } catch (err) {
     return { ok: false, status: 401, error: `Invalid authorization token: ${err.message}` };

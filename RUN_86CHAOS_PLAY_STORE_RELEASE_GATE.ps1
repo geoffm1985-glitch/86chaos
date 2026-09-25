@@ -16,7 +16,7 @@ if (-not (Test-Path ".\package-lock.json")) {
   throw "package-lock.json was not found. The release gate requires the committed lockfile."
 }
 
-$ReleaseTargetKeys = @('APP_URL', 'CHAOS_BASE_URL', 'CHAOS_EXPECTED_VERSION', 'CHAOS_EXPECTED_VERCEL_PROJECT_SLUG')
+$ReleaseTargetKeys = @('APP_URL', 'CHAOS_BASE_URL', 'CHAOS_EXPECTED_VERCEL_PROJECT_SLUG')
 $CanonicalVercelProjectSlug = '86chaos'
 
 function Read-EnvFileMap {
@@ -120,6 +120,22 @@ $EnvLocal = Read-EnvFileMap (Join-Path $Root '.env.local')
 Assert-NoReleaseTargetConflicts $EnvTestLocal $EnvLocal
 Import-EnvFile $EnvTestLocal
 Import-EnvFile $EnvLocal
+
+# Full certification always targets the version that is actually present in package.json.
+# CHAOS_EXPECTED_VERSION is transient release evidence, not persistent local configuration;
+# a stale value in the shell or .env.test.local must never block the next sequential release.
+$PackageVersion = [string]((Get-Content (Join-Path $Root 'package.json') -Raw | ConvertFrom-Json).version)
+$PackageVersion = $PackageVersion.Trim()
+if (-not $PackageVersion) { throw 'package.json does not contain a valid version.' }
+$ConfiguredExpectedVersion = [string][Environment]::GetEnvironmentVariable('CHAOS_EXPECTED_VERSION', 'Process')
+if ($ConfiguredExpectedVersion -and $ConfiguredExpectedVersion.Trim() -ne $PackageVersion) {
+  Write-Host "Ignoring stale CHAOS_EXPECTED_VERSION=$($ConfiguredExpectedVersion.Trim()); full certification is pinned to package.json version $PackageVersion." -ForegroundColor Yellow
+}
+[Environment]::SetEnvironmentVariable('CHAOS_EXPECTED_VERSION', $PackageVersion, 'Process')
+$env:CHAOS_EXPECTED_VERSION = $PackageVersion
+
+$ReleaseGateTargetUrl = if ($env:APP_URL) { $env:APP_URL.TrimEnd('/') } else { $env:CHAOS_BASE_URL.TrimEnd('/') }
+$env:CHAOS_CERTIFICATION_MODE = 'true'
 if (-not $env:CHAOS_EXPECTED_VERCEL_PROJECT_SLUG) { $env:CHAOS_EXPECTED_VERCEL_PROJECT_SLUG = $CanonicalVercelProjectSlug }
 Write-Host "Release-gate target:" -ForegroundColor Cyan
 Write-Host "  APP_URL=$env:APP_URL" -ForegroundColor Cyan
@@ -382,10 +398,25 @@ if (-not $AnotherReleaseGateRunActive) {
 
 if (-not $AnotherReleaseGateRunActive) {
 Set-RunnerPhase 'environment-preflight'
-$PreflightExit = Run-Step "Environment preflight" "node scripts/86chaos-release-gate/preflight-env.cjs"
+$PreflightExit = Run-Step "Environment preflight" "node scripts/86chaos-release-gate/preflight-and-start.cjs"
 if ($PreflightExit -ne 0) {
-  Stop-BeforePlaywright "Release gate blocked before dependency installation because environment/deployment preflight failed."
+  $PreflightReason = "Release gate stopped in environment/deployment preflight or source validation. See the current run log."
+  $PreflightReportPath = Join-Path $RunDir 'environment-preflight.json'
+  if (Test-Path $PreflightReportPath) {
+    $PreflightReport = Get-Content $PreflightReportPath -Raw | ConvertFrom-Json
+    if ($PreflightReport.primaryBlockingFailure) { $PreflightReason = [string]$PreflightReport.primaryBlockingFailure }
+  }
+  Stop-BeforePlaywright $PreflightReason
 } else {
+  $PreflightReportPath = Join-Path $RunDir 'environment-preflight.json'
+  $PreflightReport = Get-Content $PreflightReportPath -Raw | ConvertFrom-Json
+  $PinnedDeploymentUrl = [string]$PreflightReport.resolvedImmutableDeploymentUrl
+  if (-not $PinnedDeploymentUrl) { throw 'Preflight passed without an immutable deployment URL; refusing to run deployed tests against a mutable alias.' }
+  $env:CHAOS_VERIFIED_IMMUTABLE_DEPLOYMENT_URL = $PinnedDeploymentUrl.TrimEnd('/')
+  $env:APP_URL = $ReleaseGateTargetUrl
+  $env:CHAOS_BASE_URL = $ReleaseGateTargetUrl
+  Write-Host "Verified immutable release-gate deployment: $env:CHAOS_VERIFIED_IMMUTABLE_DEPLOYMENT_URL" -ForegroundColor Green
+  Write-Host "Testing through Firebase-authorized target: $env:APP_URL" -ForegroundColor Green
   Set-RunnerPhase 'node-version'
   $NodeExit = Run-Step "Node version" "npm run node:check --if-present"
   if ($NodeExit -ne 0) {
@@ -500,11 +531,18 @@ if ($PreflightExit -ne 0) {
                     if ($LocalChecksExit -ne 0) {
                       Stop-BeforePlaywright "Release gate BLOCKED BEFORE PLAYWRIGHT because required local source/unit/build/rules checks failed or were blocked. See node-test-live-summary.json."
                     } else {
-                      Set-RunnerPhase 'playwright'
-                      $PlaywrightConfig = ".\playwright.play-store-release.config.cjs"
-                      $RunnerState.playwrightStarted = $true
-                      Save-RunnerState
-                      Run-LiveStep "Playwright release gate" "& '$PlaywrightExe' test --config '$PlaywrightConfig'"
+                      Set-RunnerPhase 'playwright-layout-smoke'
+                      $LayoutSmokeConfig = ".\playwright.layout.config.cjs"
+                      $LayoutSmokeExit = Run-LiveStep "Mobile layout Playwright smoke" "& '$PlaywrightExe' test --config '$LayoutSmokeConfig'"
+                      if ($LayoutSmokeExit -ne 0) {
+                        Stop-BeforePlaywright "Release gate stopped because the required mobile layout Playwright smoke failed. See the current step log."
+                      } else {
+                        Set-RunnerPhase 'playwright'
+                        $PlaywrightConfig = ".\playwright.play-store-release.config.cjs"
+                        $RunnerState.playwrightStarted = $true
+                        Save-RunnerState
+                        Run-LiveStep "Playwright release gate" "& '$PlaywrightExe' test --config '$PlaywrightConfig'"
+                      }
                     }
                   }
                 }

@@ -485,6 +485,16 @@ test('PowerShell runners verify role accounts after Chromium and before Playwrig
   }
 });
 
+test('full runner verifies the immutable deployment without replacing the Firebase-authorized testing alias', () => {
+  const runner = fs.readFileSync(path.resolve(__dirname, '../../RUN_86CHAOS_PLAY_STORE_RELEASE_GATE.ps1'), 'utf8');
+  const starter = fs.readFileSync(path.resolve(__dirname, '../../scripts/86chaos-release-gate/preflight-and-start.cjs'), 'utf8');
+  assert.match(runner, /CHAOS_VERIFIED_IMMUTABLE_DEPLOYMENT_URL/);
+  assert.match(runner, /\$env:APP_URL = \$ReleaseGateTargetUrl/);
+  assert.doesNotMatch(runner, /\$env:APP_URL = \$PinnedDeploymentUrl/);
+  assert.match(starter, /APP_URL:target/);
+  assert.match(starter, /CHAOS_VERIFIED_IMMUTABLE_DEPLOYMENT_URL:report\.resolvedImmutableDeploymentUrl/);
+});
+
 const provisionAccountsPath = path.resolve(__dirname, '../../scripts/86chaos-release-gate/provision-test-accounts.cjs');
 
 function withQaAccountEnv(fn) {

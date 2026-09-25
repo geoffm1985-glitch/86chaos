@@ -7,7 +7,7 @@ function initAdmin(req) {
 async function loadCallerContext(req, db, auth, restaurantId) {
   const token = cleanString(req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim();
   if (!token) throw Object.assign(new Error('Missing Firebase ID token.'), { status: 401 });
-  const decoded = await auth.verifyIdToken(token);
+  const decoded = await auth.verifyIdToken(token, true);
   const email = norm(decoded.email);
   let callerSnap = await db.collection('users').doc(decoded.uid).get();
   let callerDocId = decoded.uid;

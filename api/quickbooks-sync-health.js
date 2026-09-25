@@ -30,7 +30,7 @@ const verifyUser = async (req) => {
   }
   const app = initAdmin(req);
   const authClient = app && typeof app.auth === 'function' ? app.auth() : admin.auth(app);
-  const decoded = await authClient.verifyIdToken(token);
+  const decoded = await authClient.verifyIdToken(token, true);
   return { decoded };
 };
 

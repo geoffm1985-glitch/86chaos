@@ -1,4 +1,5 @@
 const { initAdmin, readBody, authorize, parseBackupBuffer, writeAudit, clean } = require('./_chaos-admin');
+const { ORDINARY_BACKUP_EXCLUSIONS, shouldExcludeFromOrdinaryBackup } = require('./_pos-bridge-boundaries');
 
 function containsSensitive(data) {
   const hits = [];
@@ -34,6 +35,7 @@ module.exports = async function handler(req, res) {
     const storagePath = clean(body.storagePath || '');
     const action = clean(body.action || 'preview');
     const selectedCollections = Array.isArray(body.selectedCollections) ? body.selectedCollections.map(clean).filter(Boolean) : [];
+    if (selectedCollections.some(shouldExcludeFromOrdinaryBackup)) return res.status(400).json({ ok: false, code: 'reserved_server_collection', error: 'POS Bridge collections cannot be selected for ordinary restore.' });
     if (!storagePath) return res.status(400).json({ ok: false, error: 'Backup Storage path is required.' });
     const auth = await authorize(req, app, { allowTenantAdmin: false });
     if (!auth.ok) return res.status(auth.status).json({ ok: false, error: auth.error });
@@ -60,12 +62,14 @@ module.exports = async function handler(req, res) {
         containsSensitive(d?.data || {}).forEach(h => sensitive.add(h));
       });
       sensitiveFieldCount += sensitive.size;
-      rows.push({ collectionName, count: docs.length, restaurantIds: Array.from(ids).slice(0, 8), sensitiveFields: Array.from(sensitive).slice(0, 12), selected: selectedCollections.length ? selectedCollections.includes(collectionName) : true });
+      const excludedFromOrdinaryRestore = shouldExcludeFromOrdinaryBackup(collectionName);
+      rows.push({ collectionName, count: docs.length, restaurantIds: Array.from(ids).slice(0, 8), sensitiveFields: Array.from(sensitive).slice(0, 12), selected: excludedFromOrdinaryRestore ? false : (selectedCollections.length ? selectedCollections.includes(collectionName) : true), excludedFromOrdinaryRestore });
     }
     const warnings = [];
     if (!backup?.metadata?.runId) warnings.push('Backup metadata is missing runId.');
     if (restaurantIds.size > 1) warnings.push(`Backup includes ${restaurantIds.size} restaurant IDs. Use selective restore carefully.`);
     if (sensitiveFieldCount > 0) warnings.push('Backup contains sensitive fields. Treat downloads and restores as private admin material.');
+    warnings.push(`POS Bridge server-managed roots are excluded from ordinary restore: ${ORDINARY_BACKUP_EXCLUSIONS.join(', ')}.`);
     let restored = null;
     if (action === 'restoreSelected') {
       if (clean(body.confirmText) !== 'RESTORE') return res.status(400).json({ ok: false, error: 'Type RESTORE to run a selective restore.' });
@@ -74,10 +78,12 @@ module.exports = async function handler(req, res) {
       const commit = async () => { if (batchCount) { await batch.commit(); batch = db.batch(); batchCount = 0; } };
       for (const [collectionName, payload] of Object.entries(collections)) {
         if (!selectedCollections.includes(collectionName)) continue;
+        if (shouldExcludeFromOrdinaryBackup(collectionName)) { skippedDocuments += Array.isArray(payload?.docs) ? payload.docs.length : 0; continue; }
         for (const d of (payload?.docs || [])) {
           if (!d?.path || !d?.data) continue;
+          if (shouldExcludeFromOrdinaryBackup(d.path)) { skippedDocuments += 1; continue; }
           if (d.path === 'system/backupStatus' || d.path.startsWith('system/backupStatus/')) { skippedDocuments += 1; continue; }
-          batch.set(db.doc(d.path), deserialize(d.data, require('firebase-admin'), db), { merge: true });
+          batch.set(db.doc(d.path), deserialize(d.data, require('firebase-admin'), db), { merge: false });
           restoredDocuments += 1; batchCount += 1;
           if (batchCount >= 400) await commit();
         }
@@ -86,7 +92,7 @@ module.exports = async function handler(req, res) {
       restored = { restoredDocuments, skippedDocuments, selectedCollections, finishedAt: new Date().toISOString() };
       await db.collection('system').doc('backupStatus').set({ lastSelectiveRestoreAt: restored.finishedAt, lastSelectiveRestorePath: storagePath, lastSelectiveRestoreCollections: selectedCollections, lastSelectiveRestoreDocuments: restoredDocuments, actor: auth.email || auth.uid, version: '14.0.2' }, { merge: true });
     }
-    const result = { ok: true, action, restored, storagePath, bucket: bucket.name, storageFormat, metadata: backup?.metadata || {}, totalDocs, collectionCount: rows.length, restaurantIds: Array.from(restaurantIds), warnings, rows: rows.sort((a,b)=>b.count-a.count), durationMs: Date.now() - started, generatedAt: new Date().toISOString() };
+    const result = { ok: true, action, restored, storagePath, bucket: bucket.name, storageFormat, metadata: backup?.metadata || {}, ordinaryRestoreExclusions: ORDINARY_BACKUP_EXCLUSIONS, totalDocs, collectionCount: rows.length, restaurantIds: Array.from(restaurantIds), warnings, rows: rows.sort((a,b)=>b.count-a.count), durationMs: Date.now() - started, generatedAt: new Date().toISOString() };
     await writeAudit(db, auth, action === 'restoreSelected' ? 'SELECTIVE_RESTORE' : 'BACKUP_PREVIEW', storagePath, `${action} ${storagePath}; docs ${totalDocs}; collections ${rows.length}.`, auth.restaurantId || 'system');
     return res.status(200).json(result);
   } catch (err) {

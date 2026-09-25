@@ -15,6 +15,8 @@ const CRITICAL_WORKFLOWS = [
   { category: 'Accessibility', specHint: '16-accessibility-release-gate', titleHint: 'axe violations' },
   { category: 'PWA installability', specHint: '25-pwa-android-installability', titleHint: 'PWA' },
   { category: 'Reminder notification delivery', specHint: '35-reminder-notification-certification', titleHint: 'reminder notification' },
+  { category: 'POS Bridge contract boundary', specHint: '06-pos-bridge-contract', titleHint: 'POS Bridge v1 rejects unsupported contracts' },
+  { category: 'POS Bridge machine security boundary', specHint: '07-pos-bridge-security', titleHint: 'POS Bridge rejects human and provider tokens' },
   { category: 'PWA icon source parity', specHint: '26-pwa-icon-source-deployed-parity', titleHint: 'source and deployed icon bytes' },
   { category: 'Cross-browser icon matrix', specHint: '27-pwa-browser-icon-matrix', titleHint: 'PWA icon metadata matrix' },
   { category: 'QA cleanup', specHint: 'global-teardown', titleHint: 'QA cleanup' },

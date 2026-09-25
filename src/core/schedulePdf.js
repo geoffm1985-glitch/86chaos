@@ -1,7 +1,9 @@
 const PAGE_WIDTH = 792;
 const PAGE_HEIGHT = 612;
 const MARGIN = 24;
-const MIN_FONT_SIZE = 8;
+const GRID_SIDE_MARGIN = 8;
+const GRID_BOTTOM_MARGIN = 12;
+const MIN_FONT_SIZE = 6.5;
 const FONT_SUBSETS = Object.freeze(['latin', 'latin-ext', 'cyrillic', 'greek', 'vietnamese', 'devanagari', 'cjk-common-115']);
 
 const graphemes = value => {
@@ -73,49 +75,125 @@ function fitText(fontFamily, value, size, width, bold = false) {
   return `${result}${suffix}`;
 }
 function wrapText(fontFamily, value, size, width, bold = false) {
-  const output = []; let line = '';
-  for (const piece of graphemes(value)) {
-    if (piece === '\n') { output.push(line); line = ''; continue; }
-    const candidate = `${line}${piece}`;
-    if (!line || measureText(fontFamily, candidate, size, bold) <= width) line = candidate;
-    else { output.push(line.trimEnd()); line = piece.trimStart(); }
+  const source = String(value == null ? '' : value);
+  const output = [];
+  for (const paragraph of source.split('\n')) {
+    const words = paragraph.match(/\S+\s*/gu) || [''];
+    let line = '';
+    for (const wordWithSpace of words) {
+      const word = wordWithSpace.trimEnd();
+      const separator = line ? ' ' : '';
+      const candidate = `${line}${separator}${word}`;
+      if (!line || measureText(fontFamily, candidate, size, bold) <= width) {
+        line = candidate;
+        continue;
+      }
+      output.push(line);
+      if (measureText(fontFamily, word, size, bold) <= width) {
+        line = word;
+        continue;
+      }
+      let fragment = '';
+      for (const piece of graphemes(word)) {
+        const fragmentCandidate = `${fragment}${piece}`;
+        if (!fragment || measureText(fontFamily, fragmentCandidate, size, bold) <= width) fragment = fragmentCandidate;
+        else { output.push(fragment); fragment = piece; }
+      }
+      line = fragment;
+    }
+    if (line || !output.length) output.push(line);
   }
-  if (line || !output.length) output.push(line.trimEnd()); return output;
+  return output;
+}
+
+function compactShiftLabel(shift) {
+  const employeeName = String(shift?.employeeName || 'Open Shift').trim();
+  const timeLabel = String(shift?.timeLabel || '').trim().replace(/\s+([–-])\s+/gu, '$1');
+  return [employeeName, timeLabel].filter(Boolean).join(' · ');
 }
 
 export async function generateMonthSchedulePdf(model, options = {}) {
   if (!model || model.page?.width !== PAGE_WIDTH || model.page?.height !== PAGE_HEIGHT) throw new Error('The Month Schedule PDF model is invalid.');
   const pdfLib = options.pdfLib || await import('pdf-lib'); const { PDFDocument, rgb } = pdfLib;
   const document = await PDFDocument.create(); const fonts = await embedFontFamilies(document, options);
-  document.setTitle(`86 Chaos Schedule ${model.monthTitle}`); document.setAuthor('86 Chaos'); document.setCreator('86 Chaos'); document.setProducer('86 Chaos 16.0.235');
+  document.setTitle(`86 Chaos Schedule ${model.monthTitle}`); document.setAuthor('86 Chaos'); document.setCreator('86 Chaos'); document.setProducer('86 Chaos 17.0.30');
   document.setKeywords(['86 Chaos', 'schedule', ...model.visibleShifts.map(shift => `shift:${shift.dedupeKey}`)]);
   const fixedDate = new Date('2000-01-01T00:00:00.000Z'); document.setCreationDate(fixedDate); document.setModificationDate(fixedDate);
   const black = rgb(0, 0, 0); const gray = rgb(0.94, 0.95, 0.96); const light = rgb(0.98, 0.98, 0.98); const page = document.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
   const title = [model.restaurantName, '86 Chaos Schedule', model.monthTitle, model.roleFilter !== 'All' ? model.roleFilter : ''].filter(Boolean).join(' · ');
   drawRuns(page, fonts, fitText(fonts, title, 15, PAGE_WIDTH - MARGIN * 2, true), { x: MARGIN, y: PAGE_HEIGHT - MARGIN - 15, size: 15, bold: true, color: black });
   drawRuns(page, fonts, `${model.shiftCount} published shift${model.shiftCount === 1 ? '' : 's'} · Review-only PDF`, { x: MARGIN, y: PAGE_HEIGHT - MARGIN - 29, size: 8, color: black });
-  const gridTop = PAGE_HEIGHT - MARGIN - 42; const weekdayHeight = 18; const gridWidth = PAGE_WIDTH - MARGIN * 2; const columnWidth = gridWidth / 7; const rowHeight = (gridTop - MARGIN - weekdayHeight) / model.weekCount; const maxOverviewLines = Math.max(2, Math.floor((rowHeight - 18) / 9));
+  const gridTop = PAGE_HEIGHT - MARGIN - 42; const weekdayHeight = 18; const gridWidth = PAGE_WIDTH - GRID_SIDE_MARGIN * 2; const columnWidth = gridWidth / 7; const rowHeight = (gridTop - GRID_BOTTOM_MARGIN - weekdayHeight) / model.weekCount;
+  const detailCells = [];
   model.weekdayHeadings.forEach((day, index) => {
-    const x = MARGIN + index * columnWidth; page.drawRectangle({ x, y: gridTop - weekdayHeight, width: columnWidth, height: weekdayHeight, color: gray, borderColor: black, borderWidth: 0.7 });
+    const x = GRID_SIDE_MARGIN + index * columnWidth; page.drawRectangle({ x, y: gridTop - weekdayHeight, width: columnWidth, height: weekdayHeight, color: gray, borderColor: black, borderWidth: 0.7 });
     drawRuns(page, fonts, day, { x: x + columnWidth / 2 - measureText(fonts, day, 9, true) / 2, y: gridTop - 12.5, size: 9, bold: true, color: black });
   });
-  const details = [];
   model.cells.forEach(cell => {
-    const x = MARGIN + cell.weekdayIndex * columnWidth; const y = gridTop - weekdayHeight - (cell.weekIndex + 1) * rowHeight;
+    const x = GRID_SIDE_MARGIN + cell.weekdayIndex * columnWidth; const y = gridTop - weekdayHeight - (cell.weekIndex + 1) * rowHeight;
     page.drawRectangle({ x, y, width: columnWidth, height: rowHeight, color: cell.inMonth ? undefined : light, borderColor: black, borderWidth: 0.7 });
     if (!cell.inMonth) return;
     drawRuns(page, fonts, String(cell.dayNumber), { x: x + columnWidth - 13, y: y + rowHeight - 11, size: 9, bold: true, color: black });
-    const measuredOverflow = cell.shifts.some(shift => measureText(fonts, shift.label, MIN_FONT_SIZE) > columnWidth - 7);
-    const needsDetail = cell.shifts.length > maxOverviewLines || measuredOverflow; const overviewCount = needsDetail ? Math.max(1, maxOverviewLines - 1) : maxOverviewLines;
-    cell.shifts.slice(0, overviewCount).forEach((shift, index) => drawRuns(page, fonts, fitText(fonts, shift.label, MIN_FONT_SIZE, columnWidth - 7), { x: x + 3, y: y + rowHeight - 23 - index * 9, size: MIN_FONT_SIZE, color: black }));
-    if (needsDetail) { details.push(cell); const omitted = Math.max(0, cell.shifts.length - overviewCount); drawRuns(page, fonts, omitted ? `+${omitted} more – detail page` : 'Full text – detail page', { x: x + 3, y: y + 4, size: 7, bold: true, color: black }); }
+    if (!cell.shifts.length) return;
+    const contentHeight = Math.max(0, rowHeight - 24);
+    const textWidth = columnWidth - 7;
+    const candidateSizes = [8, 7.5, 7, MIN_FONT_SIZE];
+    let layout = null;
+    for (const fontSize of candidateSizes) {
+      const lineHeight = fontSize + 0.75;
+      const shiftGap = 0.5;
+      const entries = cell.shifts.map(shift => {
+        const fullLabel = String(shift.label || '').trim();
+        const compactLabel = compactShiftLabel(shift);
+        let lines;
+        if (measureText(fonts, fullLabel, fontSize) <= textWidth) lines = [fullLabel];
+        else if (measureText(fonts, compactLabel, fontSize) <= textWidth) lines = [compactLabel];
+        else {
+          const nameLines = wrapText(fonts, shift.employeeName || 'Open Shift', fontSize, textWidth);
+          const timeLines = shift.timeLabel ? wrapText(fonts, shift.timeLabel, fontSize, textWidth) : [];
+          lines = [...nameLines, ...timeLines].filter(Boolean);
+        }
+        return { shift, lines };
+      });
+      const lineCount = entries.reduce((sum, entry) => sum + entry.lines.length, 0);
+      const requiredHeight = lineCount * lineHeight + Math.max(0, entries.length - 1) * shiftGap;
+      if (requiredHeight <= contentHeight + 0.01) { layout = { fontSize, lineHeight, shiftGap, entries }; break; }
+    }
+    let cursorY = y + rowHeight - 23;
+    if (layout) {
+      layout.entries.forEach((entry, entryIndex) => {
+        entry.lines.forEach(line => { drawRuns(page, fonts, line, { x: x + 3, y: cursorY, size: layout.fontSize, color: black }); cursorY -= layout.lineHeight; });
+        if (entryIndex < layout.entries.length - 1) cursorY -= layout.shiftGap;
+      });
+      return;
+    }
+    const fontSize = MIN_FONT_SIZE; const lineHeight = fontSize + 0.75; const markerHeight = 9;
+    const compactEntries = cell.shifts.map(shift => {
+      const compactLabel = compactShiftLabel(shift);
+      const lines = measureText(fonts, compactLabel, fontSize) <= textWidth ? [compactLabel] : wrapText(fonts, compactLabel, fontSize, textWidth);
+      return { shift, lines };
+    });
+    let used = 0; let visibleCount = 0;
+    for (const entry of compactEntries) {
+      const required = entry.lines.length * lineHeight + 0.5;
+      if (used + required > Math.max(0, contentHeight - markerHeight)) break;
+      entry.lines.forEach(line => { drawRuns(page, fonts, line, { x: x + 3, y: cursorY, size: fontSize, color: black }); cursorY -= lineHeight; });
+      cursorY -= 0.5; used += required; visibleCount += 1;
+    }
+    const omitted = Math.max(0, cell.shifts.length - visibleCount);
+    drawRuns(page, fonts, `+${omitted} more · detail page`, { x: x + 3, y: y + 4, size: 6.5, bold: true, color: black });
+    detailCells.push(cell);
   });
-  for (const cell of details) {
+  for (const cell of detailCells) {
     const heading = `${model.monthTitle} · ${cell.date} · ${cell.shifts.length} shift${cell.shifts.length === 1 ? '' : 's'}`; let detailPage; let y;
-    const newDetailPage = continued => { detailPage = document.addPage([PAGE_WIDTH, PAGE_HEIGHT]); y = PAGE_HEIGHT - MARGIN - 18; drawRuns(detailPage, fonts, fitText(fonts, `${heading}${continued ? ' (continued)' : ''}`, 14, PAGE_WIDTH - MARGIN * 2, true), { x: MARGIN, y, size: 14, bold: true, color: black }); y -= 22; };
+    const newDetailPage = continued => {
+      detailPage = document.addPage([PAGE_WIDTH, PAGE_HEIGHT]); y = PAGE_HEIGHT - MARGIN - 18;
+      drawRuns(detailPage, fonts, fitText(fonts, `${heading}${continued ? ' (continued)' : ''}`, 14, PAGE_WIDTH - MARGIN * 2, true), { x: MARGIN, y, size: 14, bold: true, color: black }); y -= 22;
+    };
     newDetailPage(false);
     for (const shift of cell.shifts) {
-      const lines = wrapText(fonts, shift.label, 10, PAGE_WIDTH - MARGIN * 2 - 14); let lineIndex = 0; let firstLine = true;
+      const detailLabel = String(shift.detailLabel || [shift.employeeName, shift.timeLabel, shift.role].filter(Boolean).join(' · '));
+      const lines = wrapText(fonts, detailLabel, 10, PAGE_WIDTH - MARGIN * 2 - 14); let lineIndex = 0; let firstLine = true;
       while (lineIndex < lines.length) {
         if (y - 14 < MARGIN) newDetailPage(true);
         if (firstLine) detailPage.drawCircle({ x: MARGIN + 3, y: y + 3, size: 1.5, color: black });

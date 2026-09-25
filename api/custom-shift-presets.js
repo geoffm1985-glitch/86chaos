@@ -31,7 +31,7 @@ async function authorizeScheduleBuilder(req, restaurantId) {
   const token = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim();
   if (!token) return { ok: false, status: 401, code: 'missing-token', error: 'Missing Firebase authorization token.' };
   try {
-    const decoded = await app.auth().verifyIdToken(token);
+    const decoded = await app.auth().verifyIdToken(token, true);
     const db = app.firestore();
     const user = await loadUserByToken(db, decoded);
     const email = norm(decoded.email || user?.email);

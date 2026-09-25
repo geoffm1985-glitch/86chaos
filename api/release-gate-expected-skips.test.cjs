@@ -120,6 +120,7 @@ function collectFixture({ results = rows(), staleSource = false, preflightFailed
       cwd: root, stdio: 'pipe', timeout: 20000,
       env: { ...process.env, CHAOS_RELEASE_GATE_RUN_ID: runId, CHAOS_RELEASE_GATE_RUN_DIR: runDir,
         CHAOS_RELEASE_GATE_SELECTION_MODE: 'full', CHAOS_FAILED_ONLY_RELEASE_GATE: 'false', CHAOS_FAILED_AND_NEW_RELEASE_GATE: 'false',
+        CHAOS_CERTIFICATION_MODE: 'false',
         CHAOS_RELEASE_GATE_STEP_FAILURES: '0', CHAOS_EXPECTED_VERSION: version },
     });
     return { summary: JSON.parse(fs.readFileSync(path.join(runDir, `86chaos-play-store-release-gate-summary-${version}-${runId}.json`), 'utf8')),
@@ -132,7 +133,8 @@ function collectFixture({ results = rows(), staleSource = false, preflightFailed
 test('actual collector reconciles the 248 PASS / 7 intentional SKIP fixture without changing any test result', () => {
   const { summary, text } = collectFixture();
   assert.equal(summary.ok, true);
-  assert.equal(summary.fullReleaseCertified, true);
+  assert.equal(summary.fullReleaseCertified, false);
+  assert.equal(summary.sourceIdentityValidation.ok, true);
   assert.equal(summary.playwright.totalResults, 255);
   assert.equal(summary.playwright.passed, 248);
   assert.equal(summary.playwright.failed, 0);

@@ -23,6 +23,13 @@ import { deriveScheduleToolsPeriod, deriveScheduleToolsCopyWeek, filterScheduleT
 import { buildMonthSchedulePrintModel } from '../core/schedulePrintModel';
 import { generateMonthSchedulePdf } from '../core/schedulePdf';
 import { deliverSchedulePdf } from '../core/schedulePdfDelivery';
+import { createSchedulePublishGuard, makeSchedulePublishProgress } from '../core/schedulePublishProgress';
+import { activeRosterRoles, resolveShiftRosterRole, copyRosterRoleFields } from '../core/rosterRoleIdentity';
+import { buildSchedulePublicationPlan, buildConfirmedShiftEvidence, digestSchedulePublicationPlan, isIntentionalOpenScheduleShift } from '../core/schedulePublicationPlan';
+import { requestOffDateKey, normalizeRequestOffRuntimeRow, safeRequestOffRows } from '../core/requestOffRuntimeSafety';
+import { normalizeTimeOffPolicy, evaluateTimeOffPolicyDate, timeOffPolicyReleaseDateForRequestDate, timeOffPolicyCutoffDateForRequestDate, canConfigureTimeOffPolicy } from '../core/timeOffPolicy';
+import { useI18n } from '../core/i18n';
+import { normalizeScheduleBuilderEvents, safeScheduleBuilderRecords } from '../core/scheduleBuilderRuntime';
 import { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, MapClickListener, SmartEmptyState, MiniProblemCard, getHomeProfile, calculatePunchHours, getWeekStart, roleMatches, toLocalTimeInput, makeLocalIso, PunchTable, FriendlyEmpty, GlobalSearchModal, QuickActionDock, KitchenTVMode, ChangeLogModal, UndoBar } from '../components/common';
 
 
@@ -206,19 +213,11 @@ const requestOffPersonKey = (request = {}) => {
   return normalizeScheduleName(request.userName || request.employeeName || request.name || 'unknown');
 };
 
-const requestOffDateKey = (request = {}) => {
-  const raw = String(request?.date || request?.requestDate || request?.requestedDate || request?.startDate || request?.dateKey || request?.day || request?.requestedDay || request?.scheduleDateKey || '').trim();
-  return /^\d{4}-\d{2}-\d{2}$/.test(raw) ? raw : '';
-};
-
-const normalizeRequestOffWorkflowRow = (request = {}) => {
-  const date = requestOffDateKey(request);
-  return date && request.date !== date ? { ...request, date } : request;
-};
+const normalizeRequestOffWorkflowRow = (request = {}) => normalizeRequestOffRuntimeRow(request);
 
 const mergeRequestOffWorkflowRows = (...lists) => {
   const byKey = new Map();
-  lists.flat().filter(Boolean).map(normalizeRequestOffWorkflowRow).forEach(row => {
+  safeRequestOffRows(...lists).map(normalizeRequestOffWorkflowRow).filter(Boolean).forEach(row => {
     const key = row.id || `${requestOffDateKey(row) || 'no-date'}|${requestOffPersonKey(row)}|${row.requestedAt || row.submittedAt || row.createdAt || row.requestTimestamp || ''}`;
     if (key && !byKey.has(key)) byKey.set(key, row);
   });
@@ -766,6 +765,7 @@ export const buildAutoPopulateShift = (sourceShift = {}, newDate = '', restauran
     ...buildCanonicalScheduleCreateFields(newDate, restaurantId),
     ...buildScheduleIdentityFields(identitySource, sourceShift),
     role: sourceShift.role || resolvedPerson?.role || 'Unassigned',
+    ...copyRosterRoleFields(sourceShift),
     startTime: sourceShift.startTime || '',
     endTime: sourceShift.endTime || '',
     isPublished: false,
@@ -1019,6 +1019,7 @@ const normalizeTipAmount = (value) => {
 };
 
 const TabMasterSchedule = ({ currentDate, setCurrentDate = null, onSubTabChange = null, appUser, users, shifts, shiftSwaps, timeOffRequests, events, addToast, initialSubTab = 'my-schedule', voiceScheduleSubTabTarget = null, scheduleBuilderProps = null, clientData = null }) => {
+  const { t, formatDate: i18nDate } = useI18n();
   const [rosterFilterDate, setRosterFilterDate] = useState('');
   const [isFullSchedulePickerOpen, setIsFullSchedulePickerOpen] = useState(false);
   const [fullSchedulePickerMonth, setFullSchedulePickerMonth] = useState(getMonthStr(currentDate));
@@ -1228,6 +1229,7 @@ const handleClockIn = async () => {
     const executePunch = async () => {
       setClockActionType('in');
       setClockActionBusy(true);
+      let durablePunch = null;
       try {
         const clockInStamp = new Date().toISOString();
         const clockAuthUid = auth?.currentUser?.uid || appUser.authUid || appUser.uid || appUser.id || '';
@@ -1248,20 +1250,32 @@ const handleClockIn = async () => {
           isApproved: !isUnscheduled
         };
         const punchRef = await addDoc(collection(db, "timePunches"), punchData);
-        setActivePunch({ id: punchRef.id, ...punchData, _optimisticUntil: Date.now() + 30000 });
+        durablePunch = { id: punchRef.id, ...punchData, _optimisticUntil: Date.now() + 30000 };
+        setActivePunch(durablePunch);
         
         // Blast the manager alert to the Message Board
         if (isUnscheduled) {
-           await addDoc(collection(db, "events"), { 
-             date: new Date().toISOString(), title: `UNSCHEDULED PUNCH: ${appUser.name.split(' ')[0]} clocked in without a scheduled shift. Please review in Timesheets.`, 
-             type: 'note', author: 'System Alert', isImportant: true, restaurantId: appUser.restaurantId, replies: [] 
-           });
+           try {
+             await addDoc(collection(db, "events"), {
+               date: new Date().toISOString(), title: `UNSCHEDULED PUNCH: ${appUser.name.split(' ')[0]} clocked in without a scheduled shift. Please review in Timesheets.`,
+               type: 'note', author: 'System Alert', isImportant: true, restaurantId: appUser.restaurantId, replies: [], punchId: punchRef.id
+             });
+           } catch (alertError) {
+             console.warn('[86chaos] Punch saved but unscheduled alert failed', alertError?.message || alertError);
+             addToast('Clocked In — Alert Pending', 'Your time punch was saved. The manager alert could not be posted, so please tell a manager.');
+             return;
+           }
         }
         
         addToast('Clocked In', isUnscheduled ? 'Unscheduled shift started. Manager notified.' : 'Shift started successfully.');
       } catch (e) { 
-        setActivePunch(null);
-        addToast('Could Not Clock In', e.message || 'Your clock-in was not saved. Check your connection and try again.'); 
+        if (durablePunch) {
+          setActivePunch(durablePunch);
+          addToast('Clocked In — Follow-up Failed', 'Your time punch was saved, but a secondary step failed. Do not clock in again; tell a manager.');
+        } else {
+          setActivePunch(null);
+          addToast('Could Not Clock In', e.message || 'Your clock-in was not saved. Check your connection and try again.');
+        }
       } finally {
         setClockActionBusy(false);
         setClockActionType(null);
@@ -1419,7 +1433,7 @@ Clock out anyway?`);
 
   const handleClaimShift = async (swap) => {
     if (!swap?.shiftId) return addToast('Shift Cannot Be Claimed', 'This Trade Board listing is no longer linked to a shift. Ask a manager to remove it.');
-    if (!window.confirm(`Claim this ${swap.role} shift on ${formatDisplayDate(swap.shiftDate || swap.date)}?`)) return;
+    if (!window.confirm(`Claim this ${swap.role} shift on ${i18nDate(swap.shiftDate || swap.date)}?`)) return;
 
     try {
       const claimantAuthUid = auth?.currentUser?.uid || appUser.authUid || appUser.uid || appUser.id || '';
@@ -1542,9 +1556,9 @@ const handleOfferSwap = async (shift) => {
 
       <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2 border-b border-[#2A353D] mb-4 pb-2">
         {['my-schedule', 'full-schedule', 'month-view', 'trade-board', 'time-off', 'availability', ...((appUser?.isAdmin || appUser?.permissions?.schedule) && scheduleBuilderProps ? ['schedule-builder'] : [])].map((tab) => {
-          const label = tab === 'time-off' ? 'Request Off' : tab === 'availability' ? 'Availability' : tab === 'trade-board' ? 'Trade Board' : tab === 'schedule-builder' ? 'Schedule Builder' : tab.replace('-', ' ');
+          const label = tab === 'my-schedule' ? t('schedule.mySchedule') : tab === 'full-schedule' ? t('schedule.fullSchedule') : tab === 'month-view' ? t('schedule.monthView') : tab === 'time-off' ? t('schedule.requestOff') : tab === 'availability' ? t('schedule.availability') : tab === 'trade-board' ? t('schedule.tradeBoard') : tab === 'schedule-builder' ? t('schedule.builder') : tab.replace('-', ' ');
           return (
-          <button key={tab} type="button" aria-label={tab === 'time-off' ? 'Schedule Request Off' : label} title={label} onClick={() => setSubTab(tab)} className={`px-2 sm:px-4 py-2 text-[10px] sm:text-xs font-black rounded-xl uppercase tracking-widest transition-all sm:flex-1 ${subTab === tab ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>
+          <button key={tab} type="button" aria-label={label} title={label} onClick={() => setSubTab(tab)} className={`px-2 sm:px-4 py-2 text-[10px] sm:text-xs font-black rounded-xl uppercase tracking-widest transition-all sm:flex-1 ${subTab === tab ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>
             {label}
           </button>
         );})}
@@ -1562,35 +1576,35 @@ const handleOfferSwap = async (shift) => {
             <div key={alert.id} className="bg-gradient-to-r from-[#7A4F31]/30 to-[#1A2126] border border-[#B88764]/40 p-3 rounded-xl flex gap-3 shadow-lg">
               <Bell size={24} className="text-red-500 flex-shrink-0" />
               <div>
-                <span className="text-[9px] font-black uppercase text-[#D4A381] tracking-widest block">System Alert</span>
+                <span className="text-[9px] font-black uppercase text-[#D4A381] tracking-widest block">{t('schedule.systemAlert')}</span>
                 <p className="text-xs text-slate-200 font-medium leading-snug">{alert.title}</p>
               </div>
             </div>
           ))}
           <div className={`${T.grad} rounded-3xl p-6 shadow-2xl relative overflow-hidden border border-[#D4A381]/30`}>
             <div className="absolute -top-4 -right-4 text-8xl font-black text-slate-900/10">86</div>
-            <h3 className="text-sm font-black uppercase tracking-widest text-slate-900/60 mb-1">My Schedule</h3>
+            <h3 className="text-sm font-black uppercase tracking-widest text-slate-900/60 mb-1">{t('schedule.mySchedule')}</h3>
             {myNextShift ? (
-              <div className="mb-6"><div className="text-2xl font-black text-slate-900 tracking-tight leading-none mb-1">Next: {myNextShift.role}</div><div className="text-sm font-bold text-slate-900/80 flex items-center gap-1.5">{formatDisplayDate(getShiftDateKey(myNextShift))}   {formatShortTime(myNextShift.startTime)} - {formatShortTime(myNextShift.endTime)} {myNextShift.endTime === 'CLOSE' && <span className="bg-slate-900 text-[#D4A381] text-[9px] px-1.5 py-0.5 rounded ml-1 uppercase tracking-wider">Close</span>}</div></div>
-            ) : (<div className="mb-6 text-slate-900 font-bold">No upcoming shifts scheduled.</div>)}
+              <div className="mb-6"><div className="text-2xl font-black text-slate-900 tracking-tight leading-none mb-1">{t('schedule.next', { role: myNextShift.role })}</div><div className="text-sm font-bold text-slate-900/80 flex items-center gap-1.5">{i18nDate(getShiftDateKey(myNextShift))}   {formatShortTime(myNextShift.startTime)} - {formatShortTime(myNextShift.endTime)} {myNextShift.endTime === 'CLOSE' && <span className="bg-slate-900 text-[#D4A381] text-[9px] px-1.5 py-0.5 rounded ml-1 uppercase tracking-wider">Close</span>}</div></div>
+            ) : (<div className="mb-6 text-slate-900 font-bold">{t('schedule.noUpcoming')}</div>)}
             
             {effectiveActivePunch ? (
               <div className="space-y-2 relative z-10">
                 <button onClick={initiateClockOut} disabled={clockActionBusy} className="clock-action-button no-compact w-full py-4 bg-red-900/80 text-red-100 rounded-xl font-black text-sm uppercase tracking-widest shadow-[0_0_15px_rgba(220,38,38,0.4)] hover:bg-red-800 border border-red-500/50 transition-all flex flex-col items-center justify-center gap-1 disabled:opacity-60 disabled:cursor-not-allowed">
-                  <span>{clockActionBusy && clockActionType === 'out' ? 'CLOCKING OUT...' : 'CLOCK OUT'}</span>
-                  <span className="clock-action-meta text-[10px] text-red-300 font-medium normal-case tracking-normal">Clocked in at {formatClockTime(effectiveActivePunch.clockInTime)}</span>
+                  <span>{clockActionBusy && clockActionType === 'out' ? t('schedule.clockingOut') : t('schedule.clockOut')}</span>
+                  <span className="clock-action-meta text-[10px] text-red-300 font-medium normal-case tracking-normal">{t('schedule.clockedInAt', { time: formatClockTime(effectiveActivePunch.clockInTime) })}</span>
                 </button>
                 {mergeWorkspaceSettings(appUser, clientData).breaks && (
                   effectiveActivePunch.status === 'on_break' ? (
-                    <button onClick={handleEndBreak} className="clock-action-button no-compact w-full py-3 bg-blue-900/80 text-blue-100 rounded-xl font-black text-sm uppercase tracking-widest hover:bg-blue-800 border border-blue-500/50 transition-all">END BREAK</button>
+                    <button onClick={handleEndBreak} className="clock-action-button no-compact w-full py-3 bg-blue-900/80 text-blue-100 rounded-xl font-black text-sm uppercase tracking-widest hover:bg-blue-800 border border-blue-500/50 transition-all">{t('schedule.endBreak')}</button>
                   ) : (
-                    <button onClick={handleStartBreak} className="clock-action-button no-compact w-full py-3 bg-slate-800/50 text-slate-900 rounded-xl font-black text-sm uppercase tracking-widest hover:bg-slate-800 hover:text-white border border-slate-700 transition-all">START UNPAID BREAK</button>
+                    <button onClick={handleStartBreak} className="clock-action-button no-compact w-full py-3 bg-slate-800/50 text-slate-900 rounded-xl font-black text-sm uppercase tracking-widest hover:bg-slate-800 hover:text-white border border-slate-700 transition-all">{t('schedule.startBreak')}</button>
                   )
                 )}
               </div>
             ) : (
               <button onClick={handleClockIn} disabled={clockActionBusy} className="clock-action-button no-compact w-full py-4 bg-emerald-600/20 text-emerald-400 rounded-xl font-black text-sm uppercase tracking-widest shadow-[0_0_15px_rgba(16,185,129,0.1)] hover:bg-emerald-600/30 border border-emerald-500/50 transition-all relative z-10 disabled:opacity-60 disabled:cursor-not-allowed">
-                {clockActionBusy && clockActionType === 'in' ? 'CLOCKING IN...' : 'CLOCK IN'}
+                {clockActionBusy && clockActionType === 'in' ? t('schedule.clockingIn') : t('schedule.clockIn')}
               </button>
             )}
 
@@ -1599,20 +1613,20 @@ const handleOfferSwap = async (shift) => {
           <div className="grid grid-cols-2 gap-3">
             <button onClick={() => setSubTab('trade-board')} className={`${T.card} p-4 flex flex-col items-center justify-center gap-2 hover:bg-[#2A353D] transition-colors relative`}>
               <Repeat size={24} className={T.copper}/>
-              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-300">Trade Board</span>
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-300">{t('schedule.tradeBoard')}</span>
               {availableSwaps.length > 0 && <span className="absolute top-2 right-2 bg-red-500 text-white text-[9px] font-black w-5 h-5 rounded-full flex items-center justify-center shadow-lg">{availableSwaps.length}</span>}
             </button>
             <button onClick={() => setSubTab('time-off')} className={`${T.card} p-4 flex flex-col items-center justify-center gap-2 hover:bg-[#2A353D] transition-colors`}>
               <Calendar size={24} className={T.copper}/>
-              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-300">Request Off</span>
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-300">{t('schedule.requestOff')}</span>
             </button>
           </div>
 
           <div className={`${T.card} overflow-hidden mt-4`}>
-            <div className={T.th}>My Published Schedule</div>
+            <div className={T.th}>{t('schedule.myPublished')}</div>
             <div className={`divide-y ${T.border}`}>
               {myMonthShifts.length === 0 ? (
-                <div className={`p-4 text-center text-xs font-bold ${T.muted}`}>No published shifts found for this month.</div>
+                <div className={`p-4 text-center text-xs font-bold ${T.muted}`}>{t('schedule.noPublishedMonth')}</div>
               ) : (
                 myMonthShifts.map(s => {
                   const isPastShift = isShiftInPast(s, scheduleNow);
@@ -1621,7 +1635,7 @@ const handleOfferSwap = async (shift) => {
                   return (
                     <div key={s.id} className={`${T.row} flex justify-between items-center transition-colors ${isPastShift ? 'bg-[#0B0E11]/70 opacity-50 grayscale' : ''}`}>
                       <div>
-                        <div className={`font-bold text-sm ${isPastShift ? 'text-slate-400' : 'text-white'}`}>{formatDisplayDate(getShiftDateKey(s))}</div>
+                        <div className={`font-bold text-sm ${isPastShift ? 'text-slate-400' : 'text-white'}`}>{i18nDate(getShiftDateKey(s))}</div>
                         <div className={`text-[9px] font-black uppercase tracking-widest mt-0.5 ${isPastShift ? 'text-slate-600' : T.copper}`}>{s.role}</div>
                       </div>
                       <div className="flex items-center gap-3">
@@ -1629,13 +1643,13 @@ const handleOfferSwap = async (shift) => {
                           {formatShortTime(s.startTime)} - {formatShortTime(s.endTime)}
                         </div>
                         {isPastShift ? (
-                          <span className="text-[8px] font-black uppercase tracking-widest text-slate-600 border border-[#1F2933] px-2 py-1 rounded">Ended</span>
+                          <span className="text-[8px] font-black uppercase tracking-widest text-slate-600 border border-[#1F2933] px-2 py-1 rounded">{t('schedule.ended')}</span>
                         ) : (
                           isOffered ? (
-                            <span className="text-[8px] font-black uppercase tracking-widest text-orange-400 bg-orange-900/20 border border-orange-900/50 px-2 py-1 rounded">Listed</span>
+                            <span className="text-[8px] font-black uppercase tracking-widest text-orange-400 bg-orange-900/20 border border-orange-900/50 px-2 py-1 rounded">{t('schedule.listed')}</span>
                           ) : (
                             <button onClick={() => handleOfferSwap(s)} className="text-[8px] font-black uppercase tracking-widest bg-[#1A2126] text-slate-300 border border-[#2A353D] hover:text-[#D4A381] hover:border-[#D4A381]/50 px-2 py-1 rounded transition-colors shadow-sm">
-                              Swap
+                              {t('schedule.swap')}
                             </button>
                           )
                         )}
@@ -1654,13 +1668,13 @@ const handleOfferSwap = async (shift) => {
         <div className="animate-[slideIn_0.2s_ease-out]">
           <div className={`${T.card} overflow-hidden`}>
             <div className={`bg-[#12161A] p-4 border-b ${T.border} flex justify-between items-center`}>
-              <h3 className={`font-black text-lg flex items-center gap-2 ${T.copper}`}><Repeat size={18} /> Trade Board</h3>
-              <button onClick={() => setSubTab('my-schedule')} className="text-xs font-bold text-slate-400 hover:text-white border border-[#2A353D] px-3 py-1.5 rounded-lg">Back to Dashboard</button>
+              <h3 className={`font-black text-lg flex items-center gap-2 ${T.copper}`}><Repeat size={18} /> {t('schedule.tradeBoard')}</h3>
+              <button onClick={() => setSubTab('my-schedule')} className="text-xs font-bold text-slate-400 hover:text-white border border-[#2A353D] px-3 py-1.5 rounded-lg">{t('schedule.backDashboard')}</button>
             </div>
             
             <div className={`divide-y ${T.border}`}>
               {availableSwaps.length === 0 ? (
-                <div className={`p-8 text-center text-sm font-bold ${T.muted}`}>No shifts currently available.</div>
+                <div className={`p-8 text-center text-sm font-bold ${T.muted}`}>{t('schedule.noAvailableShifts')}</div>
               ) : (
                 availableSwaps.map(swap => {
                   const isMine = shiftMatchesPerson({ employeeId: swap.originalEmployeeId, userId: swap.originalUserId, employeeName: swap.originalEmployeeName, employeeEmail: swap.originalEmployeeEmail }, schedulePerson, users) || swap.originalEmployeeId === appUser.id;
@@ -1669,7 +1683,7 @@ const handleOfferSwap = async (shift) => {
                   return (
                     <div key={swap.id} className={`${T.row} p-4 flex flex-col sm:flex-row justify-between sm:items-center gap-4`}>
                       <div>
-                        <div className="font-bold text-white text-base">{formatDisplayDate(swap.shiftDate || swap.date)}</div>
+                        <div className="font-bold text-white text-base">{i18nDate(swap.shiftDate || swap.date)}</div>
                         <div className="text-[10px] font-black uppercase tracking-widest text-[#D4A381] mt-0.5">
                           {swap.role}   {formatShortTime(swap.startTime)} - {formatShortTime(swap.endTime)}
                         </div>
@@ -1785,7 +1799,13 @@ const handleOfferSwap = async (shift) => {
   );
 };
 
-const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, timePunches = [], addToast, appUser, clientData = null, initialSubTab = 'schedule', hideSubTabs = false, availabilityRecords = [], schedulePeriodContext = null, reviewPublishRequest = 0 }) => {
+const TabSchedule = ({ currentDate, users: rawUsers, shifts: rawShifts, events: rawEvents, timeOffRequests: rawTimeOffRequests, timePunches = [], addToast, appUser, clientData = null, initialSubTab = 'schedule', hideSubTabs = false, availabilityRecords: rawAvailabilityRecords = [], schedulePeriodContext = null, reviewPublishRequest = 0 }) => {
+  const { t, locale, formatMonth: i18nMonth } = useI18n();
+  const users = safeScheduleBuilderRecords(rawUsers);
+  const shifts = safeScheduleBuilderRecords(rawShifts);
+  const events = normalizeScheduleBuilderEvents(rawEvents);
+  const timeOffRequests = safeRequestOffRows(rawTimeOffRequests).map(normalizeRequestOffRuntimeRow).filter(Boolean);
+  const availabilityRecords = safeScheduleBuilderRecords(rawAvailabilityRecords);
   const [subTab, setSubTab] = useState(initialSubTab); 
   const [selectedEmp, setSelectedEmp] = useState(''); 
   const [assignDates, setAssignDates] = useState([]); 
@@ -1834,20 +1854,48 @@ const [eventDate, setEventDate] = useState(getToday());
   const [isAutoPopulateModalOpen, setIsAutoPopulateModalOpen] = useState(false);
   const [autoPopSourceMonth, setAutoPopSourceMonth] = useState('');
   const [autoFillVisibleShifts, setAutoFillVisibleShifts] = useState([]);
+  const [isClearingScheduleMonth, setIsClearingScheduleMonth] = useState(false);
   const [localBuilderShiftEchoes, setLocalBuilderShiftEchoes] = useState([]);
   const [localBuilderDeletedShiftMarkers, setLocalBuilderDeletedShiftMarkers] = useState(() => readScheduleDeletedShiftMarkersFromStorage(appUser?.restaurantId));
   const [localBuilderPublishedShiftIds, setLocalBuilderPublishedShiftIds] = useState([]);
   const localBuilderDeleteRetryRef = useRef({});
   const [isPublishPickerOpen, setIsPublishPickerOpen] = useState(false);
   const [selectedPublishWeekKeys, setSelectedPublishWeekKeys] = useState([]);
+  const [publishAllRoles, setPublishAllRoles] = useState(true);
+  const [selectedPublishRoleIds, setSelectedPublishRoleIds] = useState([]);
+  const [roleReview, setRoleReview] = useState(null);
+  const [roleReviewBusy, setRoleReviewBusy] = useState(false);
+  const [roleReviewSelections, setRoleReviewSelections] = useState({});
   const [publishPickerSource, setPublishPickerSource] = useState('builder');
+  const publishOperationGuardRef = useRef(null);
+  if (!publishOperationGuardRef.current) publishOperationGuardRef.current = createSchedulePublishGuard();
+  const [publishProgress, setPublishProgress] = useState(() => makeSchedulePublishProgress());
+  const isPublishingSchedule = Boolean(publishProgress.active);
+  const updatePublishProgress = useCallback((phase, label, detail = '', current = 0, total = 0, extra = {}) => {
+    setPublishProgress(makeSchedulePublishProgress({ phase, label, detail, current, total, ...extra }));
+  }, []);
   
   const monthStr = getMonthStr(currentDate); 
   const monthDays = Array.from({length: getDaysInMonth(monthStr)}).map((_, i) => `${monthStr}-${String(i+1).padStart(2, '0')}`);
+  const shiftBelongsToScheduleMonth = (shift = {}, targetMonth = monthStr) => {
+    const cleanMonth = String(targetMonth || '').slice(0, 7);
+    if (!/^\d{4}-\d{2}$/.test(cleanMonth)) return false;
+    const dateKey = getShiftDateKey(shift);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) return dateKey.slice(0, 7) === cleanMonth;
+    return [shift?.scheduleMonth, shift?.month, shift?.sourceMonth, shift?.restoreMonth]
+      .some(value => String(value || '').slice(0, 7) === cleanMonth);
+  };
   const activeSchedulePeriodContext = schedulePeriodContext || getSchedulePeriodContext(currentDate, appUser, clientData);
   const schedulePublishingSettings = activeSchedulePeriodContext.settings;
   const schedulePerson = getSchedulePersonForAppUser(appUser, users);
   const scheduleRestaurantId = appUser?.restaurantId || '';
+  const publishRosterRoleState = useLiveCollectionState('roles', scheduleRestaurantId, { enabled: Boolean(scheduleRestaurantId), debugLabel: 'schedule:publish:roles-complete' });
+  const publishRosterRoles = publishRosterRoleState.data || [];
+  const publishSelectableRoles = activeRosterRoles(publishRosterRoles);
+  const publishRoleSelected = useCallback((shift = {}) => {
+    const resolved = resolveShiftRosterRole(shift, publishRosterRoles);
+    return resolved.ok && (publishAllRoles || selectedPublishRoleIds.includes(resolved.rosterRoleId));
+  }, [publishRosterRoles, publishAllRoles, selectedPublishRoleIds]);
 
   useEffect(() => {
     if (!scheduleRestaurantId) return;
@@ -1895,8 +1943,33 @@ const [eventDate, setEventDate] = useState(getToday());
       const lastRetryAt = Number(localBuilderDeleteRetryRef.current[id] || 0);
       if (now - lastRetryAt < SHIFT_SAVED_DELETE_RETRY_MS) return;
       localBuilderDeleteRetryRef.current[id] = now;
-      deleteDoc(doc(db, 'shifts', id)).catch(err => {
-        console.warn('[86chaos] Could not retry-delete tombstoned schedule shift', id, err?.message || err);
+      secureFetch('/api/schedule-shift-delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'delete-single',
+          restaurantId: scheduleRestaurantId,
+          shiftId: id,
+          dateKey: getShiftDateKey(shift),
+          expectedShift: {
+            date: getShiftDateKey(shift),
+            scheduleDateKey: getShiftDateKey(shift),
+            startTime: shift?.startTime || '',
+            endTime: shift?.endTime || '',
+            employeeId: shift?.employeeId || '',
+            userId: shift?.userId || '',
+            uid: shift?.uid || shift?.authUid || '',
+            employeeEmail: shift?.employeeEmail || shift?.userEmail || shift?.email || '',
+            employeeName: shift?.employeeName || shift?.userName || shift?.name || ''
+          }
+        })
+      }).then(async response => {
+        if (!response.ok) {
+          const payload = await response.json().catch(() => ({}));
+          throw new Error(payload?.error || `HTTP ${response.status}`);
+        }
+      }).catch(err => {
+        console.warn('[86chaos] Could not retry-delete schedule shift through the server boundary', id, err?.message || err);
       });
     });
   }, [shifts, scheduleRestaurantId, localBuilderDeletedShiftMarkers]);
@@ -1937,7 +2010,7 @@ const [eventDate, setEventDate] = useState(getToday());
   const publicationPeriodShifts = publicationSourceShifts.filter(s => { const d = getShiftDateKey(s); return d >= publicationWeekBounds.start && d <= publicationWeekBounds.end; });
   const renderedPublicationPeriodShifts = mergeSchedulePublishCandidates(publicationPeriodShifts, getScheduleBuilderRenderedShiftsForDaySet(new Set(publicationWeekDays)))
     .filter(shift => !isDeletedScheduleShift(shift) && !shiftMatchesLocalDeleteMarkers(shift, activeLocalDeleteKeySet, activeLocalDeleteMarkerMap));
-  const schedulePeriodEvents = events.filter(e => e.type === 'special_event' && e.date >= schedulePeriodBounds.start && e.date <= schedulePeriodBounds.end).sort((a,b) => (a.date || '').localeCompare(b.date || '') || (a.time || '').localeCompare(b.time || '') || (a.title || '').localeCompare(b.title || ''));
+  const schedulePeriodEvents = events.filter(e => e.type === 'special_event' && e.date >= schedulePeriodBounds.start && e.date <= schedulePeriodBounds.end).sort((a,b) => String(a.date || '').localeCompare(String(b.date || '')) || String(a.time || '').localeCompare(String(b.time || '')) || String(a.title || '').localeCompare(String(b.title || '')));
   const buildPublishWeekOptionsForDays = (sourceDays = []) => {
     const options = [];
     const sourceDaySet = new Set(sourceDays);
@@ -1970,15 +2043,17 @@ const [eventDate, setEventDate] = useState(getToday());
   const selectedPublishWeeks = publishWeekOptions.filter(option => selectedPublishWeekSet.has(option.key));
   const selectedPublishDays = Array.from(new Set(selectedPublishWeeks.flatMap(option => option.days))).sort();
   const selectedPublishDaySet = new Set(selectedPublishDays);
-  const selectedPublishDrafts = renderedPublicationPeriodShifts.filter(shift => getShiftWritableDocId(shift) && !isBuilderShiftPublished(shift) && selectedPublishDaySet.has(getShiftDateKey(shift)));
-  const fullPublishDrafts = renderedPublicationPeriodShifts.filter(shift => getShiftWritableDocId(shift) && !isBuilderShiftPublished(shift) && activePublishDaySet.has(getShiftDateKey(shift)));
-  const selectedPublishCandidateCount = renderedPublicationPeriodShifts.filter(shift => getShiftWritableDocId(shift) && selectedPublishDaySet.has(getShiftDateKey(shift))).length;
-  const fullPublishCandidateCount = renderedPublicationPeriodShifts.filter(shift => getShiftWritableDocId(shift) && activePublishDaySet.has(getShiftDateKey(shift))).length;
+  const selectedPublishDrafts = renderedPublicationPeriodShifts.filter(shift => getShiftWritableDocId(shift) && !isBuilderShiftPublished(shift) && selectedPublishDaySet.has(getShiftDateKey(shift)) && publishRoleSelected(shift));
+  const fullPublishDrafts = renderedPublicationPeriodShifts.filter(shift => getShiftWritableDocId(shift) && !isBuilderShiftPublished(shift) && activePublishDaySet.has(getShiftDateKey(shift)) && publishRoleSelected(shift));
+  const selectedPublishCandidateCount = renderedPublicationPeriodShifts.filter(shift => getShiftWritableDocId(shift) && selectedPublishDaySet.has(getShiftDateKey(shift)) && publishRoleSelected(shift)).length;
+  const fullPublishCandidateCount = renderedPublicationPeriodShifts.filter(shift => getShiftWritableDocId(shift) && activePublishDaySet.has(getShiftDateKey(shift)) && publishRoleSelected(shift)).length;
   const publishDateLabel = (start, end) => start === end ? formatDisplayDate(start) : `${formatDisplayDate(start)} to ${formatDisplayDate(end)}`;
   const selectedPublishLabel = selectedPublishWeeks.length
     ? selectedPublishWeeks.map(option => `${option.label}: ${publishDateLabel(option.start, option.end)}`).join(', ')
     : 'No weeks selected';
   const openPublishPicker = (source = 'builder') => {
+    if (publishOperationGuardRef.current?.isActive()) return;
+    setPublishProgress(makeSchedulePublishProgress());
     const nextSource = source === 'schedule-tools' ? 'schedule-tools' : 'builder';
     const nextDays = nextSource === 'schedule-tools' ? schedulePeriodDays : publicationWeekDays;
     const nextDaySet = new Set(nextDays);
@@ -2005,6 +2080,8 @@ const [eventDate, setEventDate] = useState(getToday());
       return;
     }
     setPublishPickerSource(nextSource);
+    setPublishAllRoles(true);
+    setSelectedPublishRoleIds([]);
     const draftWeekKeys = nextOptions.filter(option => option.draftCount > 0).map(option => option.key);
     setSelectedPublishWeekKeys(draftWeekKeys.length ? draftWeekKeys : nextOptions.map(option => option.key));
     setIsPublishPickerOpen(true);
@@ -2014,71 +2091,64 @@ const [eventDate, setEventDate] = useState(getToday());
     if (reviewPublishRequest > 0) openPublishPicker('schedule-tools');
   }, [reviewPublishRequest]);
   const togglePublishWeek = (key) => {
+    if (publishOperationGuardRef.current?.isActive()) return;
     setSelectedPublishWeekKeys(prev => prev.includes(key) ? prev.filter(item => item !== key) : [...prev, key]);
+  };
+  const togglePublishRole = (roleId) => {
+    if (publishOperationGuardRef.current?.isActive()) return;
+    setSelectedPublishRoleIds(prev => prev.includes(roleId) ? prev.filter(id => id !== roleId) : [...prev, roleId]);
   };
 
   const fetchSchedulePublishCandidatesForDaySet = async (daySet = new Set(), localCandidates = []) => {
-    const byId = new Map();
-    const byIdentity = new Map();
-    const addCandidate = (shift = {}) => {
-      if (!shift || isDeletedScheduleShift(shift)) return;
+    const localById = new Map();
+    const serverById = new Map();
+    const canUseCandidate = (shift = {}) => {
+      if (!shift || isDeletedScheduleShift(shift)) return false;
       const dateKey = getShiftDateKey(shift);
-      if (!dateKey || !daySet.has(dateKey)) return;
+      if (!dateKey || !daySet.has(dateKey)) return false;
       const restaurantId = String(shift.restaurantId || shift.workspaceId || appUser?.restaurantId || '');
-      if (appUser?.restaurantId && restaurantId && restaurantId !== String(appUser.restaurantId)) return;
-      if (shiftMatchesLocalDeleteMarkers(shift, activeLocalDeleteKeySet, activeLocalDeleteMarkerMap)) return;
+      if (appUser?.restaurantId && restaurantId && restaurantId !== String(appUser.restaurantId)) return false;
+      if (shiftMatchesLocalDeleteMarkers(shift, activeLocalDeleteKeySet, activeLocalDeleteMarkerMap)) return false;
+      return true;
+    };
+    const addLocalCandidate = (shift = {}) => {
+      if (!canUseCandidate(shift)) return;
       const id = getShiftWritableDocId(shift);
-      if (id) {
-        byId.set(id, { ...shift, id });
-        return;
-      }
-      const identity = getShiftPublishIdentity(shift);
-      if (identity) byIdentity.set(identity, shift);
+      if (id) localById.set(id, { ...shift, id });
+    };
+    const addServerCandidate = (shift = {}) => {
+      if (!canUseCandidate(shift)) return;
+      const id = getShiftWritableDocId(shift);
+      if (!id) return;
+      serverById.set(id, { ...(localById.get(id) || {}), ...shift, id });
     };
 
-    (localCandidates || []).forEach(addCandidate);
+    (localCandidates || []).forEach(addLocalCandidate);
 
     if (!appUser?.restaurantId || !daySet?.size) {
-      return mergeSchedulePublishCandidates(Array.from(byId.values()), Array.from(byIdentity.values()));
+      return mergeSchedulePublishCandidates(Array.from(localById.values()));
     }
+
+    const fetchAuthoritativeCandidates = async (candidateQuery) => {
+      recordScheduleOperationDiagnostic('sdkReads');
+      const snap = await getDocsFromServer(candidateQuery);
+      recordScheduleOperationDiagnostic('documentsObserved', snap.size);
+      snap.forEach(docSnap => addServerCandidate({ id: docSnap.id, ...docSnap.data() }));
+    };
 
     const days = Array.from(daySet).filter(Boolean).sort();
     for (const day of days) {
       try {
-        recordScheduleOperationDiagnostic('sdkReads');
-        const dateSnap = await getDocs(query(collection(db, 'shifts'), where('restaurantId', '==', appUser.restaurantId), where('date', '==', day)));
-        recordScheduleOperationDiagnostic('documentsObserved', dateSnap.size);
-        dateSnap.forEach(docSnap => addCandidate({ id: docSnap.id, ...docSnap.data() }));
+        await fetchAuthoritativeCandidates(query(collection(db, 'shifts'), where('restaurantId', '==', appUser.restaurantId), where('date', '==', day)));
+        await fetchAuthoritativeCandidates(query(collection(db, 'shifts'), where('restaurantId', '==', appUser.restaurantId), where('scheduleDateKey', '==', day)));
+        await fetchAuthoritativeCandidates(query(collection(db, 'shifts'), where('workspaceId', '==', appUser.restaurantId), where('date', '==', day)));
+        await fetchAuthoritativeCandidates(query(collection(db, 'shifts'), where('workspaceId', '==', appUser.restaurantId), where('scheduleDateKey', '==', day)));
       } catch (err) {
-        console.warn('[86chaos] Publish date lookup failed; using loaded schedule candidates for date', day, err?.message || err);
-      }
-      try {
-        recordScheduleOperationDiagnostic('sdkReads');
-        const scheduleDateSnap = await getDocs(query(collection(db, 'shifts'), where('restaurantId', '==', appUser.restaurantId), where('scheduleDateKey', '==', day)));
-        recordScheduleOperationDiagnostic('documentsObserved', scheduleDateSnap.size);
-        scheduleDateSnap.forEach(docSnap => addCandidate({ id: docSnap.id, ...docSnap.data() }));
-      } catch (err) {
-        console.warn('[86chaos] Publish scheduleDateKey lookup failed; using loaded schedule candidates for date', day, err?.message || err);
-      }
-      try {
-        recordScheduleOperationDiagnostic('sdkReads');
-        const workspaceDateSnap = await getDocs(query(collection(db, 'shifts'), where('workspaceId', '==', appUser.restaurantId), where('date', '==', day)));
-        recordScheduleOperationDiagnostic('documentsObserved', workspaceDateSnap.size);
-        workspaceDateSnap.forEach(docSnap => addCandidate({ id: docSnap.id, ...docSnap.data() }));
-      } catch (err) {
-        console.warn('[86chaos] Publish workspace/date lookup failed; using loaded schedule candidates for date', day, err?.message || err);
-      }
-      try {
-        recordScheduleOperationDiagnostic('sdkReads');
-        const workspaceScheduleDateSnap = await getDocs(query(collection(db, 'shifts'), where('workspaceId', '==', appUser.restaurantId), where('scheduleDateKey', '==', day)));
-        recordScheduleOperationDiagnostic('documentsObserved', workspaceScheduleDateSnap.size);
-        workspaceScheduleDateSnap.forEach(docSnap => addCandidate({ id: docSnap.id, ...docSnap.data() }));
-      } catch (err) {
-        console.warn('[86chaos] Publish workspace/scheduleDateKey lookup failed; using loaded schedule candidates for date', day, err?.message || err);
+        throw new Error(`Publish candidate query failed for ${day}. No shifts were changed. ${err?.message || ''}`.trim());
       }
     }
 
-    return mergeSchedulePublishCandidates(Array.from(byId.values()), Array.from(byIdentity.values()));
+    return mergeSchedulePublishCandidates(Array.from(serverById.values()));
   };
   const eventsByScheduleDay = schedulePeriodDays.reduce((acc, d) => {
     acc[d] = schedulePeriodEvents.filter(e => e.date === d);
@@ -2107,7 +2177,7 @@ const [eventDate, setEventDate] = useState(getToday());
       event.date ? formatDisplayDate(event.date) : '',
       event.time ? formatShortTime(event.time) : '',
       event.notes ? `Notes: ${event.notes}` : '',
-      event.orderReminder?.enabled ? `Order reminder: ${(event.orderReminder.cutoffDays || []).join(', ') || 'enabled'}` : ''
+      event.orderReminder?.enabled ? `Order reminder: ${Array.isArray(event.orderReminder.cutoffDays) ? event.orderReminder.cutoffDays.join(', ') || 'enabled' : String(event.orderReminder.cutoffDays || 'enabled')}` : ''
     ];
     return parts.filter(Boolean).join(' • ');
   };
@@ -2397,9 +2467,15 @@ const [eventDate, setEventDate] = useState(getToday());
   const scheduledHoursTrackerSourceShifts = mergeVisibleScheduleShifts((shifts || []).filter(shift => !isDeletedScheduleShift(shift)), localBuilderShiftEchoes.filter(shift => !isDeletedScheduleShift(shift))).filter(shift => !isDeletedScheduleShift(shift) && !shiftMatchesLocalDeleteMarkers(shift, activeLocalDeleteKeySet, activeLocalDeleteMarkerMap));
   const getScheduledHoursTrackerRawShiftsForPersonDate = (dateKey, person) => scheduledHoursTrackerSourceShifts.filter(s => getScheduleShiftDateKey(s) === dateKey && shiftMatchesPerson(s, person, users));
 
+  const getScheduleShiftDeleteTenantId = (sourceShift = {}) => {
+    const activeRestaurantId = String(appUser?.restaurantId || '').trim();
+    const candidates = [sourceShift?.restaurantId, sourceShift?.workspaceId, sourceShift?.tenantId].map(value => String(value || '').trim()).filter(Boolean);
+    if (activeRestaurantId && candidates.includes(activeRestaurantId)) return activeRestaurantId;
+    return candidates[0] || activeRestaurantId;
+  };
   const getScheduleShiftLogicalDeleteIdentity = (sourceShift = {}, sourcePerson = null, fallbackDateKey = '') => {
     const date = String(fallbackDateKey || getScheduleShiftDateKey(sourceShift) || '').trim();
-    const restaurantId = String(sourceShift?.restaurantId || sourceShift?.workspaceId || appUser?.restaurantId || '').trim();
+    const restaurantId = getScheduleShiftDeleteTenantId(sourceShift);
     const startMinutes = parseScheduleClockMinutes(sourceShift?.startTime);
     const endMinutes = parseScheduleClockMinutes(sourceShift?.endTime);
     const start = startMinutes === null ? normalizeShiftFingerprintValue(sourceShift?.startTime) : `m${startMinutes}`;
@@ -2410,7 +2486,7 @@ const [eventDate, setEventDate] = useState(getToday());
 
   const scheduleShiftMatchesLogicalDeleteIdentity = (candidate = {}, identity = null) => {
     if (!candidate || !identity || isDeletedScheduleShift(candidate)) return false;
-    const candidateRestaurantId = String(candidate?.restaurantId || candidate?.workspaceId || appUser?.restaurantId || '').trim();
+    const candidateRestaurantId = getScheduleShiftDeleteTenantId(candidate);
     if (!candidateRestaurantId || candidateRestaurantId !== identity.restaurantId) return false;
     if (getScheduleShiftDateKey(candidate) !== identity.date) return false;
     const candidateStartMinutes = parseScheduleClockMinutes(candidate?.startTime);
@@ -2421,121 +2497,107 @@ const [eventDate, setEventDate] = useState(getToday());
     return shiftMatchesPerson(candidate, identity.person, users);
   };
 
-  const fetchSavedScheduleBuilderDeleteTargetsForPersonDate = async (dateKey, person, visibleCandidates = [], options = {}) => {
-    const byId = new Map();
-    const seedVisibleCandidates = options.seedVisibleCandidates !== false;
-    const serverOnly = options.serverOnly === true;
-    const logicalIdentities = (options.logicalIdentities || (visibleCandidates || []).map(shift => getScheduleShiftLogicalDeleteIdentity(shift, person, dateKey)))
-      .filter(Boolean);
-    const matchesDeleteScope = (candidate = {}) => {
-      if (logicalIdentities.length) return logicalIdentities.some(identity => scheduleShiftMatchesLogicalDeleteIdentity(candidate, identity));
-      return !isDeletedScheduleShift(candidate) && getScheduleShiftDateKey(candidate) === dateKey && shiftMatchesPerson(candidate, person, users);
-    };
-    if (seedVisibleCandidates) {
-      (visibleCandidates || []).forEach(shift => {
-        if (!isDeletedScheduleShift(shift) && matchesDeleteScope(shift)) {
-          const id = getShiftWritableDocId(shift);
-          if (id) byId.set(String(id), { ...shift, id });
-        }
-      });
+  const scheduleShiftDeleteRequest = async (action, payload = {}) => {
+    const response = await secureFetch('/api/schedule-shift-delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action, restaurantId: appUser?.restaurantId || '', ...payload })
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || data?.ok !== true) {
+      const error = new Error(data?.error || 'The schedule change could not be completed.');
+      error.code = data?.code || '';
+      throw error;
     }
-    const collectSnapshotMatches = (snap) => {
-      snap.forEach(docSnap => {
-        const shift = { id: docSnap.id, ...docSnap.data() };
-        if (matchesDeleteScope(shift)) byId.set(String(docSnap.id), shift);
-      });
-    };
-    const baseCollection = collection(db, 'shifts');
-    const restaurantId = appUser?.restaurantId;
-    if (!restaurantId || !dateKey || !person) return Array.from(byId.values()).filter(shift => !isDeletedScheduleShift(shift));
-    const runQuery = serverOnly ? getDocsFromServer : getDocs;
+    return data;
+  };
+
+  const visibleScheduleBuilderMonthShifts = (targetMonth = monthStr) => mergeVisibleScheduleShifts(
+    (shifts || []).filter(shift => !isDeletedScheduleShift(shift)),
+    localBuilderShiftEchoes.filter(shift => !isDeletedScheduleShift(shift)),
+    autoFillVisibleShifts.filter(shift => !isDeletedScheduleShift(shift))
+  ).filter(shift => shiftBelongsToScheduleMonth(shift, targetMonth));
+
+  const handleClearScheduleMonth = async () => {
+    if (isClearingScheduleMonth) return;
+    if (isPublishingSchedule) return addToast('Publishing in Progress', 'Wait for schedule publishing to finish before clearing a month.');
+    if (isAssigningShift) return addToast('Assignment in Progress', 'Wait for the current shift assignment to finish before clearing a month.');
+    const targetMonth = monthStr;
+    const monthLabel = i18nMonth(targetMonth);
+    const markerSource = visibleScheduleBuilderMonthShifts(targetMonth);
+    const visibleCount = markerSource.length;
+    const confirmed = window.confirm(
+      `Delete ALL saved shifts from ${monthLabel}?${visibleCount ? ` ${visibleCount} shift${visibleCount === 1 ? '' : 's'} ${visibleCount === 1 ? 'is' : 'are'} currently shown.` : ''} This includes draft and published shifts. Events and time-off requests will NOT be deleted. This cannot be undone.`
+    );
+    if (!confirmed) return;
+
+    const optimisticOperationId = `clear-month-${targetMonth}-${Date.now()}`;
+    const optimisticMarkers = buildLocalShiftDeletionMarkers(markerSource).map(marker => ({ ...marker, optimisticOperationId }));
+    if (optimisticMarkers.length) setLocalBuilderDeletedShiftMarkers(prev => mergeLocalShiftDeletionMarkers(prev, optimisticMarkers));
+    setIsClearingScheduleMonth(true);
     try {
-      const dateSnap = await runQuery(query(baseCollection, where('restaurantId', '==', restaurantId), where('date', '==', dateKey)));
-      collectSnapshotMatches(dateSnap);
-      const scheduleDateSnap = await runQuery(query(baseCollection, where('restaurantId', '==', restaurantId), where('scheduleDateKey', '==', dateKey)));
-      collectSnapshotMatches(scheduleDateSnap);
+      const result = await scheduleShiftDeleteRequest('clear-month', { month: targetMonth });
+      if (Number(result?.remainingCount || 0) > 0) {
+        throw new Error(`${result.remainingCount} saved shift record${result.remainingCount === 1 ? '' : 's'} still remain in ${monthLabel}. Refresh before making more schedule changes.`);
+      }
+
+      const deletedIdSet = new Set(markerSource.map(getShiftWritableDocId).filter(Boolean));
+      setLocalBuilderShiftEchoes(prev => prev.filter(shift => !shiftBelongsToScheduleMonth(shift, targetMonth)));
+      setAutoFillVisibleShifts(prev => prev.filter(shift => !shiftBelongsToScheduleMonth(shift, targetMonth)));
+      setLocalBuilderPublishedShiftIds(prev => (prev || []).filter(id => !deletedIdSet.has(id)));
+      setAssignDates([]);
+      const deletedCount = Number(result?.deletedCount || visibleCount);
+      addToast('Month Cleared', `${deletedCount} saved shift record${deletedCount === 1 ? '' : 's'} removed from ${monthLabel}. Events and time-off requests were left unchanged.`);
     } catch (err) {
-      if (serverOnly) throw err;
-      console.warn('Schedule delete target lookup fell back to visible shifts only', err);
+      if (optimisticMarkers.length) {
+        setLocalBuilderDeletedShiftMarkers(prev => prev.filter(marker => marker?.optimisticOperationId !== optimisticOperationId));
+      }
+      addToast('Clear Month Failed', err?.message || `Could not clear ${i18nMonth(targetMonth)}.`);
+    } finally {
+      setIsClearingScheduleMonth(false);
     }
-    return Array.from(byId.values()).filter(shift => !isDeletedScheduleShift(shift) && matchesDeleteScope(shift));
-  };
-
-  const verifySavedScheduleBuilderDeleteScopeCleared = async (dateKey, person, deleteIdentity) => {
-    if (!deleteIdentity) return [];
-    return fetchSavedScheduleBuilderDeleteTargetsForPersonDate(dateKey, person, [], {
-      seedVisibleCandidates: false,
-      serverOnly: true,
-      logicalIdentities: [deleteIdentity]
-    });
-  };
-
-  const tombstoneAndDeleteScheduleBuilderShiftTargets = async (targets = [], deleteScope = {}) => {
-    const byId = new Map();
-    (targets || []).forEach(shift => {
-      const id = getShiftWritableDocId(shift);
-      if (id) byId.set(id, { ...shift, id });
-    });
-    const targetList = Array.from(byId.values());
-    if (!targetList.length) return { targetList: [], deletedCount: 0, failedCount: 0 };
-
-    const deletedAtIso = new Date().toISOString();
-    const tombstonePayload = {
-      deleted: true,
-      isDeleted: true,
-      scheduleDeleted: true,
-      recordStatus: 'deleted',
-      status: 'deleted',
-      publishStatus: 'deleted',
-      isPublished: false,
-      published: false,
-      deletedAt: deletedAtIso,
-      deletedBy: appUser?.id || appUser?.uid || appUser?.email || 'schedule-builder',
-      deletedByName: appUser?.name || appUser?.email || '',
-      deleteScope: deleteScope.scope || 'schedule-builder',
-      updatedAt: deletedAtIso
-    };
-
-    const tombstoneResults = await Promise.allSettled(targetList.map(shift => updateDoc(doc(db, 'shifts', shift.id), tombstonePayload)));
-    const deleteResults = await Promise.allSettled(targetList.map(shift => deleteDoc(doc(db, 'shifts', shift.id))));
-    const succeededIds = targetList
-      .filter((_, index) => tombstoneResults[index]?.status === 'fulfilled' || deleteResults[index]?.status === 'fulfilled')
-      .map(shift => shift.id);
-    const failedCount = targetList.length - succeededIds.length;
-    if (!succeededIds.length && targetList.length) {
-      const firstFailure = deleteResults.find(r => r.status === 'rejected')?.reason || tombstoneResults.find(r => r.status === 'rejected')?.reason;
-      throw firstFailure || new Error('No selected schedule shifts could be removed.');
-    }
-    if (failedCount) console.warn('[86chaos] Some schedule delete targets could not be removed', { failedCount, targetList });
-    return { targetList, deletedCount: succeededIds.length, failedCount };
   };
 
   const handleDeleteSpecificShift = async (event, shift, person, dateKey) => {
+    event?.preventDefault?.();
     event?.stopPropagation?.();
+    if (isClearingScheduleMonth) return addToast('Month Clear In Progress', 'Wait for the month clear to finish before deleting another shift.');
     const label = `${formatShortTime(shift?.startTime)}-${formatShortTime(shift?.endTime)}`;
     if (!window.confirm(`Delete only ${label} for ${person?.name || 'this employee'} on ${formatDisplayDate(dateKey)}?`)) return;
+    const optimisticOperationId = `delete-shift-${getShiftWritableDocId(shift) || dateKey}-${Date.now()}`;
+    const optimisticMarkers = buildLocalShiftDeletionMarkers([shift]).map(marker => ({ ...marker, optimisticOperationId }));
+    if (optimisticMarkers.length) setLocalBuilderDeletedShiftMarkers(prev => mergeLocalShiftDeletionMarkers(prev, optimisticMarkers));
     try {
       const deleteIdentity = getScheduleShiftLogicalDeleteIdentity(shift, person, dateKey);
-      const allTargets = await fetchSavedScheduleBuilderDeleteTargetsForPersonDate(dateKey, person, [shift]);
-      const exactTargets = deleteIdentity
-        ? allTargets.filter(candidate => scheduleShiftMatchesLogicalDeleteIdentity(candidate, deleteIdentity))
-        : [];
-      if (!exactTargets.length) throw new Error('No saved matching shift records were found. Refresh the schedule and try again.');
-      const result = await tombstoneAndDeleteScheduleBuilderShiftTargets(exactTargets, { scope: 'single-shift-logical-group' });
-      let remainingActiveMatches = deleteIdentity ? await verifySavedScheduleBuilderDeleteScopeCleared(dateKey, person, deleteIdentity) : [];
-      if (remainingActiveMatches.length) {
-        const cleanupResult = await tombstoneAndDeleteScheduleBuilderShiftTargets(remainingActiveMatches, { scope: 'single-shift-post-delete-duplicate-cleanup' });
-        remainingActiveMatches = await verifySavedScheduleBuilderDeleteScopeCleared(dateKey, person, deleteIdentity);
-        result.deletedCount = (result.deletedCount || 0) + (cleanupResult.deletedCount || 0);
-        result.failedCount = (result.failedCount || 0) + (cleanupResult.failedCount || 0);
-        result.targetList = mergeVisibleScheduleShifts(result.targetList, cleanupResult.targetList);
+      const expectedShift = {
+        date: dateKey,
+        scheduleDateKey: dateKey,
+        startTime: shift?.startTime || '',
+        endTime: shift?.endTime || '',
+        employeeId: shift?.employeeId || person?.id || '',
+        userId: shift?.userId || person?.userId || person?.id || '',
+        uid: shift?.uid || person?.uid || person?.authUid || '',
+        authUid: shift?.authUid || person?.authUid || person?.uid || '',
+        accountUserId: shift?.accountUserId || person?.accountUserId || '',
+        rosterUserId: shift?.rosterUserId || person?.rosterUserId || '',
+        scheduleUserId: shift?.scheduleUserId || person?.scheduleUserId || '',
+        employeeEmail: shift?.employeeEmail || person?.employeeEmail || person?.email || '',
+        userEmail: shift?.userEmail || person?.email || '',
+        email: shift?.email || person?.email || '',
+        employeeName: shift?.employeeName || person?.name || person?.displayName || '',
+        userName: shift?.userName || person?.name || person?.displayName || '',
+        name: shift?.name || person?.name || person?.displayName || ''
+      };
+      const result = await scheduleShiftDeleteRequest('delete-single', {
+        shiftId: getShiftWritableDocId(shift),
+        dateKey,
+        expectedShift
+      });
+      if (Number(result?.remainingCount || 0) > 0) {
+        throw new Error(`${result.remainingCount} matching shift record${result.remainingCount === 1 ? '' : 's'} still remain. Refresh before publishing.`);
       }
-      if (remainingActiveMatches.length) {
-        throw new Error(`${result.deletedCount || 0} matching record(s) were removed, but ${remainingActiveMatches.length} active duplicate still exists. Refresh and try again before publishing.`);
-      }
-      const markerSource = mergeVisibleScheduleShifts(exactTargets, result.targetList, [shift]);
-      const deletedMarkers = buildLocalShiftDeletionMarkers(markerSource);
-      const deletedKeySet = new Set(deletedMarkers.map(marker => marker.key).filter(Boolean));
+      const markerSource = [shift];
+      const deletedKeySet = new Set(optimisticMarkers.map(marker => marker.key).filter(Boolean));
       const localPruneKeySet = new Set(markerSource.flatMap(getScheduleShiftLocalPruneKeys).filter(Boolean));
       const shouldPruneDeletedLogicalShift = (item = {}) => {
         if (deleteIdentity && scheduleShiftMatchesLogicalDeleteIdentity(item, deleteIdentity)) return true;
@@ -2543,11 +2605,14 @@ const [eventDate, setEventDate] = useState(getToday());
         if (deletedKeySet.size && shiftMatchesLocalDeleteMarkers(item, deletedKeySet)) return true;
         return false;
       };
-      if (deletedMarkers.length) setLocalBuilderDeletedShiftMarkers(prev => mergeLocalShiftDeletionMarkers(prev, deletedMarkers));
       setLocalBuilderShiftEchoes(prev => prev.filter(item => !shouldPruneDeletedLogicalShift(item)));
       setAutoFillVisibleShifts(prev => prev.filter(item => !shouldPruneDeletedLogicalShift(item)));
-      addToast('Shift Deleted', result.deletedCount === 1 ? 'That shift was removed.' : `${result.deletedCount} hidden duplicate shift records were removed from that one chip.`);
+      const deletedCount = Number(result?.deletedCount || 1);
+      addToast('Shift Deleted', deletedCount === 1 ? 'That shift was removed.' : `${deletedCount} hidden duplicate shift records were removed from that one chip.`);
     } catch (err) {
+      if (optimisticMarkers.length) {
+        setLocalBuilderDeletedShiftMarkers(prev => prev.filter(marker => marker?.optimisticOperationId !== optimisticOperationId));
+      }
       addToast('Delete Failed', err?.message || 'Could not remove that shift.');
     }
   };
@@ -2600,15 +2665,18 @@ const [eventDate, setEventDate] = useState(getToday());
         }
         validDates.push(d);
       }
-      const savedShiftEchoes = [];
+      const preparedAssignments = [];
       for (const d of validDates) {
         const nowIso = new Date().toISOString();
         const shiftMonth = getMonthStr(d);
         const rescueEdit = canEditRescueMonth(shiftMonth);
+        const assignedRole = resolveShiftRosterRole({ rosterRoleId: emp.rosterRoleId, role: emp.role || 'Unassigned' }, publishRosterRoles);
         const shiftData = {
           ...buildCanonicalScheduleCreateFields(d, appUser.restaurantId),
           ...buildScheduleIdentityFields(emp),
           role: emp.role || 'Unassigned',
+          ...(assignedRole.ok ? { rosterRoleId: assignedRole.rosterRoleId, rosterRoleNameSnapshot: assignedRole.rosterRoleNameSnapshot } : {}),
+          revision: 1,
           startTime: startTime,
           endTime: endTime,
           isPublished: false,
@@ -2637,246 +2705,357 @@ const [eventDate, setEventDate] = useState(getToday());
           shiftData.source = 'Schedule Builder manual edit after emergency rescue';
         }
         recordScheduleOperationDiagnostic('canonicalDatePatches');
-        const savedRef = await addDoc(collection(db, "shifts"), shiftData);
-        recordScheduleOperationDiagnostic('directSdkWrites');
-        recordScheduleOperationDiagnostic('totalScheduleDocumentsWritten');
-        savedShiftEchoes.push({ ...shiftData, id: savedRef.id, localEcho: true });
+        preparedAssignments.push(shiftData);
       }
+
+      const assignmentOperationId = `schedule-builder-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+      const response = await secureFetch('/api/schedule-shift-assign', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          restaurantId: appUser.restaurantId,
+          operationId: assignmentOperationId,
+          assignments: preparedAssignments
+        })
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || result?.ok !== true) {
+        throw new Error(result?.error || `Shift assignment failed (HTTP ${response.status}).`);
+      }
+      const savedShiftEchoes = Array.isArray(result.created) ? result.created.map(shift => ({ ...shift, localEcho: true })) : [];
+      if (savedShiftEchoes.length !== preparedAssignments.length) {
+        throw new Error('The server did not confirm every requested shift assignment. Refresh Schedule Builder before trying again.');
+      }
+
       if (savedShiftEchoes.length) {
+        const assignedPruneKeys = new Set(savedShiftEchoes.flatMap(getScheduleShiftLocalPruneKeys).filter(Boolean));
+        const assignedIdKeys = new Set(savedShiftEchoes.map(shift => getShiftWritableDocId(shift)).filter(Boolean).map(id => `id:${id}`));
+        setLocalBuilderDeletedShiftMarkers(prev => prev.filter(marker => !assignedPruneKeys.has(marker?.key) && !assignedIdKeys.has(marker?.key)));
         setLocalBuilderShiftEchoes(prev => mergeVisibleScheduleShifts(prev, savedShiftEchoes));
+        recordScheduleOperationDiagnostic('totalScheduleDocumentsWritten', savedShiftEchoes.length);
       }
-      setAssignDates([]); addToast('Assigned', `Added ${validDates.length} shift${validDates.length === 1 ? '' : 's'} for ${emp.name || 'selected staff'}.`);
+      setAssignDates([]);
+      addToast('Assigned', `Added ${savedShiftEchoes.length} shift${savedShiftEchoes.length === 1 ? '' : 's'} for ${emp.name || 'selected staff'}.`);
+    } catch (err) {
+      addToast('Assignment Failed', err?.message || 'Could not assign the selected shift. Refresh Schedule Builder and try again.');
     } finally {
       setIsAssigningShift(false);
     }
   };
 
-const handlePublish = async (scope = 'selected-weeks') => { 
-    const publishAll = scope === 'full-period';
-    const selectedWeeksForPublish = publishAll ? publishWeekOptions : selectedPublishWeeks;
-    const publishDays = publishAll ? activePublishDays : selectedPublishDays;
-    const publishDaySet = new Set(publishDays);
-    const localPublishCandidateSources = mergeSchedulePublishCandidates(renderedPublicationPeriodShifts, publicationPeriodShifts, visibleSourceShifts, autoFillVisibleShifts, localBuilderShiftEchoes, getScheduleBuilderRenderedShiftsForDaySet(publishDaySet))
-      .filter(shift => !isDeletedScheduleShift(shift) && !shiftMatchesLocalDeleteMarkers(shift, activeLocalDeleteKeySet, activeLocalDeleteMarkerMap));
-    const publishCandidates = await fetchSchedulePublishCandidatesForDaySet(publishDaySet, localPublishCandidateSources);
-    const selectedCandidates = publishCandidates
-      .filter(shift => getShiftWritableDocId(shift) && !isDeletedScheduleShift(shift) && (publishAll || shiftIsInsideDaySet(shift, publishDaySet)))
-      .filter(shift => publishDaySet.has(getShiftDateKey(shift)));
-    const publishPeriodStart = publishAll ? (publishPickerSource === 'schedule-tools' ? schedulePeriodBounds.start : publicationWeekBounds.start) : (publishDays[0] || schedulePeriodBounds.start);
-    const publishPeriodEnd = publishAll ? (publishPickerSource === 'schedule-tools' ? schedulePeriodBounds.end : publicationWeekBounds.end) : (publishDays[publishDays.length - 1] || schedulePeriodBounds.end);
-    const publishPeriodLabel = publishAll
-      ? schedulePeriodLabel
-      : (selectedWeeksForPublish.length ? selectedWeeksForPublish.map(option => option.label).join(', ') : 'selected weeks');
-    const publishSelectionLabel = publishAll ? schedulePeriodLabel : selectedPublishLabel;
-    const publishedAtIso = new Date().toISOString();
-    const scheduleId = `schedule_${appUser.restaurantId}_${publishPeriodStart}_${publishPeriodEnd}_${Date.now()}`;
-    const publishWeekKeys = selectedWeeksForPublish.map(option => option.key);
+const saveReviewedRoles = async () => {
+    if (roleReviewBusy || !roleReview?.rows?.length) return;
+    setRoleReviewBusy(true);
+    try {
+      const repairs = await Promise.all(roleReview.rows.map(async row => {
+        const evidence = await buildConfirmedShiftEvidence({ shift: row.shift });
+        return { id: row.shiftId, rosterRoleId: roleReviewSelections[row.shiftId], contentDigest: evidence.contentDigest, expectedRoleIdentity: copyRosterRoleFields(row.shift) };
+      }));
+      const response = await secureFetch('/api/schedule-publish', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'reconcile-roles', restaurantId: appUser.restaurantId, repairs }) });
+      const result = await response.json();
+      if (!response.ok || !result.ok) throw new Error(result.error || 'Role review could not be saved.');
+      setRoleReview(null);
+      addToast('Roles Saved', 'The selected shift roles were saved. Tap Publish again to review and publish the schedule.');
+    } catch (error) { addToast('Role Review Not Saved', error.message); }
+    finally { setRoleReviewBusy(false); }
+  };
 
-    if (selectedCandidates.length === 0) {
-      addToast('Nothing to Publish', publishAll ? 'There are no shifts in the current publishing period.' : 'There are no shifts in the selected weeks.');
+  const handlePublish = async (scope = 'selected-weeks') => {
+    const publishGuard = publishOperationGuardRef.current;
+    if (!publishGuard?.begin()) {
+      addToast('Publishing in Progress', 'A schedule publish is already running. Please wait for it to finish.');
       return;
     }
 
-    const unresolved = [];
-    const updatePlan = [];
-    const alreadyValid = [];
-    let draftCount = 0;
-    let repairCount = 0;
+    let publishCompleted = false;
+    updatePublishProgress('preparing', 'Preparing schedule…', 'Locking this publish so it can only run once.');
 
-    selectedCandidates.forEach(shift => {
-      const shiftDocId = getShiftWritableDocId(shift);
-      const dateKey = getShiftDateKey(shift);
-      const resolved = resolveSchedulePersonForShift(shift, users);
-      if (!shiftDocId || !dateKey || !resolved.ok || !resolved.person) {
-        unresolved.push({ shift, reason: !dateKey ? 'missing date' : (resolved.reason || 'employee not matched') });
+    try {
+      const publishAll = scope === 'full-period';
+      const selectedWeeksForPublish = publishAll ? publishWeekOptions : selectedPublishWeeks;
+      const publishDays = publishAll ? activePublishDays : selectedPublishDays;
+      const publishDaySet = new Set(publishDays);
+      const localPublishCandidateSources = mergeSchedulePublishCandidates(renderedPublicationPeriodShifts, publicationPeriodShifts, visibleSourceShifts, autoFillVisibleShifts, localBuilderShiftEchoes, getScheduleBuilderRenderedShiftsForDaySet(publishDaySet))
+        .filter(shift => !isDeletedScheduleShift(shift) && !shiftMatchesLocalDeleteMarkers(shift, activeLocalDeleteKeySet, activeLocalDeleteMarkerMap));
+
+      updatePublishProgress('loading', 'Loading schedule shifts…', 'Finding the exact saved shifts that belong to this publish.');
+      const publishCandidates = await fetchSchedulePublishCandidatesForDaySet(publishDaySet, localPublishCandidateSources);
+      const dateScopedCandidates = publishCandidates
+        .filter(shift => getShiftWritableDocId(shift) && !isDeletedScheduleShift(shift) && (publishAll || shiftIsInsideDaySet(shift, publishDaySet)))
+        .filter(shift => publishDaySet.has(getShiftDateKey(shift)));
+      const publishPeriodStart = publishAll ? (publishPickerSource === 'schedule-tools' ? schedulePeriodBounds.start : publicationWeekBounds.start) : (publishDays[0] || schedulePeriodBounds.start);
+      const publishPeriodEnd = publishAll ? (publishPickerSource === 'schedule-tools' ? schedulePeriodBounds.end : publicationWeekBounds.end) : (publishDays[publishDays.length - 1] || schedulePeriodBounds.end);
+      const publishPeriodLabel = publishAll
+        ? schedulePeriodLabel
+        : (selectedWeeksForPublish.length ? selectedWeeksForPublish.map(option => option.label).join(', ') : 'selected weeks');
+      const publishSelectionLabel = publishAll ? schedulePeriodLabel : selectedPublishLabel;
+      const publishedAtIso = new Date().toISOString();
+      const scheduleId = `schedule_${appUser.restaurantId}_${publishPeriodStart}_${publishPeriodEnd}_${Date.now()}`;
+      const publishWeekKeys = selectedWeeksForPublish.map(option => option.key);
+
+      if (!publishAllRoles && selectedPublishRoleIds.length === 0) {
+        setPublishProgress(makeSchedulePublishProgress());
+        addToast('Choose a Role', 'Select at least one configured Roster Role, or choose All Roles.');
         return;
       }
-      const canonical = buildCanonicalScheduleIdentityBlock(resolved.person, shift);
-      const isLive = isBuilderShiftPublished(shift);
-      const publishedFieldsOk = shift.isPublished === true && shift.published === true && String(shift.status || '').toLowerCase() === 'published' && String(shift.publishStatus || '').toLowerCase() === 'published';
-      const identityOk = scheduleIdentityBlockMatchesPerson(shift, resolved.person);
-      const dateOk = String(shift.date || shift.scheduleDateKey || '') === dateKey && String(shift.scheduleDateKey || shift.date || '') === dateKey;
-      const needsWrite = !isLive || !publishedFieldsOk || !identityOk || !dateOk || !shift.scheduleId;
-      if (!needsWrite) {
-        alreadyValid.push(shiftDocId);
+      if (!publishRosterRoleState.resolved || publishRosterRoleState.error) {
+        throw new Error('Configured Roster Roles could not be loaded completely. Publishing stopped before any write.');
+      }
+      const rolePlan = buildSchedulePublicationPlan({
+        restaurantId: appUser.restaurantId,
+        period: { start: publishPeriodStart, end: publishPeriodEnd },
+        selectedWeekKeys: publishWeekKeys,
+        selectedRoleIds: selectedPublishRoleIds,
+        allRoles: publishAllRoles,
+        candidateShifts: dateScopedCandidates,
+        rosterRoles: publishRosterRoles,
+        actor: { uid: appUser?.id || appUser?.uid, email: appUser?.email }
+      });
+      if (rolePlan.unresolvedRoles.length) {
+        setPublishProgress(makeSchedulePublishProgress());
+        setRoleReviewSelections({});
+        setRoleReview({ revision: rolePlan.roleConfigurationRevision, rows: rolePlan.unresolvedRoles.map(issue => ({ ...issue, shift: dateScopedCandidates.find(shift => getShiftWritableDocId(shift) === issue.shiftId) })) });
+        setIsPublishPickerOpen(false);
+        addToast('Role Review Needed', `${rolePlan.unresolvedRoles.length} shifts need an explicit role selection. Review the listed shifts, save their roles, then publish again.`);
         return;
       }
-      if (!isLive) draftCount += 1;
-      else repairCount += 1;
-      updatePlan.push({
-        id: shiftDocId,
-        shift,
-        person: resolved.person,
-        dateKey,
-        wasPublished: isLive,
-        update: {
-          restaurantId: shift.restaurantId || appUser.restaurantId,
-          workspaceId: shift.workspaceId || shift.restaurantId || appUser.restaurantId,
-          date: dateKey,
-          scheduleDateKey: dateKey,
-          isPublished: true,
-          published: true,
-          status: 'published',
-          publishStatus: 'published',
-          publishState: 'published',
-          schedulePublishStatus: 'published',
-          visibility: 'published',
-          scheduleBuilderDraft: false,
-          readyToPublish: false,
-          draft: false,
-          isDraft: false,
-          publishedAt: isLive && shift.publishedAt ? shift.publishedAt : publishedAtIso,
-          publishedBy: shift.publishedBy || appUser?.id || appUser?.email || 'unknown',
-          publishedByName: shift.publishedByName || appUser?.name || appUser?.email || 'Unknown',
-          scheduleId: isLive && shift.scheduleId ? shift.scheduleId : scheduleId,
-          schedulePeriodStart: shift.schedulePeriodStart || publishPeriodStart,
-          schedulePeriodEnd: shift.schedulePeriodEnd || publishPeriodEnd,
+      const selectedCandidateIds = new Set(rolePlan.candidateShiftIds);
+      const selectedCandidates = dateScopedCandidates.filter(shift => selectedCandidateIds.has(getShiftWritableDocId(shift)));
+
+      if (selectedCandidates.length === 0) {
+        setPublishProgress(makeSchedulePublishProgress());
+        addToast('Nothing to Publish', publishAll ? 'There are no shifts in the current publishing period.' : 'There are no shifts in the selected weeks.');
+        return;
+      }
+
+      updatePublishProgress('planning', 'Checking publish readiness…', `Reviewing ${selectedCandidates.length} shift${selectedCandidates.length === 1 ? '' : 's'} before any writes.`);
+      const unresolved = [];
+      const updatePlan = [];
+      const alreadyValid = [];
+      let draftCount = 0;
+      let repairCount = 0;
+
+      selectedCandidates.forEach(shift => {
+        const shiftDocId = getShiftWritableDocId(shift);
+        const dateKey = getShiftDateKey(shift);
+        const intentionalOpen = isIntentionalOpenScheduleShift(shift);
+        const resolved = intentionalOpen ? { ok: true, person: null } : resolveSchedulePersonForShift(shift, users);
+        if (!shiftDocId || !dateKey || (!intentionalOpen && (!resolved.ok || !resolved.person))) {
+          unresolved.push({ shift, reason: !dateKey ? 'missing date' : (resolved.reason || 'employee not matched') });
+          return;
+        }
+        const canonical = intentionalOpen ? {} : buildCanonicalScheduleIdentityBlock(resolved.person, shift);
+        const isLive = isBuilderShiftPublished(shift);
+        const publishedFieldsOk = shift.isPublished === true && shift.published === true && String(shift.status || '').toLowerCase() === 'published' && String(shift.publishStatus || '').toLowerCase() === 'published';
+        const identityOk = intentionalOpen || scheduleIdentityBlockMatchesPerson(shift, resolved.person);
+        const dateOk = String(shift.date || shift.scheduleDateKey || '') === dateKey && String(shift.scheduleDateKey || shift.date || '') === dateKey;
+        const resolvedRole = resolveShiftRosterRole(shift, publishRosterRoles);
+        const needsWrite = !isLive || !publishedFieldsOk || !identityOk || !dateOk || !shift.scheduleId || resolvedRole.migratable || String(shift.rosterRoleId || '').trim() !== resolvedRole.rosterRoleId;
+        if (!needsWrite) {
+          alreadyValid.push({ id: shiftDocId, shift, person: resolved.person, intentionalOpen, dateKey });
+          return;
+        }
+        if (!isLive) draftCount += 1;
+        else repairCount += 1;
+        updatePlan.push({
+          id: shiftDocId,
+          shift,
+          person: resolved.person,
+          intentionalOpen,
+          dateKey,
+          wasPublished: isLive,
+          update: {
+            restaurantId: shift.restaurantId || appUser.restaurantId,
+            workspaceId: shift.workspaceId || shift.restaurantId || appUser.restaurantId,
+            date: dateKey,
+            scheduleDateKey: dateKey,
+            isPublished: true,
+            published: true,
+            status: 'published',
+            publishStatus: 'published',
+            publishState: 'published',
+            schedulePublishStatus: 'published',
+            visibility: 'published',
+            scheduleBuilderDraft: false,
+            readyToPublish: false,
+            draft: false,
+            isDraft: false,
+            publishedAt: isLive && shift.publishedAt ? shift.publishedAt : publishedAtIso,
+            publishedBy: shift.publishedBy || appUser?.id || appUser?.email || 'unknown',
+            publishedByName: shift.publishedByName || appUser?.name || appUser?.email || 'Unknown',
+            scheduleId: isLive && shift.scheduleId ? shift.scheduleId : scheduleId,
+            schedulePeriodStart: shift.schedulePeriodStart || publishPeriodStart,
+            schedulePeriodEnd: shift.schedulePeriodEnd || publishPeriodEnd,
+            publishScope: publishAll ? 'full-period' : 'selected-weeks',
+            publishWeekKeys,
+            identityVerifiedAt: publishedAtIso,
+            identityVerifiedBy: appUser?.id || appUser?.email || 'unknown',
+            updatedAt: publishedAtIso,
+            ...canonical
+          }
+        });
+      });
+
+      const unresolvedNames = Array.from(new Set(unresolved.map(item => item.shift?.employeeName || item.shift?.assignedName || item.shift?.name || item.shift?.role || 'unknown staff'))).slice(0, 8);
+      if (updatePlan.length === 0) {
+        setPublishProgress(makeSchedulePublishProgress());
+        if (unresolved.length) {
+          addToast('Employee Match Needed', `${unresolved.length} shift${unresolved.length === 1 ? '' : 's'} were not published because their employee accounts could not be matched. Review employee links for ${unresolvedNames.join(', ')}.`);
+          return;
+        }
+        addToast('Already Published', 'Schedule is already published and employee visibility is verified.');
+        setIsPublishPickerOpen(false);
+        return;
+      }
+
+      updatePublishProgress('confirming', 'Ready to publish…', `${updatePlan.length} shift${updatePlan.length === 1 ? '' : 's'} will be written and verified.`);
+      const roleSelectionLabel = publishAllRoles ? 'all configured roles' : publishSelectableRoles.filter(role => selectedPublishRoleIds.includes(role.id)).map(role => role.name).join(', ');
+      const confirmMessage = unresolved.length
+        ? `Publish/repair ${updatePlan.length} shift${updatePlan.length === 1 ? '' : 's'} for ${publishSelectionLabel} and ${roleSelectionLabel}? ${unresolved.length} shift${unresolved.length === 1 ? '' : 's'} will stay draft because employee accounts could not be matched: ${unresolvedNames.join(', ')}.`
+        : `Publish/repair ${updatePlan.length} shift${updatePlan.length === 1 ? '' : 's'} for ${publishSelectionLabel} and ${roleSelectionLabel}? Weeks and roles not selected will stay as drafts.`;
+      if (!window.confirm(confirmMessage)) {
+        setPublishProgress(makeSchedulePublishProgress());
+        return;
+      }
+
+      updatePublishProgress('backup', 'Creating safety backup…', 'Preparing the one local backup download for this publish.');
+      try {
+        const restaurantPrefix = getRestaurantExportPrefix(appUser, appUser?.restaurantId || '86chaos');
+        const now = new Date();
+        const backupPayload = {
+          app: '86chaos',
+          type: 'schedule-publish-backup',
+          version: CURRENT_VERSION,
+          generatedAt: now.toISOString(),
+          restaurantId: appUser?.restaurantId || null,
+          restaurantName: appUser?.restaurantName || appUser?.systemSettings?.restaurantName || null,
           publishScope: publishAll ? 'full-period' : 'selected-weeks',
           publishWeekKeys,
-          identityVerifiedAt: publishedAtIso,
-          identityVerifiedBy: appUser?.id || appUser?.email || 'unknown',
-          updatedAt: publishedAtIso,
-          ...canonical
-        }
-      });
-    });
-
-    const unresolvedNames = Array.from(new Set(unresolved.map(item => item.shift?.employeeName || item.shift?.assignedName || item.shift?.name || item.shift?.role || 'unknown staff'))).slice(0, 8);
-    if (updatePlan.length === 0) {
-      if (unresolved.length) {
-        addToast('Employee Match Needed', `${unresolved.length} shift${unresolved.length === 1 ? '' : 's'} were not published because their employee accounts could not be matched. Review employee links for ${unresolvedNames.join(', ')}.`);
-        return;
-      }
-      addToast('Already Published', 'Schedule is already published and employee visibility is verified.');
-      setIsPublishPickerOpen(false);
-      return;
-    }
-
-    const confirmMessage = unresolved.length
-      ? `Publish/repair ${updatePlan.length} shift${updatePlan.length === 1 ? '' : 's'} for ${publishSelectionLabel}? ${unresolved.length} shift${unresolved.length === 1 ? '' : 's'} will stay draft because employee accounts could not be matched: ${unresolvedNames.join(', ')}.`
-      : `Publish/repair ${updatePlan.length} shift${updatePlan.length === 1 ? '' : 's'} for ${publishSelectionLabel}? Weeks not selected will stay as drafts.`;
-    if (!window.confirm(confirmMessage)) return;
-
-    try {
-      const restaurantPrefix = getRestaurantExportPrefix(appUser, appUser?.restaurantId || '86chaos');
-      const now = new Date();
-      const backupPayload = {
-        app: '86chaos',
-        type: 'schedule-publish-backup',
-        version: CURRENT_VERSION,
-        generatedAt: now.toISOString(),
-        restaurantId: appUser?.restaurantId || null,
-        restaurantName: appUser?.restaurantName || appUser?.systemSettings?.restaurantName || null,
-        publishScope: publishAll ? 'full-period' : 'selected-weeks',
-        publishWeekKeys,
-        publishWeeks: selectedWeeksForPublish.map(option => ({ label: option.label, start: option.start, end: option.end, draftCount: option.draftCount, liveCount: option.liveCount })),
-        publishPeriodStart,
-        publishPeriodEnd,
-        publishPeriodLabel,
-        selectedShiftCount: selectedCandidates.length,
-        updateCount: updatePlan.length,
-        draftCount,
-        repairCount,
-        unresolvedCount: unresolved.length,
-        updateShiftIds: updatePlan.map(item => item.id),
-        selectedShifts: selectedCandidates.map(s => ({ ...s }))
-      };
-      const stamp = now.toISOString().replace(/[:.]/g, '-');
-      downloadTextFile(`${restaurantPrefix}-Schedule-Publish-Backup-${publishPeriodStart}-to-${publishPeriodEnd}-${stamp}.json`, JSON.stringify(backupPayload, null, 2), 'application/json;charset=utf-8;');
-    } catch (backupErr) {
-      console.warn('Schedule publish backup download failed:', backupErr);
-      if (!window.confirm('The local backup download failed. Continue publishing anyway?')) return;
-    }
-
-    addToast('Publishing...', `Verifying and publishing ${updatePlan.length} ${publishPeriodLabel} shift(s). Please wait.`);
-
-    try {
-      for (let i = 0; i < updatePlan.length; i += 450) {
-        const batch = writeBatch(db);
-        const batchItems = updatePlan.slice(i, i + 450);
-        batchItems.forEach(item => batch.update(doc(db, 'shifts', item.id), item.update));
-        await batch.commit();
-        recordScheduleOperationDiagnostic('batchedWriteOperations');
-        recordScheduleOperationDiagnostic('batchedWriteDocuments', batchItems.length);
-        recordScheduleOperationDiagnostic('totalScheduleDocumentsWritten', batchItems.length);
-      }
-
-      const verificationFailures = [];
-      for (const item of updatePlan) {
-        recordScheduleOperationDiagnostic('sdkReads');
-        const snap = await getDoc(doc(db, 'shifts', item.id));
-        if (snap.exists()) recordScheduleOperationDiagnostic('documentsObserved');
-        if (!snap.exists()) {
-          verificationFailures.push({ id: item.id, reason: 'missing after publish' });
-          continue;
-        }
-        const data = { id: snap.id, ...snap.data() };
-        const expectedRestaurantId = String(item.update.restaurantId || appUser.restaurantId || '');
-        const actualRestaurantId = String(data.restaurantId || data.workspaceId || '');
-        const statusOk = data.isPublished === true && data.published === true && String(data.status || '').toLowerCase() === 'published' && String(data.publishStatus || '').toLowerCase() === 'published';
-        const dateOk = getShiftDateKey(data) === item.dateKey;
-        const personOk = shiftMatchesPerson(data, item.person, users) && scheduleIdentityBlockMatchesPerson(data, item.person);
-        const scheduleIdOk = item.wasPublished || Boolean(data.scheduleId);
-        if (actualRestaurantId !== expectedRestaurantId || !statusOk || !dateOk || !personOk || !scheduleIdOk) {
-          verificationFailures.push({ id: item.id, reason: 'published read-back did not match expected fields' });
+          publishWeeks: selectedWeeksForPublish.map(option => ({ label: option.label, start: option.start, end: option.end, draftCount: option.draftCount, liveCount: option.liveCount })),
+          publishPeriodStart,
+          publishPeriodEnd,
+          publishPeriodLabel,
+          selectedShiftCount: updatePlan.length,
+          updateCount: updatePlan.length,
+          draftCount,
+          repairCount,
+          unresolvedCount: unresolved.length,
+          updateShiftIds: updatePlan.map(item => item.id),
+          selectedShifts: updatePlan.map(({ shift }) => ({ ...shift }))
+        };
+        const stamp = now.toISOString().replace(/[:.]/g, '-');
+        downloadTextFile(`${restaurantPrefix}-Schedule-Publish-Backup-${publishPeriodStart}-to-${publishPeriodEnd}-${stamp}.json`, JSON.stringify(backupPayload, null, 2), 'application/json;charset=utf-8;');
+      } catch (backupErr) {
+        console.warn('Schedule publish backup download failed:', backupErr);
+        if (!window.confirm('The local backup download failed. Continue publishing anyway?')) {
+          setPublishProgress(makeSchedulePublishProgress());
+          return;
         }
       }
 
-      if (verificationFailures.length) {
-        console.warn('[86chaos] Schedule publish verification failed', verificationFailures);
-        addToast('Publish Needs Attention', `${verificationFailures.length} shift${verificationFailures.length === 1 ? '' : 's'} did not verify after saving. The publish window stayed open so you can retry.`);
-        return;
-      }
-
-      const publishedShiftIds = updatePlan.map(item => item.id).filter(Boolean);
-      if (publishedShiftIds.length) {
-        setLocalBuilderPublishedShiftIds(prev => Array.from(new Set([...(prev || []), ...publishedShiftIds])).slice(-1000));
-      }
-
-      const inRangeRequests = (timeOffRequests || []).filter(r => publishDaySet.has(String(r?.date || '')) && String(r.restaurantId || r.workspaceId || appUser.restaurantId) === String(appUser.restaurantId));
-      const processedRequests = inRangeRequests.filter(r => ['approved', 'denied'].includes(String(r.status || '').toLowerCase()) && r.archived !== true && r.processed !== true);
-      const pendingPublishedOverlap = inRangeRequests.filter(r => String(r.status || '').toLowerCase() === 'pending');
-      await Promise.all(processedRequests.map(r => updateDoc(doc(db, 'timeOffRequests', r.id), {
-        previousStatus: r.status || '', status: 'processed', processed: true, archived: true,
-        processedAt: publishedAtIso, processedBy: appUser?.id || appUser?.email || '', processedByName: appUser?.name || appUser?.email || '',
-        scheduleId, schedulePeriodStart: publishPeriodStart, schedulePeriodEnd: publishPeriodEnd,
-        publishedAt: publishedAtIso, publishedBy: appUser?.id || appUser?.email || '', publishedByName: appUser?.name || appUser?.email || ''
-      })));
-      await Promise.all(pendingPublishedOverlap.map(r => updateDoc(doc(db, 'timeOffRequests', r.id), {
-        overlapsPublishedSchedule: true, unresolvedPublishedOverlap: true, scheduleId,
-        schedulePeriodStart: publishPeriodStart, schedulePeriodEnd: publishPeriodEnd, updatedAt: publishedAtIso
-      })));
-      if (processedRequests.length) await logAudit(appUser, 'TIME_OFF_AUTO_ARCHIVED_ON_PUBLISH', `${processedRequests.length} request-offs`, scheduleId);
-      if (pendingPublishedOverlap.length) await logAudit(appUser, 'TIME_OFF_PENDING_OVERLAPS_PUBLISHED_SCHEDULE', `${pendingPublishedOverlap.length} pending request-offs`, scheduleId);
-
-      setIsPublishPickerOpen(false);
-      setSelectedPublishWeekKeys([]);
-      const title = unresolved.length ? 'Published with Employee Review Needed' : (repairCount ? 'Published and Visibility Repaired' : 'Published');
-      const detailParts = [`${publishedShiftIds.length} shift${publishedShiftIds.length === 1 ? '' : 's'} verified for ${publishPeriodLabel}`];
-      if (draftCount) detailParts.push(`${draftCount} new`);
-      if (repairCount) detailParts.push(`${repairCount} employee visibility repaired`);
-      if (unresolved.length) detailParts.push(`${unresolved.length} still need employee links`);
-      addToast(title, `${detailParts.join('. ')}. Weeks not selected stayed as drafts.`);
-      logAudit(appUser, 'PUBLISH_SCHEDULE', 'Master Roster', `Verified ${publishedShiftIds.length}/${selectedCandidates.length} shifts for ${publishSelectionLabel}.`);
-
-      try {
-        addToast('Pinging Server', 'Sending schedule update notifications...');
-        const pushRes = await secureFetch('/api/send-schedule-alert', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ restaurantId: appUser.restaurantId, restaurantName: appUser.restaurantName || 'Your restaurant', scheduleId, publishScope: publishAll ? 'full-period' : 'selected-weeks', publishPeriodStart, publishPeriodEnd, publishWeekKeys })
+      const rolePlanById = new Map(rolePlan.shifts.map(row => [row.id, row]));
+      const confirmedEvidenceRows = [...updatePlan, ...alreadyValid];
+      const confirmedShiftEvidence = await Promise.all(confirmedEvidenceRows.map(item => {
+        const roleRow = rolePlanById.get(item.id) || {};
+        return buildConfirmedShiftEvidence({
+          shift: item.shift,
+          resolvedRole: roleRow,
+          desiredEmployeeIdentity: item.intentionalOpen ? null : buildCanonicalScheduleIdentityBlock(item.person, item.shift)
         });
-        const pushData = await pushRes.json();
-        if (pushData.message) addToast('Server Reply', pushData.message);
-        else if (pushData.success) addToast('Alerts Sent!', `Schedule saved. Notifications sent to ${pushData.sentCount} device${pushData.sentCount === 1 ? '' : 's'}.`);
-        else addToast('Notifications Not Sent', pushData.error || 'Schedule published, but notification delivery needs attention.');
-      } catch (pushErr) {
-        console.error('Failed to send schedule push notifications:', pushErr);
-        addToast('Notifications Not Sent', 'Schedule published, but notifications could not be sent.');
+      }));
+      const confirmedClientPlan = {
+        restaurantId: rolePlan.restaurantId,
+        period: rolePlan.period,
+        selectedWeekKeys: rolePlan.selectedWeekKeys,
+        selectedRoleIds: rolePlan.selectedRoleIds,
+        allRoles: rolePlan.allRoles,
+        roleConfigurationRevision: rolePlan.roleConfigurationRevision,
+        confirmedShifts: confirmedShiftEvidence
+      };
+      const clientPlanDigest = await digestSchedulePublicationPlan(confirmedClientPlan);
+      const operationStorageKey = `86chaos:schedule-publish:${appUser.restaurantId}:${clientPlanDigest}`;
+      let operationId = '';
+      try { operationId = sessionStorage.getItem(operationStorageKey) || ''; } catch (_) {}
+      if (!operationId) {
+        operationId = globalThis.crypto?.randomUUID?.() || `publish_${Date.now()}_${Math.random().toString(36).slice(2, 14)}`;
+        try { sessionStorage.setItem(operationStorageKey, operationId); } catch (_) {}
       }
+      addToast('Publishing...', `The server is publishing and verifying ${updatePlan.length} ${publishPeriodLabel} shift(s).`);
+      updatePublishProgress('publishing', 'Publishing schedule…', `Server operation ${operationId.slice(0, 8)} is protected by a durable lease.`, 0, updatePlan.length);
+      const publishResponse = await secureFetch('/api/schedule-publish', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          restaurantId: appUser.restaurantId,
+          restaurantName: appUser.restaurantName || appUser?.systemSettings?.restaurantName || 'Your restaurant',
+          operationId,
+          clientPlanDigest,
+          dayKeys: publishDays,
+          selectedWeekKeys: publishWeekKeys,
+          selectedRoleIds: publishAllRoles ? [] : selectedPublishRoleIds,
+          allRoles: publishAllRoles,
+          roleConfigurationRevision: rolePlan.roleConfigurationRevision,
+          expectedShifts: confirmedShiftEvidence
+        })
+      });
+      const publishResult = await publishResponse.json().catch(() => ({}));
+      if (!publishResponse.ok && publishResult.status !== 'partial') throw new Error(publishResult.error || 'Server publication failed before completion.');
+      const publishedShiftIds = Array.isArray(publishResult.verifiedShiftIds) ? publishResult.verifiedShiftIds : [];
+      if (publishedShiftIds.length) setLocalBuilderPublishedShiftIds(prev => Array.from(new Set([...(prev || []), ...publishedShiftIds])).slice(-1000));
+      if (publishResult.status === 'partial') {
+        setPublishProgress(prev => ({ ...prev, phase: 'error', active: false, label: 'Publish partially completed', detail: `${publishResult.committedCount || 0} committed, ${publishResult.verifiedCount || 0} verified, ${publishResult.conflictedCount || 0} conflicted, ${publishResult.remainingCount || 0} remaining. Retry this operation after reviewing conflicts.` }));
+        addToast('Publish Needs Review', `${publishResult.verifiedCount || 0} verified; ${publishResult.conflictedCount || 0} conflicted. The same operation can be resumed safely.`);
+        return;
+      }
+      try { sessionStorage.removeItem(operationStorageKey); } catch (_) {}
+      const notification = publishResult.notificationState || {};
+      const verifiedCount = Number.isFinite(Number(publishResult.verifiedCount)) ? Number(publishResult.verifiedCount) : publishedShiftIds.length;
+      const verifiedNewCount = Number(publishResult.verifiedNewCount || 0);
+      const verifiedRepairCount = Number(publishResult.verifiedRepairCount || 0);
+      const unchangedCount = Number(publishResult.unchangedCount || 0);
+      const unresolvedServerCount = Number(publishResult.unresolvedEmployeeCount || 0);
+      const serverChangedCount = verifiedNewCount + verifiedRepairCount;
+      const title = unresolvedServerCount > 0 && verifiedCount === 0
+        ? 'Publish Needs Employee Review'
+        : unresolvedServerCount > 0
+          ? 'Published with Employee Review Needed'
+          : verifiedRepairCount > 0
+            ? 'Published and Visibility Repaired'
+            : serverChangedCount > 0
+              ? 'Published'
+              : 'Schedule Already Current';
+      const detailParts = [];
+      if (verifiedNewCount) detailParts.push(`${verifiedNewCount} new shift${verifiedNewCount === 1 ? '' : 's'} published and verified`);
+      if (verifiedRepairCount) detailParts.push(`${verifiedRepairCount} employee visibility repair${verifiedRepairCount === 1 ? '' : 's'} verified`);
+      if (!serverChangedCount && verifiedCount) detailParts.push(`${verifiedCount} shift${verifiedCount === 1 ? '' : 's'} verified`);
+      if (unchangedCount) detailParts.push(`${unchangedCount} already current`);
+      if (unresolvedServerCount) detailParts.push(`${unresolvedServerCount} shift${unresolvedServerCount === 1 ? '' : 's'} not published because employee identity needs review`);
+      if (!detailParts.length) detailParts.push(`No server changes were required for ${publishPeriodLabel}`);
+      if (notification.failedCount) detailParts.push(`${notification.failedCount} notification${notification.failedCount === 1 ? '' : 's'} failed and remain eligible for a controlled retry`);
+      if (notification.ambiguousCount) detailParts.push(`${notification.ambiguousCount} notification acknowledgement${notification.ambiguousCount === 1 ? '' : 's'} remain unknown and will not be resent automatically`);
+      addToast(title, `${detailParts.join('. ')}. Unselected weeks and roles stayed as drafts.`);
+      logAudit(appUser, 'PUBLISH_SCHEDULE', 'Master Roster', `Operation ${operationId} verified ${verifiedCount} server shift(s): ${verifiedNewCount} new, ${verifiedRepairCount} repaired, ${unchangedCount} already current, ${unresolvedServerCount} employee-review.`);
+
+      const progressDetail = unresolvedServerCount
+        ? `${verifiedCount} verified; ${unresolvedServerCount} need employee review.`
+        : serverChangedCount
+          ? `${verifiedNewCount} new and ${verifiedRepairCount} visibility repair${verifiedRepairCount === 1 ? '' : 's'} verified.`
+          : unchangedCount
+            ? `${unchangedCount} selected shift${unchangedCount === 1 ? '' : 's'} already current; no server changes required.`
+            : `No server changes were required for ${publishPeriodLabel}.`;
+      updatePublishProgress('complete', unresolvedServerCount ? 'Publish completed with review needed' : 'Publish complete', progressDetail, verifiedCount, Math.max(verifiedCount, 1));
+      publishCompleted = true;
+      setSelectedPublishWeekKeys([]);
+      setIsPublishPickerOpen(false);
     } catch (err) {
       console.error('[86chaos] Schedule publish failed', err);
+      setPublishProgress(prev => ({ ...prev, phase: 'error', active: false, label: 'Publishing stopped', detail: err?.message || 'Schedule publishing stopped before completion.' }));
       addToast('Publishing Failed', err?.message || 'Schedule publishing failed before every selected shift could be verified.');
+    } finally {
+      publishGuard?.end();
+      if (!publishCompleted) {
+        setPublishProgress(prev => prev.active ? { ...prev, active: false } : prev);
+      }
     }
   };
   
@@ -3969,7 +4148,22 @@ const handleExportTimesheets = () => {
         </div>
       </Modal>
 
-      <Modal isOpen={isPublishPickerOpen} onClose={() => setIsPublishPickerOpen(false)} title="Choose What to Publish" sizeClass="max-w-2xl">
+      <Modal isOpen={Boolean(roleReview)} onClose={() => { if (!roleReviewBusy) setRoleReview(null); }} title="Review Shift Roles" sizeClass="max-w-2xl">
+        <div className="space-y-3">
+          <p className="text-sm text-slate-300">These saved shifts do not identify one configured role. Choose the correct role for each shift. Saving roles does not publish the schedule.</p>
+          {(roleReview?.rows || []).map(row => <label key={row.shiftId} className="block rounded-xl border border-[#2A353D] p-3 space-y-2">
+            <span className="block font-bold">{row.shift?.employeeName || row.shift?.assignedName || 'Unassigned employee'} · {row.shift?.scheduleDateKey || row.shift?.date} · {row.shift?.startTime}–{row.shift?.endTime}</span>
+            <span className="block text-xs text-amber-300">{row.reason === 'missing-role-identity' ? 'No role was saved on this shift.' : row.reason === 'ambiguous-legacy-role-name' ? `More than one role matches “${row.legacyName}”.` : `Saved role “${row.legacyName || row.shift?.rosterRoleId || 'unknown'}” cannot be matched safely.`}</span>
+            <select aria-label={`Role for ${row.shiftId}`} className={T.input} value={roleReviewSelections[row.shiftId] || ''} disabled={roleReviewBusy} onChange={event => setRoleReviewSelections(prev => ({...prev, [row.shiftId]: event.target.value}))}>
+              <option value="">Choose the correct role…</option>
+              {publishSelectableRoles.map(role => <option key={role.id} value={role.id}>{role.name} ({role.id.slice(-6)})</option>)}
+            </select>
+          </label>)}
+          <button type="button" className={`${T.btn} w-full`} disabled={roleReviewBusy || !(roleReview?.rows || []).every(row => roleReviewSelections[row.shiftId])} onClick={saveReviewedRoles}>{roleReviewBusy ? 'Saving…' : 'Save Reviewed Roles'}</button>
+        </div>
+      </Modal>
+
+      <Modal isOpen={isPublishPickerOpen} onClose={() => { if (!isPublishingSchedule) setIsPublishPickerOpen(false); }} title="Choose What to Publish" sizeClass="max-w-2xl">
         <div className="space-y-4">
           <div className="rounded-xl border border-[#2A353D] bg-[#12161A] p-3">
             <div className="text-[10px] font-black uppercase tracking-widest text-[#D4A381]">Publish safely</div>
@@ -3986,7 +4180,7 @@ const handleExportTimesheets = () => {
                   <input
                     type="checkbox"
                     checked={checked}
-                    disabled={disabled}
+                    disabled={disabled || isPublishingSchedule}
                     onChange={() => togglePublishWeek(option.key)}
                     className="h-5 w-5 accent-[#D4A381]"
                   />
@@ -3999,15 +4193,57 @@ const handleExportTimesheets = () => {
             })}
           </div>
 
+          <fieldset className="rounded-xl border border-[#2A353D] bg-[#12161A] p-3" disabled={isPublishingSchedule}>
+            <legend className="px-1 text-[10px] font-black uppercase tracking-widest text-[#D4A381]">Roster roles</legend>
+            <label className="flex min-h-[44px] cursor-pointer items-center gap-3 rounded-lg px-2 py-2 hover:bg-[#1A2126]">
+              <input type="radio" name="schedule-publish-role-mode" checked={publishAllRoles} onChange={() => { setPublishAllRoles(true); setSelectedPublishRoleIds([]); }} className="h-5 w-5 accent-[#D4A381]" />
+              <span><span className="block text-sm font-black text-white">All Roles</span><span className="block text-[11px] font-bold text-slate-400">Publish every shift role in the selected date scope.</span></span>
+            </label>
+            <label className="flex min-h-[44px] cursor-pointer items-center gap-3 rounded-lg px-2 py-2 hover:bg-[#1A2126]">
+              <input type="radio" name="schedule-publish-role-mode" checked={!publishAllRoles} onChange={() => setPublishAllRoles(false)} className="h-5 w-5 accent-[#D4A381]" />
+              <span><span className="block text-sm font-black text-white">Selected Roles</span><span className="block text-[11px] font-bold text-slate-400">Use the configured roles from Settings → Preferences → Roster Roles.</span></span>
+            </label>
+            {!publishAllRoles && (
+              <div className="mt-2 grid gap-2 sm:grid-cols-2" aria-label="Configured roster roles">
+                {publishSelectableRoles.map(role => (
+                  <label key={role.id} className={`flex min-h-[44px] cursor-pointer items-center gap-3 rounded-lg border px-3 py-2 ${selectedPublishRoleIds.includes(role.id) ? 'border-[#D4A381] bg-[#D4A381]/10' : 'border-[#2A353D] bg-[#0B0E11]'}`}>
+                    <input type="checkbox" checked={selectedPublishRoleIds.includes(role.id)} onChange={() => togglePublishRole(role.id)} className="h-5 w-5 accent-[#D4A381]" />
+                    <span className="text-sm font-black text-white">{role.name}</span>
+                  </label>
+                ))}
+                {publishSelectableRoles.length === 0 && <p className="text-xs font-bold text-amber-300">No active configured Roster Roles are available. Add roles in Settings before using Selected Roles.</p>}
+              </div>
+            )}
+          </fieldset>
+
           <div className="rounded-xl border border-[#2A353D] bg-[#0B0E11] p-3 text-xs font-bold text-slate-300">
             Selected: <span className="text-white">{selectedPublishCandidateCount}</span> shift{selectedPublishCandidateCount === 1 ? '' : 's'} to verify/publish
             {selectedPublishWeeks.length > 0 && <span className="block mt-1 text-[11px] text-slate-400">{selectedPublishLabel}</span>}
           </div>
 
+          {publishProgress.phase !== 'idle' && (
+            <div className={`rounded-xl border p-3 ${publishProgress.phase === 'error' ? 'border-red-500/50 bg-red-950/20' : publishProgress.phase === 'complete' ? 'border-emerald-500/50 bg-emerald-950/20' : 'border-[#D4A381]/50 bg-[#D4A381]/10'}`} data-testid="schedule-publish-progress" role="status" aria-live="polite" aria-atomic="true">
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 text-sm font-black text-white">
+                    {isPublishingSchedule && <Loader2 size={16} className="animate-spin text-[#D4A381] shrink-0" />}
+                    <span>{publishProgress.label || 'Publishing schedule…'}</span>
+                  </div>
+                  {publishProgress.detail && <div className="mt-1 text-[11px] font-bold text-slate-300">{publishProgress.detail}</div>}
+                </div>
+                <div className="shrink-0 text-sm font-black text-[#D4A381]" aria-live="polite">{publishProgress.percent}%</div>
+              </div>
+              <div className="mt-3 h-3 overflow-hidden rounded-full border border-[#2A353D] bg-[#090C0F]" role="progressbar" aria-label="Schedule publishing progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow={publishProgress.percent}>
+                <div className="h-full rounded-full bg-gradient-to-r from-[#D4A381] to-[#F1C9AA] transition-[width] duration-300 ease-out" style={{ width: `${publishProgress.percent}%` }} />
+              </div>
+              {isPublishingSchedule && <div className="mt-2 text-[10px] font-bold text-slate-400">Please wait. Publishing is locked so another publish cannot start.</div>}
+            </div>
+          )}
+
           <div className="flex flex-col sm:flex-row gap-2">
-            <button type="button" onClick={() => handlePublish('selected-weeks')} disabled={selectedPublishCandidateCount === 0} className={`${T.btn} flex-1 py-3 disabled:opacity-50`}>Publish Selected Weeks</button>
-            <button type="button" onClick={() => handlePublish('full-period')} disabled={fullPublishCandidateCount === 0} className={`${T.btnAlt} flex-1 py-3`}>{publishPickerSource === 'schedule-tools' ? 'Publish Full Period' : 'Publish Full Schedule'}</button>
-            <button type="button" onClick={() => setIsPublishPickerOpen(false)} className={`${T.btnAlt} flex-1 py-3`}>Cancel</button>
+            <button type="button" onClick={() => handlePublish('selected-weeks')} disabled={selectedPublishCandidateCount === 0 || isPublishingSchedule || (!publishAllRoles && selectedPublishRoleIds.length === 0)} className={`${T.btn} flex-1 py-3 disabled:opacity-50 disabled:cursor-not-allowed`}>{isPublishingSchedule ? 'Publishing…' : 'Publish Selected Weeks'}</button>
+            <button type="button" onClick={() => handlePublish('full-period')} disabled={fullPublishCandidateCount === 0 || isPublishingSchedule || (!publishAllRoles && selectedPublishRoleIds.length === 0)} className={`${T.btnAlt} flex-1 py-3 disabled:opacity-50 disabled:cursor-not-allowed`}>{isPublishingSchedule ? 'Publishing…' : (publishPickerSource === 'schedule-tools' ? 'Publish Full Period' : 'Publish Full Schedule')}</button>
+            <button type="button" onClick={() => { if (!isPublishingSchedule) setIsPublishPickerOpen(false); }} disabled={isPublishingSchedule} className={`${T.btnAlt} flex-1 py-3 disabled:opacity-50 disabled:cursor-not-allowed`}>Cancel</button>
           </div>
         </div>
       </Modal>
@@ -4079,19 +4315,32 @@ const handleExportTimesheets = () => {
               </div>
 
               {/* Assign Button */}
-              <button onClick={handleAssign} disabled={isAssigningShift||!selectedEmp||assignDates.length===0} className={`schedule-builder-assign-button w-full xl:w-auto ${T.btn} py-1.5 px-2 text-xs h-9 disabled:opacity-50 flex items-center justify-center shadow-lg shrink-0 whitespace-nowrap`}>{isAssigningShift ? 'Assigning…' : `Assign (${assignDates.length})`}</button>
+              <button data-testid="schedule-builder-assign" onClick={handleAssign} disabled={isClearingScheduleMonth||isAssigningShift||!selectedEmp||assignDates.length===0} className={`schedule-builder-assign-button w-full xl:w-auto ${T.btn} py-1.5 px-2 text-xs h-9 disabled:opacity-50 flex items-center justify-center shadow-lg shrink-0 whitespace-nowrap`}>{isAssigningShift ? t('builder.assigning') : t('builder.assign', { count: assignDates.length })}</button>
 
             </div>
             
             {/* Action Row */}
-            <div className="schedule-builder-action-row flex w-full lg:w-auto gap-2 items-center pt-1.5 lg:pt-0 border-t lg:border-t-0 border-[#2A353D]">
+            <div className="schedule-builder-action-row flex flex-wrap w-full lg:w-auto gap-2 items-center pt-1.5 lg:pt-0 border-t lg:border-t-0 border-[#2A353D]">
               <div className="schedule-builder-labor-pill hidden sm:flex flex-col items-end mr-2 bg-[#12161A] border border-[#2A353D] px-2 py-1 rounded-xl">
-                <span className="text-[9px] font-black uppercase tracking-widest text-slate-500">Proj. Period Labor</span>
+                <span className="text-[9px] font-black uppercase tracking-widest text-slate-500">{t('builder.projectedLabor')}</span>
                 <span className="text-emerald-400 font-black text-base">${projectedMonthLabor.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
               </div>
-<button onClick={() => setIsAutoPopulateModalOpen(true)} className={`schedule-builder-action-button flex-1 lg:flex-none ${T.btnAlt} py-1.5 h-9 flex items-center justify-center font-black border-blue-900/50 text-blue-400`}>
-                <Repeat size={16} className="mr-1"/> <span aria-label="Auto-Fill">Copy Month</span>
-              </button>              <button onClick={() => openPublishPicker('builder')} className={`schedule-builder-action-button flex-1 lg:flex-none ${T.btnAlt} py-1.5 h-9 flex items-center justify-center font-black`}>Publish</button>
+<button onClick={() => setIsAutoPopulateModalOpen(true)} disabled={isClearingScheduleMonth} className={`schedule-builder-action-button flex-1 lg:flex-none ${T.btnAlt} py-1.5 h-9 flex items-center justify-center font-black border-blue-900/50 text-blue-400 disabled:opacity-50`}>
+                <Repeat size={16} className="mr-1"/> <span aria-label={t('builder.copyMonth')}>{t('builder.copyMonth')}</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleClearScheduleMonth}
+                disabled={isClearingScheduleMonth || isPublishingSchedule}
+                data-chaos-control-kind="destructive-mutation"
+                data-chaos-workflow-id="schedule-clear-month"
+                className={`schedule-builder-action-button flex-1 lg:flex-none ${T.btnAlt} py-1.5 px-2 h-9 flex items-center justify-center font-black border-red-900/60 text-red-400 hover:text-red-300 disabled:opacity-50`}
+                title={`Delete every saved draft and published shift from ${i18nMonth(monthStr)}`}
+              >
+                {isClearingScheduleMonth ? <Loader2 size={16} className="mr-1 animate-spin"/> : <Trash2 size={16} className="mr-1"/>}
+                {isClearingScheduleMonth ? t('builder.clearing') : t('builder.clearMonth')}
+              </button>
+              <button onClick={() => openPublishPicker('builder')} disabled={isClearingScheduleMonth} className={`schedule-builder-action-button flex-1 lg:flex-none ${T.btnAlt} py-1.5 h-9 flex items-center justify-center font-black disabled:opacity-50`}>{t('builder.publish')}</button>
               <button onClick={openNewEventModal} className={`schedule-builder-action-button flex-1 lg:flex-none ${T.btnAlt} border-[#D4A381] text-[#D4A381] py-1.5 h-9 flex items-center justify-center font-black`}><Plus size={16} className="mr-1"/> Event</button>
             </div>
           </div>
@@ -4179,7 +4428,7 @@ const handleExportTimesheets = () => {
                             // Conflict Check: Alert if a shift overlaps with ANY time-off request (pending or approved)
                             const allUserReqs = timeOffRequests.filter(r => r.date === d && timeOffMatchesPerson(r, u) && isActiveTimeOffRequest(r));
                             return (
-                            <td key={d} onClick={()=>handleCellClick(d,u.id)} className={`p-0.5 border-r border-[#2A353D] cursor-pointer transition-all align-top h-7 sm:h-8 ${sel?'bg-[#8F6040] outline outline-2 outline-[#D4A381] shadow-inner z-0 relative':'hover:bg-[#12161A]'}`}>
+                            <td key={d} data-testid="schedule-builder-cell" data-date={d} data-employee-id={u.id} onClick={()=>handleCellClick(d,u.id)} className={`p-0.5 border-r border-[#2A353D] cursor-pointer transition-all align-top h-7 sm:h-8 ${sel?'bg-[#8F6040] outline outline-2 outline-[#D4A381] shadow-inner z-0 relative':'hover:bg-[#12161A]'}`}>
                             <div className="flex flex-col gap-[1px] w-full justify-start overflow-visible">
                               {req && !req.isPartial && <div className="schedule-builder-time-chip w-full rounded font-black text-[7px] sm:text-[8px] py-0.5 text-center text-red-400 bg-red-900/40 uppercase tracking-tighter" title="Requested Off">Off</div>}
                               {req && req.isPartial && <div className="schedule-builder-time-chip schedule-builder-partial-off-chip w-full rounded font-black text-[7px] sm:text-[8px] py-0.5 text-center text-amber-400 bg-amber-900/40 uppercase tracking-tighter" title={`Requested off: ${formatScheduleBuilderRequestRange(req)}`}>{formatScheduleBuilderRequestRange(req)}</div>}
@@ -4898,6 +5147,7 @@ const normalizeConflictResult = (row = {}, dateKey = '') => ({
 });
 
 const TabTimeOff = ({ timeOffRequests, appUser, users, addToast, events = [], shifts = [], clientData = null }) => {
+  const { t, formatDate: i18nDate } = useI18n();
   const [calMonth, setCalMonth] = useState(getToday().substring(0, 7));
   const [selectedDates, setSelectedDates] = useState([]);
   const [isPartial, setIsPartial] = useState(false);
@@ -4919,10 +5169,24 @@ const TabTimeOff = ({ timeOffRequests, appUser, users, addToast, events = [], sh
   const [acknowledgedConflicts, setAcknowledgedConflicts] = useState({});
   const conflictCacheRef = useRef(new Map());
   const inFlightConflictRef = useRef(new Map());
+  const [timeOffPolicy, setTimeOffPolicy] = useState(() => normalizeTimeOffPolicy(clientData?.timeOffPolicy || {}));
+  const [timeOffPolicyDraft, setTimeOffPolicyDraft] = useState(() => ({ ...normalizeTimeOffPolicy(clientData?.timeOffPolicy || {}), enabled: clientData?.timeOffPolicy?.enabled === true || !clientData?.timeOffPolicy }));
+  const [policySaving, setPolicySaving] = useState(false);
+  const [blackoutStart, setBlackoutStart] = useState(getToday());
+  const [blackoutEnd, setBlackoutEnd] = useState(getToday());
+  const [blackoutReason, setBlackoutReason] = useState('');
 
   const requestOffGhostMode = isUserLevelGhostTimeOff(appUser);
   const perms = appUser?.permissions || {};
   const canManage = !requestOffGhostMode && !!(appUser?.isSuperAdmin || appUser?.isAdmin || perms.schedule || perms.team);
+  const canConfigureRequestOffPolicy = !requestOffGhostMode && canConfigureTimeOffPolicy(appUser, clientData);
+  const workspaceScheduleSettings = mergeWorkspaceSettings(appUser, clientData);
+  useEffect(() => {
+    const normalized = normalizeTimeOffPolicy(clientData?.timeOffPolicy || {});
+    setTimeOffPolicy(normalized);
+    setTimeOffPolicyDraft({ ...normalized, enabled: clientData?.timeOffPolicy?.enabled === true || !clientData?.timeOffPolicy });
+  }, [clientData?.timeOffPolicy]);
+
   const requestOffApi = useCallback(async (action, payload = {}) => {
     const response = await secureFetch('/api/time-off-request', {
       method: 'POST',
@@ -5044,7 +5308,7 @@ const TabTimeOff = ({ timeOffRequests, appUser, users, addToast, events = [], sh
   const postPublishedTimeOffAllowed = schedulePublishingSettings.allowPostPublishedTimeOff;
   const monthDays = Array.from({length: getDaysInMonth(calMonth)}).map((_, i) => `${calMonth}-${String(i+1).padStart(2, '0')}`);
   const firstDayOffset = new Date(calMonth+'-01T12:00:00').getDay();
-  const monthEvents = events.filter(e => e.type === 'special_event' && e.date?.startsWith(calMonth));
+  const monthEvents = (Array.isArray(events) ? events : []).filter(e => e && typeof e === 'object' && e.type === 'special_event' && String(e.date || '').startsWith(calMonth));
   const isArchivedRequest = (r = {}) => r.archived === true || r.processed === true || ['archived','processed','cancelled','canceled'].includes(String(r.status || '').toLowerCase());
   const normalizeStatus = (r = {}) => String(r.status || 'pending').toLowerCase();
   const visibleRequests = (timeOffRequestRows || []).filter(r => canManage || timeOffMatchesPerson(r, schedulePerson) || timeOffMatchesPerson(r, appUser));
@@ -5109,6 +5373,45 @@ const TabTimeOff = ({ timeOffRequests, appUser, users, addToast, events = [], sh
     }
     return cleanDates.map(dateKey => conflictCacheRef.current.get(requestOffCacheKey(appUser?.restaurantId || '', dateKey, appUser)) || normalizeConflictResult({}, dateKey));
   }, [appUser, requestOffApi]);
+
+  const policyStatusForDate = useCallback((dateKey) => evaluateTimeOffPolicyDate({
+    requestDate: dateKey,
+    today: getToday(),
+    policy: timeOffPolicy,
+    scheduleSettings: workspaceScheduleSettings,
+    canOverride: canConfigureRequestOffPolicy,
+  }), [timeOffPolicy, workspaceScheduleSettings, canConfigureRequestOffPolicy]);
+
+  const addBlackoutDraft = () => {
+    if (!canConfigureRequestOffPolicy) return;
+    if (!blackoutStart || !blackoutEnd) return addToast('Choose Blackout Dates', 'Choose a start and end date.');
+    const startDate = blackoutStart <= blackoutEnd ? blackoutStart : blackoutEnd;
+    const endDate = blackoutStart <= blackoutEnd ? blackoutEnd : blackoutStart;
+    const id = `blackout-${startDate}-${endDate}-${Date.now()}`;
+    setTimeOffPolicyDraft(prev => ({ ...prev, blackouts: [...(prev.blackouts || []), { id, startDate, endDate, reason: blackoutReason.trim() }].slice(0, 100) }));
+    setBlackoutReason('');
+  };
+
+  const removeBlackoutDraft = (id) => {
+    if (!canConfigureRequestOffPolicy) return;
+    setTimeOffPolicyDraft(prev => ({ ...prev, blackouts: (prev.blackouts || []).filter(row => row.id !== id) }));
+  };
+
+  const saveTimeOffPolicy = async () => {
+    if (!canConfigureRequestOffPolicy || policySaving) return;
+    setPolicySaving(true);
+    try {
+      const data = await requestOffApi('policy-save', { policy: timeOffPolicyDraft });
+      const saved = normalizeTimeOffPolicy(data?.policy || timeOffPolicyDraft);
+      setTimeOffPolicy(saved);
+      setTimeOffPolicyDraft(saved);
+      addToast('Request Off Policy Saved', 'Cutoff and blackout rules are now active for this workspace.');
+    } catch (err) {
+      addToast('Policy Not Saved', err?.message || 'Only the account owner or a workspace administrator can change this policy.');
+    } finally {
+      setPolicySaving(false);
+    }
+  };
 
   const changeMonth = (offset) => { const d = new Date(calMonth + '-01T12:00:00'); d.setMonth(d.getMonth() + offset); setCalMonth(d.toISOString().substring(0, 7)); };
   const updateRequest = async (r, update, action = 'TIME_OFF_UPDATED') => {
@@ -5210,7 +5513,9 @@ const TabTimeOff = ({ timeOffRequests, appUser, users, addToast, events = [], sh
   const handleToggleDate = async (d) => {
     if (checkingDate === d) return;
     if (d < getToday()) return addToast('Locked', 'Cannot request past dates.');
-    if (!postPublishedTimeOffAllowed && !appUser?.isAdmin && isDateInsidePublishedSchedule(d, shifts)) return addToast('Schedule Published', 'This workspace blocks employee time-off requests after that date has already been published. Ask a manager to adjust the schedule.');
+    const policyStatus = policyStatusForDate(d);
+    if (!policyStatus.allowed) return addToast(policyStatus.code === 'blackout' ? 'Blackout Date' : 'Request Off Closed', policyStatus.reason || 'Normal Request Off submissions are closed for this date.');
+    if (!postPublishedTimeOffAllowed && !canConfigureRequestOffPolicy && isDateInsidePublishedSchedule(d, shifts)) return addToast('Schedule Published', 'This workspace blocks employee time-off requests after that date has already been published. Ask an account owner or admin to adjust the schedule.');
     const existingReq = myRequests.find(r => requestOffDateKey(r) === d && isActiveTimeOffRequest(r));
     if (existingReq) { if (window.confirm(`Cancel your time-off request for ${formatDisplayDate(d)}?`)) cancelRequest(existingReq); return; }
     const addingDate = !selectedDates.includes(d);
@@ -5241,10 +5546,16 @@ const TabTimeOff = ({ timeOffRequests, appUser, users, addToast, events = [], sh
     if (isSubmittingTimeOff) return;
     if (selectedDates.length === 0) return addToast('Choose Request-Off Dates', 'Select one or more days on the calendar first.');
     if (isPartial && (!startTime || !endTime)) return addToast('Add Start and End Times', 'Enter the part of the day you need off.');
-    const blockedAfterPublish = selectedDates.filter(d => !postPublishedTimeOffAllowed && !appUser?.isAdmin && isDateInsidePublishedSchedule(d, shifts));
-    if (blockedAfterPublish.length) return addToast('Schedule Published', 'One or more selected dates are already published. Ask a manager to adjust the schedule.');
+    const blockedAfterPublish = selectedDates.filter(d => !postPublishedTimeOffAllowed && !canConfigureRequestOffPolicy && isDateInsidePublishedSchedule(d, shifts));
+    if (blockedAfterPublish.length) return addToast('Schedule Published', 'One or more selected dates are already published. Ask an account owner or admin to adjust the schedule.');
     setIsSubmittingTimeOff(true);
     try {
+      const policyCheck = await requestOffApi('policy-check', { dates: selectedDates });
+      const policyBlocked = (policyCheck?.results || []).find(row => row?.allowed === false);
+      if (policyBlocked) {
+        addToast(policyBlocked.code === 'blackout' ? 'Blackout Date' : 'Request Off Closed', policyBlocked.reason || 'Normal Request Off submissions are closed for one or more selected dates.');
+        return;
+      }
       const latestConflicts = await fetchConflictInfo(selectedDates, { force: true });
       const changedConflicts = latestConflicts.filter(info => {
         const acknowledged = acknowledgedConflicts[info.date] || { count: 0, names: [] };
@@ -5358,27 +5669,46 @@ const TabTimeOff = ({ timeOffRequests, appUser, users, addToast, events = [], sh
               const existingReq = myRequests.find(r => requestOffDateKey(r) === d && isActiveTimeOffRequest(r));
               const priorCount = priorRequestInfoForDate(d).count;
               const isPast = d < getToday();
+              const policyStatus = policyStatusForDate(d);
+              const policyBlocked = policyStatus.blocked && !policyStatus.allowed;
               const holiday = getHoliday(d);
               const dayEvents = monthEvents.filter(e => e.date === d);
-              return <div key={d} onClick={() => !isPast && handleToggleDate(d)} className={`p-1 border-b border-r ${T.border} min-h-[50px] flex flex-col items-center justify-start pt-1 transition-colors ${isPast ? 'bg-[#12161A]/50 opacity-50 cursor-not-allowed' : existingReq ? 'bg-red-900/10 cursor-pointer hover:bg-red-900/20 border border-red-900/30 shadow-inner' : isSelected ? 'bg-[#8F6040]/20 border border-[#C59373] cursor-pointer shadow-inner' : 'hover:bg-[#12161A] cursor-pointer'}`}><span className={`text-xs font-black ${isSelected ? T.copper : existingReq ? 'text-red-400' : 'text-slate-300'}`}>{parseInt(d.split('-')[2])}</span>{holiday && <span className="text-[6px] sm:text-[7px] text-amber-500 font-bold uppercase text-center leading-tight mt-0.5 px-0.5">{holiday}</span>}{dayEvents.map(ev => <span key={ev.id} className="text-[6px] sm:text-[7px] text-blue-400 font-bold uppercase text-center leading-tight mt-0.5 px-0.5 w-full truncate" title={ev.title}>{ev.title}</span>)}{checkingDate === d && <Loader2 size={10} className="mt-auto mb-1 text-amber-300 animate-spin"/>}{checkingDate !== d && priorCount > 0 && !existingReq && !isSelected && <span className="text-[7px] font-black uppercase mt-auto mb-0.5 text-amber-300">{priorCount} req</span>}{checkingDate !== d && existingReq && <span className={`text-[7px] font-black uppercase mt-auto mb-1 ${existingReq.status === 'pending' ? 'text-orange-400' : 'text-red-500'}`}>{existingReq.status === 'pending' ? 'Pend' : 'Off'}</span>}{checkingDate !== d && isSelected && <Check size={10} className={`mt-auto mb-1 ${T.copper}`}/>}</div>;
+              return <div key={d} onClick={() => !isPast && !policyBlocked && handleToggleDate(d)} title={policyStatus.blocked ? policyStatus.reason : ''} className={`p-1 border-b border-r ${T.border} min-h-[50px] flex flex-col items-center justify-start pt-1 transition-colors ${isPast || policyBlocked ? 'bg-[#12161A]/50 opacity-50 cursor-not-allowed' : existingReq ? 'bg-red-900/10 cursor-pointer hover:bg-red-900/20 border border-red-900/30 shadow-inner' : isSelected ? 'bg-[#8F6040]/20 border border-[#C59373] cursor-pointer shadow-inner' : policyStatus.overridden ? 'bg-amber-900/10 cursor-pointer hover:bg-amber-900/20' : 'hover:bg-[#12161A] cursor-pointer'}`}><span className={`text-xs font-black ${isSelected ? T.copper : existingReq ? 'text-red-400' : policyBlocked ? 'text-slate-500' : 'text-slate-300'}`}>{parseInt(d.split('-')[2])}</span>{holiday && <span className="text-[6px] sm:text-[7px] text-amber-500 font-bold uppercase text-center leading-tight mt-0.5 px-0.5">{holiday}</span>}{dayEvents.map(ev => <span key={ev.id} className="text-[6px] sm:text-[7px] text-blue-400 font-bold uppercase text-center leading-tight mt-0.5 px-0.5 w-full truncate" title={ev.title}>{ev.title}</span>)}{policyStatus.blocked && !existingReq && !isSelected && <span className={`text-[7px] font-black uppercase mt-auto mb-0.5 ${policyStatus.overridden ? 'text-amber-300' : 'text-red-300'}`}>{policyStatus.code === 'blackout' ? 'Blackout' : policyStatus.overridden ? 'Override' : 'Closed'}</span>}{checkingDate === d && <Loader2 size={10} className="mt-auto mb-1 text-amber-300 animate-spin"/>}{checkingDate !== d && !policyStatus.blocked && priorCount > 0 && !existingReq && !isSelected && <span className="text-[7px] font-black uppercase mt-auto mb-0.5 text-amber-300">{priorCount} req</span>}{checkingDate !== d && existingReq && <span className={`text-[7px] font-black uppercase mt-auto mb-1 ${existingReq.status === 'pending' ? 'text-orange-400' : 'text-red-500'}`}>{existingReq.status === 'pending' ? 'Pend' : 'Off'}</span>}{checkingDate !== d && isSelected && <Check size={10} className={`mt-auto mb-1 ${T.copper}`}/>}</div>;
             })}
           </div>
         </div>
         <div className={`${T.card} p-4 sm:p-5 h-max`}>
           <h3 className="font-black text-base mb-1 text-white">Request Off</h3>
           <p className={`text-[10px] font-bold ${T.muted} mb-2 leading-tight`}>Tap specific dates to request off. Use Availability for normal weekly schedules.</p>
-          {!postPublishedTimeOffAllowed && !appUser?.isAdmin && <div className="mb-4 bg-amber-900/15 border border-amber-900/40 rounded-xl p-2 text-[10px] font-bold text-amber-200 leading-snug">Time-off requests close once that schedule period has been published.</div>}
+          {!postPublishedTimeOffAllowed && !canConfigureRequestOffPolicy && <div className="mb-4 bg-amber-900/15 border border-amber-900/40 rounded-xl p-2 text-[10px] font-bold text-amber-200 leading-snug">Time-off requests close once that schedule period has been published.</div>}
           {requestOffGhostMode && ghostListStatus === 'loading' && <div className="mb-4 bg-blue-900/15 border border-blue-900/40 rounded-xl p-2 text-[10px] font-bold text-blue-200 leading-snug">Loading this employee’s Request Off records...</div>}
           {requestOffGhostMode && ghostListStatus === 'error' && <div className="mb-4 bg-red-900/15 border border-red-900/40 rounded-xl p-2 text-[10px] font-bold text-red-200 leading-snug">Request Off records could not load. Try refreshing before submitting.</div>}
+          {timeOffPolicy.enabled && (() => {
+            const sampleDate = `${calMonth}-01`;
+            const releaseDate = timeOffPolicyReleaseDateForRequestDate(sampleDate, timeOffPolicy, workspaceScheduleSettings);
+            const cutoffDate = timeOffPolicyCutoffDateForRequestDate(sampleDate, timeOffPolicy, workspaceScheduleSettings);
+            return <div className="mb-4 bg-blue-900/10 border border-blue-900/40 rounded-xl p-2 text-[10px] font-bold text-blue-200 leading-snug">Normal requests for this schedule close after {cutoffDate ? formatDisplayDate(cutoffDate) : 'the configured cutoff'}{releaseDate ? ` • planned release ${formatDisplayDate(releaseDate)}` : ''}. Blackout dates close immediately.</div>;
+          })()}
           <form onSubmit={handleSubmit} className="space-y-4"><label className={`flex items-center gap-2 text-xs font-bold text-slate-300 cursor-pointer p-2.5 bg-[#12161A] rounded-xl border ${T.border}`}><input type="checkbox" checked={isPartial} onChange={e=>setIsPartial(e.target.checked)} className="w-4 h-4 rounded bg-[#1A2126] border-[#2A353D] accent-[#8F6040]" />Only part of each day</label>{isPartial && <div className="grid grid-cols-2 gap-3"><div><label className={T.label}>Start Time</label><input type="time" value={startTime} onChange={e=>setStartTime(e.target.value)} className={T.input} required /></div><div><label className={T.label}>End Time</label><input type="time" value={endTime} onChange={e=>setEndTime(e.target.value)} className={T.input} required /></div></div>}<button type="submit" disabled={selectedDates.length === 0 || isSubmittingTimeOff || !!checkingDate} className={`w-full ${T.btn} disabled:opacity-50 disabled:cursor-not-allowed`}>{isSubmittingTimeOff ? 'Sending Request…' : `Send ${selectedDates.length > 0 ? `${selectedDates.length}-Day ` : ''}Request for Review`}</button></form>
         </div>
       </div>
+      {canConfigureRequestOffPolicy && <div className={`${T.card} p-4 space-y-4`} data-testid="time-off-policy-admin">
+        <div><h3 className="font-black text-white">{t('requestOff.policy')}</h3><p className={`text-xs font-bold ${T.muted}`}>{t('requestOff.policyAdminHelp')}</p></div>
+        <label className="flex items-center gap-2 text-xs font-bold text-slate-300"><input type="checkbox" checked={timeOffPolicyDraft.enabled === true} onChange={e => setTimeOffPolicyDraft(prev => ({ ...prev, enabled: e.target.checked }))} className="accent-[#8F6040]"/>{t('requestOff.enablePolicy')}</label>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div><label className={T.label}>{t('requestOff.cutoffDays')}</label><input data-testid="time-off-cutoff-days" type="number" min="0" max="90" value={timeOffPolicyDraft.cutoffDaysBeforeRelease} onChange={e => setTimeOffPolicyDraft(prev => ({ ...prev, cutoffDaysBeforeRelease: e.target.value }))} className={T.input}/><p className={`text-[9px] ${T.muted} mt-1`}>Example: 10 means requests close after the day 10 days before the planned release.</p></div>
+          {schedulePublishingSettings.mode === 'monthly' ? <div><label className={T.label}>{t('requestOff.monthlyReleaseDay')}</label><input data-testid="time-off-monthly-release-day" type="number" min="1" max="28" value={timeOffPolicyDraft.monthlyReleaseDay} onChange={e => setTimeOffPolicyDraft(prev => ({ ...prev, monthlyReleaseDay: e.target.value }))} className={T.input}/><p className={`text-[9px] ${T.muted} mt-1`}>Day of the previous month the next monthly schedule normally comes out. This does not publish it automatically.</p></div> : <div><label className={T.label}>{t('requestOff.releaseLeadDays')}</label><input data-testid="time-off-release-lead-days" type="number" min="0" max="60" value={timeOffPolicyDraft.nonMonthlyReleaseLeadDays} onChange={e => setTimeOffPolicyDraft(prev => ({ ...prev, nonMonthlyReleaseLeadDays: e.target.value }))} className={T.input}/><p className={`text-[9px] ${T.muted} mt-1`}>How many days before the schedule period starts the schedule normally comes out. This does not auto-publish.</p></div>}
+          <div className="rounded-xl border border-[#2A353D] bg-[#12161A] p-3 text-xs font-bold text-slate-300">{(() => { const sample = `${calMonth}-01`; const release = timeOffPolicyReleaseDateForRequestDate(sample, timeOffPolicyDraft, workspaceScheduleSettings); const cutoff = timeOffPolicyCutoffDateForRequestDate(sample, timeOffPolicyDraft, workspaceScheduleSettings); return <><div className="text-white font-black mb-1">{formatDisplayMonth(calMonth)} Preview</div><div>Planned release: {release ? formatDisplayDate(release) : 'Not available'}</div><div>Request cutoff: {cutoff ? formatDisplayDate(cutoff) : 'Not available'}</div></>; })()}</div>
+        </div>
+        <div className="border-t border-[#2A353D] pt-4 space-y-3"><div><div className="text-xs font-black text-white">{t('requestOff.blackoutDates')}</div><div className={`text-[10px] font-bold ${T.muted}`}>{t('requestOff.blackoutHelp')}</div></div><div className="grid grid-cols-1 md:grid-cols-4 gap-2"><input type="date" value={blackoutStart} onChange={e=>setBlackoutStart(e.target.value)} className={T.input}/><input type="date" value={blackoutEnd} onChange={e=>setBlackoutEnd(e.target.value)} className={T.input}/><input type="text" value={blackoutReason} onChange={e=>setBlackoutReason(e.target.value)} maxLength={160} className={T.input} placeholder={t('requestOff.reasonOptional')}/><button type="button" onClick={addBlackoutDraft} className={T.btnAlt}>{t('requestOff.addBlackout')}</button></div><div className="space-y-2">{(timeOffPolicyDraft.blackouts || []).length === 0 && <div className={`text-[10px] font-bold ${T.muted}`}>{t('requestOff.noBlackouts')}</div>}{(timeOffPolicyDraft.blackouts || []).map(row => <div key={row.id} className="flex items-center justify-between gap-3 rounded-xl border border-[#2A353D] bg-[#12161A] p-3"><div className="text-xs font-bold text-slate-300"><div className="text-white">{i18nDate(row.startDate)}{row.endDate !== row.startDate ? ` through ${i18nDate(row.endDate)}` : ''}</div>{row.reason && <div className={`text-[10px] ${T.muted} mt-0.5`}>{row.reason}</div>}</div><button type="button" onClick={() => removeBlackoutDraft(row.id)} className="text-slate-400 hover:text-red-400 p-2" aria-label={t('requestOff.removeBlackout')}><Trash2 size={15}/></button></div>)}</div></div>
+        <button type="button" onClick={saveTimeOffPolicy} disabled={policySaving} className={`${T.btn} disabled:opacity-50`}>{policySaving ? t('requestOff.savingPolicy') : t('requestOff.savePolicy')}</button>
+      </div>}
       <div className={`${T.card} p-4 request-off-workflow-panel`}>
-        <div className="flex flex-col xl:flex-row xl:items-start xl:justify-between gap-3 mb-3"><div><h3 className="font-black text-white">Request-Off Workflow</h3><p className={`text-xs font-bold ${T.muted}`}>Default view only shows items that need attention. Published and archived requests stay searchable.</p>{canManage && workflowApiStatus === 'loading' && <p className="text-[10px] font-bold text-blue-300 mt-1">Checking all workspace Request Off records...</p>}{canManage && workflowApiStatus === 'error' && <p className="text-[10px] font-bold text-amber-300 mt-1">Some legacy Request Off records could not be double-checked. Refresh and try again.</p>}</div>{canManage && <div className="request-off-bulk-grid"><button onClick={approveAllVisible} disabled={!!bulkBusy} className={`${T.btnAlt} disabled:opacity-50`}>Approve All Visible</button><button onClick={archiveAllVisible} disabled={!!bulkBusy} className={`${T.btnAlt} disabled:opacity-50`}>Archive All Visible</button>{selectedRequestIds.length > 0 && <button onClick={archiveSelected} disabled={!!bulkBusy} className={`${T.btnAlt} disabled:opacity-50 request-off-span-all`}>Archive selected ({selectedRequestIds.length})</button>}</div>}</div>
+        <div className="flex flex-col xl:flex-row xl:items-start xl:justify-between gap-3 mb-3"><div><h3 className="font-black text-white">{t('requestOff.workflow')}</h3><p className={`text-xs font-bold ${T.muted}`}>{t('requestOff.workflowHelp')}</p>{canManage && workflowApiStatus === 'loading' && <p className="text-[10px] font-bold text-blue-300 mt-1">Checking all workspace Request Off records...</p>}{canManage && workflowApiStatus === 'error' && <p className="text-[10px] font-bold text-amber-300 mt-1">Some legacy Request Off records could not be double-checked. Refresh and try again.</p>}</div>{canManage && <div className="request-off-bulk-grid"><button onClick={approveAllVisible} disabled={!!bulkBusy} className={`${T.btnAlt} disabled:opacity-50`}>{t('requestOff.approveVisible')}</button><button onClick={archiveAllVisible} disabled={!!bulkBusy} className={`${T.btnAlt} disabled:opacity-50`}>{t('requestOff.archiveVisible')}</button>{selectedRequestIds.length > 0 && <button onClick={archiveSelected} disabled={!!bulkBusy} className={`${T.btnAlt} disabled:opacity-50 request-off-span-all`}>{t('requestOff.archiveSelected', { count: selectedRequestIds.length })}</button>}</div>}</div>
         <div className="request-off-control-group"><div className="request-off-control-label">Status</div><div className="request-off-status-grid">{[['needs-review','Needs Review'],['upcoming-approved','Upcoming Approved'],['archived','Published/Archived'],['all','All']].map(([id,label]) => <button key={id} onClick={() => setViewFilter(id)} className={viewFilter === id ? T.btn : T.btnAlt}>{label}</button>)}</div></div>
         <div className="request-off-control-group"><div className="request-off-control-label">Date</div><div className="request-off-date-grid">{[['all','All Dates'],['this-week','This Week'],['next-week','Next Week'],['this-month','This Month'],['next-month','Next Month'],['custom','Custom Range']].map(([id,label]) => <button key={id} onClick={() => setDateFilter(id)} className={`${dateFilter === id ? T.btn : T.btnAlt} ${id === 'custom' ? 'request-off-custom-range' : ''}`}>{label}</button>)}</div>{dateFilter === 'custom' && <div className="request-off-custom-dates"><input type="date" value={customStart} onChange={e=>setCustomStart(e.target.value)} className={T.input}/><input type="date" value={customEnd} onChange={e=>setCustomEnd(e.target.value)} className={T.input}/></div>}</div>
-        {canManage && <div className="request-off-employee-filter"><label className="request-off-control-label" htmlFor="request-off-employee-filter">Employee</label><select id="request-off-employee-filter" value={employeeFilter} onChange={e=>setEmployeeFilter(e.target.value)} className={`${T.input} request-off-employee-select`} aria-label="Filter Request Off by employee"><option value="">All Employees</option>{requestOffEmployeeOptions.map(group => <optgroup key={group.role} label={group.role}>{group.rows.map(row => <option key={row.value} value={row.value}>{row.label}</option>)}</optgroup>)}</select></div>}
-        <div className="space-y-2 max-h-[520px] overflow-y-auto custom-scrollbar">{filteredRequests.length === 0 && <FriendlyEmpty title="No requests here" text="Switch filters to review history or upcoming approvals." />}{filteredRequests.map(r => <RequestCard key={r.id} r={r}/>)}</div>
+        {canManage && <div className="request-off-employee-filter"><label className="request-off-control-label" htmlFor="request-off-employee-filter">{t('requestOff.employee')}</label><select id="request-off-employee-filter" value={employeeFilter} onChange={e=>setEmployeeFilter(e.target.value)} className={`${T.input} request-off-employee-select`} aria-label="Filter Request Off by employee"><option value="">{t('requestOff.allEmployees')}</option>{requestOffEmployeeOptions.map(group => <optgroup key={group.role} label={group.role}>{group.rows.map(row => <option key={row.value} value={row.value}>{row.label}</option>)}</optgroup>)}</select></div>}
+        <div className="space-y-2 max-h-[520px] overflow-y-auto custom-scrollbar">{filteredRequests.length === 0 && <FriendlyEmpty title={t('requestOff.noRequests')} text={t('requestOff.noRequestsHelp')} />}{filteredRequests.map(r => <RequestCard key={r.id} r={r}/>)}</div>
       </div>
       {canManage && <div className={`${T.card} p-4`}><h3 className="font-black text-white text-sm mb-2">Master Override Log</h3><p className={`text-xs font-bold ${T.muted}`}>Manager approvals, denials, archives, restores, cancellations, and published-schedule processing are preserved in audit logs and request history.</p></div>}
     </div>
@@ -5436,6 +5766,7 @@ const ScheduleWarningCard = ({ warning, appUser }) => {
 };
 
 const ScheduleCopilot = ({ period, periodLabel = '', users = [], shifts = [], timeOffRequests = [], availabilityRecords = [], availabilityDataState = null, scheduleDataState = null, addToast, appUser, onReviewPublish = null }) => {
+  const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const copilotReadEnabled = Boolean(open && appUser?.restaurantId);
   const templateLimit = 120;
@@ -5632,7 +5963,7 @@ const ScheduleCopilot = ({ period, periodLabel = '', users = [], shifts = [], ti
         const canonicalFields = buildCanonicalScheduleCreateFields(date, appUser.restaurantId);
         recordScheduleOperationDiagnostic('canonicalDatePatches');
         const copiedIdentity = buildScheduleIdentityFields(matchedPerson || { ...s, id: '' }, s);
-        await addDoc(collection(db, 'shifts'), { ...canonicalFields, ...copiedIdentity, role: canonicalScheduleRole(s.role || users.find(u => u.id === s.employeeId)?.role || 'Staff'), startTime: s.startTime, endTime: s.endTime, isPublished: false, publishState: 'draft', scheduleBuilderDraft: true, readyToPublish: true, copiedFrom: s.id, createdAt: nowIso, updatedAt: nowIso, createdBy: appUser.id || 'copy-week', updatedBy: appUser.id || 'copy-week', source: 'schedule_copy_week', assignmentSource: 'schedule_copy_week' });
+        await addDoc(collection(db, 'shifts'), { ...canonicalFields, ...copiedIdentity, role: canonicalScheduleRole(s.role || users.find(u => u.id === s.employeeId)?.role || 'Staff'), ...copyRosterRoleFields(s), startTime: s.startTime, endTime: s.endTime, isPublished: false, publishState: 'draft', scheduleBuilderDraft: true, readyToPublish: true, copiedFrom: s.id, createdAt: nowIso, updatedAt: nowIso, createdBy: appUser.id || 'copy-week', updatedBy: appUser.id || 'copy-week', source: 'schedule_copy_week', assignmentSource: 'schedule_copy_week' });
         recordScheduleOperationDiagnostic('directSdkWrites');
         recordScheduleOperationDiagnostic('totalScheduleDocumentsWritten');
         made++;
@@ -5732,14 +6063,14 @@ const ScheduleCopilot = ({ period, periodLabel = '', users = [], shifts = [], ti
   if (!open) return (
     <div className={`${T.card} schedule-copilot-launcher p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-[#D4A381]/30`}>
       <div className="min-w-0">
-        <div className="text-[10px] uppercase tracking-widest font-black text-[#D4A381]">Schedule Tools</div>
+        <div className="text-[10px] uppercase tracking-widest font-black text-[#D4A381]">{t('builder.scheduleTools')}</div>
         <div className="text-sm font-black text-white mt-0.5">{draftCount} drafts ready</div>
         <div className="schedule-tools-period-label text-xs text-slate-400 font-bold mt-0.5">{activePeriodLabel} • Counts and tools use this schedule period.</div>
       </div>
       <div className="flex flex-wrap sm:justify-end gap-1.5 flex-shrink-0">
-        <button type="button" aria-label="Open Copilot Tools" title="Open Schedule Tools" onClick={() => openCopilotTool('targets')} className={`${T.btnAlt} flex items-center justify-center gap-2`}><ChefHat size={16}/> Open Schedule Tools</button>
-        <button type="button" aria-label={editingTemplateId ? 'Edit Template' : 'Create Template'} title={editingTemplateId ? 'Edit Template' : 'Create Template'} onClick={() => openCopilotTool('template-editor')} className={T.btnAlt}>{editingTemplateId ? 'Edit Template' : 'Create Template'}</button>
-        <button type="button" aria-label="Drag Board" title="Drag Board" onClick={() => openCopilotTool('drag')} className={T.btnAlt}>Drag Board</button>
+        <button type="button" aria-label="Open Copilot Tools" title="Open Schedule Tools" onClick={() => openCopilotTool('targets')} className={`${T.btnAlt} flex items-center justify-center gap-2`}><ChefHat size={16}/> {t('builder.openTools')}</button>
+        <button type="button" aria-label={editingTemplateId ? 'Edit Template' : 'Create Template'} title={editingTemplateId ? 'Edit Template' : 'Create Template'} onClick={() => openCopilotTool('template-editor')} className={T.btnAlt}>{editingTemplateId ? t('builder.editTemplate') : t('builder.createTemplate')}</button>
+        <button type="button" aria-label="Drag Board" title="Drag Board" onClick={() => openCopilotTool('drag')} className={T.btnAlt}>{t('builder.dragBoard')}</button>
       </div>
     </div>
   );
@@ -5748,17 +6079,17 @@ const ScheduleCopilot = ({ period, periodLabel = '', users = [], shifts = [], ti
     <div className={`${T.card} schedule-copilot-compact p-3 space-y-2 border-[#D4A381]/30`} aria-label="Open Copilot Tools" title="Open Copilot Tools" data-chaos-current-state="true">
       <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-2 border-b border-[#2A353D] pb-2">
         <div className="min-w-0">
-          <div className="text-[9px] uppercase tracking-widest font-black text-[#D4A381]">Schedule Tools</div>
+          <div className="text-[9px] uppercase tracking-widest font-black text-[#D4A381]">{t('builder.scheduleTools')}</div>
           <h3 className="text-sm sm:text-base font-black text-white leading-tight">Templates, coverage gaps, warnings, and publish review</h3>
           <p className="schedule-tools-period-label text-[10px] text-slate-400 font-bold leading-snug mt-0.5">{activePeriodLabel} • Counts and actions use this schedule period.</p>
         </div>
-        <div className="flex flex-wrap gap-1.5 flex-shrink-0"><button onClick={copyPreviousWeek} disabled={periodActionBlocked} title={`Copies the prior week into ${formatDisplayDate(copyWeekPeriod.start)} through ${formatDisplayDate(copyWeekPeriod.end)}`} className={`${T.btnAlt} disabled:opacity-50`}>Copy Previous Week</button><button aria-label="Smart Fill" onClick={smartFill} disabled={periodActionBlocked} className={`${T.btnAlt} disabled:opacity-50`}>Fill Coverage Gaps</button><button onClick={reviewAndPublish} disabled={periodActionBlocked} className={`${T.btn} disabled:opacity-50`}>Review & Publish</button><button onClick={() => setOpen(false)} className={T.btnAlt}>Close Tools</button></div>
+        <div className="flex flex-wrap gap-1.5 flex-shrink-0"><button onClick={copyPreviousWeek} disabled={periodActionBlocked} title={`Copies the prior week into ${formatDisplayDate(copyWeekPeriod.start)} through ${formatDisplayDate(copyWeekPeriod.end)}`} className={`${T.btnAlt} disabled:opacity-50`}>{t('builder.copyPreviousWeek')}</button><button aria-label="Smart Fill" onClick={smartFill} disabled={periodActionBlocked} className={`${T.btnAlt} disabled:opacity-50`}>{t('builder.fillCoverageGaps')}</button><button onClick={reviewAndPublish} disabled={periodActionBlocked} className={`${T.btn} disabled:opacity-50`}>{t('builder.reviewPublish')}</button><button onClick={() => setOpen(false)} className={T.btnAlt}>{t('builder.closeTools')}</button></div>
       </div>
       {!scheduleToolsCompleteness.complete && <div className="rounded-xl border border-amber-900/50 bg-amber-900/15 px-3 py-2 text-[10px] font-bold text-amber-200" role="status">Schedule check incomplete: {scheduleToolsCompleteness.reasons.join(' • ')}. Counts may change when loading finishes; period actions are paused.</div>}
       <div className="grid grid-cols-4 gap-1.5">
         {[['Drafts',draftCount],['Missing',missingTargets.length],['Warnings',allScheduleWarnings.length],['Templates',safeTemplates.length]].map(([label,value]) => <div key={label} className="schedule-copilot-metric bg-[#12161A] border border-[#2A353D]"><span className="text-[8px] uppercase tracking-widest font-black text-slate-500">{label}</span><strong className="text-white">{value}</strong></div>)}
       </div>
-      <div className="flex gap-1.5 overflow-x-auto custom-scrollbar border-b border-[#2A353D] pb-2" role="tablist" aria-label="Schedule Builder tools" aria-orientation="horizontal">{[['targets','Coverage'],['templates','Templates'],['template-editor', editingTemplateId ? 'Edit Template' : 'Create Template'],['drag','Drag Board'],['warnings','Warnings']].map(([id,label]) => <button key={id} type="button" role="tab" aria-label={label} title={label} onClick={() => setActiveTool(id)} aria-selected={activeTool===id} data-chaos-current-state={activeTool===id ? 'true' : undefined} className={`flex-shrink-0 px-2.5 py-1.5 rounded-lg text-[9px] uppercase tracking-widest font-black ${activeTool===id ? `${T.grad} text-slate-900` : 'bg-[#12161A] text-slate-400 hover:text-white'}`}>{label}</button>)}</div>
+      <div className="flex gap-1.5 overflow-x-auto custom-scrollbar border-b border-[#2A353D] pb-2" role="tablist" aria-label="Schedule Builder tools" aria-orientation="horizontal">{[['targets',t('builder.coverage')],['templates',t('builder.templates')],['template-editor', editingTemplateId ? t('builder.editTemplate') : t('builder.createTemplate')],['drag',t('builder.dragBoard')],['warnings',t('builder.warnings')]].map(([id,label]) => <button key={id} type="button" role="tab" aria-label={label} title={label} onClick={() => setActiveTool(id)} aria-selected={activeTool===id} data-chaos-current-state={activeTool===id ? 'true' : undefined} className={`flex-shrink-0 px-2.5 py-1.5 rounded-lg text-[9px] uppercase tracking-widest font-black ${activeTool===id ? `${T.grad} text-slate-900` : 'bg-[#12161A] text-slate-400 hover:text-white'}`}>{label}</button>)}</div>
       <div className="schedule-copilot-body custom-scrollbar space-y-3">
       {activeTool === 'targets' && <div className="grid lg:grid-cols-2 gap-4"><form onSubmit={addCoverageTarget} className="bg-[#12161A] border border-[#2A353D] rounded-xl p-3 space-y-2"><h4 className="font-black text-white">Add Coverage Target</h4><p className="text-[10px] font-bold text-slate-400">Choose how many people you need for a role and time. Roles match the Staff Roster and Schedule Builder.</p><div className="grid grid-cols-2 gap-2"><select value={targetForm.dayIndex} onChange={e=>setTargetForm({...targetForm, dayIndex:e.target.value})} className={T.input}>{dayNames.map((d,i)=><option key={d} value={i}>{d}</option>)}</select><select value={targetForm.role} onChange={e=>setTargetForm({...targetForm, role:e.target.value})} className={T.input}>{scheduleRoleOptions.map(r => <option key={r} value={r}>{r}</option>)}</select><input type="time" value={targetForm.startTime} onChange={e=>setTargetForm({...targetForm, startTime:e.target.value})} className={T.input}/><input type="time" value={targetForm.endTime} onChange={e=>setTargetForm({...targetForm, endTime:e.target.value})} className={T.input}/><input type="number" min="1" value={targetForm.count} onChange={e=>setTargetForm({...targetForm, count:e.target.value})} className={T.input}/><button className={`${T.btn} py-2`}>Save Coverage Target</button></div></form><div className="space-y-2">{coverageTargets.length === 0 ? <FriendlyEmpty title="No coverage targets yet" text="Add the staffing level you want for each role and time. Fill Coverage Gaps can then create draft shifts for review."/> : coverageTargets.map(t => <div key={t.id} className="bg-[#12161A] border border-[#2A353D] rounded-xl p-3 flex justify-between items-center"><div><div className="font-black text-white">{dayNames[t.dayIndex]} • {t.role} x{t.count}</div><div className="text-xs text-slate-400 font-bold">{formatShortTime(t.startTime)} - {formatShortTime(t.endTime)}</div></div><button onClick={() => deleteDoc(doc(db,'scheduleCoverageTargets',t.id))} className="p-2 text-slate-400 hover:text-red-400"><Trash2 size={14}/></button></div>)}</div></div>}
       {activeTool === 'templates' && <div className="space-y-3"><div className="flex flex-col md:flex-row gap-2"><select value={templateId} onChange={e => setTemplateId(e.target.value)} className={`${T.input} flex-1`}><option value="">Select template to apply</option>{templateOptions.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}</select><button onClick={applyTemplate} disabled={periodActionBlocked} className={`${T.btn} py-2 disabled:opacity-50`}>{activePeriod.mode === 'weekly' ? 'Apply to Current Week' : 'Apply to Current Period'}</button><button onClick={saveCurrentWeekAsTemplate} className={T.btnAlt}>Save Current Week</button></div>{templateOptions.length === 0 ? <FriendlyEmpty title="No templates yet" text="Create a Normal Week, Packers Sunday, Fish Fry Friday, or Live Music template. Each restaurant gets its own library."/> : templateOptions.map(t => <div key={t.id} className="bg-[#12161A] border border-[#2A353D] rounded-xl p-3 flex justify-between items-center"><div><div className="font-black text-white">{t.name}</div><div className="text-xs text-slate-400 font-bold">{t.description || 'No description'} • {(t.rows || []).length} rules</div></div><div className="flex gap-2"><button onClick={() => editTemplate(t)} className={T.btnAlt}>Edit</button><button onClick={() => deleteTemplate(t)} className="px-3 py-2 rounded-xl bg-red-900/20 text-red-300 border border-red-900/50 text-xs font-black">Delete</button></div></div>)}</div>}

@@ -41,11 +41,15 @@ function loadRunMeta(fullRunDir = '') {
   const summary = summaries.length ? (readJsonIfExists(summaries[0]) || {}) : {};
   const preflight = readJsonIfExists(path.join(fullRunDir, 'environment-preflight.json')) || {};
   const sourceInventory = readJsonIfExists(path.join(fullRunDir, 'source-inventory.json')) || {};
+  const sourceIdentityStart = readJsonIfExists(path.join(fullRunDir, 'source-identity-start.json')) || {};
+  const sourceIdentityEnd = readJsonIfExists(path.join(fullRunDir, 'source-identity-end.json')) || {};
   const state = readJsonIfExists(path.join(fullRunDir, 'runner-state.json')) || {};
+  const recoveredSourceVersion = summary.sourceIdentity?.version || sourceIdentityStart.version || sourceIdentityEnd.version || '';
+  const recoveredDeployedVersion = summary.deploymentIdentityValidation?.end?.server?.version || summary.deploymentIdentityValidation?.end?.client?.version || summary.testedVersion || '';
   return {
     fullRunId: summary.runId || state.runId || path.basename(fullRunDir),
-    sourceVersion: summary.sourceVersion || preflight.sourceVersion || sourceInventory.version || sourceInventory.packageVersion || '',
-    deployedVersion: summary.deployedVersion || preflight.deployedVersion || preflight.visibleVersion || '',
+    sourceVersion: summary.sourceVersion || preflight.sourceVersion || sourceInventory.version || sourceInventory.packageVersion || recoveredSourceVersion || '',
+    deployedVersion: summary.deployedVersion || preflight.deployedVersion || preflight.visibleVersion || recoveredDeployedVersion || '',
     generatedAt: summary.generatedAt || preflight.generatedAt || state.generatedAt || '',
     firebaseProjectId: summary.firebaseProjectId || preflight.firebaseProjectId || sourceInventory.firebaseProjectId || '',
     appUrl: summary.appUrl || preflight.appUrl || '',
@@ -110,7 +114,10 @@ function collectFailedEntriesFromPlaywright(playwright = {}, meta = {}) {
 }
 
 function collectFailedEntriesFromSummary(summary = {}, meta = {}) {
-  const rows = summary?.playwright?.failedTests || [];
+  const rows = [
+    ...(Array.isArray(summary?.playwright?.failedTests) ? summary.playwright.failedTests : []),
+    ...(Array.isArray(summary?.playwright?.timedOutTests) ? summary.playwright.timedOutTests : []),
+  ];
   const entries = [];
   for (const row of rows) {
     const fullTitle = String(row.title || '');
@@ -194,20 +201,49 @@ function listSummaryFiles(fullRunDir = '') {
     .sort((a, b) => fs.statSync(b).mtimeMs - fs.statSync(a).mtimeMs);
 }
 
+function summaryPlaywrightCounts(summary = {}) {
+  const p = summary?.playwright || {};
+  const failed = Number(p.failed || 0);
+  const timedOut = Number(p.timedOut || 0);
+  const total = Number(p.totalResults || p.total || 0);
+  return {
+    total: Number.isFinite(total) ? total : 0,
+    passed: Number.isFinite(Number(p.passed)) ? Number(p.passed) : 0,
+    failed: Number.isFinite(failed) ? failed : 0,
+    timedOut: Number.isFinite(timedOut) ? timedOut : 0,
+    skipped: Number.isFinite(Number(p.skipped)) ? Number(p.skipped) : 0,
+    unexpected: Number.isFinite(Number(p.unexpected)) ? Number(p.unexpected) : ((Number.isFinite(failed) ? failed : 0) + (Number.isFinite(timedOut) ? timedOut : 0)),
+  };
+}
+
+function completedPlaywrightEvidence(dir = '') {
+  const playwright = readJsonIfExists(path.join(dir, 'playwright-report.json'));
+  if (playwright && Array.isArray(playwright.suites)) {
+    const counts = countPlaywrightResults(playwright);
+    if (counts.total > 0) return { ok: true, source: 'playwright-report', counts, playwright, summary: null };
+  }
+  const summaries = listSummaryFiles(dir);
+  const summary = summaries.length ? (readJsonIfExists(summaries[0]) || {}) : {};
+  const counts = summaryPlaywrightCounts(summary);
+  const structuredRows = Array.isArray(summary?.playwright?.failedTests) && Array.isArray(summary?.playwright?.timedOutTests);
+  if (counts.total > 0 && structuredRows) return { ok: true, source: 'structured-summary', counts, playwright: null, summary, summaryPath: summaries[0] };
+  return { ok: false, source: playwright ? 'zero-playwright-report' : 'missing-playwright-report', counts, playwright: playwright || null, summary, summaryPath: summaries[0] || '' };
+}
+
 function hasCompletedReleaseGateEvidence(dir = '') {
   if (!dir || !fs.existsSync(dir)) return { ok: false, reason: 'missing-run-dir', counts: countPlaywrightResults({}) };
-  const playwright = readJsonIfExists(path.join(dir, 'playwright-report.json'));
-  if (!playwright || !Array.isArray(playwright.suites)) return { ok: false, reason: 'missing-playwright-report', counts: countPlaywrightResults({}) };
-  const counts = countPlaywrightResults(playwright);
-  if (counts.total <= 0) return { ok: false, reason: 'zero-playwright-results', counts };
   const state = readJsonIfExists(path.join(dir, 'runner-state.json')) || {};
+  const evidence = completedPlaywrightEvidence(dir);
+  if (!evidence.ok) return { ok: false, reason: evidence.source === 'zero-playwright-report' ? 'zero-playwright-results' : 'missing-playwright-report-or-structured-summary', counts: evidence.counts };
+  const counts = evidence.counts;
   if (state.playwrightStarted !== true) return { ok: false, reason: 'playwright-not-started', counts };
   const summaries = listSummaryFiles(dir);
   if (!summaries.length) return { ok: false, reason: 'missing-completed-summary', counts };
   if (String(state.blockingReason || '').trim()) return { ok: false, reason: 'runner-blocked-before-normal-collection', counts };
   const phase = String(state.currentPhase || '').toLowerCase();
   if (['created', 'playwright'].includes(phase)) return { ok: false, reason: `abandoned-mid-${phase}`, counts };
-  return { ok: true, reason: 'latest compatible completed Playwright run', counts, summaryPath: summaries[0] };
+  if (state.blockedBeforeTestExecution === true || state.anyTestsRan === false) return { ok: false, reason: 'runner-did-not-complete-test-execution', counts };
+  return { ok: true, reason: `latest compatible completed Playwright run (${evidence.source})`, evidenceSource: evidence.source, counts, summaryPath: summaries[0] };
 }
 
 function getManifestBaselineId(manifest = {}) {
@@ -664,7 +700,11 @@ function selectFailedOnlyManifestForCurrentRun({ currentRunDir = getRunDir(), re
     manifest.newTestsCount = 0;
   }
   if (manifest.totalSelected <= 0 && includeNewInventory) {
-    throw new Error('No failed or new Playwright tests remain. Run the complete release gate.');
+    // A clean baseline plus no newly discovered Playwright identities is a valid
+    // delta result when current-release targeted regressions have already run.
+    // Do not manufacture browser work just to make a scoped gate non-empty.
+    manifest.noFailedOrNewPlaywrightTestsRemain = true;
+    manifest.note = 'No failed, timed-out, or new Playwright identities remain for this delta. Current-release targeted regressions still run before the delta gate.';
   }
   manifest.lineageMode = lineageMode;
   if (lineageMode === 'focused') manifest.selectionSource = selectionSource;
@@ -739,8 +779,7 @@ function findMostRecentCompletedFullRun({ currentRunDir = getRunDir(), resultsRo
     const completed = hasCompletedReleaseGateEvidence(dir);
     if (!completed.ok) return false;
     const meta = loadRunMeta(dir);
-    const generated = generateFailedOnlyManifestFromRun(dir, { write: false, validateBaseline: false });
-    return generated.selected.length > 0;
+    return Boolean(meta.sourceVersion && meta.deployedVersion && meta.sourceVersion === meta.deployedVersion);
   }) || '';
 }
 
@@ -750,7 +789,9 @@ function buildFailedOnlyManifest(fullRunDir, { target = {}, currentRunDir = getR
   const meta = loadRunMeta(fullRunDir);
   const selected = playwright ? collectFailedEntriesFromPlaywright(playwright, meta) : collectFailedEntriesFromSummary(meta.summary, meta);
   return {
-    ok: selected.length > 0,
+    // A clean full baseline with zero FAIL/TIMEOUT rows is still a valid delta baseline.
+    // Delta then selects only tests that are new relative to that completed full inventory.
+    ok: runHasPlaywrightEvidence(fullRunDir),
     manifestSchemaVersion: MANIFEST_SCHEMA_VERSION,
     generatedAt: new Date().toISOString(),
     source: 'dynamic-most-recent-full-playwright-report',
@@ -808,13 +849,15 @@ function validateBaselineManifest(manifest, { currentRunDir = getRunDir() } = {}
   if (baselineDir && path.resolve(baselineDir) === path.resolve(currentRunDir || '')) errors.push('Baseline run directory is the current failed-only run directory.');
   if (baselineDir && isFailedOnlyRun(baselineDir)) errors.push('Baseline run is a failed-only run; expected a completed full release-gate run.');
   if (baselineState.playwrightStarted === false) errors.push('Baseline Playwright execution did not start.');
-  if (!baselinePlaywright && !(manifest.selected || []).length) errors.push('Baseline selected zero failed or timed-out tests.');
+  const baselineEvidence = baselineDir && fs.existsSync(baselineDir) ? completedPlaywrightEvidence(baselineDir) : { ok: false, counts: countPlaywrightResults({}) };
+  if (!baselineEvidence.ok) errors.push('Baseline has zero tests of usable Playwright evidence: neither an executed Playwright report nor a structured completed Playwright summary is available.');
+  if (baselineEvidence.ok && baselineEvidence.counts.total <= 0) errors.push('Baseline Playwright evidence contains zero executed test results.');
   const baselineSource = manifest.baselineSourceVersion || manifest.sourceVersion || '';
   const baselineDeployed = manifest.baselineDeployedVersion || manifest.deployedVersion || '';
   if (!baselineSource) errors.push('Baseline source version is missing.');
   if (!baselineDeployed) errors.push('Baseline deployed version is missing.');
   if (baselineSource && baselineDeployed && baselineSource !== baselineDeployed) errors.push(`Baseline source/deployed versions do not match: ${baselineSource} vs ${baselineDeployed}.`);
-  if (!Array.isArray(manifest.selected) || manifest.selected.length === 0) errors.push('Baseline selected zero failed or timed-out tests.');
+  if (!Array.isArray(manifest.selected)) errors.push('Baseline failed/timed-out selection is malformed.');
   if (manifest.selected?.some(row => !row.specPath && !row.spec)) errors.push('One or more selected tests are missing a spec path.');
   if (manifest.selected?.some(row => !(row.title || row.exactTestTitle))) errors.push('One or more selected tests are missing an exact title.');
   if (manifest.selected?.some(row => !(row.project || row.projectName || (Array.isArray(row.projects) && row.projects.length)))) errors.push('One or more selected tests are missing a Playwright project.');

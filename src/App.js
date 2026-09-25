@@ -16,6 +16,7 @@ import { FEATURE_KEYS } from './config/plans';
 import { LoginScreen } from './features/auth';
 import * as runtimeReportStateModule from './core/runtimeReportState.cjs';
 import { initChaosPostHog, identifyChaosPostHogUser, resetChaosPostHogIdentity, trackChaosPageView, trackChaosPostHogEvent, trackChaosRuntimeError } from './core/posthogClient';
+import { I18nProvider, LANGUAGE_STORAGE_KEY, normalizeAppLanguage } from './core/i18n';
 
 const resolveCommonJsModule = (moduleValue) => {
   const candidate = moduleValue?.default && typeof moduleValue.default === 'object' ? moduleValue.default : moduleValue;
@@ -145,7 +146,7 @@ const hardRecoverRuntimeSection = async (reason = 'manual') => {
 
 const getRuntimeReportContext = (error, extra = {}, kind = 'section-runtime-error') => {
   const route = typeof window !== 'undefined' ? `${window.location.pathname}${window.location.search}` : '';
-  const activeTab = typeof window !== 'undefined' ? (new URLSearchParams(window.location.search).get('tab') || '') : '';
+  const activeTab = String(extra.activeTab || (typeof window !== 'undefined' ? (new URLSearchParams(window.location.search).get('tab') || '') : '')).slice(0, 120);
   const viewport = typeof window !== 'undefined' ? `${window.innerWidth}x${window.innerHeight}` : '';
   const deployedVersion = typeof window !== 'undefined' ? (window.__CHAOS_VISIBLE_VERSION || window.__CHAOS_DEPLOYED_VERSION || '') : '';
   return {
@@ -525,7 +526,7 @@ class AppSurfaceErrorBoundary extends React.Component {
     const fallbackReportId = createFallbackReportId(chunkProblem ? 'chunk' : 'section');
     this.setState({ fallbackReportId, reportId: fallbackReportId });
     const reporter = chunkProblem ? reportRuntimeChunkFailure : reportRuntimeSectionError;
-    reporter(error, { source: chunkProblem ? 'react_error_boundary_chunk' : 'react_error_boundary', componentStack: info?.componentStack || '', fallbackReportId }).then(reportId => {
+    reporter(error, { source: chunkProblem ? 'react_error_boundary_chunk' : 'react_error_boundary', componentStack: info?.componentStack || '', fallbackReportId, activeTab: this.props.surfaceContext || '' }).then(reportId => {
       if (reportId) this.setState({ reportId });
     });
   }
@@ -1569,6 +1570,19 @@ if (liveAppUser && clientData) {
      };
   }
   setActiveTimeFormat(liveAppUser?.preferences?.timeFormat || '12h');
+  const appLanguage = normalizeAppLanguage(
+    liveAppUser?.preferences?.language ||
+    appUser?.preferences?.language ||
+    (typeof window !== 'undefined' ? window.localStorage?.getItem(LANGUAGE_STORAGE_KEY) : '') ||
+    'en'
+  );
+  useEffect(() => {
+    try { window.localStorage?.setItem(LANGUAGE_STORAGE_KEY, appLanguage); } catch (_) {}
+    if (typeof document !== 'undefined') {
+      document.documentElement.lang = appLanguage === 'es' ? 'es' : 'en';
+      document.documentElement.dataset.chaosLanguage = appLanguage;
+    }
+  }, [appLanguage]);
   const canSeeRestaurantAdminAlerts = Boolean(liveAppUser && !liveAppUser.isDemo && (
     liveAppUser.isSuperAdmin || liveAppUser.isOwner || liveAppUser.owner || liveAppUser.accountOwner ||
     liveAppUser.workspaceOwner || liveAppUser.isAdmin || liveAppUser.permissions?.settings || liveAppUser.permissions?.team
@@ -2025,10 +2039,11 @@ if (liveAppUser && clientData) {
     } else if (normalized === 'published') {
       setActiveScheduleSubTab(defaultScheduleSubTabForTopLevelTab(normalized));
     }
+    // Top-level navigation must commit synchronously. Deferring this state change can
+    // leave the heavy Schedule Builder tree mounted after the drawer closes, making
+    // every subsequent tab tap appear to be ignored on mobile.
     activeTabStateRef.current = normalized;
-    const commit = () => setActiveTabState(normalized);
-    if (typeof React.startTransition === 'function') React.startTransition(commit);
-    else commit();
+    setActiveTabState(normalized);
   }, []);
 
   const disarmPwaBackExit = useCallback(() => {
@@ -3232,7 +3247,7 @@ What I clicked / expected:
     );
   }
 
-  if (!liveAppUser) return <div className="non-admin-controls-compact"><LoginScreen users={displayUsers} setAppUser={setAppUser} addToast={addToast} /></div>;
+  if (!liveAppUser) return <I18nProvider language={appLanguage}><div className="non-admin-controls-compact"><LoginScreen users={displayUsers} setAppUser={setAppUser} addToast={addToast} /></div></I18nProvider>;
 
   const scheduleToolsDataState = {
     workspaceId: rId,
@@ -3393,7 +3408,8 @@ What I clicked / expected:
   const appThemeStyle = { '--chaos-accent': appAccentColor };
 
 return (
-    <div style={appThemeStyle} onClickCapture={blockDemoMutation} onSubmitCapture={blockDemoMutation} className={`desktop-pro-shell ui-v13-polished ui-v12-compact cockpit-shell ${activeTabState === 'godmode' ? '' : 'non-admin-controls-compact'} kitchen-simple-shell ui-density-${liveAppUser?.preferences?.uiDensity || displayClientData?.systemSettings?.uiDensity || 'compact'} recipe-density-${liveAppUser?.preferences?.recipeDensity || displayClientData?.systemSettings?.recipeCardDensity || 'tight'} motion-${liveAppUser?.preferences?.motionMode || displayClientData?.systemSettings?.cockpitLights || 'normal'} min-h-screen font-sans flex flex-col w-full max-w-[100vw] ${T.bg}`}>
+    <I18nProvider language={appLanguage}>
+    <div data-active-tab={activeTabState} style={appThemeStyle} onClickCapture={blockDemoMutation} onSubmitCapture={blockDemoMutation} className={`desktop-pro-shell ui-v13-polished ui-v12-compact cockpit-shell ${activeTabState === 'godmode' ? '' : 'non-admin-controls-compact'} kitchen-simple-shell ui-density-${liveAppUser?.preferences?.uiDensity || displayClientData?.systemSettings?.uiDensity || 'compact'} recipe-density-${liveAppUser?.preferences?.recipeDensity || displayClientData?.systemSettings?.recipeCardDensity || 'tight'} motion-${liveAppUser?.preferences?.motionMode || displayClientData?.systemSettings?.cockpitLights || 'normal'} min-h-screen font-sans flex flex-col w-full max-w-[100vw] ${T.bg}`}>
       
       {/* GHOST / DEMO MODE BANNER */}
       {ghostTenant && (
@@ -3677,6 +3693,7 @@ return (
           key={`${activeTabState}-${liveAppUser?.restaurantId || 'no-restaurant'}`}
           resetKey={`${activeTabState}-${liveAppUser?.restaurantId || 'no-restaurant'}-${CURRENT_VERSION}-${surfaceRetryKey}`}
           onRetry={() => setSurfaceRetryKey(value => value + 1)}
+          surfaceContext={`${activeTabState}${['schedule','published'].includes(activeTabState) ? `/${activeScheduleSubTab}` : ''}`}
         >
           <React.Suspense fallback={<RouteLoading />} >
             <React.Fragment key={`${activeTabState}-${liveAppUser?.restaurantId || 'no-restaurant'}-${surfaceRetryKey}`}>
@@ -3702,5 +3719,6 @@ return (
         <span className="text-slate-600 font-bold text-[8px] tracking-widest uppercase mt-1">© 2026 Chilton App Works LLC</span>
       </div>
     </div>
+    </I18nProvider>
   );
 }

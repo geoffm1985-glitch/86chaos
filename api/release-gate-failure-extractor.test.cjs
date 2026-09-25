@@ -114,3 +114,18 @@ test('node failure extractor reports real process fatal errors before tests', ()
   const failure = firstUsefulFailureFromOutput({ status: 1, stdout: '', stderr: output });
   assert.match(failure, /SyntaxError: Unexpected token/);
 });
+
+
+test('timeout exit 124 takes precedence over successful TAP fail-zero summaries', () => {
+  const output = [
+    'TAP version 13',
+    'ℹ tests 19',
+    'ℹ pass 19',
+    'ℹ fail 0',
+    '[2026-09-21T07:01:44.364Z] TIMED OUT Schedule publication module and UI tests elapsed=901s timeout=900s',
+  ].join('\n');
+  const failure = firstUsefulFailureFromOutput({ status: 124, stdout: output, stderr: '' });
+  assert.match(failure, /TIMED OUT Schedule publication module and UI tests/);
+  assert.match(failure, /timeout=900s/);
+  assert.doesNotMatch(failure, /fail 0/);
+});

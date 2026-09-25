@@ -27,7 +27,9 @@ test('active Month View uses a readable vector PDF and legacy TabMonth keeps its
   const pdf = fs.readFileSync(path.join(root, 'src/core/schedulePdf.js'), 'utf8');
   assert.match(pdf, /PAGE_WIDTH = 792/);
   assert.match(pdf, /PAGE_HEIGHT = 612/);
-  assert.match(pdf, /MIN_FONT_SIZE = 8/);
-  assert.match(pdf, /detailPage = document\.addPage/);
+  assert.match(pdf, /MIN_FONT_SIZE = 6\.5/);
+  assert.match(pdf, /candidateSizes = \[8, 7\.5, 7, MIN_FONT_SIZE\]/, 'active PDF prefers readable 8pt text and only shrinks when needed');
+  assert.match(pdf, /detailPage\s*=\s*document\.addPage/, 'dense Month PDFs retain all shifts on overflow detail pages instead of clipping or failing');
+  assert.match(pdf, /detailLabel/, 'overflow detail pages retain role-aware full shift text');
   assertReadableOnePagePrintCss(tabMonth, 'legacy TabMonth print view');
 });
