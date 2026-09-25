@@ -38,6 +38,14 @@ test('shared mutation safety guard rejects production hosts and projects before 
   assert.equal(assertMutationSafety({ env: { ...safeEnv, APP_URL: '' }, projectId: 'chaos-test-d1601', runId, adminCredentialPresent: true }).ok, false);
 });
 
+test('approved testing aliases are not classified as production and remain mutation-safe', () => {
+  for (const url of ['https://testing.86chaos.com', 'https://experimental.86chaos.com']) {
+    assert.equal(isProductionHost(parseHost(url)), false, url);
+    const result = assertMutationSafety({ env: { ...safeEnv, APP_URL: url }, projectId: 'chaos-test-d1601', runId, adminCredentialPresent: true });
+    assert.equal(result.ok, true, result.errors.join('\n'));
+  }
+});
+
 test('production hostname detection uses hostname boundaries', () => {
   assert.equal(isProductionHost(parseHost('https://app.86chaos.com/path?x=1')), true);
   assert.equal(isProductionHost(parseHost('https://evil86chaos.com.example.test')), false);

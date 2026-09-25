@@ -1,16 +1,16 @@
 {
-  "version": "16.0.237",
-  "name": "86 Chaos 16.0.237",
-  "build": "16.0.237",
-  "label": "86 Chaos 16.0.237",
+  "version": "16.0.238",
+  "name": "86 Chaos 16.0.238",
+  "build": "16.0.238",
+  "label": "86 Chaos 16.0.238",
   "releasedAt": "2026-09-25T00:00:00.000Z",
-  "releaseTitle": "Native Backup Watchdog Robustness and Deployment Identity Repair",
+  "releaseTitle": "Testing Alias Release-Gate Safety Repair",
   "notes": [
-    "Hardens native Firestore backup verification with bounded Google Admin API timeouts and pagination limits.",
-    "Synchronizes deployed testing release identity so the app, API, Help metadata, version endpoint, and build metadata advance together.",
-    "Adds release-gate and Play Store regression coverage for deployed version parity so a READY deployment cannot silently present a stale app release identity."
+    "Recognizes testing.86chaos.com and experimental.86chaos.com as explicit non-production release-gate aliases.",
+    "Preserves fail-closed protection for app.86chaos.com, 86chaos.com, www.86chaos.com, unknown 86chaos subdomains, retired Vercel projects, and production Firebase.",
+    "Adds Node and Play Store release-gate regression coverage for custom testing-alias mutation safety."
   ],
-  "title": "86 Chaos 16.0.237",
-  "summary": "Hardens backup diagnostics and repairs stale testing deployment identity.",
-  "description": "Adds bounded native-backup verification and synchronizes the testing app release identity across client, API, Help, package, and deployed version metadata."
+  "title": "86 Chaos 16.0.238",
+  "summary": "Repairs release-gate testing-alias classification without weakening production safeguards.",
+  "description": "Allows the known testing and experimental aliases through release-gate target validation while keeping production and unknown custom 86 Chaos hosts fail-closed."
 }

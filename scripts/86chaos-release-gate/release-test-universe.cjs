@@ -18,6 +18,7 @@ const RELEASE_CRITICAL_SPECS = Object.freeze([
   'tests/86chaos-release-gate/36-restaurant-brain.spec.cjs',
   'tests/86chaos-release-gate/37-native-backup-watchdog-hardening.spec.cjs',
   'tests/86chaos-release-gate/38-release-identity-deployment-parity.spec.cjs',
+  'tests/86chaos-release-gate/39-testing-alias-mutation-safety.spec.cjs',
 ]);
 
 const PWA_SPEC_PATTERN = /86chaos-release-gate\/(26-pwa-icon-source-deployed-parity|27-pwa-browser-icon-matrix)\.spec\.cjs/;
