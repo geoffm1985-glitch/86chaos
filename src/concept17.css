@@ -5151,3 +5151,16 @@ body {
 .concept17-brand-logo {
   object-fit: contain !important;
 }
+
+/* 17.1.17 footer version/copyright visibility repair. */
+.app-version-copyright {
+  display: block !important;
+  line-height: 1.35 !important;
+  max-width: 100% !important;
+}
+
+@media (max-width: 1179px) {
+  .concept17-shell .app-footer {
+    scroll-margin-bottom: calc(72px + env(safe-area-inset-bottom, 0px)) !important;
+  }
+}

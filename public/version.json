@@ -1,25 +1,22 @@
 {
-  "version": "17.1.16",
-  "name": "86 Chaos 17.1.16",
-  "build": "17.1.16",
-  "label": "86 Chaos 17.1.16",
-  "releasedAt": "2026-09-25T04:05:00Z",
-  "releaseTitle": "Navigation, Brand, and Mobile Voice Toolbar Repair",
+  "version": "17.1.17",
+  "name": "86 Chaos 17.1.17",
+  "build": "17.1.17",
+  "label": "86 Chaos 17.1.17",
+  "releasedAt": "2026-09-25T06:05:00Z",
+  "releaseTitle": "Footer Version and Experimental Certification Repair",
   "notes": [
-    "Restores every legacy menu destination in the legacy category order inside the redesigned desktop sidebar and mobile More drawer.",
-    "Removes the phone hamburger and prevents the legacy overlay drawer from appearing as a second desktop menu.",
-    "Moves 86Voice out of the More drawer and back to the first slot of the six-button mobile bottom toolbar.",
-    "Replaces the generated generic 86 CHAOS wordmark with the supplied 6139.png brand artwork in the redesigned shell.",
-    "Keeps Message Board category buttons on one readable line on desktop without removing any workflow."
+    "Displays the current app version together with the Chilton App Works LLC copyright at the bottom of the application.",
+    "Keeps the footer readable and scroll-targetable on mobile above the fixed bottom command bar.",
+    "Adds permanent release-gate and Play Store coverage for the footer identity.",
+    "Allows the full Play Store runner to certify an explicitly selected testing or experimental branch against an exact immutable canonical Vercel deployment while preserving testing as the default."
   ],
-  "title": "86 Chaos 17.1.16",
-  "summary": "Restores the full legacy menu universe inside the new categorized navigation, returns 86Voice to the mobile toolbar, removes the phone hamburger, uses the supplied 86 Chaos logo artwork, and fixes desktop Message Board button fit.",
-  "description": "A navigation and presentation repair that preserves all routes and workflows while making the new shell match the requested desktop/mobile behavior.",
+  "title": "86 Chaos 17.1.17",
+  "summary": "Adds an explicit version-and-copyright footer and the branch-aware full Play Store certification path required for the experimental branch.",
+  "description": "A narrow presentation and certification-harness release. Existing application workflows, navigation, Firebase boundaries, and the 17.1.16 UI repair are preserved.",
   "highlights": [
-    "Full categorized legacy navigation preserved in the new shell.",
-    "Visible first-slot 86Voice on mobile.",
-    "Clean phone header with no hamburger.",
-    "Official supplied logo artwork in shell branding.",
-    "Desktop Message Board controls no longer stack letters."
+    "Version 17.1.17 shown with © 2026 Chilton App Works LLC at the bottom of the app.",
+    "Footer identity covered on desktop and mobile.",
+    "Full Play Store certification can target the exact experimental deployment without changing the default testing target."
   ]
 }

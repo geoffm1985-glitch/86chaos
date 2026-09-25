@@ -19,6 +19,16 @@ if (-not (Test-Path ".\package-lock.json")) {
 $ReleaseTargetKeys = @('APP_URL', 'CHAOS_BASE_URL', 'CHAOS_EXPECTED_VERCEL_PROJECT_SLUG')
 $CanonicalVercelProjectSlug = '86chaos'
 $CanonicalTestingUrl = 'https://testing.86chaos.com'
+$CanonicalExperimentalUrl = 'https://experimental.86chaos.com'
+$ExpectedBranch = [string][Environment]::GetEnvironmentVariable('CHAOS_EXPECTED_BRANCH', 'Process')
+if (-not $ExpectedBranch -and $env:GITHUB_REF_NAME -in @('testing', 'experimental')) { $ExpectedBranch = $env:GITHUB_REF_NAME }
+if (-not $ExpectedBranch) { $ExpectedBranch = 'testing' }
+if ($ExpectedBranch -notin @('testing', 'experimental')) { throw "Full certification supports only testing or experimental branches, not '$ExpectedBranch'." }
+$CanonicalBranchUrl = if ($ExpectedBranch -eq 'experimental') { $CanonicalExperimentalUrl } else { $CanonicalTestingUrl }
+$ExplicitGateTarget = [string][Environment]::GetEnvironmentVariable('CHAOS_RELEASE_GATE_TARGET_URL', 'Process')
+$ResolvedReleaseTargetUrl = if ($ExplicitGateTarget) { $ExplicitGateTarget.Trim().TrimEnd('/') } else { $CanonicalBranchUrl }
+[Environment]::SetEnvironmentVariable('CHAOS_EXPECTED_BRANCH', $ExpectedBranch, 'Process')
+$env:CHAOS_EXPECTED_BRANCH = $ExpectedBranch
 
 function Read-EnvFileMap {
   param([string]$Path)
@@ -81,16 +91,18 @@ Assert-NoReleaseTargetConflicts $EnvTestLocal $EnvLocal
 Import-EnvFile $EnvTestLocal
 Import-EnvFile $EnvLocal
 
-# Full certification always targets the permanent branch-bound testing domain.
+# Full certification targets the requested non-production branch. By default this
+# remains testing. CI may pin an exact immutable canonical Vercel deployment for
+# experimental certification via CHAOS_RELEASE_GATE_TARGET_URL.
 foreach ($key in @('APP_URL', 'CHAOS_BASE_URL')) {
   $existing = [string][Environment]::GetEnvironmentVariable($key, 'Process')
-  if ($existing -and $existing.Trim().TrimEnd('/') -ne $CanonicalTestingUrl) {
-    Write-Host "Ignoring stale $key=$($existing.Trim()); full certification is pinned to $CanonicalTestingUrl." -ForegroundColor Yellow
+  if ($existing -and $existing.Trim().TrimEnd('/') -ne $ResolvedReleaseTargetUrl) {
+    Write-Host "Ignoring stale $key=$($existing.Trim()); full certification is pinned to $ResolvedReleaseTargetUrl." -ForegroundColor Yellow
   }
-  [Environment]::SetEnvironmentVariable($key, $CanonicalTestingUrl, 'Process')
+  [Environment]::SetEnvironmentVariable($key, $ResolvedReleaseTargetUrl, 'Process')
 }
-$env:APP_URL = $CanonicalTestingUrl
-$env:CHAOS_BASE_URL = $CanonicalTestingUrl
+$env:APP_URL = $ResolvedReleaseTargetUrl
+$env:CHAOS_BASE_URL = $ResolvedReleaseTargetUrl
 
 # Full certification always targets the version that is actually present in package.json.
 # CHAOS_EXPECTED_VERSION is transient release evidence, not persistent local configuration;
@@ -112,6 +124,7 @@ Write-Host "Release-gate target:" -ForegroundColor Cyan
 Write-Host "  APP_URL=$env:APP_URL" -ForegroundColor Cyan
 Write-Host "  CHAOS_BASE_URL=$env:CHAOS_BASE_URL" -ForegroundColor Cyan
 Write-Host "  CHAOS_EXPECTED_VERSION=$env:CHAOS_EXPECTED_VERSION" -ForegroundColor Cyan
+Write-Host "  CHAOS_EXPECTED_BRANCH=$env:CHAOS_EXPECTED_BRANCH" -ForegroundColor Cyan
 Write-Host "  CHAOS_EXPECTED_VERCEL_PROJECT_SLUG=$env:CHAOS_EXPECTED_VERCEL_PROJECT_SLUG" -ForegroundColor Cyan
 
 $RunId = Get-Date -Format "yyyy-MM-ddTHH-mm-ss"

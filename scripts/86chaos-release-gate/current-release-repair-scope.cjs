@@ -1,8 +1,18 @@
 'use strict';
 
-const CURRENT_RELEASE_VERSION = '17.1.16';
-const CURRENT_RELEASE_CARRY_FORWARD_NOTE = '17.1.16 preserves every existing workflow, the approved reference redesign, the Vercel-safe image repair, authenticated hook-order repair, and mobile 86Voice touch hardening while restoring the legacy menu universe in the new shell, moving Voice back to the bottom toolbar, using the supplied logo artwork, and repairing desktop Message Board label fit.';
+const CURRENT_RELEASE_VERSION = '17.1.17';
+const CURRENT_RELEASE_CARRY_FORWARD_NOTE = '17.1.17 preserves the complete 17.1.16 navigation, logo, desktop fit, mobile 86Voice, Firebase testing boundary, and all existing workflows while adding the requested bottom-of-app version/copyright identity and exact experimental full-gate targeting.';
 const CURRENT_RELEASE_REPAIR_SCOPE = [
+  {
+    specPath: '86chaos-new-implementations/31-footer-version-copyright.spec.cjs',
+    fullSuitePath: '17.1.17 footer version and copyright identity',
+    exactTestTitle: 'footer shows the current version together with the copyright on desktop',
+  },
+  {
+    specPath: '86chaos-new-implementations/31-footer-version-copyright.spec.cjs',
+    fullSuitePath: '17.1.17 footer version and copyright identity',
+    exactTestTitle: 'footer identity remains reachable on mobile above the fixed bottom toolbar',
+  },
   {
     specPath: '86chaos-new-implementations/30-navigation-logo-toolbar-fit.spec.cjs',
     fullSuitePath: '17.1.16 navigation, logo, and toolbar fit repair',
