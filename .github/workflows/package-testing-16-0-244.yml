@@ -1,0 +1,39 @@
+name: Package testing 16.0.244 source
+
+on:
+  push:
+    branches:
+      - ci-package-testing-16-0-244
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out packaging branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify exact testing source exists
+        shell: bash
+        run: |
+          git cat-file -e 907de4f2a1529dec31c1f3344b00e15630e51007^{commit}
+          test "$(git show 907de4f2a1529dec31c1f3344b00e15630e51007:package.json | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>process.stdout.write(JSON.parse(s).version))")" = "16.0.244"
+
+      - name: Archive exact testing commit
+        shell: bash
+        run: |
+          git archive --format=zip --output=86chaos_16_0_244_testing_full_source.zip 907de4f2a1529dec31c1f3344b00e15630e51007
+          sha256sum 86chaos_16_0_244_testing_full_source.zip > 86chaos_16_0_244_testing_full_source.zip.sha256
+
+      - name: Upload source package
+        uses: actions/upload-artifact@v4
+        with:
+          name: 86chaos-16.0.244-testing-full-source
+          path: |
+            86chaos_16_0_244_testing_full_source.zip
+            86chaos_16_0_244_testing_full_source.zip.sha256
+          retention-days: 7
