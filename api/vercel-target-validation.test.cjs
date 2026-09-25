@@ -75,16 +75,27 @@ test('canonical Vercel preview target accepts 86chaos and rejects production, re
 test('known testing aliases are accepted while production and unknown 86chaos subdomains stay blocked', () => {
   for (const host of ['testing.86chaos.com', 'experimental.86chaos.com']) {
     assert.equal(isApprovedNonProductionAlias(host), true, host);
-    const target = validateReleaseTarget({ appUrl: `https://${host}`, expectedProjectSlug: '86chaos', expectedVersion: '16.0.238', sourceVersion: '16.0.238', deployedVersion: '16.0.238' });
+    const target = validateReleaseTarget({ appUrl: `https://${host}`, expectedProjectSlug: '86chaos', expectedVersion: '16.0.240', sourceVersion: '16.0.240', deployedVersion: '16.0.240' });
     assert.equal(target.ok, true, target.errors.join('\n'));
     const mutation = assertMutationSafety({ env: { ...qaEnv, APP_URL: `https://${host}` }, projectId: 'chaos-test-d1601', credentialProjectId: 'chaos-test-d1601', runId: 'target-unit-run', adminCredentialPresent: true });
     assert.equal(mutation.ok, true, mutation.errors.join('\n'));
   }
   for (const host of ['app.86chaos.com', '86chaos.com', 'www.86chaos.com', 'staging.86chaos.com']) {
-    const target = validateReleaseTarget({ appUrl: `https://${host}`, expectedVersion: '16.0.238', sourceVersion: '16.0.238', deployedVersion: '16.0.238' });
+    const target = validateReleaseTarget({ appUrl: `https://${host}`, expectedVersion: '16.0.240', sourceVersion: '16.0.240', deployedVersion: '16.0.240' });
     assert.equal(target.ok, false, `${host} must remain blocked`);
     assert.match(target.errors.join('\n'), /production host/i);
   }
+});
+
+test('QA seed and full-audit helper reuse the shared fail-closed host classifier', () => {
+  const seedSource = fs.readFileSync(path.join(__dirname, 'full-audit-qa-seed.js'), 'utf8');
+  const auditSource = fs.readFileSync(path.join(__dirname, '..', 'tests', '86chaos-full-audit', 'utils', 'audit-helpers.cjs'), 'utf8');
+  assert.match(seedSource, /isTestingPreviewHost/);
+  assert.match(seedSource, /isProductionHost/);
+  assert.doesNotMatch(seedSource, /app\\\.86chaos\\\.com\|\(\^\|\\\.\)86chaos\\\.com/);
+  assert.match(auditSource, /isTestingPreviewHost\(BASE_HOST\)/);
+  assert.match(auditSource, /isProductionHost\(BASE_HOST\)/);
+  assert.doesNotMatch(auditSource, /PRODUCTION_URL_RE/);
 });
 
 test('APP_URL and CHAOS_BASE_URL must agree by host and tolerate trailing slash differences', () => {

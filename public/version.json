@@ -1,16 +1,16 @@
 {
-  "version": "16.0.239",
-  "name": "86 Chaos 16.0.239",
-  "build": "16.0.239",
-  "label": "86 Chaos 16.0.239",
+  "version": "16.0.240",
+  "name": "86 Chaos 16.0.240",
+  "build": "16.0.240",
+  "label": "86 Chaos 16.0.240",
   "releasedAt": "2026-09-25T00:00:00.000Z",
-  "releaseTitle": "Testing Alias Validator Repair",
+  "releaseTitle": "End-to-End Testing Alias Safety Repair",
   "notes": [
-    "Retains the explicit testing.86chaos.com and experimental.86chaos.com non-production release-gate alias allowlist from 16.0.238.",
-    "Repairs the source-validator wiring so test:source and validate:16.0.239 point to the correct validator.",
-    "Replaces brittle raw-byte freeze checks with a fail-closed Git diff invariant that proves this validator repair does not alter Shift4, Schedule PDF, Firebase rules/config, messaging worker, or Vercel configuration."
+    "Uses the shared release-gate mutation-safety classifier in the QA seed API and full-audit helper instead of broad 86chaos.com production regexes.",
+    "Keeps testing.86chaos.com and experimental.86chaos.com explicitly non-production while production and unknown custom subdomains remain fail-closed.",
+    "Adds unit and Play Store regression evidence proving the deeper QA consumers use the shared classifier."
   ],
-  "title": "86 Chaos 16.0.239",
-  "summary": "Repairs the 16.0.238 validation contract while retaining the testing-alias release-gate safety fix.",
-  "description": "Replaces stale line-ending-sensitive byte-hash checks with behavioral alias checks and Git-diff protection for unrelated certified areas."
+  "title": "86 Chaos 16.0.240",
+  "summary": "Carries the testing-alias safety rule through preflight, QA seeding, and the full Play Store audit harness.",
+  "description": "Centralizes release-gate host classification so known testing aliases are allowed end-to-end while production and unknown custom hosts remain blocked."
 }

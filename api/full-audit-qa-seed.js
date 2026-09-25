@@ -1,4 +1,5 @@
 const { admin, initAdmin, authorize, readBody, writeAudit, clean, norm, memberDocId } = require('./_chaos-admin');
+const { isProductionHost, isTestingPreviewHost } = require('../scripts/86chaos-release-gate/mutation-safety.cjs');
 
 const TESTING_PROJECT_ID = 'chaos-test-d1601';
 const QA_PREFIX = '86 Chaos Release Gate QA ';
@@ -38,7 +39,7 @@ function validateBase({ req, auth, body, projectId }) {
   if (!auth.isSuperAdmin) errors.push('System Administrator authority is required.');
   if (projectId !== TESTING_PROJECT_ID) errors.push(`QA seed route only runs against ${TESTING_PROJECT_ID}; current project is ${projectId || '(missing)'}.`);
   if (expectedProjectId !== TESTING_PROJECT_ID) errors.push(`expectedProjectId must be ${TESTING_PROJECT_ID}.`);
-  if (/app\.86chaos\.com|(^|\.)86chaos\.com/i.test(host)) errors.push('QA seed route refused a production host.');
+  if (!isTestingPreviewHost(host) || isProductionHost(host)) errors.push('QA seed route refused a production host.');
   if (!isSafeRunId(runId)) errors.push('runId is missing or unsafe.');
   if (!restaurantId) errors.push('restaurantId is missing.');
   if (workspaceName && !isSafeQaWorkspaceName(workspaceName, runId)) errors.push(`workspaceName must be exactly "${QA_PREFIX}${runId}".`);
