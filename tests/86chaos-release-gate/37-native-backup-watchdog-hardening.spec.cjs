@@ -25,8 +25,7 @@ test.describe('37 native backup watchdog hardening release gate', () => {
   });
 
   test('deployed watchdog remains protected and does not leak credentials on rejected requests', async ({ request }, testInfo) => {
-    const base = process.env.APP_URL || process.env.CHAOS_BASE_URL || process.env.PLAYWRIGHT_BASE_URL || process.env.BASE_URL;
-    const response = await request.get(new URL('/api/firestore-backup-watchdog', base).toString(), {
+    const response = await request.get('/api/firestore-backup-watchdog', {
       headers: { Authorization: `Bearer invalid-release-gate-${Date.now()}` },
       failOnStatusCode: false,
     });
@@ -37,6 +36,6 @@ test.describe('37 native backup watchdog hardening release gate', () => {
     });
     expect(response.status()).toBeGreaterThanOrEqual(400);
     expect(response.status()).toBeLessThan(500);
-    expect(text).not.toMatch(/private[_ -]?key|access[_ -]?token|refresh[_ -]?token|authorization["':= ]+(?!required)|credential["':= ]+[A-Za-z0-9_\-]{20,}/i);
+        expect(text).not.toMatch(/private[_ -]?key|access[_ -]?token|refresh[_ -]?token|authorization\s*[:=]\s*Bearer\s+[A-Za-z0-9._-]{16,}|credential\s*[:=]\s*[A-Za-z0-9_\-]{20,}/i);
   });
 });

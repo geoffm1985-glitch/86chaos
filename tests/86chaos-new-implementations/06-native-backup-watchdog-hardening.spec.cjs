@@ -7,8 +7,6 @@ test('Play Store security regression: native backup watchdog fails closed and st
   const source = fs.readFileSync(path.join(root, 'api/firestore-backup-watchdog.js'), 'utf8');
   const universe = fs.readFileSync(path.join(root, 'scripts/86chaos-release-gate/release-test-universe.cjs'), 'utf8');
   const releaseSpecPath = path.join(root, 'tests/86chaos-release-gate/37-native-backup-watchdog-hardening.spec.cjs');
-  const base = process.env.APP_URL || process.env.CHAOS_BASE_URL || process.env.PLAYWRIGHT_BASE_URL || process.env.BASE_URL;
-
   expect(source).toMatch(/DEFAULT_ADMIN_API_TIMEOUT_MS\s*=\s*8000/);
   expect(source).toMatch(/BACKUP_WATCHDOG_ADMIN_API_TIMEOUT_MS/);
   expect(source).toMatch(/DEFAULT_ADMIN_API_MAX_PAGES\s*=\s*10/);
@@ -17,7 +15,7 @@ test('Play Store security regression: native backup watchdog fails closed and st
   expect(fs.existsSync(releaseSpecPath)).toBe(true);
   expect(universe).toContain('tests/86chaos-release-gate/37-native-backup-watchdog-hardening.spec.cjs');
 
-  const response = await request.get(new URL('/api/firestore-backup-watchdog', base).toString(), {
+  const response = await request.get('/api/firestore-backup-watchdog', {
     failOnStatusCode: false,
   });
   const body = await response.text();
