@@ -115,6 +115,15 @@ replace('api/copy-clarity-16-0-232.test.cjs',
   '  assert.match(source, /aria-label="Auto-Fill"/);',
   '  assert.ok(source.includes("aria-label={t(\'builder.copyMonth\')}"));');
 
+for(const p of [
+  'api/i18n-browser-runtime-17-0-28.test.cjs',
+  'api/merged-release-17-0-30.test.cjs'
+]) {
+  let s=read(p);
+  s=s.replaceAll('17.0.31','17.0.32').replaceAll('17\\.0\\.31','17\\.0\\.32');
+  write(p,s);
+}
+
 // All Dates remains the default; obsolete explanatory sentence was removed.
 replace('api/request-off-workflow-visibility-16-0-188.test.cjs',
   "  assert.match(schedule, /Default view only shows items that need attention/);",
