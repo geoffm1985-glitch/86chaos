@@ -6,13 +6,13 @@ const root = process.cwd();
 const read = file => fs.readFileSync(path.join(root, file), 'utf8');
 const baseUrl = String(process.env.APP_URL || process.env.CHAOS_BASE_URL || process.env.PLAYWRIGHT_BASE_URL || '').replace(/\/$/, '');
 
-test('17.0.30 merged deployment and source preserve both branch capability sets', async ({ request }) => {
+test('17.0.31 merged deployment and source preserve both branch capability sets', async ({ request }) => {
   expect(baseUrl).toBeTruthy();
   const response = await request.get(`${baseUrl}/version.json?mergedParity=${Date.now()}`, { headers: { 'Cache-Control': 'no-cache' } });
   expect(response.ok()).toBeTruthy();
   const version = await response.json();
-  expect(version.version).toBe('17.0.30');
-  expect(version.build).toBe('17.0.30');
+  expect(version.version).toBe('17.0.31');
+  expect(version.build).toBe('17.0.31');
 
   const schedule = read('src/features/schedule.jsx');
   const runner = read('RUN_86CHAOS_PLAY_STORE_RELEASE_GATE.ps1');

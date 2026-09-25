@@ -7,11 +7,11 @@ const root = path.resolve(__dirname, '..');
 const read = file => fs.readFileSync(path.join(root, file), 'utf8');
 const json = file => JSON.parse(read(file));
 
-test('17.0.30 keeps 17.0.29 feature-line capabilities', () => {
+test('17.0.31 keeps 17.0.29 feature-line capabilities', () => {
   const schedule = read('src/features/schedule.jsx');
   const app = read('src/App.js');
   const pkg = json('package.json');
-  assert.equal(pkg.version, '17.0.30');
+  assert.equal(pkg.version, '17.0.31');
   assert.match(app, /I18nProvider/);
   assert.match(schedule, /useI18n/);
   assert.match(schedule, /schedule-shift-assign/);
@@ -23,7 +23,7 @@ test('17.0.30 keeps 17.0.29 feature-line capabilities', () => {
   assert.ok(fs.existsSync(path.join(root, 'src', 'core', 'i18n.js')));
 });
 
-test('17.0.30 carries forward 16.0.244 safety and release-gate repairs', () => {
+test('17.0.31 carries forward 16.0.244 safety and release-gate repairs', () => {
   const runner = read('RUN_86CHAOS_PLAY_STORE_RELEASE_GATE.ps1');
   const mutation = read('scripts/86chaos-release-gate/mutation-safety.cjs');
   const targets = read('scripts/86chaos-release-gate/vercel-targets.cjs');
@@ -42,7 +42,7 @@ test('17.0.30 carries forward 16.0.244 safety and release-gate repairs', () => {
   assert.ok(fs.existsSync(path.join(root, 'api', 'release-gate-auto-provision-role-env.test.cjs')));
 });
 
-test('17.0.30 schedule PDF combines compact month view and lossless dense overflow', () => {
+test('17.0.31 schedule PDF combines compact month view and lossless dense overflow', () => {
   const model = read('src/core/schedulePrintModel.js');
   const pdf = read('src/core/schedulePdf.js');
   assert.match(model, /formatScheduleTime12Hour/);

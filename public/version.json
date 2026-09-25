@@ -1,16 +1,16 @@
 {
-  "version": "17.0.30",
-  "name": "86 Chaos 17.0.30",
-  "build": "17.0.30",
-  "label": "86 Chaos 17.0.30",
+  "version": "17.0.31",
+  "name": "86 Chaos 17.0.31",
+  "build": "17.0.31",
+  "label": "86 Chaos 17.0.31",
   "releasedAt": "2026-09-25T18:50:11Z",
-  "releaseTitle": "Unified Feature and Release-Gate Parity Merge",
+  "releaseTitle": "Cross-Platform Source Manifest Parity Repair",
   "notes": [
     "Preserves the complete 17.0.29 feature set including Spanish Phase 1, Schedule Builder assignment/delete/publish repairs, Request Off policy work and POS Bridge foundation.",
     "Carries forward 16.0.244 testing/experimental alias safety, cross-platform validator hashing, QA role bootstrap, native-backup watchdog hardening and deployment-identity regressions.",
     "Merges Schedule PDF behavior so normal months stay compact on one page while truly dense days spill to detail pages without hiding shift text."
   ],
-  "title": "86 Chaos 17.0.30",
+  "title": "86 Chaos 17.0.31",
   "summary": "Unified 17.0.29 feature line plus 16.0.244 robustness and release-gate repairs.",
   "description": "Combines both divergent branches without dropping features, preserving the 17.x application surface while adding the newer 16.0.244 safety and certification infrastructure."
 }

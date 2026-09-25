@@ -1,7 +1,7 @@
 'use strict';
 
-const CURRENT_RELEASE_VERSION = '17.0.30';
-const CURRENT_RELEASE_CARRY_FORWARD_NOTE = 'Current release coverage preserves the 17.0.29 Spanish, Schedule Builder and browser-safe i18n repairs while carrying forward the 16.0.244 testing-alias, validator portability, QA bootstrap, backup-watchdog and deployment-identity hardening. These tests run in failed+new/repair selection until a later release replaces this scope.';
+const CURRENT_RELEASE_VERSION = '17.0.31';
+const CURRENT_RELEASE_CARRY_FORWARD_NOTE = '17.0.31 preserves the complete 17.0.30 unified feature set and adds cross-platform source-manifest parity coverage for Windows and Vercel/Linux certification runners.';
 const CURRENT_RELEASE_REPAIR_SCOPE = [
   {
     specPath: '86chaos-new-implementations/08-phase1-spanish-interface.spec.cjs',
