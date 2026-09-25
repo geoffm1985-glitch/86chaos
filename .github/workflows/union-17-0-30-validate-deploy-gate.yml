@@ -1,0 +1,219 @@
+name: 86 Chaos 17.0.30 Union Validate Deploy and Full Gate
+
+on:
+  push:
+    branches:
+      - ci-union-17-0-30
+
+permissions:
+  contents: write
+
+concurrency:
+  group: 86chaos-17-0-30-union-deploy
+  cancel-in-progress: false
+
+jobs:
+  merge-validate-deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    outputs:
+      candidate_sha: ${{ steps.identity.outputs.candidate_sha }}
+    steps:
+      - name: Check out patch staging branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Reconstruct exact 17.0.30 union patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat .ci/17_0_30_patch/part*.b64 > "$RUNNER_TEMP/17_0_30.patch.b64"
+          base64 -d "$RUNNER_TEMP/17_0_30.patch.b64" | xz -d > "$RUNNER_TEMP/17_0_30.patch"
+          echo "44575ee1ebce55c48efa310fd62045c0e7e7c6a970f1f08b21f3115fe1f84b47  $RUNNER_TEMP/17_0_30.patch" | sha256sum -c -
+
+      - name: Apply union patch to exact current testing baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin testing
+          git checkout -B union-candidate origin/testing
+          ACTUAL_BASE="$(git rev-parse HEAD)"
+          EXPECTED_BASE="907de4f2a1529dec31c1f3344b00e15630e51007"
+          if [ "$ACTUAL_BASE" != "$EXPECTED_BASE" ]; then
+            echo "testing moved unexpectedly: $ACTUAL_BASE"
+            exit 1
+          fi
+          git apply --check --cached "$RUNNER_TEMP/17_0_30.patch"
+          git apply --cached "$RUNNER_TEMP/17_0_30.patch"
+          TREE="$(git write-tree)"
+          EXPECTED_TREE="0b7ccb21fe4716128ae427118f5b61dc37229b41"
+          if [ "$TREE" != "$EXPECTED_TREE" ]; then
+            echo "Merged tree mismatch: $TREE"
+            exit 1
+          fi
+          git -c user.name="86 Chaos Release Bot" -c user.email="actions@users.noreply.github.com" commit -m "Release 17.0.30: unify 17.0.29 features with 16.0.244 hardening"
+          git reset --hard HEAD
+
+      - name: Capture candidate identity
+        id: identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          SHA="$(git rev-parse HEAD)"
+          VERSION="$(node -p "require('./package.json').version")"
+          if [ "$VERSION" != "17.0.30" ]; then
+            echo "Expected 17.0.30, got $VERSION"
+            exit 1
+          fi
+          echo "candidate_sha=$SHA" >> "$GITHUB_OUTPUT"
+          echo "Candidate: $SHA"
+          echo "Version: $VERSION"
+
+      - name: Set up Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Install locked dependencies
+        shell: bash
+        run: npm ci --include=dev --no-audit --no-fund --progress=false
+
+      - name: Run merged release targeted coverage
+        shell: bash
+        run: npm run test:current-release-targeted
+
+      - name: Run merged Schedule PDF core coverage
+        shell: bash
+        env:
+          CI: "true"
+        run: ./node_modules/.bin/react-scripts test --watchAll=false --runInBand src/core/schedulePrintModel.test.js src/core/schedulePdf.test.js
+
+      - name: Run Schedule publishing core coverage
+        shell: bash
+        env:
+          CI: "true"
+        run: npm run test:schedule-publish:core
+
+      - name: Production build
+        shell: bash
+        env:
+          CI: "true"
+        run: npm run build
+
+      - name: Push validated 17.0.30 to testing
+        shell: bash
+        run: |
+          set -euo pipefail
+          git push origin HEAD:testing
+
+  full-release-gate:
+    needs: merge-validate-deploy
+    runs-on: windows-latest
+    timeout-minutes: 360
+    env:
+      APP_URL: https://testing.86chaos.com
+      CHAOS_BASE_URL: https://testing.86chaos.com
+      PLAYWRIGHT_BASE_URL: https://testing.86chaos.com
+      CHAOS_EXPECTED_BRANCH: testing
+      CHAOS_EXPECTED_VERSION: 17.0.30
+      CHAOS_EXPECTED_GIT_COMMIT: ${{ needs.merge-validate-deploy.outputs.candidate_sha }}
+      CHAOS_EXPECTED_VERCEL_PROJECT_SLUG: 86chaos
+      REACT_APP_FIREBASE_PROJECT_ID: chaos-test-d1601
+      REACT_APP_TEST_FIREBASE_PROJECT_ID: chaos-test-d1601
+      REACT_APP_FIREBASE_API_KEY: AIzaSyBIRGMeLnVE3w3i1WZJzurcp-LkeaNZ3hw
+      REACT_APP_TEST_FIREBASE_API_KEY: AIzaSyBIRGMeLnVE3w3i1WZJzurcp-LkeaNZ3hw
+      REACT_APP_FIREBASE_AUTH_DOMAIN: chaos-test-d1601.firebaseapp.com
+      REACT_APP_TEST_FIREBASE_AUTH_DOMAIN: chaos-test-d1601.firebaseapp.com
+      REACT_APP_FIREBASE_APP_ID: 1:534993379994:web:9fefb6e10309223afe7523
+      REACT_APP_TEST_FIREBASE_APP_ID: 1:534993379994:web:9fefb6e10309223afe7523
+      REACT_APP_FIREBASE_STORAGE_BUCKET: chaos-test-d1601.firebasestorage.app
+      REACT_APP_TEST_FIREBASE_STORAGE_BUCKET: chaos-test-d1601.firebasestorage.app
+      REACT_APP_FIREBASE_MESSAGING_SENDER_ID: '534993379994'
+      REACT_APP_TEST_FIREBASE_MESSAGING_SENDER_ID: '534993379994'
+      REACT_APP_TEST_FIREBASE_DATABASE_URL: https://chaos-test-d1601-default-rtdb.firebaseio.com
+      FIREBASE_TEST_SERVICE_ACCOUNT_KEY: ${{ secrets.FIREBASE_TEST_SERVICE_ACCOUNT_KEY }}
+      FIREBASE_SERVICE_ACCOUNT_KEY: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_KEY }}
+      SYSTEM_ADMIN_EMAIL: ${{ secrets.SYSTEM_ADMIN_EMAIL }}
+      SYSTEM_ADMIN_PASSWORD: ${{ secrets.SYSTEM_ADMIN_PASSWORD }}
+      OWNER_EMAIL: ${{ secrets.OWNER_EMAIL }}
+      OWNER_PASSWORD: ${{ secrets.OWNER_PASSWORD }}
+      MANAGER_EMAIL: ${{ secrets.MANAGER_EMAIL }}
+      MANAGER_PASSWORD: ${{ secrets.MANAGER_PASSWORD }}
+      STAFF_EMAIL: ${{ secrets.STAFF_EMAIL }}
+      STAFF_PASSWORD: ${{ secrets.STAFF_PASSWORD }}
+      MASTER_ADMIN_EMAIL: ${{ secrets.MASTER_ADMIN_EMAIL }}
+    steps:
+      - name: Check out exact deployed testing candidate
+        uses: actions/checkout@v4
+        with:
+          ref: testing
+          fetch-depth: 0
+
+      - name: Verify testing branch identity
+        shell: pwsh
+        run: |
+          $actual = (git rev-parse HEAD).Trim()
+          if ($actual -ne $env:CHAOS_EXPECTED_GIT_COMMIT) {
+            throw "Expected testing $env:CHAOS_EXPECTED_GIT_COMMIT but got $actual"
+          }
+          $pkg = Get-Content package.json -Raw | ConvertFrom-Json
+          if ([string]$pkg.version -ne '17.0.30') {
+            throw "Expected version 17.0.30 but got $($pkg.version)"
+          }
+
+      - name: Set up Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Set up Java 21 for Firebase emulators
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Wait for exact 17.0.30 testing deployment
+        shell: pwsh
+        run: |
+          $matched = $false
+          for ($i = 0; $i -lt 240; $i++) {
+            $stamp = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
+            try {
+              $v = Invoke-RestMethod "$env:APP_URL/version.json?ci=$stamp" -Headers @{ "Cache-Control" = "no-cache"; "Pragma" = "no-cache" }
+              $commit = ""
+              try {
+                $id = Invoke-RestMethod "$env:APP_URL/build-identity.json?ci=$stamp" -Headers @{ "Cache-Control" = "no-cache"; "Pragma" = "no-cache" }
+                $commit = if ($id.gitCommit) { [string]$id.gitCommit } elseif ($id.commit) { [string]$id.commit } else { "" }
+              } catch {
+                $id = Invoke-RestMethod "$env:APP_URL/api/build-identity?ci=$stamp" -Headers @{ "Cache-Control" = "no-cache"; "Pragma" = "no-cache" }
+                $commit = if ($id.gitCommit) { [string]$id.gitCommit } elseif ($id.commit) { [string]$id.commit } else { "" }
+              }
+              if ([string]$v.version -eq '17.0.30' -and $commit -eq $env:CHAOS_EXPECTED_GIT_COMMIT) {
+                Write-Host "Exact testing deployment READY: version=$($v.version) commit=$commit"
+                $matched = $true
+                break
+              }
+              Write-Host "Waiting. Saw version=$($v.version) commit=$commit"
+            } catch {
+              Write-Host "Deployment not ready: $($_.Exception.Message)"
+            }
+            Start-Sleep -Seconds 15
+          }
+          if (-not $matched) { throw "Timed out waiting for exact 17.0.30 testing deployment." }
+
+      - name: Run full Play Store Release Gate
+        shell: pwsh
+        run: npm run test:play-store
+
+      - name: Upload full Release Gate artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: 86chaos-testing-17.0.30-full-release-gate
+          if-no-files-found: warn
+          retention-days: 30
+          path: |
+            test-results/**
+            86chaos-release-gate-SLIM-UPLOAD-ME.zip
+            playwright-report/**
