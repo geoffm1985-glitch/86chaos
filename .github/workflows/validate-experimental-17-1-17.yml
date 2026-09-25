@@ -1,0 +1,45 @@
+name: 86 Chaos 17.1.17 Candidate Validation
+
+on:
+  push:
+    branches:
+      - ci-validate-experimental-17-1-17
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: windows-latest
+    timeout-minutes: 120
+    steps:
+      - name: Check out exact 17.1.17 repair candidate
+        uses: actions/checkout@v4
+        with:
+          ref: experimental-footer-17-1-17
+          fetch-depth: 0
+
+      - name: Verify candidate commit
+        shell: pwsh
+        run: |
+          $actual = (git rev-parse HEAD).Trim()
+          if ($actual -ne '407b8dd640895220ec35b46f58f1d09d748bf821') {
+            throw "Candidate moved. Expected 407b8dd640895220ec35b46f58f1d09d748bf821 but got $actual"
+          }
+
+      - name: Set up Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Install locked dependencies
+        shell: pwsh
+        run: npm ci --include=dev --no-audit --no-fund --progress=false
+
+      - name: Run current-release targeted regressions
+        shell: pwsh
+        run: npm run test:current-release-targeted
+
+      - name: Build production bundle
+        shell: pwsh
+        run: npm run build
