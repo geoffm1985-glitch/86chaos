@@ -43,7 +43,14 @@ const directVersionFiles=[
   'tests/86chaos-new-implementations/10-app-bootstrap-i18n-runtime.spec.cjs',
   'tests/86chaos-release-gate/42-merged-17-0-30-parity.spec.cjs'
 ];
-for(const f of directVersionFiles) replace(f,OLD,VERSION);
+for(const f of directVersionFiles){
+  const before=read(f);
+  const after=before
+    .replaceAll(OLD,VERSION)
+    .replaceAll('17\\\\.0\\\\.30','17\\\\.0\\\\.31');
+  if(after===before) throw new Error(`${f}: no active 17.0.30 version marker found`);
+  write(f,after);
+}
 
 const pkg=JSON.parse(read('package.json'));
 pkg.version=VERSION;
