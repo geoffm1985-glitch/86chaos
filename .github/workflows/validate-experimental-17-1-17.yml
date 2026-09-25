@@ -23,8 +23,8 @@ jobs:
         shell: pwsh
         run: |
           $actual = (git rev-parse HEAD).Trim()
-          if ($actual -ne '407b8dd640895220ec35b46f58f1d09d748bf821') {
-            throw "Candidate moved. Expected 407b8dd640895220ec35b46f58f1d09d748bf821 but got $actual"
+          if ($actual -ne 'da15eb3dac013fedce3728300c14dd4896be17e1') {
+            throw "Candidate moved. Expected da15eb3dac013fedce3728300c14dd4896be17e1 but got $actual"
           }
 
       - name: Set up Node 24
