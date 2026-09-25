@@ -105,5 +105,8 @@
   "outputDirectory": "build",
   "github": {
     "autoAlias": true
+  },
+  "git": {
+    "deploymentEnabled": false
   }
 }
