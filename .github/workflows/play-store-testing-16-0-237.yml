@@ -1,0 +1,88 @@
+name: 86 Chaos Play Store Gate - testing 16.0.237
+
+on:
+  push:
+    branches:
+      - ci-play-store-testing-16-0-237
+
+permissions:
+  contents: read
+
+jobs:
+  play-store-testing:
+    runs-on: windows-latest
+    timeout-minutes: 360
+    env:
+      APP_URL: https://testing.86chaos.com
+      CHAOS_BASE_URL: https://testing.86chaos.com
+      PLAYWRIGHT_BASE_URL: https://testing.86chaos.com
+      CHAOS_EXPECTED_VERSION: 16.0.237
+      CHAOS_EXPECTED_GIT_COMMIT: 06d3783d84472c8dce0ba50d4d525051faba782a
+      CHAOS_EXPECTED_BRANCH: testing
+      CHAOS_EXPECTED_VERCEL_PROJECT_SLUG: 86chaos
+      REACT_APP_FIREBASE_PROJECT_ID: chaos-test-d1601
+      REACT_APP_TEST_FIREBASE_PROJECT_ID: chaos-test-d1601
+      REACT_APP_FIREBASE_API_KEY: AIzaSyBIRGMeLnVE3w3i1WZJzurcp-LkeaNZ3hw
+      REACT_APP_TEST_FIREBASE_API_KEY: AIzaSyBIRGMeLnVE3w3i1WZJzurcp-LkeaNZ3hw
+      REACT_APP_FIREBASE_AUTH_DOMAIN: chaos-test-d1601.firebaseapp.com
+      REACT_APP_TEST_FIREBASE_AUTH_DOMAIN: chaos-test-d1601.firebaseapp.com
+      REACT_APP_FIREBASE_APP_ID: 1:534993379994:web:9fefb6e10309223afe7523
+      REACT_APP_TEST_FIREBASE_APP_ID: 1:534993379994:web:9fefb6e10309223afe7523
+      REACT_APP_FIREBASE_STORAGE_BUCKET: chaos-test-d1601.firebasestorage.app
+      REACT_APP_TEST_FIREBASE_STORAGE_BUCKET: chaos-test-d1601.firebasestorage.app
+      REACT_APP_FIREBASE_MESSAGING_SENDER_ID: '534993379994'
+      REACT_APP_TEST_FIREBASE_MESSAGING_SENDER_ID: '534993379994'
+      REACT_APP_TEST_FIREBASE_DATABASE_URL: https://chaos-test-d1601-default-rtdb.firebaseio.com
+      FIREBASE_TEST_SERVICE_ACCOUNT_KEY: ${{ secrets.FIREBASE_TEST_SERVICE_ACCOUNT_KEY }}
+      FIREBASE_SERVICE_ACCOUNT_KEY: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_KEY }}
+      SYSTEM_ADMIN_EMAIL: ${{ secrets.SYSTEM_ADMIN_EMAIL }}
+      SYSTEM_ADMIN_PASSWORD: ${{ secrets.SYSTEM_ADMIN_PASSWORD }}
+      OWNER_EMAIL: ${{ secrets.OWNER_EMAIL }}
+      OWNER_PASSWORD: ${{ secrets.OWNER_PASSWORD }}
+      MANAGER_EMAIL: ${{ secrets.MANAGER_EMAIL }}
+      MANAGER_PASSWORD: ${{ secrets.MANAGER_PASSWORD }}
+      STAFF_EMAIL: ${{ secrets.STAFF_EMAIL }}
+      STAFF_PASSWORD: ${{ secrets.STAFF_PASSWORD }}
+      MASTER_ADMIN_EMAIL: ${{ secrets.MASTER_ADMIN_EMAIL }}
+    steps:
+      - name: Check out exact testing branch
+        uses: actions/checkout@v4
+        with:
+          ref: testing
+          fetch-depth: 0
+
+      - name: Verify exact testing commit before gate
+        shell: pwsh
+        run: |
+          $actual = (git rev-parse HEAD).Trim()
+          if ($actual -ne $env:CHAOS_EXPECTED_GIT_COMMIT) {
+            throw "testing moved before this run started. Expected $env:CHAOS_EXPECTED_GIT_COMMIT but got $actual"
+          }
+          $branch = (git rev-parse --abbrev-ref HEAD).Trim()
+          if ($branch -ne 'testing') { throw "Expected local testing branch, got $branch" }
+
+      - name: Set up Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Set up Java 21 for Firebase emulators
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Run full Play Store release gate
+        shell: pwsh
+        run: npm run test:play-store
+
+      - name: Upload Play Store gate artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: 86chaos-testing-16.0.237-play-store-gate
+          if-no-files-found: warn
+          retention-days: 30
+          path: |
+            test-results/**
+            86chaos-release-gate-SLIM-UPLOAD-ME.zip
