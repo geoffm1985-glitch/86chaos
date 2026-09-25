@@ -1,22 +1,22 @@
 {
-  "version": "17.1.17",
-  "name": "86 Chaos 17.1.17",
-  "build": "17.1.17",
-  "label": "86 Chaos 17.1.17",
-  "releasedAt": "2026-09-25T06:05:00Z",
-  "releaseTitle": "Footer Version and Experimental Certification Repair",
+  "version": "17.1.19",
+  "name": "86 Chaos 17.1.19",
+  "build": "17.1.19",
+  "label": "86 Chaos 17.1.19",
+  "releasedAt": "2026-09-25T20:08:00Z",
+  "releaseTitle": "Experimental Gate Identity Synchronization Repair",
   "notes": [
-    "Displays the current app version together with the Chilton App Works LLC copyright at the bottom of the application.",
-    "Keeps the footer readable and scroll-targetable on mobile above the fixed bottom command bar.",
-    "Adds permanent release-gate and Play Store coverage for the footer identity.",
-    "Allows the full Play Store runner to certify an explicitly selected testing or experimental branch against an exact immutable canonical Vercel deployment while preserving testing as the default."
+    "Synchronizes package, runtime, footer, public version, and server build identity on the experimental branch.",
+    "Preserves branch-scoped experimental.86chaos.com release-gate safety without weakening production protections.",
+    "Makes footer version coverage follow the current package version so future sequential version bumps cannot create a stale Play Store expectation.",
+    "Refreshes certification metadata and release-source evidence for the exact experimental build."
   ],
-  "title": "86 Chaos 17.1.17",
-  "summary": "Adds an explicit version-and-copyright footer and the branch-aware full Play Store certification path required for the experimental branch.",
-  "description": "A narrow presentation and certification-harness release. Existing application workflows, navigation, Firebase boundaries, and the 17.1.16 UI repair are preserved.",
+  "title": "86 Chaos 17.1.19",
+  "summary": "Repairs experimental release identity so the deployed branch, runtime version, source manifest, and Play Store gate all certify the same build.",
+  "description": "A release-harness identity repair only. Existing application features and UI behavior are preserved.",
   "highlights": [
-    "Version 17.1.17 shown with © 2026 Chilton App Works LLC at the bottom of the app.",
-    "Footer identity covered on desktop and mobile.",
-    "Full Play Store certification can target the exact experimental deployment without changing the default testing target."
+    "Version 17.1.19 is consistent across package.json, public/version.json, api/_version.js, and the application footer.",
+    "Experimental stable-domain release-gate targeting remains branch-scoped and production-safe.",
+    "Desktop and mobile footer Play Store checks now verify the current package version instead of a stale hard-coded release number."
   ]
 }
