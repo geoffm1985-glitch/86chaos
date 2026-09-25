@@ -1,6 +1,6 @@
 {
   "name": "86chaos",
-  "version": "16.0.242",
+  "version": "16.0.243",
   "private": true,
   "dependencies": {
     "@fontsource/noto-sans": "^5.3.0",
@@ -29,13 +29,13 @@
     "deploy:check": "npm run test:ci && NODE_OPTIONS=--max-old-space-size=4096 GENERATE_SOURCEMAP=false npm run build",
     "validate:audit-repair": "node scripts/validate-repair.js",
     "rules:check": "node scripts/validate-rules.js",
-    "test:source": "node scripts/validate-16-0-242.js",
+    "test:source": "node scripts/validate-16-0-243.js",
     "validate:16.0.232": "node scripts/validate-16-0-232.js",
     "validate:16.0.233": "node scripts/validate-16-0-233.js",
     "validate:16.0.234": "node scripts/validate-16-0-234.js",
     "test:shift4": "node --test api/shift4-auth-16-0-234.test.cjs api/shift4-client-16-0-234.test.cjs api/shift4-concurrency-16-0-234.test.cjs api/shift4-normalization-16-0-234.test.cjs api/shift4-review-export-16-0-234.test.cjs api/shift4-storage-16-0-234.test.cjs api/shift4-routes-16-0-234.test.cjs api/shift4-sync-16-0-234.test.cjs api/release-universe-16-0-234.test.cjs && playwright test --config=playwright.play-store-release.config.cjs tests/86chaos-new-implementations/01-shift4-connection.spec.cjs tests/86chaos-new-implementations/02-shift4-import-review-export.spec.cjs tests/86chaos-new-implementations/03-shift4-security-boundary.spec.cjs --project=chromium --project=mobile-chromium",
     "test:schedule-pdf": "react-scripts test --watchAll=false --runInBand src/core/schedulePrintModel.test.js src/core/schedulePdf.test.js src/core/schedulePdfDelivery.test.js && playwright test --config=playwright.play-store-release.config.cjs tests/86chaos-new-implementations/04-schedule-pdf-print.spec.cjs tests/86chaos-new-implementations/05-mobile-schedule-pdf-delivery.spec.cjs --project=chromium --project=mobile-chromium",
-    "test:new-implementations": "npm run validate:16.0.242 && npm run test:shift4 && npm run test:schedule-pdf",
+    "test:new-implementations": "npm run validate:16.0.243 && npm run test:shift4 && npm run test:schedule-pdf",
     "syntax:api": "node scripts/check-api-syntax.js",
     "test:unit": "npm run test:client && npm run test:server",
     "test:rules": "firebase emulators:exec --only firestore,storage \"node scripts/run-rules-tests.js\"",
@@ -78,7 +78,8 @@
     "validate:16.0.239": "node scripts/validate-16-0-239.js",
     "validate:16.0.240": "node scripts/validate-16-0-240.js",
     "validate:16.0.241": "node scripts/validate-16-0-241.js",
-    "validate:16.0.242": "node scripts/validate-16-0-242.js"
+    "validate:16.0.242": "node scripts/validate-16-0-242.js",
+    "validate:16.0.243": "node scripts/validate-16-0-243.js"
   },
   "browserslist": {
     "production": [

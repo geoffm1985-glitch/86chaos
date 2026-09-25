@@ -1,16 +1,16 @@
 {
-  "version": "16.0.242",
-  "name": "86 Chaos 16.0.242",
-  "build": "16.0.242",
-  "label": "86 Chaos 16.0.242",
+  "version": "16.0.243",
+  "name": "86 Chaos 16.0.243",
+  "build": "16.0.243",
+  "label": "86 Chaos 16.0.243",
   "releasedAt": "2026-09-25T00:00:00.000Z",
-  "releaseTitle": "Testing Alias Overlay Safety Repair",
+  "releaseTitle": "Release-Gate QA Credential Bootstrap Repair",
   "notes": [
-    "Replaces the final SAFE_TESTING_URL_RE/PRODUCTION_URL_RE use in the preview-overlay helper with the shared host classifier.",
-    "Retains explicit non-production support only for testing.86chaos.com and experimental.86chaos.com while production/unknown custom hosts remain blocked.",
-    "Validation is limited to the targeted repair set and will not run more than 20 tests."
+    "Generates dedicated testing-only SYSTEM_ADMIN, OWNER, MANAGER, and STAFF credential pairs in the parent release-gate process when auto-provisioning is enabled and no pair was configured.",
+    "Refuses partially configured role pairs, preserves fully configured pairs, uses cryptographic random passwords, and never prints generated passwords.",
+    "Full Play Store certification is not limited to 20 individual tests. Each certification execution runs the complete configured test universe; the 20-execution cap applies only to this current repair cycle."
   ],
-  "title": "86 Chaos 16.0.242",
-  "summary": "Completes the shared testing-host classifier migration in the full-audit overlay helper.",
-  "description": "Removes the final stale testing/production regex from the full-audit helper so all release-gate host decisions use the same fail-closed classifier."
+  "title": "86 Chaos 16.0.243",
+  "summary": "Lets the full release gate create safe testing-only QA role credentials before preflight while retaining the Firebase Admin boundary.",
+  "description": "Repairs the release-gate ordering defect that required role credentials before automatic provisioning could run. Full Play Store certification still executes the complete configured test universe and remains fail-closed without testing Firebase Admin authority."
 }
