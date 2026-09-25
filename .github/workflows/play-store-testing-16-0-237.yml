@@ -1,4 +1,4 @@
-name: 86 Chaos Testing Limited Repair Gate
+name: 86 Chaos Full Play Store Gate - testing
 
 on:
   push:
@@ -9,13 +9,13 @@ permissions:
   contents: read
 
 concurrency:
-  group: 86chaos-testing-limited-repair
+  group: 86chaos-testing-full-play-store
   cancel-in-progress: true
 
 jobs:
-  testing-limited-gate:
+  full-play-store-testing:
     runs-on: windows-latest
-    timeout-minutes: 120
+    timeout-minutes: 360
     env:
       APP_URL: https://testing.86chaos.com
       CHAOS_BASE_URL: https://testing.86chaos.com
@@ -24,6 +24,28 @@ jobs:
       CHAOS_EXPECTED_VERCEL_PROJECT_SLUG: 86chaos
       REACT_APP_FIREBASE_PROJECT_ID: chaos-test-d1601
       REACT_APP_TEST_FIREBASE_PROJECT_ID: chaos-test-d1601
+      REACT_APP_FIREBASE_API_KEY: AIzaSyBIRGMeLnVE3w3i1WZJzurcp-LkeaNZ3hw
+      REACT_APP_TEST_FIREBASE_API_KEY: AIzaSyBIRGMeLnVE3w3i1WZJzurcp-LkeaNZ3hw
+      REACT_APP_FIREBASE_AUTH_DOMAIN: chaos-test-d1601.firebaseapp.com
+      REACT_APP_TEST_FIREBASE_AUTH_DOMAIN: chaos-test-d1601.firebaseapp.com
+      REACT_APP_FIREBASE_APP_ID: 1:534993379994:web:9fefb6e10309223afe7523
+      REACT_APP_TEST_FIREBASE_APP_ID: 1:534993379994:web:9fefb6e10309223afe7523
+      REACT_APP_FIREBASE_STORAGE_BUCKET: chaos-test-d1601.firebasestorage.app
+      REACT_APP_TEST_FIREBASE_STORAGE_BUCKET: chaos-test-d1601.firebasestorage.app
+      REACT_APP_FIREBASE_MESSAGING_SENDER_ID: '534993379994'
+      REACT_APP_TEST_FIREBASE_MESSAGING_SENDER_ID: '534993379994'
+      REACT_APP_TEST_FIREBASE_DATABASE_URL: https://chaos-test-d1601-default-rtdb.firebaseio.com
+      FIREBASE_TEST_SERVICE_ACCOUNT_KEY: ${{ secrets.FIREBASE_TEST_SERVICE_ACCOUNT_KEY }}
+      FIREBASE_SERVICE_ACCOUNT_KEY: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_KEY }}
+      SYSTEM_ADMIN_EMAIL: ${{ secrets.SYSTEM_ADMIN_EMAIL }}
+      SYSTEM_ADMIN_PASSWORD: ${{ secrets.SYSTEM_ADMIN_PASSWORD }}
+      OWNER_EMAIL: ${{ secrets.OWNER_EMAIL }}
+      OWNER_PASSWORD: ${{ secrets.OWNER_PASSWORD }}
+      MANAGER_EMAIL: ${{ secrets.MANAGER_EMAIL }}
+      MANAGER_PASSWORD: ${{ secrets.MANAGER_PASSWORD }}
+      STAFF_EMAIL: ${{ secrets.STAFF_EMAIL }}
+      STAFF_PASSWORD: ${{ secrets.STAFF_PASSWORD }}
+      MASTER_ADMIN_EMAIL: ${{ secrets.MASTER_ADMIN_EMAIL }}
     steps:
       - name: Check out current testing branch
         uses: actions/checkout@v4
@@ -40,40 +62,26 @@ jobs:
           $pkg = Get-Content package.json -Raw | ConvertFrom-Json
           "CHAOS_EXPECTED_GIT_COMMIT=$sha" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           "CHAOS_EXPECTED_VERSION=$($pkg.version)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          "Testing commit: $sha"
-          "Testing version: $($pkg.version)"
+          Write-Host "Full Play Store attempt 1/20 for this testing build"
+          Write-Host "Testing commit: $sha"
+          Write-Host "Testing version: $($pkg.version)"
 
       - name: Set up Node 24
         uses: actions/setup-node@v4
         with:
           node-version: '24'
 
-      - name: Install locked test dependencies
-        shell: pwsh
-        run: npm ci --include=dev --no-audit --no-fund --progress=false
-
-      - name: Run current source validator
-        shell: pwsh
-        run: npm run test:source
-
-      - name: Run 2 alias classifier Node tests
-        shell: pwsh
-        run: node --test --test-name-pattern="known testing aliases|QA seed and full-audit helper" api/vercel-target-validation.test.cjs
-
-      - name: Run 1 validator line-ending Node test
-        shell: pwsh
-        run: node --test api/source-validator-line-ending-safety.test.cjs
-
-      - name: Calculate current source lines
-        continue-on-error: true
-        shell: pwsh
-        run: node scripts/86chaos-release-gate/source-inventory.cjs
+      - name: Set up Java 21 for Firebase emulators
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
 
       - name: Wait for exact testing deployment
         shell: pwsh
         run: |
           $matched = $false
-          for ($i = 0; $i -lt 120; $i++) {
+          for ($i = 0; $i -lt 180; $i++) {
             $stamp = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
             try {
               $v = Invoke-RestMethod "$env:APP_URL/version.json?ci=$stamp" -Headers @{ "Cache-Control" = "no-cache"; "Pragma" = "no-cache" }
@@ -92,17 +100,17 @@ jobs:
           }
           if (-not $matched) { throw "Timed out waiting for exact testing deployment." }
 
-      - name: Run 4 targeted Play Store test cases
+      - name: Run full Play Store release gate - attempt 1 of 20
         shell: pwsh
-        run: .\node_modules\.bin\playwright.cmd test --config=playwright.play-store-release.config.cjs tests/86chaos-release-gate/38-release-identity-deployment-parity.spec.cjs tests/86chaos-release-gate/39-testing-alias-mutation-safety.spec.cjs tests/86chaos-release-gate/40-validator-line-ending-safety.spec.cjs --project=chromium
+        run: npm run test:play-store
 
-      - name: Upload limited validation evidence
+      - name: Upload full Play Store gate artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: 86chaos-testing-limited-repair-gate
-          if-no-files-found: ignore
+          name: 86chaos-testing-full-play-store-attempt-01
+          if-no-files-found: warn
           retention-days: 30
           path: |
             test-results/**
-            playwright-report/**
+            86chaos-release-gate-SLIM-UPLOAD-ME.zip
