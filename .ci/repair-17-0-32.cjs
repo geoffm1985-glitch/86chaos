@@ -103,8 +103,11 @@ replace('api/schedule-builder-clear-month-17-0-24.test.cjs',
   "  assert.match(schedule, /scheduleShiftDeleteRequest\\('preview-month'/);",
   "  assert.match(route, /action === 'preview-month'/);");
 replace('api/schedule-builder-clear-month-17-0-24.test.cjs',
-  "  assert.match(route, /remaining = \\(await previewMonth\\(db, restaurantId, month\\)\\)\\.rows/);\\n  assert.match(route, /if \\(remaining\\.length\\)/);",
-  "  assert.match(route, /successful Firestore batch commit is authoritative/);\\n  assert.match(route, /return \\{ initialCount, deletedCount, remainingCount: 0 \\}/);");
+  "  assert.match(route, /remaining = \\(await previewMonth\\(db, restaurantId, month\\)\\)\\.rows/);",
+  "  assert.match(route, /successful Firestore batch commit is authoritative/);");
+replace('api/schedule-builder-clear-month-17-0-24.test.cjs',
+  "  assert.match(route, /if \\(remaining\\.length\\)/);",
+  "  assert.match(route, /return \\{ initialCount, deletedCount, remainingCount: 0 \\}/);");
 
 // Copy Previous Week label is translated, while the exact range confirmation remains literal and testable.
 replace('api/schedule-tools-period-awareness-16-0-233.test.cjs',
