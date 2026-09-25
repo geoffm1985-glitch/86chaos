@@ -47,7 +47,7 @@ for(const f of directVersionFiles){
   const before=read(f);
   const after=before
     .replaceAll(OLD,VERSION)
-    .replaceAll('17\\\\.0\\\\.30','17\\\\.0\\\\.31');
+    .replaceAll('17\\.0\\.30','17\\.0\\.31');
   if(after===before) throw new Error(`${f}: no active 17.0.30 version marker found`);
   write(f,after);
 }
