@@ -90,7 +90,7 @@ for(const f of [
 const oldValidator=read('scripts/validate-17-0-30.js');
 write(
   'scripts/validate-17-0-31.js',
-  oldValidator.replaceAll(OLD,VERSION).replaceAll('Unified Feature and Release-Gate Parity Merge',TITLE)
+  oldValidator.replaceAll(OLD,VERSION).replaceAll('node scripts/validate-17-0-30.js','node scripts/validate-17-0-31.js').replaceAll('Unified Feature and Release-Gate Parity Merge',TITLE)
 );
 
 write('RELEASE_17_0_31.md', [
