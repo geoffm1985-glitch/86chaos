@@ -69,6 +69,33 @@ test('canonical Vercel preview target accepts 86chaos and rejects production, re
   assert.match(unrelated.errors.join('\n'), /not in the canonical Vercel project family 86chaos/);
 });
 
+test('experimental stable domain is accepted only when the expected branch is experimental', () => {
+  const accepted = validateReleaseTarget({ appUrl: 'https://experimental.86chaos.com', expectedBranch: 'experimental', expectedProjectSlug: '86chaos', expectedVersion: '17.1.18', sourceVersion: '17.1.18', deployedVersion: '17.1.18' });
+  assert.equal(accepted.ok, true, accepted.errors.join('\n'));
+  const rejected = validateReleaseTarget({ appUrl: 'https://experimental.86chaos.com', expectedBranch: 'testing', expectedProjectSlug: '86chaos', expectedVersion: '17.1.18', sourceVersion: '17.1.18', deployedVersion: '17.1.18' });
+  assert.equal(rejected.ok, false);
+  assert.match(rejected.errors.join('\n'), /not an approved branch domain/i);
+
+  const mutationAccepted = assertMutationSafety({
+    env: { ...qaEnv, APP_URL: 'https://experimental.86chaos.com', CHAOS_EXPECTED_BRANCH: 'experimental' },
+    projectId: 'chaos-test-d1601',
+    credentialProjectId: 'chaos-test-d1601',
+    runId: 'target-unit-run',
+    adminCredentialPresent: true,
+  });
+  assert.equal(mutationAccepted.ok, true, mutationAccepted.errors.join('\n'));
+
+  const mutationRejected = assertMutationSafety({
+    env: { ...qaEnv, APP_URL: 'https://experimental.86chaos.com', CHAOS_EXPECTED_BRANCH: 'testing' },
+    projectId: 'chaos-test-d1601',
+    credentialProjectId: 'chaos-test-d1601',
+    runId: 'target-unit-run',
+    adminCredentialPresent: true,
+  });
+  assert.equal(mutationRejected.ok, false);
+  assert.match(mutationRejected.errors.join('\n'), /production host|not a recognized testing\/preview deployment/i);
+});
+
 test('APP_URL and CHAOS_BASE_URL must agree by host and tolerate trailing slash differences', () => {
   assert.equal(normalizeUrlForCompare('https://86chaos-git-testing-a.vercel.app/'), normalizeUrlForCompare('https://86chaos-git-testing-a.vercel.app'));
   const ok = validateReleaseTarget({ appUrl: 'https://86chaos-git-testing-a.vercel.app/', chaosBaseUrl: 'https://86chaos-git-testing-a.vercel.app', expectedVersion: '16.0.149', sourceVersion: '16.0.149', deployedVersion: '16.0.149' });

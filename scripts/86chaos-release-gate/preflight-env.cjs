@@ -123,6 +123,7 @@ async function main() {
     chaosBaseUrl: process.env.CHAOS_BASE_URL || '',
     expectedProjectSlug: value('CHAOS_EXPECTED_VERCEL_PROJECT_SLUG') || CANONICAL_VERCEL_PROJECT_SLUG,
     expectedVersion,
+    expectedBranch,
     allowLocal: boolEnv('CHAOS_ALLOW_LOCAL_UI_ONLY'),
   });
   if (!targetValidation.ok) errors.push(...targetValidation.errors);
@@ -269,6 +270,7 @@ async function main() {
     appUrl,
     projectId: firebaseProjectId || process.env.REACT_APP_FIREBASE_PROJECT_ID || process.env.REACT_APP_TEST_FIREBASE_PROJECT_ID,
     runId,
+    expectedBranch,
     requireAdminCredentials: boolEnv('CHAOS_ALLOW_MUTATION') || boolEnv('CHAOS_QA_AUTO_PROVISION_TEST_USERS'),
     allowLocalEmulator: boolEnv('CHAOS_ALLOW_LOCAL_UI_ONLY')
   });

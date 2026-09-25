@@ -12,7 +12,7 @@ function bool(value) { return /^(1|true|yes)$/i.test(String(value || '')); }
 function isSafeTestingUrl(value = '') {
   try {
     const url = new URL(value);
-    if (isProductionHost(url.hostname)) return false;
+    if (isProductionHost(url.hostname, process.env.CHAOS_EXPECTED_BRANCH || '')) return false;
     return /^https?:$/i.test(url.protocol);
   } catch (_) { return false; }
 }

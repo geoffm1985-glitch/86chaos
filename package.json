@@ -1,6 +1,6 @@
 {
   "name": "86chaos",
-  "version": "17.1.17",
+  "version": "17.1.18",
   "private": true,
   "dependencies": {
     "@fontsource/noto-sans": "^5.3.0",

@@ -6,6 +6,7 @@ const CANONICAL_VERCEL_PROJECT_SLUG = '86chaos';
 const RETIRED_VERCEL_PROJECT_SLUGS = ['cheers-portal-4oxv'];
 const PRODUCTION_HOST = 'app.86chaos.com';
 const TESTING_HOST = 'testing.86chaos.com';
+const EXPERIMENTAL_HOST = 'experimental.86chaos.com';
 const TARGET_ENV_KEYS = ['APP_URL', 'CHAOS_BASE_URL', 'CHAOS_EXPECTED_VERSION', 'CHAOS_EXPECTED_VERCEL_PROJECT_SLUG'];
 
 function parseEnvText(text = '') {
@@ -59,6 +60,10 @@ function isTestingHost(host = '') {
   return String(host || '').toLowerCase().replace(/\.+$/, '') === TESTING_HOST;
 }
 
+function isExperimentalHost(host = '') {
+  return String(host || '').toLowerCase().replace(/\.+$/, '') === EXPERIMENTAL_HOST;
+}
+
 function isRetiredVercelHost(host = '') {
   const clean = String(host || '').toLowerCase();
   return RETIRED_VERCEL_PROJECT_SLUGS.some(slug => clean === `${slug}.vercel.app` || clean.startsWith(`${slug}-`) && clean.endsWith('.vercel.app'));
@@ -107,6 +112,7 @@ function validateReleaseTarget(options = {}) {
   const chaosBaseUrl = String(options.chaosBaseUrl || '').trim();
   const expectedSlug = String(options.expectedProjectSlug || CANONICAL_VERCEL_PROJECT_SLUG).trim() || CANONICAL_VERCEL_PROJECT_SLUG;
   const expectedVersion = String(options.expectedVersion || '').trim();
+  const expectedBranch = String(options.expectedBranch || '').trim().toLowerCase();
   const sourceVersion = String(options.sourceVersion || '').trim();
   const deployedVersion = String(options.deployedVersion || '').trim();
   const allowLocal = options.allowLocal === true;
@@ -115,7 +121,8 @@ function validateReleaseTarget(options = {}) {
   const url = appUrl || chaosBaseUrl;
   const host = hostOf(url);
   const canonicalTestingHost = isTestingHost(host);
-  const canonical = canonicalTestingHost || isCanonicalVercelPreviewHost(host, expectedSlug);
+  const canonicalExperimentalHost = expectedBranch === 'experimental' && isExperimentalHost(host);
+  const canonical = canonicalTestingHost || canonicalExperimentalHost || isCanonicalVercelPreviewHost(host, expectedSlug);
   const retired = isRetiredVercelHost(host);
   const production = isProductionHost(host);
 
@@ -132,7 +139,7 @@ function validateReleaseTarget(options = {}) {
   if (production) errors.push(`Mutating release-gate testing refuses production host ${host}. Use a non-production preview from canonical Vercel project ${expectedSlug}.`);
   if (retired) errors.push(`APP_URL belongs to retired Vercel project cheers-portal-4oxv. Use a testing preview from canonical project ${expectedSlug}.`);
   if (host && host.endsWith('.vercel.app') && !canonical) errors.push(`APP_URL host ${host} is not in the canonical Vercel project family ${expectedSlug}.`);
-  if (host && !host.endsWith('.vercel.app') && !canonicalTestingHost && !production && !allowLocal) errors.push(`APP_URL host ${host} is not the canonical testing domain or a Vercel testing preview. Use ${TESTING_HOST} or a non-production preview from canonical project ${expectedSlug}.`);
+  if (host && !host.endsWith('.vercel.app') && !canonicalTestingHost && !canonicalExperimentalHost && !production && !allowLocal) errors.push(`APP_URL host ${host} is not an approved branch domain or a Vercel testing preview. Use ${TESTING_HOST}${expectedBranch === 'experimental' ? ` or ${EXPERIMENTAL_HOST}` : ''}, or a non-production preview from canonical project ${expectedSlug}.`);
   if (expectedVersion && sourceVersion && sourceVersion !== expectedVersion) errors.push(`Source version ${sourceVersion} does not match CHAOS_EXPECTED_VERSION ${expectedVersion}.`);
   if (expectedVersion && deployedVersion && deployedVersion !== expectedVersion) errors.push(`Testing target is stale. Source/expected=${sourceVersion || expectedVersion}, deployed=${deployedVersion}. Deploy the current commit to canonical Vercel project ${expectedSlug} until ${TESTING_HOST} (or your chosen fresh canonical preview) reports ${expectedVersion}, then rerun the release gate.`);
   return {
@@ -148,6 +155,7 @@ function validateReleaseTarget(options = {}) {
     productionHost: production,
     deployedVersion,
     expectedVersion,
+    expectedBranch,
     sourceVersion,
   };
 }
@@ -157,6 +165,7 @@ module.exports = {
   RETIRED_VERCEL_PROJECT_SLUGS,
   PRODUCTION_HOST,
   TESTING_HOST,
+  EXPERIMENTAL_HOST,
   TARGET_ENV_KEYS,
   parseEnvText,
   readEnvFile,
@@ -164,6 +173,7 @@ module.exports = {
   hostOf,
   isProductionHost,
   isTestingHost,
+  isExperimentalHost,
   isRetiredVercelHost,
   isCanonicalVercelPreviewHost,
   inspectReleaseTargetEnvConflicts,
