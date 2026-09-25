@@ -1,0 +1,62 @@
+name: Diagnose 17.0.30 manifest parity
+
+on:
+  push:
+    branches:
+      - ci-diagnose-17-0-30-manifest
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    strategy:
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: testing
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Compare manifest hashes
+        shell: pwsh
+        run: |
+          @'
+          const fs = require('fs');
+          const crypto = require('crypto');
+          const path = require('path');
+          const manifest = JSON.parse(fs.readFileSync('release-source-manifest.json','utf8'));
+          const map = new Map(manifest.files.map(x=>[x.file,x.sha256]));
+          const files = [
+            'api/i18n-browser-runtime-17-0-28.test.cjs',
+            'api/release-gate-maturity-16-0-210.test.cjs',
+            'functions/src/index.ts',
+            'functions/src/retention.ts',
+            'tests/86chaos-new-implementations/10-app-bootstrap-i18n-runtime.spec.cjs'
+          ];
+          const textExt=/\.(?:js|jsx|cjs|mjs|json|css|html|md|txt|ps1|cmd|yml|yaml|rules|py|toml|sh)$/i;
+          const hash=b=>crypto.createHash('sha256').update(b).digest('hex');
+          for (const file of files) {
+            const raw=fs.readFileSync(file);
+            const normalized=textExt.test(file)?Buffer.from(raw.toString('utf8').replace(/\r\n/g,'\n')):raw;
+            const allTextNormalized=Buffer.from(raw.toString('utf8').replace(/\r\n/g,'\n').replace(/\r/g,'\n'));
+            console.log(JSON.stringify({
+              file,
+              manifest:map.get(file),
+              sourceIdentityHash:hash(normalized),
+              rawHash:hash(raw),
+              allTextHash:hash(allTextNormalized),
+              bytes:raw.length,
+              crlf:(raw.toString('binary').match(/\r\n/g)||[]).length,
+              loneCr:(raw.toString('binary').match(/\r(?!\n)/g)||[]).length,
+              lf:(raw.toString('binary').match(/(?<!\r)\n/g)||[]).length,
+              match:map.get(file)===hash(normalized)
+            }));
+          }
+          const id=require('./scripts/86chaos-release-gate/source-identity.cjs').captureSourceIdentity(process.cwd());
+          console.log(JSON.stringify({overallSourceHash:id.sourceHash,manifestSourceHash:manifest.sourceHash,match:id.sourceHash===manifest.sourceHash}));
+          '@ | node
