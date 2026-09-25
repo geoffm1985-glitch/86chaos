@@ -1,22 +1,22 @@
 {
-  "version": "17.1.21",
-  "name": "86 Chaos 17.1.21",
-  "build": "17.1.21",
-  "label": "86 Chaos 17.1.21",
-  "releasedAt": "2026-09-25T21:20:00Z",
-  "releaseTitle": "Experimental Full-Gate Dynamic Version Contract Repair",
+  "version": "17.1.22",
+  "name": "86 Chaos 17.1.22",
+  "build": "17.1.22",
+  "label": "86 Chaos 17.1.22",
+  "releasedAt": "2026-09-25T23:44:00Z",
+  "releaseTitle": "Request Off i18n Gate Fidelity Repair",
   "notes": [
-    "Removes the stale hard-coded 17.1.11 hostile-certification expectation that blocked the full Play Store gate before Playwright.",
-    "Keeps the full runner's expected version dynamically pinned to package.json after local environment loading.",
-    "Preserves experimental branch isolation and production release-target safeguards.",
-    "Carries the regression assertion in the mandatory hostile-contract release-gate coverage."
+    "Updates the Request Off employee-filter source assertion to recognize the production i18n token.",
+    "Verifies the English translation still resolves to All Employees.",
+    "Preserves the accessible select, role-grouped employee options, and existing filtering behavior.",
+    "Retains exact branch, commit, source-manifest, deployment, and Firebase certification safeguards."
   ],
-  "title": "86 Chaos 17.1.21",
-  "summary": "Repairs the experimental pre-Playwright full-gate blocker without changing application behavior.",
-  "description": "Release-gate test-contract repair only. Existing application behavior and production safeguards are preserved.",
+  "title": "86 Chaos 17.1.22",
+  "summary": "Repairs a stale source assertion in the pre-Playwright release checks while preserving the translated Request Off employee filter.",
+  "description": "Release-gate test fidelity repair only. Application behavior is unchanged.",
   "highlights": [
-    "Version 17.1.21 is synchronized across release identity surfaces.",
-    "Hostile certification now validates a semantic package version instead of a stale release literal.",
-    "The full Play Store gate remains mandatory and branch-scoped."
+    "Version 17.1.22 synchronizes the release identity after the gate-test repair.",
+    "The failing test now validates production behavior instead of obsolete literal JSX.",
+    "No Request Off UI behavior was changed."
   ]
 }
