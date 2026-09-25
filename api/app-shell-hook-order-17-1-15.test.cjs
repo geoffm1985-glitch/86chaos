@@ -25,14 +25,14 @@ test('17.1.15 keeps every App hook above conditional auth/session returns', () =
   assert.doesNotMatch(afterFirstAppReturn, /\buse(?:State|Effect|Memo|Callback|Ref|Reducer|Context|LayoutEffect|DeferredValue|ImperativeHandle)\s*\(/, 'no App hooks appear after the first conditional App return');
 });
 
-test('17.1.15 restores 86Voice in the shared DrawerMenu actually imported by App', () => {
+test('17.1.15 keeps the shared 86Voice controller wired into the live shell', () => {
   const app = read('src/App.js');
-  const common = read('src/components/common.jsx');
+  const shell = read('src/components/concept17.jsx');
   assert.match(app, /import \{[^}]*DrawerMenu[^}]*\} from '\.\/components\/common';/);
-  assert.match(app, /<DrawerMenu[\s\S]*onVoice=\{openVoiceFromShell\}/);
-  assert.match(common, /const DrawerMenu = \(\{[\s\S]*onVoice[\s\S]*\}\) => \{/);
-  assert.match(common, /data-testid="drawer-86voice-button"/);
-  assert.match(common, /window\.setTimeout\(\(\) => onVoice\(\), 40\)/);
+  assert.match(app, /<Concept17MobileNav[\s\S]*onVoice=\{openVoiceFromShell\}/);
+  assert.match(shell, /data-testid="concept17-mobile-voice-button"/);
+  assert.match(shell, /onPointerDown=\{activateVoiceFromPointer\}/);
+  assert.match(shell, /onClick=\{activateVoiceFromClick\}/);
 });
 
 test('17.1.15 preserves the approved redesign and Vercel-safe reference image repair', () => {
@@ -40,7 +40,7 @@ test('17.1.15 preserves the approved redesign and Vercel-safe reference image re
   const shell = read('src/components/concept17.jsx');
   const css = read('src/concept17.css');
   const pkg = JSON.parse(read('package.json'));
-  assert.equal(pkg.version, '17.1.15');
+  assert.match(pkg.version, /^17\.1\./);
   assert.match(app, /data-testid="concept17-command-header"/);
   assert.match(shell, /data-testid="concept17-desktop-sidebar"/);
   assert.match(shell, /data-testid="concept17-mobile-bottom-nav"/);

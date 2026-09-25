@@ -1,8 +1,18 @@
 'use strict';
 
-const CURRENT_RELEASE_VERSION = '17.1.15';
-const CURRENT_RELEASE_CARRY_FORWARD_NOTE = '17.1.15 preserves the complete approved-reference redesign, the Vercel-safe image repair, every existing workflow, and prior mobile 86Voice protections while repairing only the authenticated App-shell React hook-order regression and restoring the real shared drawer Voice entry.';
+const CURRENT_RELEASE_VERSION = '17.1.16';
+const CURRENT_RELEASE_CARRY_FORWARD_NOTE = '17.1.16 preserves every existing workflow, the approved reference redesign, the Vercel-safe image repair, authenticated hook-order repair, and mobile 86Voice touch hardening while restoring the legacy menu universe in the new shell, moving Voice back to the bottom toolbar, using the supplied logo artwork, and repairing desktop Message Board label fit.';
 const CURRENT_RELEASE_REPAIR_SCOPE = [
+  {
+    specPath: '86chaos-new-implementations/30-navigation-logo-toolbar-fit.spec.cjs',
+    fullSuitePath: '17.1.16 navigation, logo, and toolbar fit repair',
+    exactTestTitle: 'desktop uses the categorized legacy menu in the new sidebar and Message Board labels stay horizontal',
+  },
+  {
+    specPath: '86chaos-new-implementations/30-navigation-logo-toolbar-fit.spec.cjs',
+    fullSuitePath: '17.1.16 navigation, logo, and toolbar fit repair',
+    exactTestTitle: 'phone header has no hamburger and 86Voice is the first of six bottom-toolbar slots',
+  },
   {
     specPath: '86chaos-new-implementations/29-authenticated-shell-hook-order.spec.cjs',
     fullSuitePath: '17.1.15 authenticated shell hook-order repair',
@@ -16,7 +26,7 @@ const CURRENT_RELEASE_REPAIR_SCOPE = [
   {
     specPath: '86chaos-new-implementations/28-approved-reference-full-app-parity.spec.cjs',
     fullSuitePath: '17.1.13 approved-reference full-app visual parity',
-    exactTestTitle: 'mobile shell uses approved five-slot bottom bar and preserves 86Voice in More',
+    exactTestTitle: 'mobile shell uses the restored six-slot bottom bar with visible 86Voice and clean header',
   },
   {
     specPath: '86chaos-new-implementations/28-approved-reference-full-app-parity.spec.cjs',
@@ -41,12 +51,12 @@ const CURRENT_RELEASE_REPAIR_SCOPE = [
   {
     specPath: '86chaos-new-implementations/21-mobile-bottom-nav-single-line.spec.cjs',
     fullSuitePath: '17.1.5 mobile bottom navigation label fit',
-    exactTestTitle: 'all five bottom-toolbar labels stay on one line at narrow-phone width',
+    exactTestTitle: 'all six bottom-toolbar labels stay on one line at narrow-phone width',
   },
   {
     specPath: '86chaos-new-implementations/20-mobile-workflow-repair.spec.cjs',
     fullSuitePath: '17.1.3 mobile workflow repair',
-    exactTestTitle: 'mobile toolbar uses the approved five-slot layout and keeps 86Voice in More',
+    exactTestTitle: 'mobile toolbar restores 86Voice as the first of six bottom-toolbar slots',
   },
   {
     specPath: '86chaos-new-implementations/20-mobile-workflow-repair.spec.cjs',
@@ -71,7 +81,7 @@ const CURRENT_RELEASE_REPAIR_SCOPE = [
   {
     specPath: '86chaos-new-implementations/19-concept1-complete-route-subtab-fidelity.spec.cjs',
     fullSuitePath: '17.1.2 complete Concept 1 route and subtab fidelity',
-    exactTestTitle: 'Today is the first primary tab on desktop and mobile',
+    exactTestTitle: 'Time Clock & Schedule is first on desktop while Today remains first on mobile',
   },
   {
     specPath: '86chaos-new-implementations/19-concept1-complete-route-subtab-fidelity.spec.cjs',

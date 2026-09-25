@@ -20,17 +20,17 @@ test.describe('17.1.13 approved-reference full-app visual parity', () => {
 
     const sidebar = page.getByTestId('concept17-desktop-sidebar');
     await expect(sidebar).toBeVisible();
-    await expect(sidebar.locator('[data-shell-route]').first()).toHaveAttribute('data-shell-route', 'today');
+    await expect(sidebar.locator('[data-shell-route]').first()).toHaveAttribute('data-shell-route', 'published');
     await expect(page.getByTestId('concept17-command-header')).toBeVisible();
     await expect(page.locator('.concept17-header-search')).toBeVisible();
     await expect(page.locator('.concept17-workspace-header')).toBeVisible();
     await expect(page.locator('.concept17-header-bell')).toBeVisible();
     await expect(page.locator('.concept17-header-avatar')).toBeVisible();
-    await expect(page.locator('.concept17-mobile-menu-toggle')).toBeHidden();
+    await expect(page.locator('.concept17-mobile-menu-toggle')).toHaveCount(0);
     await noViewportOverflow(page, 'desktop shell');
   });
 
-  test('mobile shell uses approved five-slot bottom bar and preserves 86Voice in More', async ({ page }) => {
+  test('mobile shell uses the restored six-slot bottom bar with visible 86Voice and clean header', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     const account = ownerLikeCreds();
     requireCreds(account, 'owner-like account');
@@ -38,10 +38,13 @@ test.describe('17.1.13 approved-reference full-app visual parity', () => {
 
     const nav = page.getByTestId('concept17-mobile-bottom-nav');
     await expect(nav).toBeVisible();
-    await expect(nav.locator('.concept17-mobile-nav-item')).toHaveCount(5);
+    await expect(nav.locator('.concept17-mobile-nav-item')).toHaveCount(6);
+    await expect(nav.locator('.concept17-mobile-nav-item').first()).toHaveAttribute('data-shell-action', 'voice');
+    await expect(page.getByTestId('concept17-mobile-voice-button')).toBeVisible();
     await expect(nav.locator('[data-shell-route]').first()).toHaveAttribute('data-shell-route', 'today');
+    await expect(page.locator('.concept17-mobile-menu-toggle')).toHaveCount(0);
     await nav.getByRole('button', { name: /more/i }).click();
-    await expect(page.getByTestId('drawer-86voice-button')).toBeVisible();
+    await expect(page.getByTestId('drawer-86voice-button')).toHaveCount(0);
     await noViewportOverflow(page, 'mobile shell');
   });
 

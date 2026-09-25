@@ -14,25 +14,25 @@
     <link rel="icon" type="image/png" sizes="48x48" href="%PUBLIC_URL%/86chaos-icon-48-v2.png" />
     <link rel="shortcut icon" href="%PUBLIC_URL%/favicon.ico" />
     <link rel="apple-touch-icon" sizes="180x180" href="%PUBLIC_URL%/86chaos-icon-180-v2.png" />
-    <link id="app-manifest" rel="manifest" href="%PUBLIC_URL%/manifest.json" />
-    <title>86 Chaos</title>
     <script>
       (function () {
         var testingHost = window.location.hostname === 'testing.86chaos.com';
         var experimentalHost = window.location.hostname === 'experimental.86chaos.com';
-        var manifest = document.getElementById('app-manifest');
+        var manifest = document.createElement('link');
+        manifest.id = 'app-manifest';
+        manifest.rel = 'manifest';
+        if (testingHost) manifest.setAttribute('href', '/manifest-testing.json');
+        else if (experimentalHost) manifest.setAttribute('href', '/manifest-experimental.json');
+        else manifest.setAttribute('href', '%PUBLIC_URL%/manifest.json');
+        document.head.appendChild(manifest);
+
+        var installedName = experimentalHost ? '86chaos experimental' : (testingHost ? '86chaos testing' : '86 Chaos');
         var appleTitle = document.querySelector('meta[name="apple-mobile-web-app-title"]');
-        if (testingHost) {
-          if (manifest) manifest.setAttribute('href', '/manifest-testing.json');
-          if (appleTitle) appleTitle.setAttribute('content', '86chaos testing');
-          document.title = '86chaos testing';
-        } else if (experimentalHost) {
-          if (manifest) manifest.setAttribute('href', '/manifest-experimental.json');
-          if (appleTitle) appleTitle.setAttribute('content', '86chaos experimental');
-          document.title = '86chaos experimental';
-        }
+        if (appleTitle) appleTitle.setAttribute('content', installedName);
+        document.title = installedName;
       }());
     </script>
+    <title>86 Chaos</title>
     <script>
       window.tailwind = window.tailwind || {};
       window.tailwind.config = {

@@ -19,7 +19,7 @@ const REQUIRED_FEATURE_FILES = [
 ];
 
 const REQUIRED_PRIMARY_ROUTES = [
-  'today','ops','prep','inventory','recipes','team','published','financials','messages','godmode','settings','help',
+  'published','team','today','ops','messages','prep','inventory','recipes','financials','settings','help','godmode',
 ];
 
 test('17.1.13 desktop shell matches the approved reference hierarchy and removes duplicate top-right menus', () => {
@@ -37,7 +37,6 @@ test('17.1.13 desktop shell matches the approved reference hierarchy and removes
   }
   assert.match(shell, /data-testid="concept17-desktop-sidebar"/);
   assert.match(shell, /<Concept17Wordmark/);
-  assert.match(shell, /concept17-sidebar-brand-menu/);
   assert.match(app, /data-testid="concept17-command-header"/);
   assert.match(app, /concept17-header-search/);
   assert.match(app, /concept17-workspace-header/);
@@ -49,17 +48,17 @@ test('17.1.13 desktop shell matches the approved reference hierarchy and removes
   assert.match(css, /@media \(min-width: 1180px\)[\s\S]*\.concept17-mobile-nav\s*\{\s*display: none !important;/);
 });
 
-test('17.1.13 mobile shell matches the approved five-slot reference while preserving 86Voice access', () => {
+test('17.1.13 mobile shell preserves the approved reference while 86Voice returns to the six-slot toolbar', () => {
   const app = read('src/App.js');
   const shell = read('src/components/concept17.jsx');
-  const drawer = read('src/components/DrawerMenu.js');
+  const common = read('src/components/common.jsx');
   const css = read('src/concept17.css');
   assert.match(app, /const preferredMobileRoutes = \['today', 'published', 'ops', 'team'\]/);
   assert.match(shell, /items\.slice\(0, 4\)\.map/);
   assert.match(shell, /<MoreHorizontal size=\{20\}/);
-  assert.match(css, /17\.1\.13 approved-reference full-app visual parity pass[\s\S]*grid-template-columns:\s*repeat\(5,minmax\(0,1fr\)\)/);
+  assert.match(css, /17\.1\.16 navigation\/logo\/desktop control-fit repair[\s\S]*grid-template-columns:\s*repeat\(6,minmax\(0,1fr\)\)/);
   assert.match(shell, /data-testid="concept17-mobile-voice-button"/);
-  assert.match(drawer, /data-testid="drawer-86voice-button"/);
+  assert.doesNotMatch(common, /data-testid="drawer-86voice-button"/);
   assert.match(app, /onVoice=\{openVoiceFromShell\}/);
   assert.match(app, /data-testid="concept17-mobile-contextbar"/);
   assert.match(app, /concept17-mobile-open-status/);

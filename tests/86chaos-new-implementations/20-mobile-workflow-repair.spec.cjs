@@ -4,7 +4,7 @@ const { test, expect } = require('@playwright/test');
 const { ownerLikeCreds, requireCreds, login, gotoTab } = require('../86chaos-full-audit/utils/audit-helpers.cjs');
 
 test.describe('17.1.3 mobile workflow repair', () => {
-  test('mobile toolbar uses the approved five-slot layout and keeps 86Voice in More', async ({ page }) => {
+  test('mobile toolbar restores 86Voice as the first of six bottom-toolbar slots', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     const account = ownerLikeCreds();
     requireCreds(account, 'owner-like account');
@@ -13,12 +13,14 @@ test.describe('17.1.3 mobile workflow repair', () => {
     await gotoTab(page, 'ai-tools', { settleMs: 800, maxText: 30000 });
     const nav = page.getByTestId('concept17-mobile-bottom-nav');
     await expect(nav).toBeVisible();
-    await expect(nav.locator('.concept17-mobile-nav-item')).toHaveCount(5);
+    await expect(nav.locator('.concept17-mobile-nav-item')).toHaveCount(6);
+    const voice = page.getByTestId('concept17-mobile-voice-button');
+    await expect(voice).toBeVisible();
+    await expect(nav.locator('.concept17-mobile-nav-item').first()).toHaveAttribute('data-shell-action', 'voice');
     await expect(nav.locator('[data-shell-route]').first()).toHaveAttribute('data-shell-route', 'today');
 
     await nav.getByRole('button', { name: /more/i }).click();
-    const voice = page.getByTestId('drawer-86voice-button');
-    await expect(voice).toBeVisible();
+    await expect(page.getByTestId('drawer-86voice-button')).toHaveCount(0);
 
     const badges = page.locator('.kitchen-tool-status-badge:visible');
     const count = await badges.count();

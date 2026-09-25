@@ -23,9 +23,9 @@ test('17.1.2 shell preserves the approved primary navigation destinations on des
   const common = read('src/components/common.jsx');
   const shell = read('src/components/concept17.jsx');
   const catalogStart = app.indexOf('const shellNavCatalog = [');
-  const timeClockPos = app.indexOf("{ id: 'published', label: shellText('drawer.timeClockSchedule'", catalogStart);
-  const todayPos = app.indexOf("{ id: 'today', label: shellText('drawer.todayHome'", catalogStart);
-  assert.ok(todayPos > catalogStart && timeClockPos > todayPos, 'Today precedes Time Clock in the approved desktop shell catalog');
+  const timeClockPos = app.indexOf("{ id: 'published',", catalogStart);
+  const todayPos = app.indexOf("{ id: 'today',", catalogStart);
+  assert.ok(timeClockPos > catalogStart && todayPos > timeClockPos, 'Time Clock & Schedule precedes Today in the restored legacy desktop menu order');
   assert.match(app, /const preferredMobileRoutes = \['today', 'published', 'ops', 'team'/);
   assert.ok(common.includes("pushTab({ id: 'published'") && common.includes("pushTab({ id: 'today'"), 'drawer preserves both Time Clock and Today destinations');
   assert.match(shell, /published:\s*CalendarClock/);
