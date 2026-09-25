@@ -89,6 +89,15 @@ for(const p of [
   'api/release-gate-maturity-16-0-209.test.cjs',
   'api/release-gate-maturity-16-0-210.test.cjs'
 ]) replaceAll(p,'Unified Feature and Release-Gate Parity Merge','Hostile Certification Assertion Parity Repair');
+for(const p of [
+  'api/release-gate-maturity-16-0-207.test.cjs',
+  'api/release-gate-maturity-16-0-208.test.cjs',
+  'api/release-gate-maturity-16-0-209.test.cjs',
+  'api/release-gate-maturity-16-0-210.test.cjs'
+]) {
+  const s=read(p);
+  write(p,s.replaceAll('17\\.0\\.31','17\\.0\\.32'));
+}
 
 // Translated Request Off control remains accessible and role-grouped.
 replace('api/availability-delete-responsive-density-16-0-163.test.cjs',
