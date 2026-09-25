@@ -67,7 +67,7 @@ write('scripts/validate-17-0-32.js',validator);
 // Version-pinning test should validate the live package version, not freeze 17.0.29 forever.
 replace('api/release-gate-expected-version-17-0-19.test.cjs',
   "  assert.equal(packageVersion, '17.0.29');",
-  "  assert.match(packageVersion, /^\\\\d+\\\\.\\\\d+\\\\.\\\\d+$/);");
+  "  assert.match(packageVersion, /^\\d+\\.\\d+\\.\\d+$/);");
 replace('api/release-gate-expected-version-17-0-19.test.cjs',
   "    const env = { CHAOS_EXPECTED_VERSION: '17.0.29' };",
   "    const env = { CHAOS_EXPECTED_VERSION: packageVersion };");
@@ -97,8 +97,8 @@ replace('api/request-off-workflow-visibility-16-0-188.test.cjs',
 
 // Clear Month now avoids a redundant server preview round trip and trusts an authoritative successful batch commit.
 replace('api/schedule-builder-clear-month-17-0-24.test.cjs',
-  "  assert.match(schedule, /Delete ALL \\\\$\\{targetCount\\} saved shift/);",
-  "  assert.match(schedule, /Delete ALL saved shifts from \\\\$\\{monthLabel\\}/);");
+  "  assert.match(schedule, /Delete ALL \\$\\{targetCount\\} saved shift/);",
+  "  assert.match(schedule, /Delete ALL saved shifts from \\$\\{monthLabel\\}/);");
 replace('api/schedule-builder-clear-month-17-0-24.test.cjs',
   "  assert.match(schedule, /scheduleShiftDeleteRequest\\('preview-month'/);",
   "  assert.match(route, /action === 'preview-month'/);");
@@ -113,7 +113,7 @@ replace('api/schedule-tools-period-awareness-16-0-233.test.cjs',
 
 // Backup watchdog now derives errorCategory from safeCategory before returning it.
 replace('api/system-admin-backup-health-16-0-169.test.cjs',
-  "  assert.match(source, /errorCategory:[\\\\s\\\\S]*permission_denied/);",
-  "  assert.match(source, /const errorCategory = err\\.safeCategory[\\\\s\\\\S]*permission_denied/);");
+  "  assert.match(source, /errorCategory:[\\s\\S]*permission_denied/);",
+  "  assert.match(source, /const errorCategory = err\\.safeCategory[\\s\\S]*permission_denied/);");
 
 console.log('17.0.32 hostile certification assertion parity repair applied.');
