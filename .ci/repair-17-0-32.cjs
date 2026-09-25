@@ -61,6 +61,7 @@ for(const p of ['test-tools/certification/groups.json','test-tools/regressions/r
 // New release validator, preserving the existing feature-parity checks.
 let validator=read('scripts/validate-17-0-31.js')
   .replaceAll('17.0.31','17.0.32')
+  .replaceAll('validate-17-0-31.js','validate-17-0-32.js')
   .replaceAll('Cross-Platform Source Manifest Parity Repair','Hostile Certification Assertion Parity Repair');
 write('scripts/validate-17-0-32.js',validator);
 
