@@ -3,6 +3,7 @@
 const { admin, getAdminAppForRequest, readBody, requireAppCheckIfEnforced, readWorkspaceMember, userHasWorkspace, profileForWorkspace, masterEmails, norm, clean } = require('./_chaos-admin');
 const { decidePlatformAdminAuthority } = require('./_platform-admin-authority.cjs');
 const { enforceRateLimit, sendRateLimited } = require('./_rate-limit');
+const { normalizePolicy, evaluatePolicyDate, callerCanConfigurePolicy } = require('./_time-off-policy.cjs');
 
 const ACTIVE_CONFLICT_STATUSES = new Set(['pending', 'approved']);
 const TERMINAL_CONFLICT_STATUSES = new Set(['denied', 'rejected', 'cancelled', 'canceled', 'archived', 'processed', 'completed']);
@@ -152,7 +153,7 @@ function callerHasWorkspaceAccess(user = {}, member = null, restaurantId = '', i
 async function loadCallerContext(app, req, body = {}) {
   const token = bearer(req);
   if (!token) throw Object.assign(new Error('Authentication is required.'), { status: 401, code: 'missing-token' });
-  const decoded = await app.auth().verifyIdToken(token);
+  const decoded = await app.auth().verifyIdToken(token, true);
   const db = app.firestore();
   const restaurantId = cleanString(body.restaurantId || '', 180);
   if (!restaurantId) throw Object.assign(new Error('Workspace is required.'), { status: 400, code: 'missing-workspace' });
@@ -635,9 +636,77 @@ async function handleGhostCancel(ctx, body) {
   return { ok: true, action: 'ghost-cancel', requestId };
 }
 
+
+function workspaceToday(systemSettings = {}) {
+  const timeZone = cleanString(systemSettings.timezone || 'America/Chicago', 80) || 'America/Chicago';
+  try {
+    const parts = new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date());
+    const byType = Object.fromEntries(parts.map(part => [part.type, part.value]));
+    const key = `${byType.year}-${byType.month}-${byType.day}`;
+    return safeDate(key) || new Date().toISOString().slice(0, 10);
+  } catch (_) {
+    return new Date().toISOString().slice(0, 10);
+  }
+}
+
+async function loadRestaurantPolicyContext(ctx) {
+  const ref = ctx.db.collection('restaurants').doc(ctx.restaurantId);
+  const snap = await ref.get();
+  const restaurant = snap.exists ? (snap.data() || {}) : {};
+  const systemSettings = restaurant.systemSettings && typeof restaurant.systemSettings === 'object' ? restaurant.systemSettings : {};
+  const policy = normalizePolicy(restaurant.timeOffPolicy || {});
+  return { ref, restaurant, systemSettings, policy, canConfigure: callerCanConfigurePolicy(ctx, restaurant) };
+}
+
+async function handlePolicyCheck(ctx, body = {}) {
+  const dates = parseDateList(body);
+  const state = await loadRestaurantPolicyContext(ctx);
+  const today = workspaceToday(state.systemSettings);
+  const results = dates.map(date => evaluatePolicyDate({
+    requestDate: date,
+    today,
+    policy: state.policy,
+    scheduleSettings: state.systemSettings,
+    canOverride: state.canConfigure,
+  }));
+  return { ok: true, action: 'policy-check', restaurantId: ctx.restaurantId, today, canOverride: state.canConfigure, policy: state.policy, results: results.map((row, index) => ({ date: dates[index], ...row })) };
+}
+
+async function handlePolicySave(ctx, body = {}) {
+  const state = await loadRestaurantPolicyContext(ctx);
+  if (!state.canConfigure) throw Object.assign(new Error('Only the account owner or a workspace administrator can change the Request Off cutoff or blackout dates.'), { status: 403, code: 'time-off-policy-admin-required' });
+  const policy = normalizePolicy(body.policy || body.timeOffPolicy || {});
+  const nowIso = new Date().toISOString();
+  const stored = {
+    ...policy,
+    schemaVersion: 1,
+    updatedAt: nowIso,
+    updatedBy: ctx.uid || '',
+    updatedByName: cleanString(ctx.workspaceProfile?.name || ctx.user?.name || ctx.email || 'Workspace Admin', 140),
+  };
+  await state.ref.set({ timeOffPolicy: stored, updatedAt: nowIso }, { merge: true });
+  try {
+    await ctx.db.collection('auditLogs').add({
+      restaurantId: ctx.restaurantId,
+      action: 'TIME_OFF_POLICY_UPDATED',
+      target: 'Request Off policy',
+      details: JSON.stringify({ cutoffDaysBeforeRelease: stored.cutoffDaysBeforeRelease, monthlyReleaseDay: stored.monthlyReleaseDay, nonMonthlyReleaseLeadDays: stored.nonMonthlyReleaseLeadDays, blackoutCount: stored.blackouts.length }),
+      userId: ctx.uid || '',
+      userName: stored.updatedByName,
+      userEmail: ctx.email || '',
+      timestamp: nowIso,
+      serverTimestamp: admin.firestore.FieldValue.serverTimestamp(),
+      source: 'api/time-off-request'
+    });
+  } catch (_) {}
+  return { ok: true, action: 'policy-save', policy: stored };
+}
+
 async function routeAction(ctx, body = {}) {
   const action = cleanString(body.action || 'conflicts', 40).toLowerCase();
   if (action === 'conflicts') return handleConflicts(ctx, body);
+  if (action === 'policy-check') return handlePolicyCheck(ctx, body);
+  if (action === 'policy-save') return handlePolicySave(ctx, body);
   if (action === 'workflow-list') return handleWorkflowList(ctx, body);
   if (action === 'ghost-list') return handleGhostList(ctx, body);
   if (action === 'ghost-create') return handleGhostCreate(ctx, body);
@@ -699,5 +768,9 @@ module.exports._test = {
   loadCallerContext,
   buildTargetIdentity,
   buildRequestPayload,
+  workspaceToday,
+  loadRestaurantPolicyContext,
+  handlePolicyCheck,
+  handlePolicySave,
   routeAction
 };

@@ -1,0 +1,20 @@
+{
+  "release": "16.0.236",
+  "title": "POS Bridge Foundation",
+  "status": "targeted-validation-required",
+  "mappings": [
+    {"implementation": "ES256 assertion, exact credential/key-generation binding, replay, access-token and token-type boundary", "tests": ["api/pos-bridge-auth-16-0-236.test.cjs"]},
+    {"implementation": "revocation-aware Firebase session, active canonical membership and owner/admin control-plane authority", "tests": ["api/pos-bridge-human-authority-16-0-236.test.cjs"]},
+    {"implementation": "owner/admin installation lifecycle, one-writer claim and terminal revocation", "tests": ["api/pos-bridge-installations-16-0-236.test.cjs", "api/pos-bridge-emulator-16-0-236.test.cjs"]},
+    {"implementation": "strict order/cash schemas, real date/timestamp semantics and PCI allowlist", "tests": ["api/pos-bridge-schema-16-0-236.test.cjs"]},
+    {"implementation": "truthful partial-batch acknowledgement, lost-ACK retry and persistent-conflict contract", "tests": ["api/pos-bridge-batch-16-0-236.test.cjs"]},
+    {"implementation": "durable idempotent inbox, sequence windows, entity versions and zero downstream writes", "tests": ["api/pos-bridge-inbox-16-0-236.test.cjs", "api/pos-bridge-emulator-16-0-236.test.cjs"]},
+    {"implementation": "logical Firestore operation instrumentation", "tests": ["api/pos-bridge-cost-16-0-236.test.cjs"]},
+    {"implementation": "reserved generic-write roots and ordinary restore exclusion", "tests": ["api/pos-bridge-boundary-behavior-16-0-236.test.cjs", "api/pos-bridge-security-16-0-236.test.cjs"]},
+    {"implementation": "bounded idle sequence-checkpoint convergence and honest reconciliation evidence", "tests": ["api/pos-bridge-reconciliation-16-0-236.test.cjs", "api/pos-bridge-emulator-16-0-236.test.cjs"]},
+    {"implementation": "reviewed tenant-bound employee mapping lifecycle with revision preconditions", "tests": ["api/pos-bridge-mappings-16-0-236.test.cjs", "api/pos-bridge-emulator-16-0-236.test.cjs"]},
+    {"implementation": "loopback-only simulator target proof and real service/durable fault scenarios", "tests": ["api/pos-bridge-simulator-16-0-236.test.cjs"]},
+    {"implementation": "deployed negative contract/security behavior", "tests": ["tests/86chaos-new-implementations/06-pos-bridge-contract.spec.cjs", "tests/86chaos-new-implementations/07-pos-bridge-security.spec.cjs"]},
+    {"implementation": "release wiring and protected infrastructure", "tests": ["scripts/validate-16-0-236.js"]}
+  ]
+}

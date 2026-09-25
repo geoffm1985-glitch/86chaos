@@ -24,7 +24,7 @@ async function authorize(req, adminApp) {
   const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : '';
   if (!token) return { ok: false, status: 401, error: 'Missing authorization token.' };
   try {
-    const decoded = await adminApp.auth().verifyIdToken(token);
+    const decoded = await adminApp.auth().verifyIdToken(token, true);
     const email = (decoded.email || '').toLowerCase().trim();
     const userSnap = await adminApp.firestore().collection('users').doc(decoded.uid).get();
     const user = userSnap.exists ? (userSnap.data() || {}) : {};

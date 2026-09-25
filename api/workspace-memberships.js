@@ -108,7 +108,9 @@ module.exports = async function handler(req, res) {
     const auth = app.auth();
     const token = (req.headers.authorization || '').replace('Bearer ', '').trim();
     if (!token) return res.status(401).json({ ok: false, error: 'Missing Firebase authorization token.' });
-    const decoded = await auth.verifyIdToken(token);
+    const decoded = await auth.verifyIdToken(token, true);
+    const authUser = await auth.getUser(decoded.uid);
+    if (authUser.disabled) return res.status(403).json({ ok: false, error: 'This account is disabled.' });
     const uid = decoded.uid;
     const rawEmail = clean(decoded.email);
     const email = norm(rawEmail);
@@ -169,7 +171,8 @@ module.exports = async function handler(req, res) {
     });
   } catch (err) {
     console.error('workspace-memberships API error:', err);
-    return res.status(500).json({ ok: false, error: err?.message || 'Could not load workspace memberships.' });
+    const code = String(err?.code || '');
+    return res.status(code.startsWith('auth/') ? 401 : 500).json({ ok: false, error: code.startsWith('auth/') ? 'Workspace authorization failed.' : 'Could not load workspace memberships.' });
   }
 };
 

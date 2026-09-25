@@ -158,7 +158,7 @@ export default async function handler(req, res) {
     const isTimeout = error?.name === 'AbortError';
     const status = error?.statusCode || (isTimeout ? 504 : (/authorization|token|permission|login/i.test(error?.message || '') ? 401 : 500));
     return res.status(status).json({
-      error: isTimeout ? 'Recipe scanning timed out before the hard request deadline. Try a clearer image.' : (error.message || 'Failed to process recipe.'),
+      error: isTimeout ? 'Recipe scanning timed out before the hard request deadline. Try a clearer image.' : 'Failed to process recipe.',
       code: error?.code || undefined,
       scannerVersion: RECIPE_SCANNER_ENGINE_VERSION,
       appVersion: APP_VERSION

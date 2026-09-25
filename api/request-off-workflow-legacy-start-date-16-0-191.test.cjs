@@ -8,8 +8,9 @@ const read = file => fs.readFileSync(path.join(root, file), 'utf8');
 
 test('Request Off workflow client resolver recognizes legacy startDate without replacing architecture', () => {
   const schedule = read('src/features/schedule.jsx');
-  assert.match(schedule, /const requestOffDateKey = \(request = \{\}\) => \{/);
-  assert.match(schedule, /request\?\.date \|\| request\?\.requestDate \|\| request\?\.requestedDate \|\| request\?\.startDate \|\| request\?\.dateKey/);
+  const runtime = read('src/core/requestOffRuntimeSafety.js');
+  assert.match(schedule, /import \{ requestOffDateKey, normalizeRequestOffRuntimeRow, safeRequestOffRows \} from '\.\.\/core\/requestOffRuntimeSafety'/);
+  assert.match(runtime, /const DATE_FIELDS = \['date','requestDate','requestedDate','startDate','dateKey'/);
   assert.match(schedule, /requestOffApi\('workflow-list', \{ startDate: workflowRequestRange\.start, endDate: workflowRequestRange\.end, dateFilter \}\)/);
   assert.match(schedule, /mergeRequestOffWorkflowRows\(timeOffRequests \|\| \[\], workflowDateScopedRequests \|\| \[\], workflowApiRequests \|\| \[\]\)/);
   assert.match(schedule, /const \[viewFilter, setViewFilter\] = useState\('needs-review'\)/);

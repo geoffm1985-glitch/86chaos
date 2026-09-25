@@ -9,7 +9,7 @@ module.exports = async function handler(req, res) {
     const app = initAdmin(req);
     const appCheck = await requireAppCheckIfEnforced(app, req);
     if (!appCheck.ok) return res.status(appCheck.status || 401).json({ ok: false, error: appCheck.error });
-    const decoded = await app.auth().verifyIdToken(token);
+    const decoded = await app.auth().verifyIdToken(token, true);
     const db = app.firestore();
     const userSnap = await db.collection('users').doc(decoded.uid).get();
     const user = userSnap.exists ? (userSnap.data() || {}) : {};

@@ -6,6 +6,7 @@ const { mergeProtectedRootAdminEmails } = require('./_protected-root-admin');
 
 function norm(v) { return String(v || '').toLowerCase().trim(); }
 function clean(v, fallback = '') { return String(v == null ? fallback : v).trim(); }
+function inactiveRecord(value) { return !value || value.isActive === false || value.disabled === true || value.accountDisabled === true || value.deleted === true || value.removed === true || value.archived === true || ['inactive','revoked','disabled','deleted','removed','archived','deactivated'].includes(norm(value.status || value.recordStatus)); }
 function memberDocId(uid, restaurantId) { return `${clean(uid).replace(/[^A-Za-z0-9_-]/g, '_')}_${clean(restaurantId).replace(/[^A-Za-z0-9_-]/g, '_')}`.slice(0, 240); }
 function mappedWorkspaceMember(user, restaurantId) {
   const member = user?.memberships?.[restaurantId];
@@ -22,30 +23,41 @@ function userHasWorkspace(user, restaurantId) {
 async function readWorkspaceMember(db, uid, email, restaurantId) {
   if (!restaurantId) return null;
   const direct = await db.collection('workspaceMembers').doc(memberDocId(uid, restaurantId)).get();
-  if (direct.exists && direct.data()?.isActive !== false) return { id: direct.id, ...direct.data() };
+  if (direct.exists) return { id: direct.id, ...direct.data(), _canonicalSource: 'uid' };
   if (email) {
     const snap = await db.collection('workspaceMembers').where('restaurantId', '==', restaurantId).where('email', '==', norm(email)).limit(1).get();
-    if (!snap.empty && snap.docs[0].data()?.isActive !== false) return { id: snap.docs[0].id, ...snap.docs[0].data() };
+    if (!snap.empty) {
+      const rows = snap.docs.map(doc => ({ id: doc.id, ...doc.data(), _canonicalSource: 'email' }));
+      return rows.find(row => !inactiveRecord(row)) || rows[0];
+    }
   }
   return null;
 }
-function profileForWorkspace(user, member, restaurantId) {
-  // activeRestaurantId/defaultRestaurantId are selectors, not authorization.
-  // Top-level legacy roles remain valid only for the account's primary
-  // restaurantId. Every secondary workspace must supply workspace-scoped
-  // membership roles and permissions.
-  const legacyPrimary = user?.restaurantId === restaurantId;
-  const activeMember = member && member.isActive !== false ? member : null;
-  const legacySource = legacyPrimary ? (user || {}) : {};
-  const source = activeMember
-    ? {
-        ...legacySource,
-        ...activeMember,
-        permissions: { ...(legacySource.permissions || {}), ...(activeMember.permissions || {}) }
-      }
-    : legacySource;
+function legacyMembershipFallbackAllowed(user = {}, restaurantId = '') {
+  // This is deliberately explicit and temporary. Merely having a primary
+  // restaurantId, workspaceIds, or a stale memberships map is not migration
+  // authority. Migration tooling must opt an account in and must not mark it
+  // as already migrated to canonical workspaceMembers.
+  return Boolean(
+    user.legacyMembershipFallback === true &&
+    Number(user.membershipMigrationVersion || 0) < 2 &&
+    clean(user.restaurantId) === clean(restaurantId) &&
+    !Array.isArray(user.workspaceIds) &&
+    (!user.memberships || Object.keys(user.memberships).length === 0)
+  );
+}
+function profileForWorkspace(user, member, restaurantId, { allowLegacyFallback = false } = {}) {
+  // A canonical workspaceMembers document is the complete authority source
+  // for that workspace. Account-profile roles are identity metadata only and
+  // must never be merged into a canonical member.
+  const canonicalDenied = Boolean(member && inactiveRecord(member));
+  const activeMember = member && !canonicalDenied ? member : null;
+  const legacySource = !member && allowLegacyFallback && legacyMembershipFallbackAllowed(user, restaurantId) ? (user || {}) : {};
+  const source = activeMember || legacySource;
   return {
-    ...(user || {}),
+    id: user?.id,
+    email: user?.email || source?.email || '',
+    name: user?.name || user?.displayName || source?.name || source?.displayName || '',
     ...(source || {}),
     id: user?.id,
     restaurantId,
@@ -57,7 +69,8 @@ function profileForWorkspace(user, member, restaurantId) {
     accountOwner: source?.accountOwner === true,
     owner: source?.owner === true,
     workspaceOwner: source?.workspaceOwner === true,
-    isActive: source?.isActive !== false && user?.isActive !== false
+    isActive: Boolean(source && Object.keys(source).length) && !canonicalDenied && source?.isActive !== false && user?.isActive !== false,
+    authoritySource: activeMember ? 'canonical-workspace-member' : (Object.keys(legacySource).length ? 'explicit-legacy-migration' : 'none')
   };
 }
 function parseMasterEmailEnv() {
@@ -181,6 +194,10 @@ async function authorizeCrossProjectMaster(req) {
   if (!token) return { ok: false, status: 401, error: 'Missing Firebase authorization token.' };
   try {
     const decoded = await verifyTrustedFirebaseIdToken(token);
+    const tokenApp = getAdminAppForProject(decoded.authProjectId);
+    await tokenApp.auth().verifyIdToken(token, true);
+    const authUser = await tokenApp.auth().getUser(decoded.uid);
+    if (authUser.disabled) return { ok: false, status: 403, error: 'This Firebase account is disabled.' };
     const email = norm(decoded.email);
     const claimAllows = decoded.superAdmin === true || decoded.systemAccess?.superAdmin === true;
     const emailAllows = Boolean(email && decoded.email_verified !== false && crossProjectMasterEmails().includes(email));
@@ -265,7 +282,7 @@ async function readBody(req) {
   if (typeof req.body === 'object') return req.body;
   try { return JSON.parse(req.body); } catch (_) { return {}; }
 }
-async function authorize(req, app, { allowTenantAdmin = false, targetRestaurantId = '', allowCrossProjectMaster = false } = {}) {
+async function authorize(req, app, { allowTenantAdmin = false, targetRestaurantId = '', allowCrossProjectMaster = false, requiredPermissions = [] } = {}) {
   const token = (req.headers.authorization || '').replace('Bearer ', '').trim();
   if (!token) return { ok: false, status: 401, error: 'Missing Firebase authorization token.' };
   try {
@@ -273,7 +290,9 @@ async function authorize(req, app, { allowTenantAdmin = false, targetRestaurantI
     const activeApp = (!app || app.options?.projectId !== tokenProjectId)
       ? getAdminAppForProject(tokenProjectId)
       : app;
-    const decoded = await activeApp.auth().verifyIdToken(token);
+    const decoded = await activeApp.auth().verifyIdToken(token, true);
+    const authUser = await activeApp.auth().getUser(decoded.uid);
+    if (authUser.disabled) return { ok: false, status: 403, error: 'This Firebase account is disabled.' };
     const db = activeApp.firestore();
     const email = norm(decoded.email);
     let userSnap = await db.collection('users').doc(decoded.uid).get();
@@ -283,17 +302,32 @@ async function authorize(req, app, { allowTenantAdmin = false, targetRestaurantI
       const byEmail = await db.collection('users').where('email', '==', email).limit(1).get();
       if (!byEmail.empty) { userSnap = byEmail.docs[0]; userDocId = userSnap.id; user = userSnap.data(); }
     }
-    const isSuperAdmin = Boolean(decoded.superAdmin === true || user?.isSuperAdmin === true || user?.systemAccess?.superAdmin === true || masterEmails().includes(email));
+    if (!user || inactiveRecord(user)) return { ok: false, status: 403, error: 'This account is inactive or unavailable.' };
+    // Tenant-controlled Firestore fields are never platform authority. Only a
+    // verified token claim or the protected server configuration may grant it.
+    const isSuperAdmin = Boolean(decoded.superAdmin === true || decoded.systemAccess?.superAdmin === true || masterEmails().includes(email));
     const restaurantId = clean(targetRestaurantId || user?.activeRestaurantId || user?.restaurantId || user?.defaultRestaurantId || '');
     // Always look for the canonical workspace member first. A workspaceIds
     // entry proves basic membership but must never hide a scoped admin role.
     const storedMember = restaurantId && !isSuperAdmin
       ? await readWorkspaceMember(db, decoded.uid, email, restaurantId)
       : null;
-    const member = storedMember || mappedWorkspaceMember(user, restaurantId);
-    const workspaceUser = profileForWorkspace({ ...(user || {}), id: userDocId }, member, restaurantId);
+    const mappedMemberRecord = user?.memberships?.[restaurantId];
+    if (!isSuperAdmin && storedMember && inactiveRecord(storedMember)) {
+      return { ok: false, status: 403, error: 'Workspace membership is inactive or removed.' };
+    }
+    // Once any canonical/mapped workspace evidence exists, a missing canonical
+    // record is a removal, not permission to resurrect legacy authority.
+    const hasMigrationEvidence = Boolean(mappedMemberRecord || user?.workspaceIds?.includes?.(restaurantId) || Number(user?.membershipMigrationVersion || 0) >= 2);
+    if (!isSuperAdmin && !storedMember && hasMigrationEvidence) {
+      return { ok: false, status: 403, error: 'Workspace membership is inactive or removed.' };
+    }
+    const member = storedMember;
+    const allowLegacyFallback = !hasMigrationEvidence && legacyMembershipFallbackAllowed(user, restaurantId);
+    const workspaceUser = profileForWorkspace({ ...(user || {}), id: userDocId }, member, restaurantId, { allowLegacyFallback });
     const permissions = workspaceUser?.permissions || {};
-    const tenantAdmin = Boolean(allowTenantAdmin && restaurantId && (isSuperAdmin || member || userHasWorkspace(user, restaurantId)) && (workspaceUser?.isAdmin === true || workspaceUser?.isOwner === true || workspaceUser?.accountOwner === true || permissions.settings === true || permissions.team === true));
+    const explicitPermission = (Array.isArray(requiredPermissions) ? requiredPermissions : [requiredPermissions]).filter(Boolean).some(permission => permissions?.[permission] === true);
+    const tenantAdmin = Boolean(allowTenantAdmin && restaurantId && (isSuperAdmin || member || allowLegacyFallback) && (workspaceUser?.isAdmin === true || workspaceUser?.isOwner === true || workspaceUser?.accountOwner === true || permissions.settings === true || permissions.team === true || explicitPermission));
     if (!isSuperAdmin && !tenantAdmin) return { ok: false, status: 403, error: 'System Administrator access is required for this tool.' };
     const mfa = requireMfaIfEnforced(decoded, workspaceUser || user || {}, isSuperAdmin);
     if (!mfa.ok) return mfa;
@@ -327,4 +361,4 @@ async function writeAudit(db, ctx, action, target, details, restaurantId = '') {
     });
   } catch (_) {}
 }
-module.exports = { admin, initAdmin, getAdminAppForRequest, getAdminAppForProject, readBody, authorize, authorizeCrossProjectMaster, verifyTrustedFirebaseIdToken, trustedFirebaseAuthProjects, crossProjectMasterEmails, requireAppCheckIfEnforced, parseBackupBuffer, serializeIssue, writeAudit, norm, clean, masterEmails, parseMasterEmailEnv, memberDocId, userHasWorkspace, readWorkspaceMember, profileForWorkspace, mfaEnforcementEnabled, decodedHasMfa, roleNeedsMfa, requireMfaIfEnforced };
+module.exports = { admin, initAdmin, getAdminAppForRequest, getAdminAppForProject, readBody, authorize, authorizeCrossProjectMaster, verifyTrustedFirebaseIdToken, trustedFirebaseAuthProjects, crossProjectMasterEmails, requireAppCheckIfEnforced, parseBackupBuffer, serializeIssue, writeAudit, norm, clean, inactiveRecord, masterEmails, parseMasterEmailEnv, memberDocId, userHasWorkspace, readWorkspaceMember, profileForWorkspace, legacyMembershipFallbackAllowed, mfaEnforcementEnabled, decodedHasMfa, roleNeedsMfa, requireMfaIfEnforced };

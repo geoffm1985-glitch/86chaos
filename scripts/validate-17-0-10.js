@@ -1,0 +1,22 @@
+#!/usr/bin/env node
+'use strict';
+const fs=require('node:fs');
+const assert=require('node:assert/strict');
+const read=file=>fs.readFileSync(file,'utf8');
+const json=file=>JSON.parse(read(file));
+const pkg=json('package.json'),lock=json('package-lock.json'),version=json('public/version.json');
+assert.equal(pkg.scripts['test:source'],'node scripts/validate-17-0-10.js');
+assert.equal(pkg.version,'17.0.10');assert.equal(lock.version,pkg.version);assert.equal(lock.packages[''].version,pkg.version);assert.equal(version.version,pkg.version);assert.equal(version.releaseTitle,'Repository Safety Manifest Repair');
+for(const f of ['src/core/appCore.js','api/_version.js','api/_pos-bridge-config.js'])assert(read(f).includes("'17.0.10'"));
+for(const dir of ['src','api','scripts','test-tools','tests'])assert(fs.statSync(dir).isDirectory(),dir+' is required');
+for(const file of ['firebase.json','vercel.json','firestore.rules','storage.rules','RUN_86CHAOS_PLAY_STORE_RELEASE_GATE.ps1','.gitignore','release-source-manifest.json'])assert(fs.statSync(file).isFile());
+const groups=json('test-tools/certification/groups.json');assert.equal(groups.release,pkg.version);
+assert.equal(json('test-tools/regressions/registry.json').release,pkg.version);
+assert.equal(json('test-tools/certification/cost-performance-baselines.json').release,pkg.version);
+const safety=read('scripts/verify-repository-safety.cjs');
+assert(safety.includes("allowedTrackedExclusions=new Set(['release-source-manifest.json'])"));
+assert(safety.includes("'release-source-manifest.json'"));
+assert(pkg.scripts['test:hostile:contracts'].includes('api/repository-safety-17-0-10.test.cjs'));
+assert(read('src/styles.css').includes('bottom: calc(44px + env(safe-area-inset-bottom, 0px))'));
+assert(read('src/features/schedule.jsx').includes('safeRequestOffRows(...lists)'));
+console.log('17.0.10 source validation passed; this does not certify the release.');

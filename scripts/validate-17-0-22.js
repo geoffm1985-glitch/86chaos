@@ -1,0 +1,41 @@
+#!/usr/bin/env node
+'use strict';
+const fs=require('node:fs');
+const assert=require('node:assert/strict');
+const read=f=>fs.readFileSync(f,'utf8');
+const json=f=>JSON.parse(read(f));
+const pkg=json('package.json'),lock=json('package-lock.json'),version=json('public/version.json');
+assert.equal(pkg.version,'17.0.22');
+assert.equal(lock.version,pkg.version);
+assert.equal(lock.packages[''].version,pkg.version);
+assert.equal(version.version,pkg.version);
+assert.equal(version.build,pkg.version);
+assert.equal(version.releaseTitle,'Release Gate Top-Level Layout Smoke Repair');
+assert.equal(pkg.scripts['test:source'],'node scripts/validate-17-0-22.js');
+assert.equal(pkg.scripts['validate:17.0.22'],'node scripts/validate-17-0-22.js');
+assert(pkg.scripts['test:repair:17.0.22']?.includes('release-gate-schedule-runner-17-0-18.test.cjs'),'17.0.22 repair test covers the layout launch boundary');
+const releaseChecks=read('scripts/86chaos-release-gate/run-node-release-checks.cjs');
+const full=read('RUN_86CHAOS_PLAY_STORE_RELEASE_GATE.ps1');
+const layout=read('playwright.layout.config.cjs');
+assert(!/mobile layout Playwright smoke/i.test(releaseChecks),'synchronous Node readiness runner no longer launches the browser smoke');
+assert(!releaseChecks.includes('playwright.layout.config.cjs'),'synchronous Node readiness runner has no layout Playwright process');
+assert(full.includes("Set-RunnerPhase 'playwright-layout-smoke'"),'top-level gate records the layout-smoke phase');
+assert(full.includes('$LayoutSmokeExit = Run-LiveStep "Mobile layout Playwright smoke"'), 'top-level gate launches the layout smoke as a live step');
+assert(full.includes("& '$PlaywrightExe' test --config '$LayoutSmokeConfig'"),'layout smoke uses the installed Playwright command wrapper');
+assert(full.includes('if ($LayoutSmokeExit -ne 0)'),'layout smoke remains release-blocking');
+const smokeIndex=full.indexOf("Set-RunnerPhase 'playwright-layout-smoke'");
+const mainIndex=full.indexOf("Set-RunnerPhase 'playwright'",smokeIndex+1);
+assert(smokeIndex>=0&&mainIndex>smokeIndex,'layout smoke runs before the main Playwright release gate');
+assert(layout.includes('globalTimeout:180000'),'layout smoke has a 180-second Playwright global limit');
+assert(layout.includes('workers:1'),'layout smoke is serialized to one browser worker');
+// Preserve the 17.0.20 structured source-validator contract repair.
+const execution=read('api/release-gate-execution-17-0-5.test.cjs');
+assert(!execution.includes('assert.match(good.result.stdout,/source validation passed/)'),'source-validator execution test stays independent of success prose');
+assert(execution.includes("assert.equal(started.group,'source validator')"),'structured source-validator evidence remains enforced');
+// Preserve the 17.0.19 expected-version pinning repair.
+const preflight=read('scripts/86chaos-release-gate/preflight-env.cjs');
+assert(full.includes("SetEnvironmentVariable('CHAOS_EXPECTED_VERSION', $PackageVersion, 'Process')"),'full gate still pins expected version from package.json');
+assert(preflight.includes("TARGET_ENV_KEYS.filter(key => key !== 'CHAOS_EXPECTED_VERSION')"),'full certification still ignores stale persisted expected-version conflicts');
+for(const file of ['src/core/appCore.js','api/_version.js','api/_pos-bridge-config.js']) assert(read(file).includes("'17.0.22'"),`${file} carries 17.0.22`);
+for(const file of ['test-tools/certification/groups.json','test-tools/regressions/registry.json','test-tools/certification/cost-performance-baselines.json']) assert.equal(json(file).release,pkg.version);
+console.log('17.0.22 top-level layout smoke validation passed; this does not certify the release.');

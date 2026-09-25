@@ -441,7 +441,9 @@ async function verifyRequestToken(req, { requireProjectCredentials = false } = {
   const projectId = getTokenProjectId(token);
   const app = getAdminAppForProject(projectId, { requireCredentials: false });
   if (app) {
-    const decoded = await app.auth().verifyIdToken(token);
+    const decoded = await app.auth().verifyIdToken(token, true);
+    const authUser = await app.auth().getUser(decoded.uid);
+    if (authUser.disabled) throw new Error('Firebase authentication is disabled.');
     return { decoded: { ...decoded, authProjectId: projectId }, app, projectId, token, verificationMode: 'firebase-admin' };
   }
   if (requireProjectCredentials) {

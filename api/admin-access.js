@@ -11,7 +11,7 @@ async function verifySuperAdmin(req) {
   const token = (req.headers.authorization || '').replace('Bearer ', '').trim();
   if (!token) throw new Error('Missing Firebase ID token.');
   const app = initAdmin(req);
-  const decoded = await app.auth().verifyIdToken(token);
+  const decoded = await app.auth().verifyIdToken(token, true);
   const normalizeEmail = (value) => String(value || '').toLowerCase().trim();
   const masterEmails = mergeProtectedRootAdminEmails(Array.from(new Set([process.env.MASTER_ADMIN_EMAIL, ...(process.env.MASTER_ADMIN_EMAILS || '').split(',')].map(normalizeEmail).filter(Boolean))));
   const callerEmail = normalizeEmail(decoded.email);

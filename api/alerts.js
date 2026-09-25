@@ -12,7 +12,7 @@ export default async function handler(req, res) {
   try {
     authContext = await verifyRequestToken(req, { requireProjectCredentials: true });
   } catch (error) {
-    return res.status(403).json({ error: `Alert authorization failed: ${error.message}` });
+    return res.status(403).json({ error: 'Alert authorization failed.' });
   }
 
   try {
@@ -32,6 +32,6 @@ export default async function handler(req, res) {
     return res.status(200).json({ success: true, messageId: response, firebaseProject: authContext.projectId });
   } catch (error) {
     console.error('Alert send error:', error);
-    return res.status(500).json({ success: false, error: error.message || 'Alert delivery failed.' });
+    return res.status(500).json({ success: false, error: 'Alert delivery failed.' });
   }
 }

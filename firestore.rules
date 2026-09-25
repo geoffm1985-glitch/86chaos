@@ -1415,9 +1415,9 @@ allow delete: if signedIn() && resource.data.restaurantId is string && (isSuperA
 }
 match /roles/{docId} {
 allow read: if signedIn() && (isSuperAdmin() || (resource.data.restaurantId is string && isTenantMatch(resource.data.restaurantId)));
-allow create: if signedIn() && request.resource.data.restaurantId is string && (isSuperAdmin() || canTenantWriteCollection('roles', request.resource.data.restaurantId));
-allow update: if signedIn() && resource.data.restaurantId is string && request.resource.data.restaurantId == resource.data.restaurantId && (isSuperAdmin() || canTenantWriteCollection('roles', resource.data.restaurantId));
-allow delete: if signedIn() && resource.data.restaurantId is string && (isSuperAdmin() || canTenantWriteCollection('roles', resource.data.restaurantId));
+// Role lifecycle is server-owned so name reservations, history and the
+// publication configuration fence advance in one transaction.
+allow create, update, delete: if false;
 }
 match /pmSchedules/{docId} {
 allow read: if signedIn() && (isSuperAdmin() || (resource.data.restaurantId is string && isTenantMatch(resource.data.restaurantId)));

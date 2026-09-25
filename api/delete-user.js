@@ -104,7 +104,7 @@ async function verifySuperAdmin(req) {
   const token = (req.headers.authorization || '').replace('Bearer ', '').trim();
   if (!token) throw new Error('Missing Firebase ID token.');
   const app = initAdmin(req);
-  const decoded = await app.auth().verifyIdToken(token);
+  const decoded = await app.auth().verifyIdToken(token, true);
   const db = app.firestore();
   const email = normalizeEmail(decoded.email || '');
   let profileSnap = await db.collection('users').doc(decoded.uid).get();

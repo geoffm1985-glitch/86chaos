@@ -58,7 +58,7 @@ module.exports = async function handler(req, res) {
     if (!appCheck.ok) return res.status(appCheck.status || 401).json({ ok:false, error:appCheck.error });
     const token = authToken(req);
     if (!token) return res.status(401).json({ ok:false, error:'Authentication is required.' });
-    const decoded = await app.auth().verifyIdToken(token);
+    const decoded = await app.auth().verifyIdToken(token, true);
     const db = app.firestore();
     const body = await readBody(req);
     const restaurantId = clean(body.restaurantId, 160);

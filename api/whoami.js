@@ -150,7 +150,7 @@ module.exports = async function handler(req, res) {
 
   let decoded;
   try {
-    decoded = await getAuthClient(app).verifyIdToken(token);
+    decoded = await getAuthClient(app).verifyIdToken(token, true);
   } catch (err) {
     const status = authFailureStatus(err);
     if (status === 401) {

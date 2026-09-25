@@ -16,6 +16,7 @@ import { resolveFeatureAccess, resolveRouteAccess, isMasterAdminUser } from '../
 import { PLATFORM_ADMIN_ACCESS_STATES, resolvePlatformAdminAccessState } from '../core/sessionAccess';
 import { requestPersonalReminderRefresh, usePersonalReminderRows } from '../core/personalReminderQueries';
 import { FEATURE_KEYS } from '../config/plans';
+import { useI18n } from '../core/i18n';
 
 
 const buildReminderQueueFields = (scheduledAt, status = 'scheduled') => ({
@@ -49,6 +50,7 @@ const CheersLogo = ({ clientData }) => {
 };
 
 const Modal = ({ isOpen, onClose, title, children, sizeClass = 'max-w-md' }) => {
+  const { t } = useI18n();
   const panelRef = useRef(null);
   const previousFocusRef = useRef(null);
   const onCloseRef = useRef(onClose);
@@ -87,7 +89,7 @@ const Modal = ({ isOpen, onClose, title, children, sizeClass = 'max-w-md' }) => 
       <div ref={panelRef} role="dialog" aria-modal="true" aria-labelledby={titleIdRef.current} tabIndex={-1} className={`chaos-modal-panel ${T.card} ${sizeClass} w-full max-h-[90vh] overflow-y-auto outline-none`}>
         <div className={`chaos-modal-header flex justify-between items-center p-4 border-b ${T.border}`}>
           <h3 id={titleIdRef.current} className="font-bold text-lg text-white">{title}</h3>
-          <button type="button" aria-label={`Close ${title || 'dialog'}`} onClick={() => onCloseRef.current?.()} className="p-1.5 hover:bg-[#12161A] rounded-full text-slate-400 hover:text-white transition-colors focus:outline-none focus:ring-2 focus:ring-[#D4A381]"><X size={20}/></button>
+          <button type="button" aria-label={t('common.closeDialog', { title: title || 'dialog' }, `Close ${title || 'dialog'}`)} onClick={() => onCloseRef.current?.()} className="p-1.5 hover:bg-[#12161A] rounded-full text-slate-400 hover:text-white transition-colors focus:outline-none focus:ring-2 focus:ring-[#D4A381]"><X size={20}/></button>
         </div>
         <div className="chaos-modal-body p-4">{children}</div>
       </div>
@@ -111,6 +113,7 @@ const reminderNeedsAttention = (reminder = {}, appUser = {}) => {
 };
 
 const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppUser, hasUnreadMessages, hasMyShiftAlert, hasScheduleBuilderAlert, hasHelpUpdate = false, clientFeatures = {}, clientData = {}, addToast, availableWorkspaces = [], activeWorkspaceName = '', onOpenWorkspaceSwitcher, platformAdminAccessState = null }) => {
+  const { t } = useI18n();
   const [menuSearch, setMenuSearch] = useState('');
 
   // Reset the drawer search every time the hamburger menu opens/closes.
@@ -144,33 +147,33 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
   const pushTab = (tab) => { if (planAllowsTab(tab.id)) tabs.push(tab); };
 
   const managerBriefAccess = resolveFeatureAccess({ workspace: clientData || {}, user: appUser || {}, featureKey: FEATURE_KEYS.MANAGER_BRIEF });
-  pushTab({ id: 'today', label: managerBriefAccess.allowed ? 'Manager Brief' : 'Today Home', icon: <Star size={18}/>, dot: hasUnreadMessages || hasMyShiftAlert || hasScheduleBuilderAlert });
-  if (isEnabled('schedule')) pushTab({ id: 'published', label: 'Time Clock & Schedule', icon: <Clock size={18}/>, dot: hasMyShiftAlert }); 
-  if (planAllowsTab('financials')) pushTab({ id: 'financials', label: 'Financials', icon: <Scale size={18}/> });
-  if (planAllowsTab('back-office')) pushTab({ id: 'back-office', label: 'Back Office', icon: <ClipboardList size={18}/> });
-  if (planAllowsTab('ops')) pushTab({ id: 'ops', label: 'Kitchen Command Center', icon: <ChefHat size={18}/> }); 
-  if (isEnabled('messages')) pushTab({ id: 'messages', label: 'Message Board', icon: <MessageSquare size={18}/>, dot: hasUnreadMessages });
-  if (isEnabled('events')) pushTab({ id: 'events', label: 'Event Calendar', icon: <Star size={18}/> });
-  if (isEnabled('prep')) pushTab({ id: 'prep', label: 'Prep & Tasks', icon: <ClipboardList size={18}/> });
-  if (isEnabled('recipes')) pushTab({ id: 'recipes', label: 'Recipe Book', icon: <BookOpen size={18}/> });
-  if (isEnabled('inventory')) pushTab({ id: 'inventory', label: 'Inventory & Orders', icon: <Package size={18}/> });  
-  if (planAllowsTab('ai-tools')) pushTab({ id: 'ai-tools', label: 'Kitchen Tools', icon: <Sparkles size={18}/> });
-  if (planAllowsTab('menu-intelligence')) pushTab({ id: 'menu-intelligence', label: 'Menu Intelligence', icon: <Network size={18}/> });
-  pushTab({ id: 'reminders', label: 'My Reminders', icon: <Bell size={18}/>, dot: hasReminderAlert });
-  if (isEnabled('team')) pushTab({ id: 'team', label: 'Staff Roster', icon: <Users size={18}/> });
-  if (planAllowsTab('hr-training')) pushTab({ id: 'hr-training', label: 'HR & Training', icon: <BookOpen size={18}/> });
-  if (planAllowsTab('maintenance')) pushTab({ id: 'maintenance', label: 'Maintenance Log', icon: <Wrench size={18}/> });
+  pushTab({ id: 'today', label: managerBriefAccess.allowed ? t('drawer.managerBrief') : t('drawer.todayHome'), icon: <Star size={18}/>, dot: hasUnreadMessages || hasMyShiftAlert || hasScheduleBuilderAlert });
+  if (isEnabled('schedule')) pushTab({ id: 'published', label: t('drawer.timeClockSchedule'), icon: <Clock size={18}/>, dot: hasMyShiftAlert }); 
+  if (planAllowsTab('financials')) pushTab({ id: 'financials', label: t('drawer.financials'), icon: <Scale size={18}/> });
+  if (planAllowsTab('back-office')) pushTab({ id: 'back-office', label: t('drawer.backOffice'), icon: <ClipboardList size={18}/> });
+  if (planAllowsTab('ops')) pushTab({ id: 'ops', label: t('drawer.kitchenCommandCenter'), icon: <ChefHat size={18}/> }); 
+  if (isEnabled('messages')) pushTab({ id: 'messages', label: t('drawer.messageBoard'), icon: <MessageSquare size={18}/>, dot: hasUnreadMessages });
+  if (isEnabled('events')) pushTab({ id: 'events', label: t('drawer.eventCalendar'), icon: <Star size={18}/> });
+  if (isEnabled('prep')) pushTab({ id: 'prep', label: t('drawer.prepTasks'), icon: <ClipboardList size={18}/> });
+  if (isEnabled('recipes')) pushTab({ id: 'recipes', label: t('drawer.recipeBook'), icon: <BookOpen size={18}/> });
+  if (isEnabled('inventory')) pushTab({ id: 'inventory', label: t('drawer.inventoryOrders'), icon: <Package size={18}/> });  
+  if (planAllowsTab('ai-tools')) pushTab({ id: 'ai-tools', label: t('drawer.kitchenTools'), icon: <Sparkles size={18}/> });
+  if (planAllowsTab('menu-intelligence')) pushTab({ id: 'menu-intelligence', label: t('drawer.menuIntelligence'), icon: <Network size={18}/> });
+  pushTab({ id: 'reminders', label: t('drawer.myReminders'), icon: <Bell size={18}/>, dot: hasReminderAlert });
+  if (isEnabled('team')) pushTab({ id: 'team', label: t('drawer.staffRoster'), icon: <Users size={18}/> });
+  if (planAllowsTab('hr-training')) pushTab({ id: 'hr-training', label: t('drawer.hrTraining'), icon: <BookOpen size={18}/> });
+  if (planAllowsTab('maintenance')) pushTab({ id: 'maintenance', label: t('drawer.maintenanceLog'), icon: <Wrench size={18}/> });
   
   if (resolvedPlatformAdminAccessState.verified === true || platformAdminPendingForRoute) {
     pushTab({
       id: 'godmode',
-      label: resolvedPlatformAdminAccessState.verified === true ? 'System Administrator' : 'System Administrator • Verifying',
+      label: resolvedPlatformAdminAccessState.verified === true ? t('drawer.systemAdministrator') : t('drawer.systemAdministratorVerifying'),
       icon: <Globe size={18}/>
     });
   }
-  if (planAllowsTab('audit')) pushTab({ id: 'audit', label: 'System Audit', icon: <Shield size={18}/> });  
-  pushTab({ id: 'help', label: 'Help Center', icon: <BookOpen size={18}/>, dot: hasHelpUpdate });
-  if (!appUser?.isDemo) pushTab({ id: 'settings', label: 'Settings', icon: <Settings size={18}/> });
+  if (planAllowsTab('audit')) pushTab({ id: 'audit', label: t('drawer.systemAudit'), icon: <Shield size={18}/> });  
+  pushTab({ id: 'help', label: t('drawer.helpCenter'), icon: <BookOpen size={18}/>, dot: hasHelpUpdate });
+  if (!appUser?.isDemo) pushTab({ id: 'settings', label: t('drawer.settings'), icon: <Settings size={18}/> });
 
   const menuActions = [
     { id: 'help-add-staff', label: 'How to add staff', tab: 'help', keywords: 'employee team roster invite user password' },
@@ -183,12 +186,12 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
     { id: 'go-back-office', label: 'Open Back Office', tab: 'back-office', keywords: 'owner office documents approvals deposits alerts reports vault quickbooks back office suite' }
   ];
   const menuSections = [
-    { label: 'PEOPLE & SCHEDULING', ids: ['published', 'team', 'hr-training'] },
-    { label: 'TODAY', ids: ['today', 'ops', 'reminders', 'events', 'messages'] },
-    { label: 'KITCHEN OPERATIONS', ids: ['prep', 'inventory', 'recipes'] },
-    { label: 'BUSINESS & FINANCIALS', ids: ['financials', 'back-office', 'maintenance'] },
-    { label: 'TOOLS & AUTOMATION', ids: ['ai-tools', 'menu-intelligence'] },
-    { label: 'SYSTEM & SUPPORT', ids: ['settings', 'help', 'audit', 'godmode'] }
+    { label: t('drawer.peopleScheduling'), ids: ['published', 'team', 'hr-training'] },
+    { label: t('drawer.today'), ids: ['today', 'ops', 'reminders', 'events', 'messages'] },
+    { label: t('drawer.kitchenOperations'), ids: ['prep', 'inventory', 'recipes'] },
+    { label: t('drawer.businessFinancials'), ids: ['financials', 'back-office', 'maintenance'] },
+    { label: t('drawer.toolsAutomation'), ids: ['ai-tools', 'menu-intelligence'] },
+    { label: t('drawer.systemSupport'), ids: ['settings', 'help', 'audit', 'godmode'] }
   ].map(section => ({ ...section, tabs: section.ids.map(id => tabs.find(tab => tab.id === id)).filter(Boolean) })).filter(section => section.tabs.length > 0);
 
   const q = menuSearch.trim().toLowerCase();
@@ -199,7 +202,7 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
     }))
     .filter(section => section.tabs.length > 0);
   const visibleActions = q ? menuActions.filter(a => `${a.label} ${a.keywords}`.toLowerCase().includes(q)).slice(0, 8) : [];
-  const activeWorkspaceLabel = activeWorkspaceName || appUser?.restaurantName || appUser?.workspaceName || appUser?.businessName || 'Current Restaurant';
+  const activeWorkspaceLabel = activeWorkspaceName || appUser?.restaurantName || appUser?.workspaceName || appUser?.businessName || t('drawer.currentRestaurant');
   const switchableWorkspaceCount = Array.isArray(availableWorkspaces) ? availableWorkspaces.filter(w => w?.isActive !== false).length : 0;
   const canSwitchWorkspace = switchableWorkspaceCount > 1 && typeof onOpenWorkspaceSwitcher === 'function' && !appUser?.isDemo;
   const openWorkspaceSwitcherFromMenu = () => {
@@ -213,12 +216,12 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
       {isOpen && (
         <div className="fixed inset-0 z-[70] flex justify-end" role="presentation">
           <div className="absolute inset-0 bg-[#12161A]/60 backdrop-blur-sm" onClick={onClose}></div>
-          <div className={`app-drawer-readable w-72 bg-[#1A2126] border-l ${T.border} h-full shadow-2xl flex flex-col relative animate-[slideIn_0.3s_ease-out]`} role="dialog" aria-modal="true" aria-label="Main menu">
+          <div className={`app-drawer-readable w-72 bg-[#1A2126] border-l ${T.border} h-full shadow-2xl flex flex-col relative animate-[slideIn_0.3s_ease-out]`} role="dialog" aria-modal="true" aria-label={t('drawer.mainMenu', {}, 'Main menu')}>
             <div className={`p-4 border-b ${T.border} bg-[#12161A] flex justify-between items-start`}>
                <div className="flex items-center gap-3">
                  <img src={getAvatar(appUser.name, appUser.photoURL)} alt="Profile" className={`w-10 h-10 rounded-full border ${T.border} object-cover`}/>
                  <div>
-                   <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Signed in as</div>
+                   <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">{t('drawer.signedInAs')}</div>
                    <div className="text-white font-black text-lg tracking-tight leading-none">{appUser.name}</div>
                    <div className={`flex items-center gap-1 ${T.copper} text-[10px] font-bold uppercase tracking-wider mt-1 bg-[#1A2126] border ${T.border} w-max px-2 py-0.5 rounded-md`}>{appUser.isAdmin && <Shield size={10} />} {appUser.role}</div>
                    <button
@@ -226,7 +229,7 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
                      onClick={openWorkspaceSwitcherFromMenu}
                      disabled={!canSwitchWorkspace}
                      className={`mt-2 max-w-[170px] flex items-center gap-1.5 rounded-lg border ${T.border} bg-[#0B0E11] px-2 py-1 text-left text-[10px] font-black uppercase tracking-wider ${canSwitchWorkspace ? 'text-[#D4A381] hover:border-[#D4A381] hover:text-white cursor-pointer' : 'text-slate-500 cursor-default'}`}
-                     title={canSwitchWorkspace ? 'Change restaurant workspace' : 'Current restaurant workspace'}
+                     title={canSwitchWorkspace ? t('drawer.changeWorkspace') : t('drawer.currentWorkspace')}
                    >
                      <Globe size={11} className="flex-shrink-0" />
                      <span className="truncate">{activeWorkspaceLabel}</span>
@@ -234,16 +237,16 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
                    </button>
                  </div>
                </div>
-               <button onClick={onClose} aria-label="Close menu" className="drawer-icon-button no-compact w-11 h-11 p-0 bg-[#1A2126] border border-[#2A353D] rounded-full text-slate-400 hover:text-white transition-colors flex items-center justify-center shrink-0"><X size={20}/></button>
+               <button onClick={onClose} aria-label={t('drawer.closeMenu')} className="drawer-icon-button no-compact w-11 h-11 p-0 bg-[#1A2126] border border-[#2A353D] rounded-full text-slate-400 hover:text-white transition-colors flex items-center justify-center shrink-0"><X size={20}/></button>
             </div>
             <div className="p-2 border-b border-[#2A353D]">
               <div className="relative">
                 <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
-                <input value={menuSearch} onChange={e => setMenuSearch(e.target.value)} placeholder="Search menu, help, tools..." aria-label="Search menu, help, and tools" className="w-full bg-[#12161A] border border-[#2A353D] rounded-xl pl-9 pr-3 py-1.5 text-xs font-bold text-white outline-none focus:border-[#D4A381]" />
+                <input value={menuSearch} onChange={e => setMenuSearch(e.target.value)} placeholder={t('drawer.searchPlaceholder')} aria-label={t('drawer.searchAria')} className="w-full bg-[#12161A] border border-[#2A353D] rounded-xl pl-9 pr-3 py-1.5 text-xs font-bold text-white outline-none focus:border-[#D4A381]" />
               </div>
             </div>
             <div className="flex-1 overflow-y-auto px-3 py-2">
-               {visibleSections.length === 0 && visibleActions.length === 0 && <div className="p-4 text-center text-xs font-bold text-slate-500 border border-dashed border-[#2A353D] rounded-xl">No menu results. Try “schedule”, “punch”, “recipe”, or “help”.</div>}
+               {visibleSections.length === 0 && visibleActions.length === 0 && <div className="p-4 text-center text-xs font-bold text-slate-500 border border-dashed border-[#2A353D] rounded-xl">{t('drawer.noResults')}</div>}
                {visibleSections.map(section => (
                  <div key={section.label} className="mb-1.5 last:mb-0">
                    <div className="drawer-section-label px-2 pt-1.5 pb-0.5 text-[9px] font-black uppercase tracking-[0.18em] text-slate-500">{section.label}</div>
@@ -262,13 +265,13 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
                    </div>
                  </div>
                ))}
-               {visibleActions.length > 0 && <div className="pt-2 mt-1 border-t border-[#2A353D]"><div className="text-[9px] uppercase tracking-widest font-black text-slate-500 px-2 mb-0.5">Suggested actions</div>{visibleActions.map(a => (
+               {visibleActions.length > 0 && <div className="pt-2 mt-1 border-t border-[#2A353D]"><div className="text-[9px] uppercase tracking-widest font-black text-slate-500 px-2 mb-0.5">{t('drawer.suggestedActions')}</div>{visibleActions.map(a => (
                  <button key={a.id} onClick={() => { setActiveTab(a.tab); setMenuSearch(''); onClose(); }} className="w-full text-left px-3 py-1.5 rounded-lg font-bold text-xs text-slate-300 hover:bg-[#12161A] hover:text-[#D4A381] transition-colors flex items-center gap-2"><Search size={13}/> {a.label}</button>
                ))}</div>}
             </div>
             <div className={`p-3 border-t ${T.border} bg-[#12161A] space-y-2`}>
-             <button onClick={() => { setActiveTab('help'); onClose(); window.setTimeout(() => window.dispatchEvent(new CustomEvent('chaosOpenProblemReport')), 150); }} className="w-full flex items-center justify-center gap-2 py-2.5 text-orange-400 text-sm font-bold rounded-xl hover:bg-orange-900/20 transition-colors border border-orange-900/30"><Bug size={16} /> Report Problem</button>
-             <button onClick={() => { setAppUser(null); localStorage.removeItem('86chaosUser'); onClose(); }} className="w-full flex items-center justify-center gap-2 py-2.5 text-red-400 text-sm font-bold rounded-xl hover:bg-red-900/20 transition-colors"><LogOut size={16} /> Log Out</button>
+             <button onClick={() => { setActiveTab('help'); onClose(); window.setTimeout(() => window.dispatchEvent(new CustomEvent('chaosOpenProblemReport')), 150); }} className="w-full flex items-center justify-center gap-2 py-2.5 text-orange-400 text-sm font-bold rounded-xl hover:bg-orange-900/20 transition-colors border border-orange-900/30"><Bug size={16} /> {t('drawer.reportProblem')}</button>
+             <button onClick={() => { setAppUser(null); localStorage.removeItem('86chaosUser'); onClose(); }} className="w-full flex items-center justify-center gap-2 py-2.5 text-red-400 text-sm font-bold rounded-xl hover:bg-red-900/20 transition-colors"><LogOut size={16} /> {t('drawer.logOut')}</button>
             </div>
           </div>
         </div>
@@ -499,7 +502,7 @@ const QuickActionDock = React.memo(({ appUser, setActiveTab, openSearch, openTV,
     profile === 'kitchen' ? { label: 'Prep', tab: 'prep' } : null,
     ['manager','system'].includes(profile) ? { label: 'Kitchen Command', tab: 'ops' } : null,
     ['manager','system'].includes(profile) ? { label: 'Schedule', tab: 'schedule' } : null,
-    { label: 'Message Board', tab: 'messages' },
+    { label: t('drawer.messageBoard'), tab: 'messages' },
     { label: 'My Shift', tab: 'published' }
   ].filter(Boolean), [profile, openSearch, openTV]);
   const toggleOpen = useCallback(() => setOpen(value => !value), []);
@@ -2265,6 +2268,11 @@ const VoiceCommandDockBase = ({ appUser, inventoryItems = [], recipes = [], user
       if (actionToRun.intent === 'create_time_off_request') {
         if (!confirmedByUser) { addToast('Request Off Needs Confirmation', 'Confirm before submitting this request off.'); return; }
         if (!actionToRun.date || actionToRun.date < getToday()) { addToast('Past Date Locked', 'Request-off dates must be today or later.'); return; }
+        const policyResponse = await secureFetch('/api/time-off-request', { method:'POST', headers:{ 'Content-Type':'application/json' }, body:JSON.stringify({ action:'policy-check', restaurantId:appUser.restaurantId, dates:[actionToRun.date] }) });
+        const policyPayload = await policyResponse.json().catch(() => ({}));
+        const policyResult = Array.isArray(policyPayload?.results) ? policyPayload.results[0] : null;
+        if (!policyResponse.ok || policyPayload?.ok === false) { addToast('Request Off Unavailable', policyPayload?.error || 'Request Off policy could not be verified.'); return; }
+        if (policyResult?.allowed === false) { addToast(policyResult.code === 'blackout' ? 'Blackout Date' : 'Request Off Closed', policyResult.reason || 'Normal Request Off submissions are closed for this date.'); return; }
         const nowIso = new Date().toISOString();
         const existing = (await getDocs(query(collection(db, 'timeOffRequests'), where('restaurantId', '==', appUser.restaurantId), where('userId', '==', appUser.id || ''), where('date', '==', actionToRun.date)))).docs
           .map(d => ({ id:d.id, ...d.data() }))
@@ -2891,8 +2899,9 @@ const VoiceCommandDockBase = ({ appUser, inventoryItems = [], recipes = [], user
         const item = actionToRun.item;
         const stockDeducted = Math.max(0, Number(actionToRun.stockDeducted || 0));
         const costLost = (parseFloat(item.price || 0) || 0) * stockDeducted;
-        await addDoc(collection(db, 'wasteLogs'), { restaurantId: appUser.restaurantId, itemId:item.id, itemName:item.name, qty:actionToRun.amount, burnAmount:actionToRun.amount, burnUnitLabel:actionToRun.labelUnit, burnMode:actionToRun.mode, stockDeducted, costLost, reason:'Voice command', loggedBy: appUser.name || appUser.email || 'Voice Command', date:getToday(), timestamp:new Date().toISOString(), voiceCommand: sourceText });
-        if (stockDeducted > 0) await updateDoc(doc(db, 'inventoryItems', item.id), { currentStock: Math.max(0, (parseFloat(item.currentStock) || 0) - stockDeducted), updatedAt:new Date().toISOString() });
+        const operationId=globalThis.crypto?.randomUUID?.()||`voice_waste_${Date.now()}_${Math.random().toString(36).slice(2,14)}`,wasteData={restaurantId:appUser.restaurantId,itemId:item.id,itemName:item.name,qty:actionToRun.amount,burnAmount:actionToRun.amount,burnUnitLabel:actionToRun.labelUnit,burnMode:actionToRun.mode,stockDeducted,costLost,reason:'Voice command',loggedBy:appUser.name||appUser.email||'Voice Command',date:getToday(),timestamp:new Date().toISOString(),voiceCommand:sourceText};
+        let saved=false,lastError=null;for(let attempt=0;attempt<2&&!saved;attempt+=1){try{const response=await secureFetch('/api/safe-write',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'waste-create',operationId,restaurantId:appUser.restaurantId,data:wasteData})});const payload=await response.json().catch(()=>({}));if(!response.ok){const error=new Error(payload.error||'Burn log could not be saved.');error.nonRetryable=true;throw error;}saved=true;}catch(error){lastError=error;if(error?.nonRetryable||attempt===1)throw error;}}
+        if(!saved)throw lastError||new Error('Burn log could not be saved.');
         await logAudit(appUser, 'VOICE_BURN_LOG', item.name, sourceText);
         addToast('Burn Logged', `${actionToRun.amount} ${actionToRun.labelUnit} ${item.name}.`);
         setActiveTab('inventory'); if (closeWhenDone) setOpen(false); return;
