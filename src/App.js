@@ -7,7 +7,7 @@ import 'leaflet/dist/leaflet.css';
 import { T, db, auth, messagingReady, isFirebaseMessagingUnsupportedError, firebaseConfig, CURRENT_VERSION, MASTER_ADMIN_EMAIL, useLiveCollection, useLiveCollectionState, useLiveDocumentState, secureFetch, getToday, getMonthStr, formatDate, formatDisplayFullDate, formatDisplayMonth, logAudit, setActiveTimeFormat, getOfflineQueue, replayOfflineQueue, clearTenantListenerCache, recordScheduleOperationDiagnostic } from './core/appCore';
 import { buildAlertFingerprint, useRememberedAlert } from './core/alertMemory';
 import { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, GlobalSearchModal, KitchenTVMode, UndoBar, VoiceCommandDock } from './components/common';
-import { Concept17Sidebar, Concept17MobileNav, Concept17RouteFrame } from './components/concept17';
+import { Concept17Sidebar, Concept17MobileNav, Concept17RouteFrame, Concept17Wordmark } from './components/concept17';
 import { LockedFeatureScreen } from './components/PlanGate';
 import { usePlanAccess } from './hooks/usePlanAccess';
 import { resolveFeatureAccess } from './lib/featureAccess';
@@ -3332,13 +3332,13 @@ What I clicked / expected:
     try { return planAccess.canRoute(route, shellAccessContext)?.allowed !== false; } catch (_) { return false; }
   };
   const shellNavCatalog = [
-    { id: 'published', label: shellText('drawer.timeClockSchedule', 'Time Clock & Schedule'), mobileLabel: shellText('shell.schedule', 'Time Clock'), alert: hasMyShiftAlert || hasScheduleBuilderAlert },
     { id: 'today', label: shellText('drawer.todayHome', 'Today'), mobileLabel: shellText('shell.home', 'Home') },
     { id: 'ops', label: shellText('drawer.kitchenCommandCenter', 'Kitchen Command'), mobileLabel: shellText('shell.kitchen', 'Kitchen') },
     { id: 'prep', label: shellText('drawer.prepTasks', 'Prep & Tasks'), mobileLabel: shellText('shell.prep', 'Prep') },
     { id: 'inventory', label: shellText('drawer.inventoryOrders', 'Inventory & Orders'), mobileLabel: shellText('shell.inventory', 'Inventory') },
     { id: 'recipes', label: shellText('drawer.recipeBook', 'Recipes') },
     { id: 'team', label: shellText('drawer.staffRoster', 'Staff Roster'), mobileLabel: shellText('shell.staff', 'Staff') },
+    { id: 'published', label: shellText('drawer.timeClockSchedule', 'Time Clock & Schedule'), mobileLabel: shellText('shell.schedule', 'Time Clock'), alert: hasMyShiftAlert || hasScheduleBuilderAlert },
     { id: 'financials', label: shellText('drawer.financials', 'Financials') },
     { id: 'messages', label: shellText('drawer.messageBoard', 'Message Board'), alert: hasUnreadMessages },
     { id: 'godmode', label: shellText('drawer.systemAdministrator', 'System Administrator') },
@@ -3346,11 +3346,25 @@ What I clicked / expected:
     { id: 'help', label: shellText('drawer.helpCenter', 'Help Center'), alert: hasHelpUpdate },
   ];
   const shellNavItems = shellNavCatalog.filter(item => shellRouteAllowed(item.id));
-  const preferredMobileRoutes = ['published', 'today', 'ops', 'team', 'prep', 'inventory'];
+  const preferredMobileRoutes = ['today', 'published', 'ops', 'team'];
   const shellMobileNavItems = preferredMobileRoutes.map(id => shellNavItems.find(item => item.id === id)).filter(Boolean).slice(0, 4);
   const shellUserName = liveAppUser?.name || liveAppUser?.displayName || liveAppUser?.email || '86 Chaos';
   const shellUserRole = liveAppUser?.role || (liveAppUser?.isAdmin ? 'Administrator' : 'Team Member');
   const shellUserInitials = String(shellUserName).split(/\s+/).filter(Boolean).slice(0, 2).map(part => part.charAt(0)).join('').toUpperCase() || '86';
+  const openVoiceFromShell = useCallback(() => {
+    try { navigator?.vibrate?.(18); } catch (_) {}
+    const controller = voiceCommandDockRef.current;
+    if (controller?.openAndListen) {
+      controller.openAndListen();
+      return;
+    }
+    if (controller?.openPanel) {
+      controller.openPanel();
+      return;
+    }
+    try { window.dispatchEvent(new CustomEvent('chaos:voice-open-and-listen', { detail: { source: 'concept17-shell' } })); } catch (_) {}
+    addToast?.('86Voice', 'Opening voice controls…');
+  }, [addToast]);
 
 return (
     <I18nProvider language={appLanguage}>
@@ -3481,9 +3495,14 @@ return (
         </div>
       )}
 
-      <header className="app-header sticky top-0 z-40 border-b flex items-center justify-between" data-testid="concept17-command-header">
+      <header className="app-header sticky top-0 z-40 border-b" data-testid="concept17-command-header">
+        <button type="button" className="concept17-mobile-menu-toggle" onClick={openMenu} aria-label="Open navigation menu">
+          <Menu size={21} aria-hidden="true" />
+          {hasAnyMenuAlert && <span className="concept17-nav-alert" aria-label="New activity"></span>}
+        </button>
+
         <div className="concept17-header-brand">
-          <CheersLogo clientData={displayClientData} />
+          <Concept17Wordmark compact />
         </div>
 
         <div className="concept17-header-center">
@@ -3495,7 +3514,6 @@ return (
           >
             <Search size={16} aria-hidden="true" />
             <span className="concept17-header-search-label">{shellText('shell.searchPlaceholder', 'Search staff, inventory, recipes, schedules...')}</span>
-            <kbd className="concept17-header-search-kbd">Ctrl K</kbd>
           </button>
 
           {liveAppUser && (
@@ -3509,21 +3527,36 @@ return (
             >
               <Store size={16} aria-hidden="true" />
               <span>{liveAppUser.restaurantName || displayClientData?.name || shellText('drawer.currentRestaurant', 'Current Restaurant')}</span>
-              {availableWorkspaces.length > 1 && !ghostTenant && !isDemoMode && <ChevronDown size={14} aria-hidden="true" />}
+              <ChevronDown size={14} aria-hidden="true" />
             </button>
           )}
         </div>
 
-        <div className="flex items-center gap-2 flex-shrink-0">
-          <button type="button" aria-label={shellText('drawer.reportProblem', 'Report Problem')} onClick={() => openProblemReport({ title: 'Manual Problem Report', message: `Page: ${activeTabState}`, category: 'Bug / Error' })} className="concept17-header-action concept17-header-report" title={shellText('drawer.reportProblem', 'Report Problem')}><Bug size={17}/></button>
-          {offlineQueue.length > 0 && <button type="button" aria-label="Offline queued actions" onClick={() => openProblemReport({ title: 'Offline Queue', message: `${offlineQueue.length} queued action(s) waiting to sync.`, category: 'Data Looks Wrong' })} className="hidden md:flex px-2.5 py-2 border rounded-xl bg-amber-900/20 border-amber-500/40 text-amber-200 text-[9px] font-black uppercase tracking-widest" title="Offline queued actions">Queue {offlineQueue.length}</button>}
-          <button type="button" aria-label="Open navigation menu" title="Open navigation menu" onClick={openMenu} className="concept17-header-action relative">
-            <Menu size={19} />
-            {hasAnyMenuAlert && <span className="concept17-nav-alert absolute -top-1 -right-1" aria-label="New activity"></span>}
+        <div className="concept17-header-actions">
+          {offlineQueue.length > 0 && <button type="button" aria-label="Offline queued actions" onClick={() => openProblemReport({ title: 'Offline Queue', message: `${offlineQueue.length} queued action(s) waiting to sync.`, category: 'Data Looks Wrong' })} className="concept17-header-queue" title="Offline queued actions">{offlineQueue.length}</button>}
+          <button type="button" aria-label="Open notifications" title="Notifications" onClick={openMenu} className="concept17-header-bell">
+            <Bell size={19} />
+            {hasAnyMenuAlert && <span className="concept17-notification-dot" aria-label="New activity"></span>}
           </button>
           <button type="button" className="concept17-header-avatar" onClick={openMenu} aria-label={shellText('shell.openProfileMenu', 'Open profile menu')}>{shellUserInitials}</button>
         </div>
       </header>
+
+      <div className="concept17-mobile-contextbar" data-testid="concept17-mobile-contextbar">
+        {liveAppUser && (
+          <button
+            type="button"
+            className="concept17-mobile-workspace"
+            onClick={() => availableWorkspaces.length > 1 && !ghostTenant && !isDemoMode ? setIsWorkspaceSwitcherOpen(true) : null}
+            aria-label={`${shellText('drawer.currentWorkspace', 'Current restaurant workspace')} ${liveAppUser.restaurantName || 'Restaurant'}.`}
+          >
+            <Store size={15} aria-hidden="true" />
+            <span>{liveAppUser.restaurantName || displayClientData?.name || shellText('drawer.currentRestaurant', 'Current Restaurant')}</span>
+            <ChevronDown size={13} aria-hidden="true" />
+          </button>
+        )}
+        <div className="concept17-mobile-open-status" aria-label="Restaurant status open"><span></span>OPEN<ChevronDown size={12} aria-hidden="true" /></div>
+      </div>
 
       {/* SYSTEM BROADCAST BANNER */}
       {displayClientData?.systemBanner && !broadcastAlertMemory.isDismissed && (
@@ -3536,7 +3569,7 @@ return (
         </div>
       )}
 
-      <DrawerMenu isOpen={isMenuOpen} onClose={closeMenu} activeTab={activeTabState} setActiveTab={stableSetActiveTab} appUser={liveAppUser} setAppUser={setAppUser} hasUnreadMessages={hasUnreadMessages} hasMyShiftAlert={hasMyShiftAlert} hasScheduleBuilderAlert={hasScheduleBuilderAlert} hasHelpUpdate={hasHelpUpdate} clientFeatures={displayClientFeatures} clientData={displayClientData} addToast={addToast} availableWorkspaces={availableWorkspaces} activeWorkspaceName={liveAppUser?.restaurantName || displayClientData?.name || ''} onOpenWorkspaceSwitcher={openWorkspaceSwitcherFromDrawer} platformAdminAccessState={platformAdminAccessState} />
+      <DrawerMenu isOpen={isMenuOpen} onClose={closeMenu} activeTab={activeTabState} setActiveTab={stableSetActiveTab} appUser={liveAppUser} setAppUser={setAppUser} hasUnreadMessages={hasUnreadMessages} hasMyShiftAlert={hasMyShiftAlert} hasScheduleBuilderAlert={hasScheduleBuilderAlert} hasHelpUpdate={hasHelpUpdate} clientFeatures={displayClientFeatures} clientData={displayClientData} addToast={addToast} availableWorkspaces={availableWorkspaces} activeWorkspaceName={liveAppUser?.restaurantName || displayClientData?.name || ''} onOpenWorkspaceSwitcher={openWorkspaceSwitcherFromDrawer} platformAdminAccessState={platformAdminAccessState} onVoice={openVoiceFromShell} />
       <GlobalSearchModal isOpen={isGlobalSearchOpen} onClose={closeGlobalSearch} queryText={globalSearchQuery} setQueryText={setGlobalSearchQuery} users={displayUsers} events={events} shifts={shifts} recipes={recipes} inventoryItems={inventoryItems} maintenanceLogs={maintenanceLogs} setActiveTab={stableSetActiveTab} appUser={liveAppUser} clientData={displayClientData} clientFeatures={displayClientFeatures} />
       <KitchenTVMode isOpen={isKitchenTVOpen} onClose={closeKitchenTV} shifts={shifts} events={events} prepItems={prepItems} maintenanceLogs={maintenanceLogs} inventoryItems={inventoryItems} />
       <UndoBar undoItem={undoItem} clearUndo={clearUndoItem} />
@@ -3546,20 +3579,7 @@ return (
         items={shellMobileNavItems}
         activeTab={activeTabState}
         onNavigate={stableSetActiveTab}
-        onVoice={() => {
-          try { navigator?.vibrate?.(18); } catch (_) {}
-          const controller = voiceCommandDockRef.current;
-          if (controller?.openAndListen) {
-            controller.openAndListen();
-            return;
-          }
-          if (controller?.openPanel) {
-            controller.openPanel();
-            return;
-          }
-          try { window.dispatchEvent(new CustomEvent('chaos:voice-open-and-listen', { detail: { source: 'mobile-toolbar' } })); } catch (_) {}
-          addToast?.('86Voice', 'Opening voice controls…');
-        }}
+        onVoice={openVoiceFromShell}
         voiceLabel={shellText('shell.voice', 'Voice')}
         onMore={openMenu}
         moreLabel={shellText('shell.more', 'More')}

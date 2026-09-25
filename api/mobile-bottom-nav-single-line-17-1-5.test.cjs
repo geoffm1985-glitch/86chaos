@@ -20,10 +20,10 @@ test('17.1.5 mobile bottom toolbar labels are explicitly single-line and Android
   assert.ok((shell.match(/className="concept17-mobile-nav-label"/g) || []).length >= 2);
 });
 
-test('17.1.5 preserves six-slot mobile command bar with 86Voice first', () => {
+test('17.1.5 preserves single-line labels in the approved five-slot mobile command bar', () => {
   const css = read('src/concept17.css');
   const shell = read('src/components/concept17.jsx');
-  assert.match(css, /grid-template-columns:\s*repeat\(6, minmax\(0, 1fr\)\)/);
+  assert.match(css, /17\.1\.13 approved-reference full-app visual parity pass[\s\S]*grid-template-columns:\s*repeat\(5,minmax\(0,1fr\)\)/);
   assert.match(shell, /data-testid="concept17-mobile-voice-button"/);
   assert.match(shell, /items\.slice\(0, 4\)/);
   assert.match(shell, /concept17-mobile-nav-label/);

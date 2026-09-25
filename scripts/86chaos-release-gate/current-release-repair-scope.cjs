@@ -1,8 +1,23 @@
 'use strict';
 
-const CURRENT_RELEASE_VERSION = '17.1.12';
-const CURRENT_RELEASE_CARRY_FORWARD_NOTE = '17.1.12 preserves the complete Concept 1 redesign, the 17.1.11 physical-touch repair, and the production 17.0.29 speech lifecycle while moving the mobile 86Voice controller to a top-level fixed shell surface so Android installed-PWA rendering cannot hide the panel after microphone startup.';
+const CURRENT_RELEASE_VERSION = '17.1.13';
+const CURRENT_RELEASE_CARRY_FORWARD_NOTE = '17.1.13 preserves every production workflow and prior 86Voice repair while applying the approved reference visual system across every desktop/mobile route and subtab, removing duplicate desktop menus, and moving visible mobile Voice access into More without deleting the hardened touch path.';
 const CURRENT_RELEASE_REPAIR_SCOPE = [
+  {
+    specPath: '86chaos-new-implementations/28-approved-reference-full-app-parity.spec.cjs',
+    fullSuitePath: '17.1.13 approved-reference full-app visual parity',
+    exactTestTitle: 'desktop shell matches approved reference hierarchy without duplicate top-right menus',
+  },
+  {
+    specPath: '86chaos-new-implementations/28-approved-reference-full-app-parity.spec.cjs',
+    fullSuitePath: '17.1.13 approved-reference full-app visual parity',
+    exactTestTitle: 'mobile shell uses approved five-slot bottom bar and preserves 86Voice in More',
+  },
+  {
+    specPath: '86chaos-new-implementations/28-approved-reference-full-app-parity.spec.cjs',
+    fullSuitePath: '17.1.13 approved-reference full-app visual parity',
+    exactTestTitle: 'representative routes and nested pages retain the approved visual frame',
+  },
   {
     specPath: '86chaos-new-implementations/27-mobile-voice-pwa-panel.spec.cjs',
     fullSuitePath: '17.1.12 Android installed-PWA 86Voice panel repair',
@@ -21,12 +36,12 @@ const CURRENT_RELEASE_REPAIR_SCOPE = [
   {
     specPath: '86chaos-new-implementations/21-mobile-bottom-nav-single-line.spec.cjs',
     fullSuitePath: '17.1.5 mobile bottom navigation label fit',
-    exactTestTitle: 'all six bottom-toolbar labels stay on one line at narrow-phone width',
+    exactTestTitle: 'all five bottom-toolbar labels stay on one line at narrow-phone width',
   },
   {
     specPath: '86chaos-new-implementations/20-mobile-workflow-repair.spec.cjs',
     fullSuitePath: '17.1.3 mobile workflow repair',
-    exactTestTitle: 'mobile toolbar starts with 86Voice and Kitchen Tools badges do not stack',
+    exactTestTitle: 'mobile toolbar uses the approved five-slot layout and keeps 86Voice in More',
   },
   {
     specPath: '86chaos-new-implementations/20-mobile-workflow-repair.spec.cjs',
@@ -51,7 +66,7 @@ const CURRENT_RELEASE_REPAIR_SCOPE = [
   {
     specPath: '86chaos-new-implementations/19-concept1-complete-route-subtab-fidelity.spec.cjs',
     fullSuitePath: '17.1.2 complete Concept 1 route and subtab fidelity',
-    exactTestTitle: 'Time Clock & Schedule is the first primary tab on desktop and mobile',
+    exactTestTitle: 'Today is the first primary tab on desktop and mobile',
   },
   {
     specPath: '86chaos-new-implementations/19-concept1-complete-route-subtab-fidelity.spec.cjs',

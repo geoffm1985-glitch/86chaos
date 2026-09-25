@@ -1,7 +1,7 @@
 import React from 'react';
-import { X, Clock, MessageSquare, Calendar, ClipboardList, BookOpen, Package, Users, TrendingUp, Shield, Settings, Bug, LogOut, Globe, Repeat, Sparkles } from 'lucide-react';
+import { X, Clock, MessageSquare, Calendar, ClipboardList, BookOpen, Package, Users, TrendingUp, Shield, Settings, Bug, LogOut, Globe, Repeat, Sparkles, Mic } from 'lucide-react';
 
-const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppUser, hasUnreadMessages, clientFeatures = {}, T, getAvatar, MASTER_ADMIN_EMAIL, availableWorkspaces = [], activeWorkspaceName = '', onOpenWorkspaceSwitcher }) => {
+const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppUser, hasUnreadMessages, clientFeatures = {}, T, getAvatar, MASTER_ADMIN_EMAIL, availableWorkspaces = [], activeWorkspaceName = '', onOpenWorkspaceSwitcher, onVoice }) => {
   if (!isOpen) return null;
   const tabs = [];
   const perms = appUser?.permissions || {};
@@ -69,6 +69,9 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
              <button onClick={onClose} className="p-1.5 bg-[#1A2126] border border-[#2A353D] rounded-full text-slate-400 hover:text-white transition-colors"><X size={18}/></button>
           </div>
           <div className="flex-1 overflow-y-auto p-3 space-y-1">
+             {typeof onVoice === 'function' && <button type="button" data-testid="drawer-86voice-button" onClick={() => { onClose?.(); window.setTimeout(() => onVoice(), 40); }} className="drawer-voice-launcher w-full flex items-center justify-between px-3 py-2.5 rounded-xl font-bold text-sm transition-all duration-200 text-slate-200 hover:text-white">
+               <span className="flex items-center gap-3"><span className="text-[#D4A381]"><Mic size={18}/></span>86Voice</span><span className="text-[9px] uppercase tracking-widest text-[#D4A381]">Open</span>
+             </button>}
              {tabs.map(tab => (
                <button key={tab.id} onClick={() => { setActiveTab(tab.id); onClose(); }} className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl font-bold text-sm transition-all duration-200 ${activeTab === tab.id ? `${T.grad} text-slate-900 shadow-md` : 'text-slate-400 hover:bg-[#12161A] hover:text-white'}`}>
                  <div className="flex items-center gap-3">

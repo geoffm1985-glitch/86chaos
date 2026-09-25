@@ -44,17 +44,17 @@ test('17.1.3 Schedule Builder pins the day/date row while tightening the mobile 
   assert.match(css, /\.schedule-builder-desktop-table th:first-child,[\s\S]*width: 96px !important;/);
 });
 
-test('17.1.3 puts 86Voice in the first visual slot of the mobile bottom toolbar', () => {
+test('17.1.3 preserves 86Voice while the approved mobile toolbar uses five visible slots', () => {
   const shell = read('src/components/concept17.jsx');
+  const drawer = read('src/components/DrawerMenu.js');
   const common = read('src/components/common.jsx');
   const css = read('src/concept17.css');
-  const navStart = shell.indexOf('data-testid="concept17-mobile-bottom-nav"');
-  const voiceButton = shell.indexOf('data-testid="concept17-mobile-voice-button"', navStart);
-  const items = shell.indexOf('items.slice(0, 4).map', navStart);
-  assert.ok(voiceButton > navStart && items > voiceButton, 'real 86Voice button is first in the mobile toolbar');
+  assert.match(shell, /data-testid="concept17-mobile-voice-button"/);
   assert.match(shell, /data-shell-action="voice"/);
+  assert.match(shell, /items\.slice\(0, 4\)/);
+  assert.match(drawer, /data-testid="drawer-86voice-button"/);
   assert.match(common, /className="voice-command-trigger no-compact/);
-  assert.match(css, /\.concept17-mobile-nav[\s\S]*grid-template-columns: repeat\(6, minmax\(0, 1fr\)\)/);
+  assert.match(css, /17\.1\.13 approved-reference full-app visual parity pass[\s\S]*grid-template-columns:\s*repeat\(5,minmax\(0,1fr\)\)/);
 });
 
 test('17.1.3 Kitchen Tools badges stay horizontal instead of stacking letters', () => {

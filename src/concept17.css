@@ -2827,3 +2827,2006 @@ body {
     z-index: 120 !important;
   }
 }
+
+/* ========================================================================== */
+/* 17.1.13 approved-reference full-app visual parity pass                     */
+/* This block is intentionally last. It normalizes the shell, every routed    */
+/* page/subpage, and the Manager Brief to the approved desktop/mobile image    */
+/* without removing mature business workflows.                                */
+/* ========================================================================== */
+
+:root {
+  --c17-ref-bg: #090e12;
+  --c17-ref-bg-2: #0d1317;
+  --c17-ref-panel: #151d22;
+  --c17-ref-panel-2: #1a2329;
+  --c17-ref-panel-3: #202a30;
+  --c17-ref-line: #303a40;
+  --c17-ref-line-soft: #252f35;
+  --c17-ref-text: #f4f1eb;
+  --c17-ref-muted: #99a2a7;
+  --c17-ref-muted-2: #737d83;
+  --c17-ref-copper: #e89a63;
+  --c17-ref-copper-2: #c9784d;
+  --c17-ref-green: #69d9a2;
+  --c17-ref-red: #ff6d68;
+  --c17-ref-amber: #f1a65e;
+  --c17-sidebar-width: 224px;
+  --c17-ref-radius: 12px;
+  --c17-ref-shadow: 0 14px 38px rgba(0, 0, 0, .26), inset 0 1px 0 rgba(255,255,255,.025);
+}
+
+html,
+body,
+#root {
+  background: var(--c17-ref-bg) !important;
+}
+
+body {
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important;
+  color: var(--c17-ref-text) !important;
+}
+
+.concept17-shell {
+  min-height: 100dvh !important;
+  background:
+    radial-gradient(780px 420px at 103% -4%, rgba(154, 88, 50, .20), transparent 62%),
+    linear-gradient(180deg, #0b1115 0%, #080d10 100%) !important;
+  color: var(--c17-ref-text) !important;
+}
+
+.concept17-shell::before {
+  opacity: .08 !important;
+  background-size: 54px 54px !important;
+}
+
+
+.concept17-sidebar-brand-menu {
+  width: 24px !important;
+  height: 24px !important;
+  min-width: 24px !important;
+  min-height: 24px !important;
+  display: grid !important;
+  place-items: center !important;
+  flex: 0 0 auto !important;
+  margin: 0 1px 0 -2px !important;
+  padding: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+  color: #c8ced1 !important;
+  pointer-events: none !important;
+}
+
+/* Approved 86 CHAOS wordmark. */
+.concept17-wordmark {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 7px;
+  min-width: 0;
+  white-space: nowrap;
+  line-height: 1;
+}
+
+.concept17-wordmark-86 {
+  display: inline-block;
+  color: var(--c17-ref-copper);
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 34px;
+  font-style: italic;
+  font-weight: 500;
+  letter-spacing: -4px;
+  line-height: .88;
+  transform: skewX(-4deg);
+  text-shadow: 0 0 18px rgba(232,154,99,.10);
+}
+
+.concept17-wordmark-chaos {
+  display: inline-block;
+  color: #f3f0e9;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 24px;
+  font-weight: 500;
+  letter-spacing: -.8px;
+  line-height: 1;
+}
+
+.concept17-wordmark.is-compact .concept17-wordmark-86 {
+  font-size: 27px;
+  letter-spacing: -3px;
+}
+
+.concept17-wordmark.is-compact .concept17-wordmark-chaos {
+  font-size: 20px;
+}
+
+/* Desktop sidebar: exact compact rail from the approved reference. */
+.concept17-sidebar {
+  color: var(--c17-ref-text) !important;
+}
+
+.concept17-sidebar-brand {
+  min-height: 56px !important;
+  height: 56px !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 7px !important;
+  padding: 0 14px !important;
+  border-bottom: 1px solid var(--c17-ref-line-soft) !important;
+  background: rgba(12,18,22,.82) !important;
+}
+
+.concept17-sidebar-nav {
+  flex: 1 1 auto !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 3px !important;
+  padding: 12px 10px 16px !important;
+  overflow-y: auto !important;
+  scrollbar-width: thin;
+  scrollbar-color: #39434a transparent;
+}
+
+.concept17-sidebar-item {
+  position: relative !important;
+  min-height: 43px !important;
+  height: auto !important;
+  display: grid !important;
+  grid-template-columns: 30px minmax(0, 1fr) !important;
+  align-items: center !important;
+  gap: 8px !important;
+  width: 100% !important;
+  margin: 0 !important;
+  padding: 7px 9px !important;
+  border: 1px solid transparent !important;
+  border-radius: 9px !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  color: #c1c7ca !important;
+  text-align: left !important;
+}
+
+.concept17-sidebar-item:hover {
+  border-color: #2d383e !important;
+  background: #131b20 !important;
+  color: #fff !important;
+}
+
+.concept17-sidebar-item.is-active {
+  border-color: rgba(232,154,99,.34) !important;
+  background: linear-gradient(100deg, rgba(151,91,53,.42), rgba(57,42,33,.56)) !important;
+  box-shadow: inset 2px 0 0 var(--c17-ref-copper), inset 0 1px 0 rgba(255,255,255,.03) !important;
+  color: #f4d3ba !important;
+}
+
+.concept17-sidebar-icon {
+  width: 30px !important;
+  height: 30px !important;
+  display: grid !important;
+  place-items: center !important;
+  color: #d7dcde !important;
+}
+
+.concept17-sidebar-item.is-active .concept17-sidebar-icon {
+  color: var(--c17-ref-copper) !important;
+}
+
+.concept17-sidebar-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px !important;
+  line-height: 1.2 !important;
+  font-weight: 650 !important;
+  letter-spacing: -.01em !important;
+}
+
+.concept17-sidebar-footer {
+  flex: 0 0 auto !important;
+  padding: 10px !important;
+  border-top: 1px solid var(--c17-ref-line-soft) !important;
+  background: rgba(10,15,18,.74) !important;
+}
+
+.concept17-workspace-mini,
+.concept17-user-mini {
+  min-height: 46px !important;
+  display: grid !important;
+  grid-template-columns: 32px minmax(0,1fr) auto !important;
+  align-items: center !important;
+  gap: 8px !important;
+  padding: 7px 8px !important;
+  border-radius: 9px !important;
+}
+
+.concept17-workspace-mini {
+  border: 1px solid var(--c17-ref-line-soft) !important;
+  background: #0e1519 !important;
+}
+
+.concept17-user-mini {
+  margin-top: 5px !important;
+  grid-template-columns: 32px minmax(0,1fr) !important;
+}
+
+.concept17-workspace-mini strong,
+.concept17-user-mini strong {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #eef0ef !important;
+  font-size: 10px !important;
+  font-weight: 750 !important;
+}
+
+.concept17-workspace-mini small,
+.concept17-user-mini small {
+  display: block;
+  margin-top: 1px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--c17-ref-muted-2) !important;
+  font-size: 8px !important;
+  font-weight: 600 !important;
+}
+
+.concept17-workspace-home,
+.concept17-user-avatar {
+  width: 32px !important;
+  height: 32px !important;
+  display: grid !important;
+  place-items: center !important;
+  border: 1px solid #455059 !important;
+  border-radius: 999px !important;
+  background: linear-gradient(145deg, #47535c, #2d383f) !important;
+  color: #fff !important;
+  font-size: 9px !important;
+  font-weight: 800 !important;
+}
+
+.concept17-workspace-home {
+  border-radius: 8px !important;
+  border-color: rgba(232,154,99,.26) !important;
+  background: rgba(232,154,99,.08) !important;
+  color: var(--c17-ref-copper) !important;
+}
+
+/* Top command bar. Desktop intentionally has no duplicate hamburger/report menu. */
+.concept17-shell .app-header {
+  min-height: 56px !important;
+  height: 56px !important;
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) auto !important;
+  align-items: center !important;
+  gap: 14px !important;
+  padding: 9px 15px !important;
+  border-color: var(--c17-ref-line-soft) !important;
+  background: rgba(11,17,21,.96) !important;
+  backdrop-filter: blur(18px) !important;
+  box-shadow: 0 8px 24px rgba(0,0,0,.12) !important;
+}
+
+.concept17-mobile-menu-toggle,
+.concept17-header-brand,
+.concept17-mobile-contextbar {
+  display: none !important;
+}
+
+.concept17-header-center {
+  min-width: 0 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 14px !important;
+}
+
+.concept17-header-search {
+  width: min(425px, 42vw) !important;
+  height: 36px !important;
+  min-height: 36px !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 10px !important;
+  padding: 0 12px !important;
+  border: 1px solid #313c43 !important;
+  border-radius: 7px !important;
+  background: #192127 !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.025) !important;
+  color: #aab2b6 !important;
+}
+
+.concept17-header-search:hover {
+  border-color: #4b5961 !important;
+  background: #1c252b !important;
+}
+
+.concept17-header-search-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+  color: #aeb5b9 !important;
+  font-size: 10px !important;
+  font-weight: 550 !important;
+}
+
+.concept17-workspace-header {
+  width: 194px !important;
+  max-width: 194px !important;
+  height: 36px !important;
+  min-height: 36px !important;
+  display: grid !important;
+  grid-template-columns: 20px minmax(0,1fr) 15px !important;
+  align-items: center !important;
+  gap: 8px !important;
+  padding: 0 11px !important;
+  border: 1px solid #313c43 !important;
+  border-radius: 7px !important;
+  background: #11191e !important;
+  color: #ecedef !important;
+  box-shadow: none !important;
+}
+
+.concept17-workspace-header svg:first-child {
+  color: var(--c17-ref-copper) !important;
+}
+
+.concept17-workspace-header span {
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+  font-size: 10px !important;
+  font-weight: 720 !important;
+}
+
+.concept17-header-actions {
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+}
+
+.concept17-header-bell,
+.concept17-header-avatar,
+.concept17-header-queue {
+  width: 36px !important;
+  height: 36px !important;
+  min-width: 36px !important;
+  min-height: 36px !important;
+  display: grid !important;
+  place-items: center !important;
+  padding: 0 !important;
+  border: 1px solid transparent !important;
+  border-radius: 999px !important;
+  background: transparent !important;
+  color: #dce0e1 !important;
+  box-shadow: none !important;
+}
+
+.concept17-header-bell:hover,
+.concept17-header-avatar:hover {
+  border-color: #39454c !important;
+  background: #182126 !important;
+}
+
+.concept17-header-avatar {
+  border-color: #465159 !important;
+  background: linear-gradient(145deg, #4a5660, #303b43) !important;
+  color: #fff !important;
+  font-size: 9px !important;
+  font-weight: 800 !important;
+}
+
+.concept17-header-queue {
+  border-radius: 8px !important;
+  border-color: rgba(241,166,94,.32) !important;
+  background: rgba(241,166,94,.08) !important;
+  color: var(--c17-ref-amber) !important;
+  font-size: 9px !important;
+  font-weight: 850 !important;
+}
+
+.concept17-notification-dot {
+  position: absolute !important;
+  width: 7px !important;
+  height: 7px !important;
+  top: 5px !important;
+  right: 5px !important;
+  border: 1px solid #13191d !important;
+  border-radius: 999px !important;
+  background: #f08a4a !important;
+  box-shadow: 0 0 0 2px rgba(240,138,74,.12) !important;
+}
+
+/* Main page canvas. */
+.concept17-shell .app-content-shell {
+  max-width: none !important;
+  padding: 13px 14px 24px !important;
+  background: transparent !important;
+}
+
+.concept17-route-page,
+.concept17-route-frame,
+.concept17-route-body,
+.concept17-surface {
+  width: 100% !important;
+  max-width: none !important;
+  min-width: 0 !important;
+}
+
+.concept17-route-frame {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.concept17-route-body > :first-child {
+  margin-top: 0 !important;
+}
+
+/* Each tab/subtab gets the same photo-backed identity card as the reference. */
+.concept17-route-heading {
+  position: relative !important;
+  isolation: isolate !important;
+  min-height: 108px !important;
+  display: grid !important;
+  grid-template-columns: 48px minmax(0,1fr) auto !important;
+  align-items: center !important;
+  gap: 14px !important;
+  overflow: hidden !important;
+  padding: 17px 20px !important;
+  border: 1px solid #334047 !important;
+  border-radius: 13px !important;
+  background:
+    linear-gradient(90deg, rgba(13,20,24,.98) 0%, rgba(13,20,24,.95) 42%, rgba(13,20,24,.40) 71%, rgba(13,20,24,.22) 100%),
+    url('/concept17-kitchen-reference.jpg') right center / min(610px, 53%) 100% no-repeat,
+    linear-gradient(135deg, #172027, #10171b) !important;
+  box-shadow: var(--c17-ref-shadow) !important;
+}
+
+.concept17-route-heading::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: radial-gradient(500px 150px at 88% 48%, rgba(222,128,68,.11), transparent 66%);
+}
+
+.concept17-route-heading-icon {
+  width: 48px !important;
+  height: 48px !important;
+  display: grid !important;
+  place-items: center !important;
+  border: 1px solid rgba(232,154,99,.27) !important;
+  border-radius: 9px !important;
+  background: linear-gradient(145deg, rgba(143,84,48,.30), rgba(69,49,38,.45)) !important;
+  color: var(--c17-ref-copper) !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.04) !important;
+}
+
+.concept17-route-heading-copy {
+  min-width: 0 !important;
+}
+
+.concept17-route-eyebrow {
+  margin-bottom: 2px !important;
+  color: var(--c17-ref-copper) !important;
+  font-size: 8px !important;
+  font-weight: 800 !important;
+  letter-spacing: .30em !important;
+  line-height: 1.2 !important;
+  text-transform: uppercase !important;
+}
+
+.concept17-route-title-row {
+  min-width: 0 !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 10px !important;
+}
+
+.concept17-route-title-row h1,
+.concept17-route-heading h1 {
+  margin: 0 !important;
+  color: #f6f2ea !important;
+  font-family: Georgia, "Times New Roman", serif !important;
+  font-size: clamp(28px, 2.45vw, 38px) !important;
+  font-weight: 600 !important;
+  letter-spacing: -.035em !important;
+  line-height: 1.02 !important;
+  text-shadow: 0 2px 8px rgba(0,0,0,.34) !important;
+}
+
+.concept17-route-subroute {
+  max-width: 245px !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+  padding: 4px 8px !important;
+  border: 1px solid rgba(232,154,99,.25) !important;
+  border-radius: 999px !important;
+  background: rgba(232,154,99,.08) !important;
+  color: #e8b58f !important;
+  font-size: 8px !important;
+  font-weight: 750 !important;
+  letter-spacing: .08em !important;
+  text-transform: uppercase !important;
+}
+
+.concept17-route-heading-copy > p {
+  max-width: 720px !important;
+  margin: 5px 0 0 !important;
+  color: #b4bec2 !important;
+  font-size: 11px !important;
+  font-weight: 520 !important;
+  line-height: 1.35 !important;
+}
+
+.concept17-route-restaurant {
+  align-self: start !important;
+  min-width: 0 !important;
+  max-width: 210px !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 7px !important;
+  padding: 7px 10px !important;
+  border: 1px solid #343f45 !important;
+  border-radius: 7px !important;
+  background: rgba(13,20,24,.72) !important;
+  color: #e9ebec !important;
+  font-size: 9px !important;
+  font-weight: 680 !important;
+  box-shadow: none !important;
+}
+
+.concept17-route-restaurant svg {
+  flex: 0 0 auto;
+  color: var(--c17-ref-copper) !important;
+}
+
+.concept17-route-restaurant span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Universal visual language for every existing page, nested tab, table, form,
+   admin panel, schedule view, inventory view, and legacy workflow. */
+.concept17-shell .chaos-card,
+.concept17-shell .cockpit-panel,
+.concept17-route-page .brief-card,
+.concept17-route-page [class*='bg-[#1A2126]'],
+.concept17-route-page [class*='bg-[#171F24]'],
+.concept17-route-page [class*='bg-[#161D22]'] {
+  border-color: var(--c17-ref-line) !important;
+  border-radius: var(--c17-ref-radius) !important;
+  background: linear-gradient(145deg, rgba(24,33,39,.98), rgba(16,23,28,.98)) !important;
+  box-shadow: var(--c17-ref-shadow) !important;
+}
+
+.concept17-route-page [class*='bg-[#0B0E11]'],
+.concept17-route-page [class*='bg-[#12161A]'] {
+  border-color: var(--c17-ref-line-soft) !important;
+  background: #11181d !important;
+}
+
+.concept17-route-page h1,
+.concept17-route-page h2,
+.concept17-route-page h3,
+.concept17-route-page h4 {
+  color: var(--c17-ref-text) !important;
+}
+
+.concept17-route-page h2,
+.concept17-route-page h3 {
+  letter-spacing: -.02em !important;
+}
+
+.concept17-route-page .text-slate-200,
+.concept17-route-page .text-slate-300 {
+  color: #d7dcde !important;
+}
+
+.concept17-route-page .text-slate-400,
+.concept17-route-page .text-slate-500,
+.concept17-route-page .text-slate-600 {
+  color: var(--c17-ref-muted) !important;
+}
+
+.concept17-route-page .text-\[\#D4A381\],
+.concept17-route-page .text-orange-300,
+.concept17-route-page .text-amber-300 {
+  color: var(--c17-ref-copper) !important;
+}
+
+.concept17-route-page button:not(.concept17-mobile-nav-item):not(.concept17-mobile-voice-button),
+.concept17-route-page [role='button'] {
+  transition: border-color .16s ease, background-color .16s ease, color .16s ease, transform .16s ease !important;
+}
+
+.concept17-route-page button:not(:disabled):hover {
+  border-color: rgba(232,154,99,.40) !important;
+}
+
+.concept17-route-page input:not([type='checkbox']):not([type='radio']):not([type='range']),
+.concept17-route-page select,
+.concept17-route-page textarea,
+.concept17-shell .chaos-input {
+  min-height: 38px !important;
+  border: 1px solid #344149 !important;
+  border-radius: 8px !important;
+  background: #10171c !important;
+  color: #eff1f2 !important;
+  box-shadow: inset 0 1px 2px rgba(0,0,0,.20) !important;
+}
+
+.concept17-route-page input:focus,
+.concept17-route-page select:focus,
+.concept17-route-page textarea:focus {
+  border-color: rgba(232,154,99,.62) !important;
+  outline: none !important;
+  box-shadow: 0 0 0 2px rgba(232,154,99,.10), inset 0 1px 2px rgba(0,0,0,.20) !important;
+}
+
+.concept17-route-page table {
+  border-collapse: separate !important;
+  border-spacing: 0 !important;
+  width: 100%;
+  color: #dfe3e4 !important;
+}
+
+.concept17-route-page thead,
+.concept17-route-page th {
+  background: #10171b !important;
+  color: #aab3b8 !important;
+}
+
+.concept17-route-page th {
+  border-color: var(--c17-ref-line-soft) !important;
+  font-size: 9px !important;
+  font-weight: 800 !important;
+  letter-spacing: .10em !important;
+  text-transform: uppercase !important;
+}
+
+.concept17-route-page td {
+  border-color: var(--c17-ref-line-soft) !important;
+  background: rgba(17,24,29,.56) !important;
+}
+
+/* Normalize local tab bars and subtab controls across every feature module. */
+.concept17-route-page [role='tablist'],
+.concept17-route-page .tab-list,
+.concept17-route-page .subtab-list,
+.concept17-route-page .schedule-tab-row,
+.concept17-route-page .inventory-tab-row {
+  border-color: var(--c17-ref-line) !important;
+  border-radius: 9px !important;
+  background: #11181d !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.02) !important;
+}
+
+.concept17-route-page [role='tab'][aria-selected='true'],
+.concept17-route-page [data-active='true'] {
+  border-color: rgba(232,154,99,.36) !important;
+  background: rgba(123,73,45,.36) !important;
+  color: #f0b98f !important;
+}
+
+/* Desktop date/period bar stays compact and subordinate to the route identity. */
+.concept17-shell .desktop-date-strip {
+  min-height: 48px !important;
+  height: 48px !important;
+  padding: 6px 14px !important;
+  border-color: var(--c17-ref-line-soft) !important;
+  background: rgba(12,18,22,.95) !important;
+  box-shadow: none !important;
+}
+
+.concept17-shell .desktop-date-strip h2 {
+  color: #e8e9e9 !important;
+  font-family: Georgia, "Times New Roman", serif !important;
+  font-size: 17px !important;
+  font-weight: 600 !important;
+  letter-spacing: -.02em !important;
+  text-transform: none !important;
+}
+
+.concept17-shell .desktop-date-strip button {
+  width: 34px !important;
+  height: 34px !important;
+  min-height: 34px !important;
+  padding: 0 !important;
+  border-radius: 7px !important;
+}
+
+/* Manager Brief / Today page, desktop reference. */
+.concept17-reference-mobile {
+  display: none;
+}
+
+.concept17-reference-desktop {
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+  width: 100%;
+}
+
+.concept17-home-hero {
+  position: relative;
+  isolation: isolate;
+  min-height: 145px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 20px;
+  overflow: hidden;
+  padding: 22px 25px;
+  border: 1px solid #334047;
+  border-radius: 13px;
+  background:
+    linear-gradient(90deg, rgba(12,18,22,.98) 0%, rgba(12,18,22,.91) 36%, rgba(12,18,22,.36) 66%, rgba(12,18,22,.24) 100%),
+    url('/concept17-kitchen-reference.jpg') right center / min(670px, 59%) 100% no-repeat,
+    #131b20;
+  box-shadow: var(--c17-ref-shadow);
+}
+
+.concept17-home-hero::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: radial-gradient(480px 170px at 88% 45%, rgba(225,126,62,.14), transparent 67%);
+}
+
+.concept17-home-hero-copy {
+  min-width: 0;
+  max-width: 720px;
+}
+
+.concept17-home-eyebrow {
+  color: var(--c17-ref-copper);
+  font-size: 9px;
+  font-weight: 820;
+  letter-spacing: .30em;
+  text-transform: uppercase;
+}
+
+.concept17-home-hero-copy h1 {
+  margin: 6px 0 2px !important;
+  color: #f7f3ec !important;
+  font-family: Georgia, "Times New Roman", serif !important;
+  font-size: clamp(39px, 4.0vw, 57px) !important;
+  font-weight: 600 !important;
+  letter-spacing: -.045em !important;
+  line-height: .98 !important;
+  text-shadow: 0 3px 12px rgba(0,0,0,.45) !important;
+}
+
+.concept17-home-hero-copy p {
+  margin: 8px 0 0 !important;
+  color: #c2c9cc !important;
+  font-size: 13px !important;
+  font-weight: 520 !important;
+  letter-spacing: .01em !important;
+}
+
+.concept17-home-hero-status {
+  align-self: center;
+  min-width: 126px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  padding-right: 3px;
+  color: #f0f2f2;
+  text-align: right;
+  text-shadow: 0 2px 8px rgba(0,0,0,.55);
+}
+
+.concept17-home-date {
+  color: #cbd0d2;
+  font-size: 10px;
+  font-weight: 650;
+}
+
+.concept17-home-time {
+  margin-top: 1px;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 29px;
+  font-weight: 600;
+  letter-spacing: -.035em;
+}
+
+.concept17-open-pill,
+.concept17-mobile-open-status {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  height: 32px;
+  margin-top: 9px;
+  padding: 0 12px;
+  border: 1px solid rgba(81,190,132,.36);
+  border-radius: 8px;
+  background: rgba(34,99,68,.24);
+  color: #7ce0ac;
+  font-size: 9px;
+  font-weight: 820;
+  letter-spacing: .03em;
+  text-shadow: none;
+}
+
+.concept17-open-pill > span,
+.concept17-mobile-open-status > span {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: #62dfa2;
+  box-shadow: 0 0 10px rgba(98,223,162,.35);
+}
+
+.concept17-home-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0,1fr));
+  gap: 9px;
+}
+
+.concept17-home-metric {
+  min-width: 0 !important;
+  min-height: 84px !important;
+  display: grid !important;
+  grid-template-columns: 52px minmax(0,1fr) !important;
+  align-items: center !important;
+  gap: 10px !important;
+  padding: 11px !important;
+  border: 1px solid var(--c17-ref-line) !important;
+  border-radius: 10px !important;
+  background: linear-gradient(145deg, #1b242a, #12191e) !important;
+  box-shadow: var(--c17-ref-shadow) !important;
+  text-align: left !important;
+  color: #fff !important;
+}
+
+.concept17-home-metric-icon,
+.concept17-home-panel-icon,
+.concept17-home-shortcut-icon {
+  width: 52px;
+  height: 52px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(232,154,99,.23);
+  border-radius: 9px;
+  background: linear-gradient(145deg, rgba(124,75,47,.40), rgba(57,44,37,.54));
+  color: var(--c17-ref-copper);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.035);
+}
+
+.concept17-home-metric > span:last-child {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.concept17-home-metric small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #b4bcc0 !important;
+  font-size: 9px !important;
+  font-style: normal !important;
+  font-weight: 650 !important;
+}
+
+.concept17-home-metric strong {
+  margin-top: 1px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #f5f4f0 !important;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 24px !important;
+  font-weight: 650 !important;
+  letter-spacing: -.025em;
+  line-height: 1.1;
+}
+
+.concept17-home-metric em {
+  margin-top: 3px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #78d9a5 !important;
+  font-size: 8px !important;
+  font-style: normal !important;
+  font-weight: 650 !important;
+}
+
+.concept17-home-primary-grid {
+  display: grid;
+  grid-template-columns: 1.02fr 1.42fr;
+  gap: 10px;
+}
+
+.concept17-home-panel {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--c17-ref-line);
+  border-radius: 11px;
+  background: linear-gradient(145deg, #172027, #11181d);
+  box-shadow: var(--c17-ref-shadow);
+}
+
+.concept17-home-panel-head {
+  min-height: 65px;
+  display: grid;
+  grid-template-columns: 52px minmax(0,1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 11px 8px;
+  border-bottom: 1px solid var(--c17-ref-line-soft);
+}
+
+.concept17-home-panel-icon {
+  width: 43px;
+  height: 43px;
+  border-radius: 8px;
+}
+
+.concept17-home-panel-head > span:nth-child(2) {
+  min-width: 0;
+}
+
+.concept17-home-panel-head h2 {
+  margin: 0 !important;
+  color: #f4f1eb !important;
+  font-family: Georgia, "Times New Roman", serif !important;
+  font-size: 20px !important;
+  font-weight: 600 !important;
+  line-height: 1.05 !important;
+}
+
+.concept17-home-panel-head p {
+  margin: 3px 0 0 !important;
+  color: #929da2 !important;
+  font-size: 9px !important;
+  font-weight: 530 !important;
+}
+
+.concept17-home-panel-head > button {
+  min-height: 32px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  padding: 0 10px !important;
+  border: 1px solid rgba(232,154,99,.35) !important;
+  border-radius: 7px !important;
+  background: #11181d !important;
+  color: #e7a06f !important;
+  font-size: 8px !important;
+  font-weight: 780 !important;
+}
+
+.concept17-home-brief-list {
+  padding: 0 9px 8px;
+}
+
+.concept17-home-brief-list > button,
+.concept17-mobile-priority-list > button {
+  width: 100% !important;
+  min-height: 46px !important;
+  display: grid !important;
+  grid-template-columns: 29px minmax(0,1fr) auto !important;
+  align-items: center !important;
+  gap: 8px !important;
+  padding: 6px 4px !important;
+  border: 0 !important;
+  border-bottom: 1px solid var(--c17-ref-line-soft) !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  color: #eef0ef !important;
+  box-shadow: none !important;
+  text-align: left !important;
+}
+
+.concept17-home-brief-list > button:last-child,
+.concept17-mobile-priority-list > button:last-child {
+  border-bottom: 0 !important;
+}
+
+.concept17-home-row-status {
+  width: 23px;
+  height: 23px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--c17-ref-amber);
+  border-radius: 999px;
+  color: var(--c17-ref-amber);
+}
+
+.concept17-home-row-status > span {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: currentColor;
+}
+
+.concept17-home-row-status.is-green {
+  border-color: rgba(105,217,162,.5);
+  background: rgba(65,179,124,.24);
+  color: #7fe8b4;
+}
+
+.concept17-home-row-status.is-red {
+  border-color: rgba(255,109,104,.62);
+  color: var(--c17-ref-red);
+}
+
+.concept17-home-row-status.is-blue {
+  border-color: rgba(93,174,234,.6);
+  color: #77baf0;
+}
+
+.concept17-home-brief-list > button > span:nth-child(2),
+.concept17-mobile-priority-list > button > span:nth-child(2) {
+  min-width: 0;
+}
+
+.concept17-home-brief-list strong,
+.concept17-mobile-priority-list strong {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #e8ebeb;
+  font-size: 9.5px;
+  font-weight: 720;
+}
+
+.concept17-home-brief-list small,
+.concept17-mobile-priority-list small {
+  display: block;
+  margin-top: 1px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #8e999f;
+  font-size: 8px;
+  font-weight: 550;
+}
+
+.concept17-home-brief-list time,
+.concept17-mobile-priority-list time {
+  color: #8e989d;
+  font-size: 7.5px;
+  font-weight: 650;
+}
+
+.concept17-kitchen-mini-metrics {
+  display: grid;
+  grid-template-columns: repeat(4,minmax(0,1fr));
+  gap: 6px;
+  padding: 8px 9px;
+}
+
+.concept17-kitchen-mini-metrics > button {
+  min-height: 56px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: flex-start !important;
+  justify-content: center !important;
+  padding: 7px 10px !important;
+  border: 1px solid var(--c17-ref-line-soft) !important;
+  border-radius: 7px !important;
+  background: #11181d !important;
+  text-align: left !important;
+}
+
+.concept17-kitchen-mini-metrics strong {
+  color: #f1f1ed;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 20px;
+  font-weight: 650;
+}
+
+.concept17-kitchen-mini-metrics small {
+  margin-top: 1px;
+  color: #909a9f;
+  font-size: 7.5px;
+  font-weight: 600;
+}
+
+.concept17-kitchen-recent {
+  margin: 0 9px 9px;
+  overflow: hidden;
+  border: 1px solid var(--c17-ref-line-soft);
+  border-radius: 7px;
+  background: #10171b;
+}
+
+.concept17-kitchen-recent-title {
+  min-height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 10px;
+  border-bottom: 1px solid var(--c17-ref-line-soft);
+}
+
+.concept17-kitchen-recent-title strong {
+  color: #d9dddf;
+  font-size: 8px;
+  font-weight: 700;
+}
+
+.concept17-kitchen-recent-title button {
+  min-height: 25px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 3px !important;
+  border: 0 !important;
+  background: transparent !important;
+  color: var(--c17-ref-copper) !important;
+  font-size: 7px !important;
+  font-weight: 720 !important;
+}
+
+.concept17-kitchen-recent > button {
+  width: 100% !important;
+  min-height: 31px !important;
+  display: grid !important;
+  grid-template-columns: 24px 104px minmax(0,1fr) 52px !important;
+  align-items: center !important;
+  gap: 6px !important;
+  padding: 3px 8px !important;
+  border: 0 !important;
+  border-bottom: 1px solid #222c31 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  text-align: left !important;
+}
+
+.concept17-kitchen-recent > button:last-child {
+  border-bottom: 0 !important;
+}
+
+.concept17-kitchen-recent > button > span {
+  width: 18px;
+  height: 18px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(232,154,99,.28);
+  border-radius: 999px;
+  color: var(--c17-ref-copper);
+  font-size: 7px;
+  font-weight: 800;
+}
+
+.concept17-kitchen-recent strong,
+.concept17-kitchen-recent small,
+.concept17-kitchen-recent em {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-style: normal;
+}
+
+.concept17-kitchen-recent strong {
+  color: #dce0e1;
+  font-size: 8px;
+}
+
+.concept17-kitchen-recent small {
+  color: #8d979c;
+  font-size: 7.5px;
+}
+
+.concept17-kitchen-recent em {
+  color: #72d7a2;
+  font-size: 7px;
+  font-weight: 700;
+  text-align: right;
+}
+
+.concept17-home-shortcuts {
+  display: grid;
+  grid-template-columns: repeat(4,minmax(0,1fr));
+  gap: 8px;
+}
+
+.concept17-home-shortcuts > button {
+  min-width: 0 !important;
+  min-height: 73px !important;
+  display: grid !important;
+  grid-template-columns: 48px minmax(0,1fr) 22px !important;
+  align-items: center !important;
+  gap: 9px !important;
+  padding: 9px !important;
+  border: 1px solid var(--c17-ref-line) !important;
+  border-radius: 9px !important;
+  background: linear-gradient(145deg,#182127,#11181d) !important;
+  box-shadow: var(--c17-ref-shadow) !important;
+  text-align: left !important;
+}
+
+.concept17-home-shortcut-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 8px;
+}
+
+.concept17-home-shortcuts > button > span:nth-child(2) {
+  min-width: 0;
+}
+
+.concept17-home-shortcuts strong {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #eceeed;
+  font-size: 9.5px;
+  font-weight: 720;
+}
+
+.concept17-home-shortcuts small {
+  display: block;
+  margin-top: 2px;
+  overflow: hidden;
+  color: #8f999e;
+  font-size: 7.5px;
+  font-weight: 520;
+  line-height: 1.25;
+}
+
+.concept17-home-shortcut-arrow {
+  color: var(--c17-ref-copper);
+}
+
+/* Advanced Manager Brief functionality remains below the reference dashboard. */
+.concept17-today-surface > .grid.grid-cols-1.lg\:grid-cols-3 {
+  margin-top: 12px !important;
+}
+
+/* Hide the old floating desktop Voice puck while keeping Voice fully available
+   from the profile/More drawer. The actual controller panel remains usable. */
+.voice-command-dock > .voice-command-trigger {
+  display: none !important;
+}
+
+.voice-command-dock > .cockpit-panel {
+  pointer-events: auto !important;
+}
+
+/* Footer is deliberately quiet so it never competes with the command surface. */
+.concept17-shell .app-footer {
+  min-height: 42px !important;
+  padding: 8px 12px !important;
+  border-color: var(--c17-ref-line-soft) !important;
+  background: #0b1115 !important;
+}
+
+.concept17-shell .app-footer img {
+  display: none !important;
+}
+
+/* Drawer / More menu is part of the same system. */
+.drawer-voice-launcher {
+  border: 1px solid rgba(232,154,99,.24) !important;
+  background: rgba(232,154,99,.07) !important;
+}
+
+/* Desktop geometry. */
+@media (min-width: 1180px) {
+  .concept17-sidebar {
+    position: fixed !important;
+    z-index: 45 !important;
+    inset: 0 auto 0 0 !important;
+    width: var(--c17-sidebar-width) !important;
+    display: flex !important;
+    flex-direction: column !important;
+    border-right: 1px solid var(--c17-ref-line-soft) !important;
+    background:
+      radial-gradient(310px 220px at 4% -7%, rgba(172,99,58,.10), transparent 72%),
+      linear-gradient(180deg, #0e1519 0%, #091014 100%) !important;
+    box-shadow: 10px 0 34px rgba(0,0,0,.12) !important;
+  }
+
+  .concept17-shell .app-header,
+  .concept17-shell .desktop-date-strip,
+  .concept17-shell .app-content-shell,
+  .concept17-shell .app-footer {
+    width: calc(100% - var(--c17-sidebar-width)) !important;
+    max-width: none !important;
+    margin-left: var(--c17-sidebar-width) !important;
+    margin-right: 0 !important;
+  }
+
+  .concept17-header-avatar {
+    display: grid !important;
+  }
+
+  .concept17-mobile-nav {
+    display: none !important;
+  }
+}
+
+/* Tablet retains the desktop command-bar grammar without the fixed side rail. */
+@media (min-width: 768px) and (max-width: 1179px) {
+  .concept17-sidebar {
+    display: none !important;
+  }
+
+  .concept17-shell .app-header {
+    grid-template-columns: 44px minmax(0,1fr) auto !important;
+  }
+
+  .concept17-mobile-menu-toggle {
+    width: 36px !important;
+    height: 36px !important;
+    min-height: 36px !important;
+    display: grid !important;
+    place-items: center !important;
+    padding: 0 !important;
+    border: 0 !important;
+    background: transparent !important;
+    color: #e6e9e9 !important;
+  }
+
+  .concept17-header-brand {
+    display: none !important;
+  }
+
+  .concept17-header-search {
+    width: min(350px, 45vw) !important;
+  }
+
+  .concept17-header-avatar {
+    display: grid !important;
+  }
+
+  .concept17-mobile-nav {
+    display: none !important;
+  }
+}
+
+/* Mobile approved reference. */
+@media (max-width: 767px) {
+  :root {
+    --c17-ref-radius: 10px;
+  }
+
+  .concept17-shell {
+    padding-bottom: calc(59px + env(safe-area-inset-bottom, 0px)) !important;
+    background: #091014 !important;
+  }
+
+  .concept17-sidebar {
+    display: none !important;
+  }
+
+  .concept17-shell .app-header {
+    position: sticky !important;
+    top: 0 !important;
+    z-index: 47 !important;
+    width: 100% !important;
+    min-height: 58px !important;
+    height: 58px !important;
+    display: grid !important;
+    grid-template-columns: 42px minmax(0,1fr) 42px !important;
+    align-items: center !important;
+    gap: 4px !important;
+    margin: 0 !important;
+    padding: 6px 11px !important;
+    border-bottom: 1px solid var(--c17-ref-line-soft) !important;
+    background: rgba(9,15,19,.97) !important;
+  }
+
+  .concept17-mobile-menu-toggle {
+    position: relative;
+    width: 36px !important;
+    height: 36px !important;
+    min-height: 36px !important;
+    display: grid !important;
+    place-items: center !important;
+    padding: 0 !important;
+    border: 0 !important;
+    border-radius: 7px !important;
+    background: transparent !important;
+    color: #f0f1ef !important;
+  }
+
+  .concept17-header-brand {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    min-width: 0 !important;
+  }
+
+  .concept17-wordmark.is-compact .concept17-wordmark-86 {
+    font-size: 28px !important;
+  }
+
+  .concept17-wordmark.is-compact .concept17-wordmark-chaos {
+    font-size: 20px !important;
+  }
+
+  .concept17-header-center,
+  .concept17-header-search,
+  .concept17-workspace-header,
+  .concept17-header-avatar,
+  .concept17-header-queue {
+    display: none !important;
+  }
+
+  .concept17-header-actions {
+    grid-column: 3;
+    display: flex !important;
+    justify-content: flex-end !important;
+    gap: 0 !important;
+  }
+
+  .concept17-header-bell {
+    position: relative;
+    width: 36px !important;
+    height: 36px !important;
+    min-width: 36px !important;
+    min-height: 36px !important;
+    display: grid !important;
+    place-items: center !important;
+    border: 0 !important;
+    background: transparent !important;
+  }
+
+  .concept17-mobile-contextbar {
+    position: relative;
+    z-index: 41;
+    width: 100% !important;
+    min-height: 48px !important;
+    display: grid !important;
+    grid-template-columns: minmax(0,1fr) 96px !important;
+    align-items: center !important;
+    gap: 8px !important;
+    padding: 7px 11px !important;
+    border-bottom: 1px solid var(--c17-ref-line-soft) !important;
+    background: #0b1216 !important;
+  }
+
+  .concept17-mobile-workspace {
+    min-width: 0 !important;
+    height: 34px !important;
+    min-height: 34px !important;
+    display: grid !important;
+    grid-template-columns: 20px minmax(0,1fr) 14px !important;
+    align-items: center !important;
+    gap: 7px !important;
+    padding: 0 9px !important;
+    border: 1px solid #303c43 !important;
+    border-radius: 7px !important;
+    background: #11191e !important;
+    color: #e9ebeb !important;
+    box-shadow: none !important;
+  }
+
+  .concept17-mobile-workspace svg:first-child {
+    color: var(--c17-ref-copper) !important;
+  }
+
+  .concept17-mobile-workspace span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 9px;
+    font-weight: 680;
+    text-align: left;
+  }
+
+  .concept17-mobile-open-status {
+    height: 34px !important;
+    min-height: 34px !important;
+    margin: 0 !important;
+    padding: 0 8px !important;
+    border-radius: 7px !important;
+    font-size: 8px !important;
+  }
+
+  .concept17-shell .desktop-date-strip {
+    width: 100% !important;
+    height: 44px !important;
+    min-height: 44px !important;
+    margin: 0 !important;
+    padding: 5px 10px !important;
+  }
+
+  .concept17-shell .desktop-date-strip h2 {
+    font-size: 15px !important;
+  }
+
+  .concept17-shell .desktop-date-strip button {
+    width: 31px !important;
+    height: 31px !important;
+    min-height: 31px !important;
+  }
+
+  .concept17-shell .app-content-shell,
+  .concept17-shell.ui-v12-compact main {
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 9px 10px calc(68px + env(safe-area-inset-bottom, 0px)) !important;
+    overflow-x: clip !important;
+  }
+
+  .concept17-route-frame {
+    gap: 9px !important;
+  }
+
+  .concept17-route-heading {
+    min-height: 82px !important;
+    grid-template-columns: 39px minmax(0,1fr) !important;
+    gap: 9px !important;
+    padding: 10px 11px !important;
+    border-radius: 10px !important;
+    background:
+      linear-gradient(90deg, rgba(13,20,24,.97), rgba(13,20,24,.89) 58%, rgba(13,20,24,.58)),
+      url('/concept17-kitchen-reference.jpg') right center / 58% 100% no-repeat,
+      #131b20 !important;
+  }
+
+  .concept17-route-heading-icon {
+    width: 39px !important;
+    height: 39px !important;
+    border-radius: 8px !important;
+  }
+
+  .concept17-route-title-row {
+    display: block !important;
+  }
+
+  .concept17-route-eyebrow {
+    font-size: 6.5px !important;
+    letter-spacing: .22em !important;
+  }
+
+  .concept17-route-title-row h1,
+  .concept17-route-heading h1 {
+    margin-top: 1px !important;
+    font-size: clamp(22px, 7vw, 29px) !important;
+    line-height: 1 !important;
+  }
+
+  .concept17-route-heading-copy > p {
+    max-width: 92% !important;
+    margin-top: 3px !important;
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 1;
+    -webkit-box-orient: vertical;
+    font-size: 8px !important;
+    line-height: 1.2 !important;
+  }
+
+  .concept17-route-subroute {
+    display: inline-block !important;
+    max-width: 130px !important;
+    margin-top: 3px !important;
+    padding: 2px 6px !important;
+    font-size: 6px !important;
+  }
+
+  .concept17-route-restaurant {
+    display: none !important;
+  }
+
+  /* Today's hero is represented by the mobile Manager Brief composition. */
+  .concept17-reference-desktop {
+    display: none !important;
+  }
+
+  .concept17-reference-mobile {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 8px !important;
+  }
+
+  .concept17-mobile-manager-card {
+    width: 100% !important;
+    min-height: 67px !important;
+    display: grid !important;
+    grid-template-columns: 47px minmax(0,1fr) 27px !important;
+    align-items: center !important;
+    gap: 10px !important;
+    padding: 9px 10px !important;
+    border: 1px solid var(--c17-ref-line) !important;
+    border-radius: 9px !important;
+    background: linear-gradient(145deg,#192229,#12191e) !important;
+    box-shadow: var(--c17-ref-shadow) !important;
+    text-align: left !important;
+  }
+
+  .concept17-mobile-manager-card .concept17-home-panel-icon {
+    width: 44px !important;
+    height: 44px !important;
+  }
+
+  .concept17-mobile-manager-card > span:nth-child(2) {
+    min-width: 0;
+  }
+
+  .concept17-mobile-manager-card strong {
+    display: block;
+    color: #f2efea;
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: 16px;
+    font-weight: 600;
+  }
+
+  .concept17-mobile-manager-card small {
+    display: block;
+    margin-top: 2px;
+    color: #9ca5a9;
+    font-size: 8px;
+    font-weight: 540;
+  }
+
+  .concept17-mobile-chevron {
+    width: 26px;
+    height: 26px;
+    display: grid;
+    place-items: center;
+    border: 1px solid rgba(232,154,99,.34);
+    border-radius: 999px;
+    color: var(--c17-ref-copper);
+  }
+
+  .concept17-mobile-metrics {
+    display: grid;
+    grid-template-columns: repeat(2,minmax(0,1fr));
+    gap: 7px;
+  }
+
+  .concept17-mobile-metrics > button {
+    min-width: 0 !important;
+    min-height: 72px !important;
+    display: grid !important;
+    grid-template-columns: 42px minmax(0,1fr) !important;
+    align-items: center !important;
+    gap: 8px !important;
+    padding: 8px !important;
+    border: 1px solid var(--c17-ref-line) !important;
+    border-radius: 9px !important;
+    background: linear-gradient(145deg,#192229,#11181d) !important;
+    box-shadow: var(--c17-ref-shadow) !important;
+    text-align: left !important;
+  }
+
+  .concept17-mobile-metrics .concept17-home-metric-icon {
+    width: 40px !important;
+    height: 40px !important;
+    border-radius: 8px !important;
+  }
+
+  .concept17-mobile-metrics > button > span:last-child {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .concept17-mobile-metrics small,
+  .concept17-mobile-metrics strong,
+  .concept17-mobile-metrics em {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .concept17-mobile-metrics small {
+    color: #a8b1b5;
+    font-size: 7.5px;
+    font-style: normal;
+    font-weight: 620;
+  }
+
+  .concept17-mobile-metrics strong {
+    margin-top: 1px;
+    color: #f2f1ed;
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: 18px;
+    line-height: 1.05;
+  }
+
+  .concept17-mobile-metrics em {
+    margin-top: 2px;
+    color: #6fdca6;
+    font-size: 6.5px;
+    font-style: normal;
+    font-weight: 650;
+  }
+
+  .concept17-mobile-priorities {
+    overflow: hidden;
+    border: 1px solid var(--c17-ref-line);
+    border-radius: 9px;
+    background: linear-gradient(145deg,#172027,#10171b);
+    box-shadow: var(--c17-ref-shadow);
+  }
+
+  .concept17-mobile-priorities-head {
+    min-height: 39px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 0 9px;
+    border-bottom: 1px solid var(--c17-ref-line-soft);
+  }
+
+  .concept17-mobile-priorities-head > span {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: #eff0ed;
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: 13px;
+    font-weight: 600;
+  }
+
+  .concept17-mobile-priorities-head svg {
+    color: var(--c17-ref-copper);
+  }
+
+  .concept17-mobile-priorities-head button {
+    min-height: 30px !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 3px !important;
+    border: 0 !important;
+    background: transparent !important;
+    color: var(--c17-ref-copper) !important;
+    font-size: 7px !important;
+    font-weight: 720 !important;
+  }
+
+  .concept17-mobile-priority-list {
+    padding: 0 8px 4px;
+  }
+
+  .concept17-mobile-priority-list > button {
+    min-height: 48px !important;
+    grid-template-columns: 26px minmax(0,1fr) 38px !important;
+    gap: 7px !important;
+    padding: 5px 2px !important;
+  }
+
+  .concept17-mobile-priority-list strong {
+    font-size: 8.5px !important;
+  }
+
+  .concept17-mobile-priority-list small {
+    max-width: 100%;
+    font-size: 7px !important;
+  }
+
+  .concept17-mobile-priority-list time {
+    font-size: 6.5px !important;
+  }
+
+  .concept17-mobile-shortcuts {
+    display: grid;
+    grid-template-columns: repeat(2,minmax(0,1fr));
+    gap: 7px;
+  }
+
+  .concept17-mobile-shortcuts > button {
+    min-width: 0 !important;
+    min-height: 54px !important;
+    display: grid !important;
+    grid-template-columns: 37px minmax(0,1fr) 14px !important;
+    align-items: center !important;
+    gap: 7px !important;
+    padding: 7px !important;
+    border: 1px solid var(--c17-ref-line) !important;
+    border-radius: 8px !important;
+    background: linear-gradient(145deg,#172027,#11181d) !important;
+    box-shadow: var(--c17-ref-shadow) !important;
+    text-align: left !important;
+  }
+
+  .concept17-mobile-shortcuts .concept17-home-shortcut-icon {
+    width: 36px !important;
+    height: 36px !important;
+    border-radius: 7px !important;
+  }
+
+  .concept17-mobile-shortcuts strong {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: #e6e9e9;
+    font-size: 8.5px;
+    font-weight: 680;
+  }
+
+  .concept17-mobile-shortcuts > button > svg {
+    color: var(--c17-ref-copper);
+  }
+
+  /* Mature Today content remains available below the exact reference surface. */
+  .concept17-today-surface > .grid.grid-cols-1.lg\:grid-cols-3 {
+    margin-top: 9px !important;
+  }
+
+  /* Full-width, flush-bottom 5-slot navigation from the reference. */
+  .concept17-mobile-nav {
+    position: fixed !important;
+    z-index: 55 !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    width: 100% !important;
+    height: calc(58px + env(safe-area-inset-bottom, 0px)) !important;
+    display: grid !important;
+    grid-template-columns: repeat(5,minmax(0,1fr)) !important;
+    align-items: start !important;
+    overflow: visible !important;
+    padding: 0 5px env(safe-area-inset-bottom, 0px) !important;
+    border: 0 !important;
+    border-top: 1px solid #2c373d !important;
+    border-radius: 0 !important;
+    background: rgba(8,14,18,.985) !important;
+    box-shadow: 0 -12px 28px rgba(0,0,0,.26) !important;
+    backdrop-filter: blur(18px) !important;
+  }
+
+  .concept17-mobile-nav-item {
+    position: relative !important;
+    min-width: 0 !important;
+    min-height: 57px !important;
+    height: 57px !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 2px !important;
+    padding: 4px 1px 3px !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+    color: #858f95 !important;
+    box-shadow: none !important;
+  }
+
+  .concept17-mobile-nav-item.is-active {
+    color: var(--c17-ref-copper) !important;
+  }
+
+  .concept17-mobile-nav-item.is-active::before {
+    display: none !important;
+  }
+
+  .concept17-mobile-nav-icon {
+    width: 24px !important;
+    height: 24px !important;
+    display: grid !important;
+    place-items: center !important;
+  }
+
+  .concept17-mobile-nav-label {
+    width: 100% !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+    color: currentColor !important;
+    font-size: 7px !important;
+    font-weight: 650 !important;
+    letter-spacing: 0 !important;
+    line-height: 1 !important;
+    text-align: center !important;
+  }
+
+  /* The visible Voice entry is in More. Keep the hardened touch target as an
+     off-canvas regression proxy so prior Android/PWA behavior remains tested. */
+  .concept17-voice-regression-proxy {
+    position: fixed !important;
+    z-index: 80 !important;
+    left: 0 !important;
+    bottom: 0 !important;
+    width: 4px !important;
+    height: 4px !important;
+    min-width: 4px !important;
+    min-height: 4px !important;
+    display: block !important;
+    overflow: hidden !important;
+    padding: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    opacity: .001 !important;
+    background: transparent !important;
+    color: transparent !important;
+    pointer-events: auto !important;
+    touch-action: manipulation !important;
+  }
+
+  .concept17-voice-regression-proxy span,
+  .concept17-voice-regression-proxy svg {
+    width: 1px !important;
+    height: 1px !important;
+    overflow: hidden !important;
+    color: transparent !important;
+  }
+
+  .voice-command-dock.fixed.bottom-5.left-4 {
+    left: 0 !important;
+    bottom: 0 !important;
+    width: 0 !important;
+    height: 0 !important;
+    overflow: visible !important;
+    pointer-events: none !important;
+  }
+
+  .voice-command-dock > .cockpit-panel {
+    position: fixed !important;
+    z-index: 74 !important;
+    left: max(10px, env(safe-area-inset-left, 0px)) !important;
+    right: max(10px, env(safe-area-inset-right, 0px)) !important;
+    bottom: calc(68px + env(safe-area-inset-bottom, 0px)) !important;
+    width: auto !important;
+    max-width: 420px !important;
+    max-height: calc(100dvh - 142px) !important;
+    overflow-y: auto !important;
+    pointer-events: auto !important;
+  }
+
+  .concept17-route-page button,
+  .concept17-route-page [role='button'] {
+    min-height: 40px;
+  }
+
+  .concept17-route-page input:not([type='checkbox']):not([type='radio']):not([type='range']),
+  .concept17-route-page select,
+  .concept17-route-page textarea {
+    min-height: 42px !important;
+    font-size: 16px !important;
+  }
+
+  .concept17-route-page .grid,
+  .concept17-route-page .flex {
+    min-width: 0;
+  }
+
+  .concept17-route-page .overflow-x-auto {
+    max-width: 100% !important;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .concept17-shell .app-footer {
+    display: none !important;
+  }
+}
+
+@media (max-width: 390px) {
+  .concept17-shell .app-content-shell,
+  .concept17-shell.ui-v12-compact main {
+    padding-left: 8px !important;
+    padding-right: 8px !important;
+  }
+
+  .concept17-mobile-contextbar {
+    padding-left: 8px !important;
+    padding-right: 8px !important;
+    grid-template-columns: minmax(0,1fr) 88px !important;
+  }
+
+  .concept17-wordmark.is-compact .concept17-wordmark-86 {
+    font-size: 25px !important;
+  }
+
+  .concept17-wordmark.is-compact .concept17-wordmark-chaos {
+    font-size: 18px !important;
+  }
+}

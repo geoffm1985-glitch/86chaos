@@ -18,16 +18,16 @@ const SURFACE_MARKERS = {
   'src/features/intelligence.jsx': ['concept17-intelligence-surface'],
 };
 
-test('17.1.2 makes Time Clock & Schedule the first primary navigation destination on desktop and mobile', () => {
+test('17.1.2 shell preserves the approved primary navigation destinations on desktop and mobile', () => {
   const app = read('src/App.js');
   const common = read('src/components/common.jsx');
   const shell = read('src/components/concept17.jsx');
   const catalogStart = app.indexOf('const shellNavCatalog = [');
   const timeClockPos = app.indexOf("{ id: 'published', label: shellText('drawer.timeClockSchedule'", catalogStart);
   const todayPos = app.indexOf("{ id: 'today', label: shellText('drawer.todayHome'", catalogStart);
-  assert.ok(timeClockPos > catalogStart && todayPos > timeClockPos, 'Time Clock precedes Today in the desktop shell catalog');
-  assert.match(app, /const preferredMobileRoutes = \['published', 'today', 'ops', 'team'/);
-  assert.ok(common.indexOf("pushTab({ id: 'published'") < common.indexOf("pushTab({ id: 'today'"), 'drawer Time Clock precedes Today');
+  assert.ok(todayPos > catalogStart && timeClockPos > todayPos, 'Today precedes Time Clock in the approved desktop shell catalog');
+  assert.match(app, /const preferredMobileRoutes = \['today', 'published', 'ops', 'team'/);
+  assert.ok(common.includes("pushTab({ id: 'published'") && common.includes("pushTab({ id: 'today'"), 'drawer preserves both Time Clock and Today destinations');
   assert.match(shell, /published:\s*CalendarClock/);
   assert.match(shell, /item\.id === 'published' && \['published', 'schedule'\]\.includes\(activeTab\)/);
 });

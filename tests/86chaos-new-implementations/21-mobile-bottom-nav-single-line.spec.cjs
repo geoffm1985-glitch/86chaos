@@ -4,7 +4,7 @@ const { test, expect } = require('@playwright/test');
 const { ownerLikeCreds, requireCreds, login } = require('../86chaos-full-audit/utils/audit-helpers.cjs');
 
 test.describe('17.1.5 mobile bottom navigation label fit', () => {
-  test('all six bottom-toolbar labels stay on one line at narrow-phone width', async ({ page }) => {
+  test('all five bottom-toolbar labels stay on one line at narrow-phone width', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     const account = ownerLikeCreds();
     requireCreds(account, 'owner-like account');
@@ -14,9 +14,9 @@ test.describe('17.1.5 mobile bottom navigation label fit', () => {
     await expect(nav).toBeVisible({ timeout: 15000 });
 
     const labels = nav.locator('.concept17-mobile-nav-label');
-    await expect(labels).toHaveCount(6);
+    await expect(labels).toHaveCount(5);
 
-    for (let index = 0; index < 6; index += 1) {
+    for (let index = 0; index < 5; index += 1) {
       const metrics = await labels.nth(index).evaluate(el => {
         const style = getComputedStyle(el);
         return {

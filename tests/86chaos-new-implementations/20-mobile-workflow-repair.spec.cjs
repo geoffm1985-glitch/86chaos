@@ -4,7 +4,7 @@ const { test, expect } = require('@playwright/test');
 const { ownerLikeCreds, requireCreds, login, gotoTab } = require('../86chaos-full-audit/utils/audit-helpers.cjs');
 
 test.describe('17.1.3 mobile workflow repair', () => {
-  test('mobile toolbar starts with 86Voice and Kitchen Tools badges do not stack', async ({ page }) => {
+  test('mobile toolbar uses the approved five-slot layout and keeps 86Voice in More', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     const account = ownerLikeCreds();
     requireCreds(account, 'owner-like account');
@@ -13,14 +13,12 @@ test.describe('17.1.3 mobile workflow repair', () => {
     await gotoTab(page, 'ai-tools', { settleMs: 800, maxText: 30000 });
     const nav = page.getByTestId('concept17-mobile-bottom-nav');
     await expect(nav).toBeVisible();
-    const mic = page.getByTestId('concept17-mobile-voice-button');
-    await expect(mic).toBeVisible();
-    const [navBox, micBox] = await Promise.all([nav.boundingBox(), mic.boundingBox()]);
-    expect(navBox).toBeTruthy();
-    expect(micBox).toBeTruthy();
-    expect(micBox.x).toBeLessThan(navBox.x + (navBox.width / 6) + 4);
-    expect(micBox.y).toBeGreaterThanOrEqual(navBox.y - 2);
-    expect(micBox.y + micBox.height).toBeLessThanOrEqual(navBox.y + navBox.height + 2);
+    await expect(nav.locator('.concept17-mobile-nav-item')).toHaveCount(5);
+    await expect(nav.locator('[data-shell-route]').first()).toHaveAttribute('data-shell-route', 'today');
+
+    await nav.getByRole('button', { name: /more/i }).click();
+    const voice = page.getByTestId('drawer-86voice-button');
+    await expect(voice).toBeVisible();
 
     const badges = page.locator('.kitchen-tool-status-badge:visible');
     const count = await badges.count();

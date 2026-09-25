@@ -55,13 +55,14 @@ test('17.1.1 deep migration covers cards, tabs, forms, tables and mobile geometr
   ]) assert.ok(css.includes(required), `Concept 1 deep CSS contains ${required}`);
 });
 
-test('17.1.1 keeps the actual 86 Chaos brand assets in shell chrome', () => {
+test('17.1.1 keeps the actual 86 Chaos brand identity in shell chrome', () => {
   const common = read('src/components/common.jsx');
   const shell = read('src/components/concept17.jsx');
   assert.match(common, /src="\/86chaos-icon-48-v2\.png"/);
   assert.match(common, /src="\/6139\.png"/);
   assert.match(common, /86 Chaos branding is always displayed/);
-  assert.match(shell, /<CheersLogo clientData=\{clientData\} \/>/);
+  assert.match(shell, /export const Concept17Wordmark/);
+  assert.match(shell, /aria-label="86 Chaos Kitchen Management OS"/);
 });
 
 test('17.1.1 repairs the Vercel named-import failure against pinned lucide-react 0.344.0', () => {

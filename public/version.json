@@ -1,23 +1,23 @@
 {
-  "version": "17.1.12",
-  "name": "86 Chaos 17.1.12",
-  "build": "17.1.12",
-  "label": "86 Chaos 17.1.12",
-  "releasedAt": "2026-09-25T00:30:00Z",
-  "releaseTitle": "Android PWA 86Voice Visible Panel Repair",
+  "version": "17.1.13",
+  "name": "86 Chaos 17.1.13",
+  "build": "17.1.13",
+  "label": "86 Chaos 17.1.13",
+  "releasedAt": "2026-09-25T03:00:00Z",
+  "releaseTitle": "Approved Reference Full-App Visual Parity",
   "notes": [
-    "Moves the mobile 86Voice controller panel out of the zero-sized legacy dock and renders it as a top-level fixed surface inside the Concept 1 shell.",
-    "Forces the mobile panel open state to commit before starting the restored production Web Speech microphone lifecycle.",
-    "Preserves the 17.1.11 physical-touch activation and browser callout suppression on the toolbar microphone.",
-    "Leaves the working desktop 86Voice dock and production 17.0.29 SpeechRecognition path unchanged."
+    "Rebuilds the desktop and mobile shell around the approved charcoal, copper, serif-heading reference while preserving all mature restaurant workflows.",
+    "Applies one shared approved-reference visual frame to every top-level route and nested subtab without removing existing features or pages.",
+    "Removes the duplicate desktop top-right report/hamburger controls and restores Today as the first primary navigation destination.",
+    "Uses a five-slot mobile command bar and keeps 86Voice available in More while preserving hardened Android/PWA microphone activation behavior."
   ],
-  "title": "86 Chaos 17.1.12",
-  "summary": "Repairs the Android installed-PWA case where the microphone starts but the 86Voice controller panel is not visible.",
-  "description": "Keeps the current Concept 1 toolbar and production Web Speech controller, but portals the mobile 86Voice panel to a top-level fixed shell surface so Android Chrome/PWA rendering cannot strand it inside the hidden legacy dock.",
+  "title": "86 Chaos 17.1.13",
+  "summary": "Applies the approved restaurant-management reference design across the full 86 Chaos app while preserving every existing workflow.",
+  "description": "A full-app visual parity release for desktop and mobile. The shell, route heroes, cards, forms, tables, tabs, Manager Brief, and navigation use the approved reference language, with all mature functions retained.",
   "highlights": [
-    "Mobile 86Voice panel is rendered outside the hidden legacy dock.",
-    "The panel is fixed above the six-button toolbar with an explicit high stacking layer.",
-    "The panel is synchronously revealed before microphone startup on mobile.",
-    "Desktop 86Voice behavior is unchanged."
+    "Approved desktop sidebar, header, route hierarchy, and Manager Brief composition.",
+    "Approved mobile header, restaurant status row, Manager Brief surface, and five-slot bottom navigation.",
+    "Universal visual treatment for every tab and subtab, including System Administrator and operational workspaces.",
+    "All existing workflows retained; standalone Orders & Tickets remains intentionally absent."
   ]
 }

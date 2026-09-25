@@ -140,7 +140,7 @@ async function clickRequiredSubtabs(page, route, labels, mobile) {
 }
 
 test.describe('17.1.2 complete Concept 1 route and subtab fidelity', () => {
-  test('Time Clock & Schedule is the first primary tab on desktop and mobile', async ({ page }) => {
+  test('Today is the first primary tab on desktop and mobile', async ({ page }) => {
     const mobile = test.info().project.name === 'mobile-chromium';
     await page.setViewportSize(mobile ? { width: 390, height: 844 } : { width: 1440, height: 900 });
     const account = creds('OWNER').email ? creds('OWNER') : ownerLikeCreds();
@@ -148,10 +148,10 @@ test.describe('17.1.2 complete Concept 1 route and subtab fidelity', () => {
     await login(page, account.email, account.password);
     if (mobile) {
       const first = page.locator('[data-testid="concept17-mobile-bottom-nav"] [data-shell-route]').first();
-      await expect(first).toHaveAttribute('data-shell-route', 'published');
+      await expect(first).toHaveAttribute('data-shell-route', 'today');
     } else {
       const first = page.locator('[data-testid="concept17-desktop-sidebar"] [data-shell-route]').first();
-      await expect(first).toHaveAttribute('data-shell-route', 'published');
+      await expect(first).toHaveAttribute('data-shell-route', 'today');
     }
   });
 

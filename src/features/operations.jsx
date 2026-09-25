@@ -2404,6 +2404,34 @@ const TabToday = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequ
   const heroTitle = canUseManagerBrief ? (profile === 'manager' || profile === 'system' ? t('today.managerBrief') : profile === 'kitchen' ? t('today.kitchenBrief') : profile === 'bar' ? t('today.barBrief') : profile === 'service' ? t('today.serviceBrief') : t('today.todayBrief')) : t('today.todayHome');
   const topPriority = attentionProblems[0]?.detail || (myShift ? `You work ${formatShortTime(myShift.startTime)}-${formatShortTime(myShift.endTime)} as ${myShift.role}.` : t('today.nothingUrgent'));
   const managerBriefMathText = `${todaysShifts.length} ${t('today.onSchedule')} ${activePunches.length} ${t('today.clockedIn')} ${attentionProblems.length} ${t('today.needReview')}`;
+  const todaySalesRecord = useMemo(() => (sales || []).find(row => String(row?.date || '') === String(today)) || null, [sales, today]);
+  const todaySalesAmount = Number(todaySalesRecord?.netSales ?? todaySalesRecord?.grossSales ?? todaySalesRecord?.amount ?? 0) || 0;
+  const todayLaborCost = Number(todaySalesRecord?.laborCost ?? 0) || 0;
+  const todayFoodCost = Number(todaySalesRecord?.foodCost ?? 0) || 0;
+  const todayLaborPct = todaySalesAmount > 0 && todayLaborCost > 0 ? (todayLaborCost / todaySalesAmount) * 100 : null;
+  const todayFoodPct = todaySalesAmount > 0 && todayFoodCost > 0 ? (todayFoodCost / todaySalesAmount) * 100 : null;
+  const todayPrepRows = useMemo(() => (prepItems || []).filter(item => item?.date === today || item?.date === 'MASTER' || item?.isMaster), [prepItems, today]);
+  const todayPrepDone = todayPrepRows.filter(item => item?.isCompleted || item?.completed === true || item?.completedDates?.[today]).length;
+  const todayPrepOpen = Math.max(0, todayPrepRows.length - todayPrepDone);
+  const greetingHour = new Date().getHours();
+  const referenceGreeting = greetingHour < 12 ? 'Good morning' : greetingHour < 17 ? 'Good afternoon' : 'Good evening';
+  const referenceRestaurant = clientData?.name || appUser?.restaurantName || '86 Chaos';
+  const referencePriorityRows = (attentionProblems.length ? attentionProblems.slice(0, 4) : [
+    { title: 'Prep list', detail: todayPrepOpen ? `${todayPrepOpen} prep item${todayPrepOpen === 1 ? '' : 's'} remaining.` : 'Today’s prep list is buttoned up.', tab: 'prep', tone: todayPrepOpen ? 'amber' : 'green' },
+    { title: 'Schedule coverage', detail: todaysShifts.length ? `${todaysShifts.length} published shift${todaysShifts.length === 1 ? '' : 's'} today.` : 'No published shifts are showing for today.', tab: 'published', tone: todaysShifts.length ? 'green' : 'amber' },
+    { title: 'Inventory', detail: lowStock.length ? `${lowStock.length} below-par item${lowStock.length === 1 ? '' : 's'} need review.` : 'No below-par inventory alerts are showing.', tab: 'inventory', tone: lowStock.length ? 'amber' : 'green' },
+    { title: 'Maintenance', detail: urgentMaintenance.length ? `${urgentMaintenance.length} high-priority maintenance item${urgentMaintenance.length === 1 ? '' : 's'} open.` : 'No high-priority equipment fires showing.', tab: 'maintenance', tone: urgentMaintenance.length ? 'red' : 'green' }
+  ]).slice(0, 4);
+  const referenceShortcuts = [
+    { label: 'Time Clock & Schedule', mobile: 'Time Clock', tab: 'published', Icon: Clock, detail: 'Manage shifts, time tracking, and schedules.' },
+    { label: 'Staff Roster', mobile: 'Staff Roster', tab: 'team', Icon: Users, detail: 'View staff, roles, and availability.' },
+    { label: 'Prep & Tasks', mobile: 'Prep & Tasks', tab: 'prep', Icon: ClipboardList, detail: 'Manage prep lists and daily tasks.' },
+    { label: 'Inventory & Orders', mobile: 'Inventory', tab: 'inventory', Icon: Package, detail: 'Track stock levels and manage orders.' },
+    { label: 'Recipes', mobile: 'Recipes', tab: 'recipes', Icon: BookOpen, detail: 'Standardize recipes and food costs.' },
+    { label: 'Financials', mobile: 'Financials', tab: 'financials', Icon: TrendingUp, detail: 'View sales, labor, and key financials.' },
+    { label: 'Message Board', mobile: 'Messages', tab: 'messages', Icon: MessageSquare, detail: 'Send updates to your team.' },
+    { label: 'Maintenance', mobile: 'Maintenance', tab: 'maintenance', Icon: Wrench, detail: 'Track equipment and follow-up.' }
+  ];
 
   return <div className="concept17-surface concept17-today-surface manager-brief-compact desktop-ops-page max-w-7xl mx-auto space-y-3 pb-24 animate-[slideIn_0.2s_ease-out]">
     <Modal isOpen={!!attentionExplain} onClose={() => setAttentionExplain(null)} title={attentionExplain?.title || 'Why this matters'}>
@@ -2414,30 +2442,112 @@ const TabToday = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequ
         <button type="button" onClick={() => { const tab = attentionExplain.tab || 'today'; setAttentionExplain(null); setActiveTab(tab); }} className={T.btn}>Open Fix Area</button>
       </div>}
     </Modal>
-    <div className="brief-hero cockpit-panel rounded-2xl p-4 sm:p-5 cockpit-grid overflow-hidden relative">
-      <div className="absolute -right-8 -top-8 text-[9rem] font-black text-white/5 leading-none">86</div>
-      <div className="relative z-10 flex flex-col sm:flex-row sm:items-start justify-between gap-3">
-        <div className="concept17-brief-identity">
-          <div className="text-[10px] font-black uppercase tracking-widest text-[#D4A381]">{formatFullDate(today)}</div>
-          <h1 className="text-2xl sm:text-3xl font-black text-white mt-1">{clientData?.name || heroTitle}</h1>
-          <div className="concept17-brief-role-title">{heroTitle}</div>
-          <p className="text-sm text-slate-300 font-bold mt-2 max-w-2xl leading-snug">{topPriority}</p>
-          <p className="text-[10px] text-slate-500 font-black uppercase tracking-widest mt-2" data-testid="manager-brief-math-summary">{managerBriefMathText}</p>
+    <section className="concept17-reference-desktop" data-testid="concept17-reference-home-desktop">
+      <div className="concept17-home-hero">
+        <div className="concept17-home-hero-copy">
+          <div className="concept17-home-eyebrow">{referenceGreeting}</div>
+          <h1>{referenceRestaurant}</h1>
+          <p>Great food. Better people. A stronger restaurant.</p>
         </div>
-        <div className="grid grid-cols-3 gap-2 min-w-[230px]">
-          <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-2 text-center"><div className="text-lg font-black text-white">{todaysShifts.length}</div><div className="text-[8px] uppercase tracking-widest font-black text-slate-500">{t('today.onSchedule')}</div></div>
-          <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-2 text-center"><div className="text-lg font-black text-emerald-400">{activePunches.length}</div><div className="text-[8px] uppercase tracking-widest font-black text-slate-500">{t('today.clockedIn')}</div></div>
-          <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-2 text-center"><div className="text-lg font-black text-red-300">{attentionProblems.length}</div><div className="text-[8px] uppercase tracking-widest font-black text-slate-500">{t('today.needReview')}</div></div>
+        <div className="concept17-home-hero-status">
+          <div className="concept17-home-date">{formatFullDate(today)}</div>
+          <div className="concept17-home-time">{new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</div>
+          <div className="concept17-open-pill"><span></span> OPEN <ChevronRight size={13} aria-hidden="true" /></div>
         </div>
       </div>
-    </div>
 
-    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-      <button onClick={open86Center} className="brief-quick-action bg-red-900/20 border border-red-500/40 text-red-300 rounded-xl p-3 font-black text-xs uppercase tracking-widest">{t('today.open86Alerts')}</button>
-      <button onClick={openPrepPlan} className="brief-quick-action bg-[#1A2126] border border-[#2A353D] text-[#D4A381] rounded-xl p-3 font-black text-xs uppercase tracking-widest">{t('today.openPrep')}</button>
-      <button onClick={openMessageBoard} className="brief-quick-action bg-[#1A2126] border border-[#2A353D] text-slate-200 rounded-xl p-3 font-black text-xs uppercase tracking-widest">{t('today.openMessages')}</button>
-      {canUseCleaningRoutines && <button onClick={openMaintenanceCenter} className="brief-quick-action bg-amber-900/20 border border-amber-500/40 text-amber-300 rounded-xl p-3 font-black text-xs uppercase tracking-widest">{t('today.openFixIt')}</button>}
-    </div>
+      <div className="concept17-home-metrics">
+        <button type="button" onClick={() => setActiveTab('financials')} className="concept17-home-metric">
+          <span className="concept17-home-metric-icon"><TrendingUp size={25}/></span>
+          <span><small>Today's Sales</small><strong>{todaySalesAmount > 0 ? `$${Math.round(todaySalesAmount).toLocaleString()}` : 'No sales yet'}</strong><em>{todaySalesAmount > 0 ? 'Daily Close' : 'Enter Daily Close'}</em></span>
+        </button>
+        <button type="button" onClick={() => setActiveTab('prep')} className="concept17-home-metric">
+          <span className="concept17-home-metric-icon"><ClipboardList size={25}/></span>
+          <span><small>Prep Completed</small><strong>{todayPrepDone}</strong><em>{todayPrepOpen ? `${todayPrepOpen} remaining` : 'Prep is clear'}</em></span>
+        </button>
+        <button type="button" onClick={() => setActiveTab('labor')} className="concept17-home-metric">
+          <span className="concept17-home-metric-icon"><Users size={25}/></span>
+          <span><small>Labor Cost</small><strong>{todayLaborPct == null ? '—' : `${todayLaborPct.toFixed(1)}%`}</strong><em>{activePunches.length} clocked in</em></span>
+        </button>
+        <button type="button" onClick={() => setActiveTab('inventory')} className="concept17-home-metric">
+          <span className="concept17-home-metric-icon"><Package size={25}/></span>
+          <span><small>Food Cost</small><strong>{todayFoodPct == null ? '—' : `${todayFoodPct.toFixed(1)}%`}</strong><em>{lowStock.length ? `${lowStock.length} low-stock alert${lowStock.length === 1 ? '' : 's'}` : 'Inventory stable'}</em></span>
+        </button>
+      </div>
+
+      <div className="concept17-home-primary-grid">
+        <section className="concept17-home-panel">
+          <div className="concept17-home-panel-head">
+            <span className="concept17-home-panel-icon"><ClipboardList size={25}/></span>
+            <span><h2>Manager Brief</h2><p>Key updates for today's service.</p></span>
+            <button type="button" onClick={() => setExpanded(e => ({ ...e, problems: true }))}>View All <ChevronRight size={15}/></button>
+          </div>
+          <div className="concept17-home-brief-list">
+            {referencePriorityRows.map((row, idx) => <button key={`${row.title}-${idx}`} type="button" onClick={() => row.onClick ? row.onClick() : setActiveTab(row.tab || 'today')}>
+              <span className={`concept17-home-row-status is-${row.tone || (idx === 0 ? 'green' : 'amber')}`}>{idx === 0 && !attentionProblems.length ? <Check size={15}/> : idx === 3 ? <Star size={15}/> : <span></span>}</span>
+              <span><strong>{row.title}</strong><small>{row.detail}</small></span>
+              <time>{idx === 0 ? 'Now' : idx === 1 ? 'Today' : idx === 2 ? 'Review' : 'Open'}</time>
+            </button>)}
+          </div>
+        </section>
+
+        <section className="concept17-home-panel concept17-home-kitchen-panel">
+          <div className="concept17-home-panel-head">
+            <span className="concept17-home-panel-icon"><ChefHat size={27}/></span>
+            <span><h2>Kitchen Command Center</h2><p>Live view of kitchen operations.</p></span>
+            <button type="button" onClick={() => setActiveTab('ops')}>Open Kitchen <ChevronRight size={15}/></button>
+          </div>
+          <div className="concept17-kitchen-mini-metrics">
+            <button type="button" onClick={() => setActiveTab('prep')}><strong>{todayPrepOpen}</strong><small>Open Prep</small></button>
+            <button type="button" onClick={openInventoryFocus}><strong>{lowStock.length}</strong><small>Low Stock</small></button>
+            <button type="button" onClick={() => setActiveTab('maintenance')}><strong>{urgentMaintenance.length}</strong><small>Maintenance</small></button>
+            <button type="button" onClick={() => setActiveTab('published')}><strong>{todaysShifts.length}</strong><small>Scheduled</small></button>
+          </div>
+          <div className="concept17-kitchen-recent">
+            <div className="concept17-kitchen-recent-title"><strong>Today's priorities</strong><button type="button" onClick={() => setActiveTab('ops')}>View Kitchen <ChevronRight size={14}/></button></div>
+            {referencePriorityRows.slice(0, 4).map((row, idx) => <button key={`k-${row.title}-${idx}`} type="button" onClick={() => row.onClick ? row.onClick() : setActiveTab(row.tab || 'ops')}><span>{idx + 1}</span><strong>{row.title}</strong><small>{row.detail}</small><em>{row.tone === 'red' ? 'Priority' : row.tone === 'amber' ? 'Review' : 'Ready'}</em></button>)}
+          </div>
+        </section>
+      </div>
+
+      <div className="concept17-home-shortcuts">
+        {referenceShortcuts.map(({ label, tab, Icon, detail }) => <button key={tab} type="button" onClick={() => setActiveTab(tab)}>
+          <span className="concept17-home-shortcut-icon"><Icon size={24}/></span>
+          <span><strong>{label}</strong><small>{detail}</small></span>
+          <ChevronRight size={16} className="concept17-home-shortcut-arrow"/>
+        </button>)}
+      </div>
+    </section>
+
+    <section className="concept17-reference-mobile" data-testid="concept17-reference-home-mobile">
+      <button type="button" className="concept17-mobile-manager-card" onClick={() => setExpanded(e => ({ ...e, problems: true }))}>
+        <span className="concept17-home-panel-icon"><ClipboardList size={24}/></span>
+        <span><strong>Manager Brief</strong><small>Your restaurant at a glance.</small></span>
+        <span className="concept17-mobile-chevron"><ChevronRight size={19}/></span>
+      </button>
+
+      <div className="concept17-mobile-metrics">
+        <button type="button" onClick={() => setActiveTab('financials')}><span className="concept17-home-metric-icon"><TrendingUp size={21}/></span><span><small>Sales Today</small><strong>{todaySalesAmount > 0 ? `$${Math.round(todaySalesAmount).toLocaleString()}` : '—'}</strong><em>{todaySalesAmount > 0 ? 'Daily Close' : 'No sales entered'}</em></span></button>
+        <button type="button" onClick={() => setActiveTab('prep')}><span className="concept17-home-metric-icon"><ClipboardList size={21}/></span><span><small>Prep Done</small><strong>{todayPrepDone}</strong><em>{todayPrepOpen} remaining</em></span></button>
+        <button type="button" onClick={() => setActiveTab('labor')}><span className="concept17-home-metric-icon"><Users size={21}/></span><span><small>Labor Cost</small><strong>{todayLaborPct == null ? '—' : `${todayLaborPct.toFixed(1)}%`}</strong><em>{activePunches.length} clocked in</em></span></button>
+        <button type="button" onClick={() => setActiveTab('inventory')}><span className="concept17-home-metric-icon"><Package size={21}/></span><span><small>Food Cost</small><strong>{todayFoodPct == null ? '—' : `${todayFoodPct.toFixed(1)}%`}</strong><em>{lowStock.length} low stock</em></span></button>
+      </div>
+
+      <section className="concept17-mobile-priorities">
+        <div className="concept17-mobile-priorities-head"><span><ClipboardList size={18}/> Today's Priorities</span><button type="button" onClick={() => setActiveTab('ops')}>View All <ChevronRight size={14}/></button></div>
+        <div className="concept17-mobile-priority-list">
+          {referencePriorityRows.slice(0, 4).map((row, idx) => <button key={`m-${row.title}-${idx}`} type="button" onClick={() => row.onClick ? row.onClick() : setActiveTab(row.tab || 'today')}>
+            <span className={`concept17-home-row-status is-${row.tone || 'amber'}`}>{idx === 0 && !attentionProblems.length ? <Check size={13}/> : <span></span>}</span>
+            <span><strong>{row.title}</strong><small>{row.detail}</small></span>
+            <time>{idx === 0 ? 'Now' : idx === 1 ? 'Today' : 'Review'}</time>
+          </button>)}
+        </div>
+      </section>
+
+      <div className="concept17-mobile-shortcuts">
+        {referenceShortcuts.slice(0, 6).map(({ mobile, tab, Icon }) => <button key={`mobile-${tab}`} type="button" onClick={() => setActiveTab(tab)}><span className="concept17-home-shortcut-icon"><Icon size={22}/></span><strong>{mobile}</strong><ChevronRight size={14}/></button>)}
+      </div>
+    </section>
 
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
       <div className="lg:col-span-2 space-y-3">

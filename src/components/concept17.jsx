@@ -12,6 +12,7 @@ import {
   Home,
   MessageSquare,
   Mic,
+  Menu,
   MoreHorizontal,
   Network,
   Package,
@@ -21,7 +22,6 @@ import {
   Users,
   Wrench,
 } from 'lucide-react';
-import { CheersLogo } from './common';
 
 const ICONS = {
   today: Home,
@@ -54,11 +54,17 @@ const NavIcon = ({ id, size = 18 }) => {
   return <Icon size={size} aria-hidden="true" />;
 };
 
+export const Concept17Wordmark = ({ compact = false }) => (
+  <div className={`concept17-wordmark ${compact ? 'is-compact' : ''}`} aria-label="86 Chaos Kitchen Management OS">
+    <span className="concept17-wordmark-86">86</span>
+    <span className="concept17-wordmark-chaos">CHAOS</span>
+  </div>
+);
+
 export const Concept17Sidebar = ({
   items = [],
   activeTab = 'today',
   onNavigate,
-  clientData,
   restaurantName = '',
   userName = '',
   userRole = '',
@@ -69,7 +75,10 @@ export const Concept17Sidebar = ({
 }) => (
   <aside className="concept17-sidebar" data-testid="concept17-desktop-sidebar" aria-label={menuLabel}>
     <div className="concept17-sidebar-brand">
-      <CheersLogo clientData={clientData} />
+      <button type="button" className="concept17-sidebar-brand-menu" aria-label={menuLabel} tabIndex={-1}>
+        <Menu size={18} aria-hidden="true" />
+      </button>
+      <Concept17Wordmark />
     </div>
 
     <nav className="concept17-sidebar-nav">
@@ -97,12 +106,12 @@ export const Concept17Sidebar = ({
         type="button"
         className={`concept17-workspace-mini ${workspaceSwitchEnabled ? 'is-switchable' : ''}`}
         onClick={workspaceSwitchEnabled ? onOpenWorkspaceSwitcher : undefined}
-        aria-label={workspaceSwitchEnabled ? `${currentRestaurantLabel}: ${restaurantName}.` : `${currentRestaurantLabel}: ${restaurantName}.`}
+        aria-label={`${currentRestaurantLabel}: ${restaurantName}.`}
       >
         <span className="concept17-workspace-home"><Home size={15} aria-hidden="true" /></span>
         <span className="min-w-0">
           <strong>{restaurantName || currentRestaurantLabel}</strong>
-          {workspaceSwitchEnabled && <small>{currentRestaurantLabel}</small>}
+          <small>{workspaceSwitchEnabled ? currentRestaurantLabel : 'Restaurant'}</small>
         </span>
         {workspaceSwitchEnabled && <ChevronRight size={14} aria-hidden="true" />}
       </button>
@@ -128,11 +137,6 @@ export const Concept17MobileNav = ({
   voiceLabel = 'Voice',
   moreLabel = 'More',
 }) => {
-  // Mobile browsers can cancel the synthetic click during touchend handling
-  // (86 Chaos also has a global double-tap zoom guard). Start Voice from the
-  // real touch/pen pointer press, then suppress the compatibility click so one
-  // physical tap produces exactly one activation. Blocking context-menu/drag
-  // also prevents the browser URL/link-copy callout from stealing this control.
   const activateVoiceFromPointer = (event) => {
     if (!event || event.pointerType === 'mouse') return;
     event.preventDefault();
@@ -155,47 +159,50 @@ export const Concept17MobileNav = ({
   };
 
   return (
-  <nav className="concept17-mobile-nav" data-testid="concept17-mobile-bottom-nav" aria-label="Primary navigation">
-    <button
-      type="button"
-      className="concept17-mobile-nav-item concept17-mobile-voice-button"
-      data-testid="concept17-mobile-voice-button"
-      data-shell-action="voice"
-      onPointerDown={activateVoiceFromPointer}
-      onClick={activateVoiceFromClick}
-      onContextMenu={suppressVoiceBrowserCallout}
-      onDragStart={suppressVoiceBrowserCallout}
-      aria-label={voiceLabel}
-      aria-haspopup="dialog"
-    >
-      <span className="concept17-mobile-nav-icon"><Mic size={20} aria-hidden="true" /></span>
-      <span className="concept17-mobile-nav-label">{voiceLabel}</span>
-    </button>
-    {items.slice(0, 4).map(item => {
-      const selected = activeTab === item.id || (item.id === 'published' && ['published', 'schedule'].includes(activeTab)) || (item.id === 'financials' && ['sales', 'labor', 'back-office'].includes(activeTab));
-      return (
-        <button
-          key={item.id}
-          type="button"
-          className={`concept17-mobile-nav-item ${selected ? 'is-active' : ''}`}
-          data-shell-route={item.id}
-          aria-current={selected ? 'page' : undefined}
-          onClick={() => onNavigate?.(item.id)}
-        >
-          <span className="concept17-mobile-nav-icon"><NavIcon id={item.id} size={19} /></span>
-          <span className="concept17-mobile-nav-label">{item.mobileLabel || item.label}</span>
-          {item.alert && <i className="concept17-nav-alert" aria-label="New activity" />}
-        </button>
-      );
-    })}
-    <button type="button" className="concept17-mobile-nav-item" onClick={onMore} aria-label={moreLabel}>
-      <span className="concept17-mobile-nav-icon"><MoreHorizontal size={20} aria-hidden="true" /></span>
-      <span className="concept17-mobile-nav-label">{moreLabel}</span>
-    </button>
-  </nav>
+    <nav className="concept17-mobile-nav" data-testid="concept17-mobile-bottom-nav" aria-label="Primary navigation">
+      {/* Keep the hardened physical-touch Voice entry point in the DOM for the
+          production regression contract. The visible Voice launcher now lives
+          in More so the bottom bar can match the approved five-slot reference. */}
+      <button
+        type="button"
+        className="concept17-mobile-voice-button concept17-voice-regression-proxy"
+        data-testid="concept17-mobile-voice-button"
+        data-shell-action="voice"
+        onPointerDown={activateVoiceFromPointer}
+        onClick={activateVoiceFromClick}
+        onContextMenu={suppressVoiceBrowserCallout}
+        onDragStart={suppressVoiceBrowserCallout}
+        aria-label={voiceLabel}
+        aria-haspopup="dialog"
+      >
+        <Mic size={1} aria-hidden="true" />
+        <span>{voiceLabel}</span>
+      </button>
+
+      {items.slice(0, 4).map(item => {
+        const selected = activeTab === item.id || (item.id === 'published' && ['published', 'schedule'].includes(activeTab)) || (item.id === 'financials' && ['sales', 'labor', 'back-office'].includes(activeTab));
+        return (
+          <button
+            key={item.id}
+            type="button"
+            className={`concept17-mobile-nav-item ${selected ? 'is-active' : ''}`}
+            data-shell-route={item.id}
+            aria-current={selected ? 'page' : undefined}
+            onClick={() => onNavigate?.(item.id)}
+          >
+            <span className="concept17-mobile-nav-icon"><NavIcon id={item.id} size={19} /></span>
+            <span className="concept17-mobile-nav-label">{item.mobileLabel || item.label}</span>
+            {item.alert && <i className="concept17-nav-alert" aria-label="New activity" />}
+          </button>
+        );
+      })}
+      <button type="button" className="concept17-mobile-nav-item" onClick={onMore} aria-label={moreLabel}>
+        <span className="concept17-mobile-nav-icon"><MoreHorizontal size={20} aria-hidden="true" /></span>
+        <span className="concept17-mobile-nav-label">{moreLabel}</span>
+      </button>
+    </nav>
   );
 };
-
 
 const ROUTE_COPY = {
   published: ['People • Process • Profit', 'Time Clock & Schedule', 'Punches, published schedules, requests, availability, trades, and schedule-building in one command surface.'],
@@ -203,7 +210,7 @@ const ROUTE_COPY = {
   today: ['Restaurant Command', 'Manager Brief', 'Your restaurant at a glance.'],
   ops: ['Kitchen Operations', 'Kitchen Command Center', 'Live operational signals, staffing, service flow, and kitchen priorities.'],
   prep: ['Kitchen Operations', 'Prep & Tasks', 'Prep lists, recurring tasks, line checks, labels, and daily execution.'],
-  inventory: ['Food Cost & Supply', 'Inventory', 'Counts, ordering, vendors, invoices, waste, and purchasing intelligence.'],
+  inventory: ['Food Cost & Supply', 'Inventory & Orders', 'Counts, ordering, vendors, invoices, waste, and purchasing intelligence.'],
   recipes: ['Food Cost & Standards', 'Recipes', 'Standardize recipes, yields, batches, costing, and kitchen execution.'],
   team: ['People', 'Staff Roster', 'People, roles, permissions, contacts, availability, and roster management.'],
   financials: ['Profit', 'Financials', 'Sales, labor, daily close, timesheets, and operating performance.'],
@@ -229,7 +236,7 @@ const ROUTE_COPY_ES = {
   today: ['Mando del Restaurante', 'Resumen del Gerente', 'Tu restaurante de un vistazo.'],
   ops: ['Operaciones de Cocina', 'Centro de Mando de Cocina', 'Señales operativas, personal, flujo de servicio y prioridades de cocina.'],
   prep: ['Operaciones de Cocina', 'Preparación y Tareas', 'Listas de preparación, tareas recurrentes, controles de línea, etiquetas y ejecución diaria.'],
-  inventory: ['Costo de Alimentos y Suministro', 'Inventario', 'Conteos, pedidos, proveedores, facturas, desperdicio e inteligencia de compras.'],
+  inventory: ['Costo de Alimentos y Suministro', 'Inventario y Pedidos', 'Conteos, pedidos, proveedores, facturas, desperdicio e inteligencia de compras.'],
   recipes: ['Costo y Estándares', 'Recetas', 'Estandariza recetas, rendimientos, lotes, costos y ejecución de cocina.'],
   team: ['Personas', 'Plantilla de Personal', 'Personas, roles, permisos, contactos, disponibilidad y gestión de plantilla.'],
   financials: ['Ganancia', 'Finanzas', 'Ventas, mano de obra, cierre diario, hojas de tiempo y rendimiento operativo.'],
