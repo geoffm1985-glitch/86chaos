@@ -1,16 +1,16 @@
 {
-  "version": "16.0.240",
-  "name": "86 Chaos 16.0.240",
-  "build": "16.0.240",
-  "label": "86 Chaos 16.0.240",
+  "version": "16.0.241",
+  "name": "86 Chaos 16.0.241",
+  "build": "16.0.241",
+  "label": "86 Chaos 16.0.241",
   "releasedAt": "2026-09-25T00:00:00.000Z",
-  "releaseTitle": "End-to-End Testing Alias Safety Repair",
+  "releaseTitle": "Cross-Platform Validator Hash Repair",
   "notes": [
-    "Uses the shared release-gate mutation-safety classifier in the QA seed API and full-audit helper instead of broad 86chaos.com production regexes.",
-    "Keeps testing.86chaos.com and experimental.86chaos.com explicitly non-production while production and unknown custom subdomains remain fail-closed.",
-    "Adds unit and Play Store regression evidence proving the deeper QA consumers use the shared classifier."
+    "Normalizes CRLF/CR line endings to LF before SHA-256 checks in the inherited 16.0.231 and 16.0.233 validators.",
+    "Preserves every existing freeze assertion instead of deleting or loosening protected-file coverage.",
+    "Adds Node and Play Store regressions that fail if raw platform-specific text hashing returns."
   ],
-  "title": "86 Chaos 16.0.240",
-  "summary": "Carries the testing-alias safety rule through preflight, QA seeding, and the full Play Store audit harness.",
-  "description": "Centralizes release-gate host classification so known testing aliases are allowed end-to-end while production and unknown custom hosts remain blocked."
+  "title": "86 Chaos 16.0.241",
+  "summary": "Makes inherited source-freeze validation deterministic across Windows and Linux while retaining the testing-alias safety repair.",
+  "description": "Normalizes text line endings before legacy SHA-256 freeze comparisons, preserving the original protected-file checks without false Windows failures."
 }
