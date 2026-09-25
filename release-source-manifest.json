@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
-  "version": "17.1.14",
-  "sourceHash": "95fd006ba6ea2051a9ef2a98d1fede7c9fdf2727a51e3ddb3cc1732a75c0711d",
+  "version": "17.1.15",
+  "sourceHash": "44f63395893777af6487576de12e6f8565d223ce54e94e270bd5549fb245694b",
   "files": [
     {
       "file": ".gitattributes",
@@ -176,6 +176,10 @@
       "sha256": "d6e618e3fefb8cfce68fa78df9e0f4b2dd7d37c60333bdb4e4974ae8f8a7425b"
     },
     {
+      "file": "RELEASE_17_1_15.md",
+      "sha256": "682ec590aff66f9d39b2e1ee47ded999c9d23851ccf8ff32e0c279a9f49c6421"
+    },
+    {
       "file": "RELEASE_17_1_2.md",
       "sha256": "8a6cd4a4d128cb542400ad39e84813c8ffbf2290b0ce8b1035fddba9c888b419"
     },
@@ -317,7 +321,7 @@
     },
     {
       "file": "api/_pos-bridge-config.js",
-      "sha256": "8b3bf36f8c0f97286a5563cbe2783f4ed53fef29706603a821de03b551d36c80"
+      "sha256": "68ac39d6bd97081fff0c827fff01f58eb2b707ecb5626bf9d9f47e2311136b73"
     },
     {
       "file": "api/_pos-bridge-events.js",
@@ -449,7 +453,7 @@
     },
     {
       "file": "api/_version.js",
-      "sha256": "3066d473feb2a17e8079e3becf73992ac0baf427e7dae04027946b3b9d6588cd"
+      "sha256": "1b284bb0bc5782c16ae8eb788df6beb2d6a111d4e5664f66a15fd4310ac90273"
     },
     {
       "file": "api/account-deletion-request.js",
@@ -490,6 +494,10 @@
     {
       "file": "api/app-route-and-document-vault.test.cjs",
       "sha256": "59a0d380e2b0cdf767a0e85798d770ec9a12b312ab6a7bb030669df4c69f1580"
+    },
+    {
+      "file": "api/app-shell-hook-order-17-1-15.test.cjs",
+      "sha256": "3147157c5dbabcf23277a2d137ed530d27e0fa00b1cfe3263691af3dbef3ce4e"
     },
     {
       "file": "api/app-wide-concept1-complete-migration-17-1-2.test.cjs",
@@ -1529,7 +1537,7 @@
     },
     {
       "file": "api/vercel-reference-asset-resolution-17-1-14.test.cjs",
-      "sha256": "c315ba6e63f641d33bcb54e47276c767b1a15e3e05e5ed05dfd4a7d6d411faf5"
+      "sha256": "472f4a425b090e69f339aa2bc9ca4b600a83010239123995edbade122f83a291"
     },
     {
       "file": "api/vercel-target-validation.test.cjs",
@@ -1645,11 +1653,11 @@
     },
     {
       "file": "package-lock.json",
-      "sha256": "6985d2558e7ae3bd3f025c12c5ec6fe33259ceec7751a0b5876f0f7b84894e52"
+      "sha256": "30350963ea2e484b823f1c615e1a2ceccaefbcc1d7549de724f56d7b778c2f61"
     },
     {
       "file": "package.json",
-      "sha256": "54795d4666d1fa88fff362db1ea0b296b89332c7421d06f5e4b09713b9cfe05a"
+      "sha256": "67d7dfe3b305d92d007856cdc037ffc279aff89129bd6f700bf912492eb5aacd"
     },
     {
       "file": "playwright.config.js",
@@ -1873,7 +1881,7 @@
     },
     {
       "file": "public/version.json",
-      "sha256": "2ce2ac08d62f5d29de45ec5bc459f3d402089a4010452b92682db734cb8f2bf2"
+      "sha256": "91c32482596c4599f377afbb07a45c8cb769173b1abb4e306ea24fc8b563495e"
     },
     {
       "file": "public/wisco.png",
@@ -1921,7 +1929,7 @@
     },
     {
       "file": "scripts/86chaos-release-gate/current-release-repair-scope.cjs",
-      "sha256": "530d739c416a0f11c2d154a0cbdf7ae84c623bcf83467e167a521936f5cc57a1"
+      "sha256": "ce43175845171caa3ebae59c70a5ad52e9ec4f046603464da9595ae21c4bb5e9"
     },
     {
       "file": "scripts/86chaos-release-gate/dependency-preflight.cjs",
@@ -2968,6 +2976,10 @@
       "sha256": "fd5b5d03c74c38d15f9ce924941370ac36c8091f72dad02848b0edf7c072ae2c"
     },
     {
+      "file": "scripts/validate-17-1-15.js",
+      "sha256": "ed99127ca2eb0c6ec5fab1aa884b8f65dd48c798cdb94fc493b1eda12fba636d"
+    },
+    {
       "file": "scripts/validate-17-1-2.js",
       "sha256": "600da86570ed7f471f0397bed07cf80e14850c98efc28fb52de7d2faa7c67419"
     },
@@ -3037,7 +3049,7 @@
     },
     {
       "file": "src/App.js",
-      "sha256": "5f1bbceb16e1338bfaca67e8e1c0a7adf77030e8336c980b2b45c46f73717e23"
+      "sha256": "75e80ffd8ebfe508acb7508ae1caeca016943bfc5b4e9f390b716e22dc4a9dba"
     },
     {
       "file": "src/components/CheersLogo.js",
@@ -3133,7 +3145,7 @@
     },
     {
       "file": "src/components/common.jsx",
-      "sha256": "bfab70d24ddf7cd931e1cd29de9352a16816b516d447eeef28e9a59f12d258d2"
+      "sha256": "7026e56299c246e310b3238d2535f65aac7092ca8dbd73be19bf6ca7d45c1da3"
     },
     {
       "file": "src/components/concept17.jsx",
@@ -3169,7 +3181,7 @@
     },
     {
       "file": "src/core/appCore.js",
-      "sha256": "bd896b6be9cc2ac1ccf904cf5ecf2630eba564dc751f7527a0e539571ce00953"
+      "sha256": "5d35be73c8fd4559d7c93048023440d597ad139dcee68b2377dd7526a89ce52c"
     },
     {
       "file": "src/core/csvSafety.test.js",
@@ -3177,11 +3189,11 @@
     },
     {
       "file": "src/core/customerHelpKnowledge.cjs",
-      "sha256": "ef29803d24f79533bb09d28f94caa005fb3645309a8eb9cb8e5cdf6c376a9e52"
+      "sha256": "f7eb8a928bfb3086c26c4b4932bfcfca0648e0503d55cbf182f84c505e2346ea"
     },
     {
       "file": "src/core/customerHelpKnowledge.js",
-      "sha256": "19740ec7429938341ca53e745da7b36b7e74da3666e86c1b48ca6b0e72fc2193"
+      "sha256": "328ca872de6ff1594e3960f666499dc568499d9ebede72af8d086674a8436ae4"
     },
     {
       "file": "src/core/fileCompression.js",
@@ -3369,7 +3381,7 @@
     },
     {
       "file": "src/core/schedulePdf.js",
-      "sha256": "d92e00d6a0b4f7846a2c769363d69ca512dfa1744f0838369cf566d0a8ccb1aa"
+      "sha256": "4be247fd83800d29003ac3b2663be5d44fa112060a89a4de06a571f0aa4a277d"
     },
     {
       "file": "src/core/schedulePdf.test.js",
@@ -3565,11 +3577,11 @@
     },
     {
       "file": "test-tools/certification/cost-performance-baselines.json",
-      "sha256": "bf295ac635748194a5dfe21039a6eb7f3d2734e85e3c0026d75a33af7b8a88e1"
+      "sha256": "2a9fca67f69f5b8661e213c757cacfc41b94dc8dffa6f8b35508945959fe3ba3"
     },
     {
       "file": "test-tools/certification/groups.json",
-      "sha256": "8df85d3fb6dff905ffdfe446403ffdfab1e7765c1193b1320b48d223d997666b"
+      "sha256": "38af5d1ad64f854e41bb388e5425e5992b30bbe809f82dcf822979d96a68e254"
     },
     {
       "file": "test-tools/certification/permission-matrix.json",
@@ -3617,7 +3629,7 @@
     },
     {
       "file": "test-tools/regressions/registry.json",
-      "sha256": "af49c223f3bfa16a85d5abfa40805cbd076dd0732778494ca5019e007cfc1b90"
+      "sha256": "8c3c0125f1e40536e1b44461bb738ac90f4ea008690151c395dd81f8d99a2b78"
     },
     {
       "file": "test-tools/reporters/chaos-release-gate-reporter.cjs",
@@ -3856,6 +3868,10 @@
       "sha256": "feea3be498e07a1f3ac8c41226bbad3dcd1473f3bd591c8bdc2db6ae91562c89"
     },
     {
+      "file": "tests/86chaos-new-implementations/29-authenticated-shell-hook-order.spec.cjs",
+      "sha256": "7d8bbe2b9b740181e32e116b92556f7576f41f3fa17e877c719308ee15bfc12a"
+    },
+    {
       "file": "tests/86chaos-release-gate/00-qa-restaurant-lifecycle.spec.cjs",
       "sha256": "9e1f4819cb4c3971b30c9107c8c8d9d9eff8a3a3c430b0464fcbf59481e2c5f4"
     },
@@ -4028,7 +4044,7 @@
   "branch": null,
   "dirty": false,
   "dirtyPaths": [],
-  "capturedAt": "2026-09-25T02:43:13.175Z",
+  "capturedAt": "2026-09-25T03:07:34.577Z",
   "previewUrl": null,
   "intendedProductionUrl": "https://app.86chaos.com",
   "sourceArtifact": null

@@ -2313,6 +2313,21 @@ What I clicked / expected:
     setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), reportable ? 9000 : 6000);
   }, []);
 
+  const openVoiceFromShell = useCallback(() => {
+    try { navigator?.vibrate?.(18); } catch (_) {}
+    const controller = voiceCommandDockRef.current;
+    if (controller?.openAndListen) {
+      controller.openAndListen();
+      return;
+    }
+    if (controller?.openPanel) {
+      controller.openPanel();
+      return;
+    }
+    try { window.dispatchEvent(new CustomEvent('chaos:voice-open-and-listen', { detail: { source: 'concept17-shell' } })); } catch (_) {}
+    addToast?.('86Voice', 'Opening voice controls…');
+  }, [addToast]);
+
 
   useEffect(() => {
     if (typeof window === 'undefined') return undefined;
@@ -3351,20 +3366,6 @@ What I clicked / expected:
   const shellUserName = liveAppUser?.name || liveAppUser?.displayName || liveAppUser?.email || '86 Chaos';
   const shellUserRole = liveAppUser?.role || (liveAppUser?.isAdmin ? 'Administrator' : 'Team Member');
   const shellUserInitials = String(shellUserName).split(/\s+/).filter(Boolean).slice(0, 2).map(part => part.charAt(0)).join('').toUpperCase() || '86';
-  const openVoiceFromShell = useCallback(() => {
-    try { navigator?.vibrate?.(18); } catch (_) {}
-    const controller = voiceCommandDockRef.current;
-    if (controller?.openAndListen) {
-      controller.openAndListen();
-      return;
-    }
-    if (controller?.openPanel) {
-      controller.openPanel();
-      return;
-    }
-    try { window.dispatchEvent(new CustomEvent('chaos:voice-open-and-listen', { detail: { source: 'concept17-shell' } })); } catch (_) {}
-    addToast?.('86Voice', 'Opening voice controls…');
-  }, [addToast]);
 
 return (
     <I18nProvider language={appLanguage}>

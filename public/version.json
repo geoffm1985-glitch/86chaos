@@ -1,23 +1,23 @@
 {
-  "version": "17.1.14",
-  "name": "86 Chaos 17.1.14",
-  "build": "17.1.14",
-  "label": "86 Chaos 17.1.14",
-  "releasedAt": "2026-09-25T02:45:00Z",
-  "releaseTitle": "Vercel Reference Asset Resolution Repair",
+  "version": "17.1.15",
+  "name": "86 Chaos 17.1.15",
+  "build": "17.1.15",
+  "label": "86 Chaos 17.1.15",
+  "releasedAt": "2026-09-25T03:20:00Z",
+  "releaseTitle": "Authenticated App Shell Hook-Order Repair",
   "notes": [
-    "Fixes the Vercel compile error that treated /concept17-kitchen-reference.jpg as a JavaScript/CSS module path.",
-    "Embeds the exact approved JPEG bytes once as a CSS data URI and reuses them through a custom property, preserving pixel output.",
-    "Preserves every existing route, subroute, feature, workflow, permission boundary, and 86Voice behavior from 17.1.13.",
-    "Keeps the duplicate desktop menus removed and keeps the approved desktop/mobile visual system unchanged."
+    "Fixes the post-login blank-app failure introduced when the shared 86Voice shell callback was added below conditional authentication/session returns.",
+    "Moves the 86Voice shell callback above all App-level conditional returns so React sees the same hook order before, during, and after session hydration.",
+    "Restores the visible 86Voice entry in the actual shared More/drawer component used by App.js.",
+    "Preserves the complete 17.1.13 reference redesign, the 17.1.14 Vercel image-resolution repair, and every existing route, subroute, workflow, permission boundary, and data feature."
   ],
-  "title": "86 Chaos 17.1.14",
-  "summary": "Repairs the Vercel production build failure without changing the approved 17.1.13 visual design or removing any feature, page, tab, or subtab.",
-  "description": "A surgical build repair that keeps the approved full-app reference redesign intact while making the shared kitchen reference image safe for Create React App/css-loader on Vercel.",
+  "title": "86 Chaos 17.1.15",
+  "summary": "Repairs the authenticated shell runtime crash without changing the approved redesign or removing any feature, page, tab, or subtab.",
+  "description": "A surgical React hook-order repair for the login/session transition, plus restoration of the existing 86Voice drawer access in the shared menu actually rendered by the application.",
   "highlights": [
-    "Vercel-safe reference-image resolution with no visual asset substitution.",
-    "Exact source JPEG bytes retained for visual parity.",
-    "No feature or page removal; 17.1.13 redesign carries forward unchanged.",
-    "Targeted regression coverage added for the deployment failure."
+    "Stable hook order through signed-out, session-hydrating, and signed-in renders.",
+    "86Voice remains available from the shared More/drawer path.",
+    "Approved desktop/mobile visual redesign remains intact.",
+    "No business workflow or route removal."
   ]
 }

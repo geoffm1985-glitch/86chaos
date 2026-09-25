@@ -1,8 +1,13 @@
 'use strict';
 
-const CURRENT_RELEASE_VERSION = '17.1.14';
-const CURRENT_RELEASE_CARRY_FORWARD_NOTE = '17.1.14 preserves the complete 17.1.13 approved-reference redesign and every production workflow while repairing only the Vercel CSS asset-resolution failure; the exact approved JPEG bytes remain visually identical and prior 86Voice/mobile protections are unchanged.';
+const CURRENT_RELEASE_VERSION = '17.1.15';
+const CURRENT_RELEASE_CARRY_FORWARD_NOTE = '17.1.15 preserves the complete approved-reference redesign, the Vercel-safe image repair, every existing workflow, and prior mobile 86Voice protections while repairing only the authenticated App-shell React hook-order regression and restoring the real shared drawer Voice entry.';
 const CURRENT_RELEASE_REPAIR_SCOPE = [
+  {
+    specPath: '86chaos-new-implementations/29-authenticated-shell-hook-order.spec.cjs',
+    fullSuitePath: '17.1.15 authenticated shell hook-order repair',
+    exactTestTitle: 'login and session hydration reach the real app shell without a React hook-order crash',
+  },
   {
     specPath: '86chaos-new-implementations/28-approved-reference-full-app-parity.spec.cjs',
     fullSuitePath: '17.1.13 approved-reference full-app visual parity',
