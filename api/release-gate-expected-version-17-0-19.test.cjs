@@ -24,7 +24,7 @@ test('full Play Store runner pins expected version to package.json after loading
   const preflight = runner.indexOf('preflight-and-start.cjs');
   assert.ok(imports >= 0 && pin > imports, 'version pin happens after local env import');
   assert.ok(preflight > pin, 'version pin happens before release preflight');
-  assert.match(packageVersion, /^\\d+\\.\\d+\\.\\d+$/, 'package version is a valid release version and the runner pins it dynamically');
+  assert.match(packageVersion, /^\d+\.\d+\.\d+$/, 'package version is a valid release version and the runner pins it dynamically');
 });
 
 test('certification preflight ignores persisted expected-version conflicts but non-certification checks remain strict', () => {
