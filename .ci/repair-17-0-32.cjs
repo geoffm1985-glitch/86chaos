@@ -85,6 +85,10 @@ for(const p of [
   'api/release-gate-maturity-16-0-209.test.cjs',
   'api/release-gate-maturity-16-0-210.test.cjs'
 ]) replaceAll(p,'node scripts/validate-17-0-30.js','node scripts/validate-17-0-32.js');
+for(const p of [
+  'api/release-gate-maturity-16-0-209.test.cjs',
+  'api/release-gate-maturity-16-0-210.test.cjs'
+]) replaceAll(p,'Unified Feature and Release-Gate Parity Merge','Hostile Certification Assertion Parity Repair');
 
 // Translated Request Off control remains accessible and role-grouped.
 replace('api/availability-delete-responsive-density-16-0-163.test.cjs',
@@ -98,6 +102,9 @@ replace('api/copy-clarity-16-0-232.test.cjs',
 replace('api/copy-clarity-16-0-232.test.cjs',
   "  assert.match(source, /Copy Month/);",
   "  assert.match(source, /t\\('builder\\.copyMonth'\\)/);");
+replace('api/copy-clarity-16-0-232.test.cjs',
+  '  assert.match(source, /aria-label="Auto-Fill"/);',
+  "  assert.match(source, /aria-label=\{t\('builder\\.copyMonth'\)\}/);");
 
 // All Dates remains the default; obsolete explanatory sentence was removed.
 replace('api/request-off-workflow-visibility-16-0-188.test.cjs',
