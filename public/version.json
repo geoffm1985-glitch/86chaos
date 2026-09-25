@@ -1,22 +1,22 @@
 {
-  "version": "17.1.19",
-  "name": "86 Chaos 17.1.19",
-  "build": "17.1.19",
-  "label": "86 Chaos 17.1.19",
-  "releasedAt": "2026-09-25T20:08:00Z",
-  "releaseTitle": "Experimental Gate Identity Synchronization Repair",
+  "version": "17.1.20",
+  "name": "86 Chaos 17.1.20",
+  "build": "17.1.20",
+  "label": "86 Chaos 17.1.20",
+  "releasedAt": "2026-09-25T20:41:00Z",
+  "releaseTitle": "Experimental Gate Manifest and Branch Validation Repair",
   "notes": [
-    "Synchronizes package, runtime, footer, public version, and server build identity on the experimental branch.",
-    "Preserves branch-scoped experimental.86chaos.com release-gate safety without weakening production protections.",
-    "Makes footer version coverage follow the current package version so future sequential version bumps cannot create a stale Play Store expectation.",
-    "Refreshes certification metadata and release-source evidence for the exact experimental build."
+    "Corrects the release-source manifest hash used by exact-build certification.",
+    "Preserves branch-scoped experimental.86chaos.com testing through every preflight validation pass.",
+    "Keeps package, runtime, footer, public version, and server identity synchronized.",
+    "Adds regression coverage so the second deployment identity validation cannot silently fall back to testing-only behavior."
   ],
-  "title": "86 Chaos 17.1.19",
-  "summary": "Repairs experimental release identity so the deployed branch, runtime version, source manifest, and Play Store gate all certify the same build.",
-  "description": "A release-harness identity repair only. Existing application features and UI behavior are preserved.",
+  "title": "86 Chaos 17.1.20",
+  "summary": "Repairs the remaining pre-test certification blockers for the experimental full Play Store gate.",
+  "description": "Release-gate infrastructure repair only. Existing application behavior is preserved.",
   "highlights": [
-    "Version 17.1.19 is consistent across package.json, public/version.json, api/_version.js, and the application footer.",
-    "Experimental stable-domain release-gate targeting remains branch-scoped and production-safe.",
-    "Desktop and mobile footer Play Store checks now verify the current package version instead of a stale hard-coded release number."
+    "Version 17.1.20 remains synchronized across runtime identity surfaces.",
+    "Experimental domain validation is branch-aware in both release-target validation passes.",
+    "Release-source evidence is regenerated with the canonical deterministic ordering."
   ]
 }

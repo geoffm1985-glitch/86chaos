@@ -234,6 +234,7 @@ async function main() {
     chaosBaseUrl: process.env.CHAOS_BASE_URL || '',
     expectedProjectSlug: value('CHAOS_EXPECTED_VERCEL_PROJECT_SLUG') || CANONICAL_VERCEL_PROJECT_SLUG,
     expectedVersion,
+    expectedBranch,
     certificationMode,
     sourceIdentity:{version:sourceIdentity.version,sourceHash:sourceIdentity.sourceHash,commit:sourceIdentity.commit,branch:sourceIdentity.branch,dirty:sourceIdentity.dirty},
     expectedIdentity:{commit:expectedCommit||null,branch:expectedBranch,sourceManifestHash:expectedManifest||null,sourceArchiveSha256:expectedArchiveSha256||null,vercelDeploymentId:expectedDeploymentId||null,vercelDeploymentUrl:expectedDeploymentUrl||null,vercelProjectId:expectedVercelProjectId||null},

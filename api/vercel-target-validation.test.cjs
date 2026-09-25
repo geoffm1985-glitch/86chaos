@@ -96,6 +96,13 @@ test('experimental stable domain is accepted only when the expected branch is ex
   assert.match(mutationRejected.errors.join('\n'), /production host|not a recognized testing\/preview deployment/i);
 });
 
+test('release preflight keeps expectedBranch in both target validation passes', () => {
+  const preflight = fs.readFileSync(path.join(__dirname, '..', 'scripts', '86chaos-release-gate', 'preflight-env.cjs'), 'utf8');
+  const calls = preflight.split('validateReleaseTarget({').slice(1);
+  assert.equal(calls.length, 2);
+  for (const call of calls) assert.match(call.slice(0, 1800), /expectedBranch,/);
+});
+
 test('APP_URL and CHAOS_BASE_URL must agree by host and tolerate trailing slash differences', () => {
   assert.equal(normalizeUrlForCompare('https://86chaos-git-testing-a.vercel.app/'), normalizeUrlForCompare('https://86chaos-git-testing-a.vercel.app'));
   const ok = validateReleaseTarget({ appUrl: 'https://86chaos-git-testing-a.vercel.app/', chaosBaseUrl: 'https://86chaos-git-testing-a.vercel.app', expectedVersion: '16.0.149', sourceVersion: '16.0.149', deployedVersion: '16.0.149' });
