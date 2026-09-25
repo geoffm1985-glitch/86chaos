@@ -1,0 +1,206 @@
+name: Repair deploy and gate 17.0.32 hostile parity
+
+on:
+  push:
+    branches:
+      - ci-repair-17-0-32-hostile-parity
+
+permissions:
+  contents: write
+
+concurrency:
+  group: repair-17-0-32-hostile-parity
+  cancel-in-progress: false
+
+jobs:
+  prepare-repair:
+    runs-on: ubuntu-latest
+    outputs:
+      candidate_sha: ${{ steps.identity.outputs.candidate_sha }}
+    steps:
+      - name: Check out clean repair candidate
+        uses: actions/checkout@v4
+        with:
+          ref: repair-17-0-32-hostile-parity
+          fetch-depth: 0
+      - name: Check out repair control
+        uses: actions/checkout@v4
+        with:
+          ref: ci-repair-17-0-32-hostile-parity
+          path: .ci-control
+          fetch-depth: 1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Verify exact 17.0.31 baseline
+        shell: bash
+        run: |
+          test "$(git rev-parse HEAD)" = "7e06dad52f8356e5586ce8bc97d64ac1b106d852"
+          test "$(node -p "require('./package.json').version")" = "17.0.31"
+      - name: Apply 17.0.32 hostile parity repair
+        shell: bash
+        run: |
+          node .ci-control/.ci/repair-17-0-32.cjs
+          rm -rf .ci-control
+          git add -A
+      - name: Generate exact bundled source manifest
+        shell: bash
+        run: |
+          node -e "const fs=require('fs');const id=require('./scripts/86chaos-release-gate/source-identity.cjs');const c=id.captureSourceIdentity(process.cwd());fs.writeFileSync('release-source-manifest.json',JSON.stringify({schemaVersion:1,sourceHash:c.sourceHash,files:c.files},null,2)+'\n');console.log('manifest',c.sourceHash,'files',c.files.length)"
+          git add release-source-manifest.json
+      - name: Install dependencies
+        run: npm ci --include=dev --no-audit --no-fund --progress=false
+      - name: Re-run every failed local assertion
+        shell: bash
+        run: >
+          node --test
+          api/release-gate-expected-version-17-0-19.test.cjs
+          api/release-gate-maturity-16-0-207.test.cjs
+          api/release-gate-maturity-16-0-208.test.cjs
+          api/release-gate-maturity-16-0-209.test.cjs
+          api/release-gate-maturity-16-0-210.test.cjs
+          api/availability-delete-responsive-density-16-0-163.test.cjs
+          api/copy-clarity-16-0-232.test.cjs
+          api/request-off-workflow-visibility-16-0-188.test.cjs
+          api/schedule-builder-clear-month-17-0-24.test.cjs
+          api/schedule-tools-period-awareness-16-0-233.test.cjs
+          api/system-admin-backup-health-16-0-169.test.cjs
+      - name: Run current release targeted tests
+        run: npm run test:current-release-targeted
+      - name: Verify source manifest parity
+        run: node -e "const id=require('./scripts/86chaos-release-gate/source-identity.cjs');const a=id.captureSourceIdentity(process.cwd()),b=id.readBundledSourceManifest(process.cwd());if(a.sourceHash!==b.sourceHash)throw new Error(a.sourceHash+' != '+b.sourceHash);console.log(a.sourceHash)"
+      - name: Production build
+        env:
+          CI: "true"
+        run: npm run build
+      - name: Commit repair
+        id: identity
+        shell: bash
+        run: |
+          git config user.name "86 Chaos Release Bot"
+          git config user.email "actions@users.noreply.github.com"
+          git commit -m "Release 17.0.32: repair hostile certification assertion parity"
+          SHA="$(git rev-parse HEAD)"
+          git push origin HEAD:repair-17-0-32-hostile-parity
+          echo "candidate_sha=$SHA" >> "$GITHUB_OUTPUT"
+          echo "Candidate $SHA"
+
+  validate-windows:
+    needs: prepare-repair
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare-repair.outputs.candidate_sha }}
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm ci --include=dev --no-audit --no-fund --progress=false
+      - name: Verify Windows manifest parity
+        shell: pwsh
+        run: node -e "const id=require('./scripts/86chaos-release-gate/source-identity.cjs');const a=id.captureSourceIdentity(process.cwd()),b=id.readBundledSourceManifest(process.cwd());if(a.sourceHash!==b.sourceHash)throw new Error(a.sourceHash+' != '+b.sourceHash);console.log(a.sourceHash)"
+      - name: Re-run failed local assertions on Windows
+        shell: pwsh
+        run: node --test api/release-gate-expected-version-17-0-19.test.cjs api/release-gate-maturity-16-0-207.test.cjs api/release-gate-maturity-16-0-208.test.cjs api/release-gate-maturity-16-0-209.test.cjs api/release-gate-maturity-16-0-210.test.cjs api/availability-delete-responsive-density-16-0-163.test.cjs api/copy-clarity-16-0-232.test.cjs api/request-off-workflow-visibility-16-0-188.test.cjs api/schedule-builder-clear-month-17-0-24.test.cjs api/schedule-tools-period-awareness-16-0-233.test.cjs api/system-admin-backup-health-16-0-169.test.cjs
+      - run: npm run test:current-release-targeted
+
+  deploy-testing:
+    needs: [prepare-repair, validate-windows]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare-repair.outputs.candidate_sha }}
+          fetch-depth: 0
+      - name: Fast-forward validated candidate to testing
+        shell: bash
+        run: |
+          git fetch origin testing
+          test "$(git rev-parse origin/testing)" = "7e06dad52f8356e5586ce8bc97d64ac1b106d852"
+          git push origin HEAD:testing
+
+  full-release-gate:
+    needs: [prepare-repair, deploy-testing]
+    runs-on: windows-latest
+    timeout-minutes: 360
+    env:
+      APP_URL: https://testing.86chaos.com
+      CHAOS_BASE_URL: https://testing.86chaos.com
+      PLAYWRIGHT_BASE_URL: https://testing.86chaos.com
+      CHAOS_EXPECTED_BRANCH: testing
+      CHAOS_EXPECTED_VERSION: 17.0.32
+      CHAOS_EXPECTED_GIT_COMMIT: ${{ needs.prepare-repair.outputs.candidate_sha }}
+      CHAOS_EXPECTED_VERCEL_PROJECT_SLUG: 86chaos
+      REACT_APP_FIREBASE_PROJECT_ID: chaos-test-d1601
+      REACT_APP_TEST_FIREBASE_PROJECT_ID: chaos-test-d1601
+      REACT_APP_FIREBASE_API_KEY: AIzaSyBIRGMeLnVE3w3i1WZJzurcp-LkeaNZ3hw
+      REACT_APP_TEST_FIREBASE_API_KEY: AIzaSyBIRGMeLnVE3w3i1WZJzurcp-LkeaNZ3hw
+      REACT_APP_FIREBASE_AUTH_DOMAIN: chaos-test-d1601.firebaseapp.com
+      REACT_APP_TEST_FIREBASE_AUTH_DOMAIN: chaos-test-d1601.firebaseapp.com
+      REACT_APP_FIREBASE_APP_ID: 1:534993379994:web:9fefb6e10309223afe7523
+      REACT_APP_TEST_FIREBASE_APP_ID: 1:534993379994:web:9fefb6e10309223afe7523
+      REACT_APP_FIREBASE_STORAGE_BUCKET: chaos-test-d1601.firebasestorage.app
+      REACT_APP_TEST_FIREBASE_STORAGE_BUCKET: chaos-test-d1601.firebasestorage.app
+      REACT_APP_FIREBASE_MESSAGING_SENDER_ID: '534993379994'
+      REACT_APP_TEST_FIREBASE_MESSAGING_SENDER_ID: '534993379994'
+      REACT_APP_TEST_FIREBASE_DATABASE_URL: https://chaos-test-d1601-default-rtdb.firebaseio.com
+      FIREBASE_TEST_SERVICE_ACCOUNT_KEY: ${{ secrets.FIREBASE_TEST_SERVICE_ACCOUNT_KEY }}
+      FIREBASE_SERVICE_ACCOUNT_KEY: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_KEY }}
+      SYSTEM_ADMIN_EMAIL: ${{ secrets.SYSTEM_ADMIN_EMAIL }}
+      SYSTEM_ADMIN_PASSWORD: ${{ secrets.SYSTEM_ADMIN_PASSWORD }}
+      OWNER_EMAIL: ${{ secrets.OWNER_EMAIL }}
+      OWNER_PASSWORD: ${{ secrets.OWNER_PASSWORD }}
+      MANAGER_EMAIL: ${{ secrets.MANAGER_EMAIL }}
+      MANAGER_PASSWORD: ${{ secrets.MANAGER_PASSWORD }}
+      STAFF_EMAIL: ${{ secrets.STAFF_EMAIL }}
+      STAFF_PASSWORD: ${{ secrets.STAFF_PASSWORD }}
+      MASTER_ADMIN_EMAIL: ${{ secrets.MASTER_ADMIN_EMAIL }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: testing
+          fetch-depth: 0
+      - name: Verify testing identity
+        shell: pwsh
+        run: |
+          if ((git rev-parse HEAD).Trim() -ne $env:CHAOS_EXPECTED_GIT_COMMIT) { throw "testing commit mismatch" }
+          if ((Get-Content package.json -Raw | ConvertFrom-Json).version -ne '17.0.32') { throw "version mismatch" }
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Wait for exact 17.0.32 testing deployment
+        shell: pwsh
+        run: |
+          $matched=$false
+          for($i=0;$i -lt 240;$i++){
+            $stamp=[DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
+            try{
+              $v=Invoke-RestMethod "$env:APP_URL/version.json?ci=$stamp" -Headers @{"Cache-Control"="no-cache";"Pragma"="no-cache"}
+              try{$id=Invoke-RestMethod "$env:APP_URL/build-identity.json?ci=$stamp" -Headers @{"Cache-Control"="no-cache";"Pragma"="no-cache"}}
+              catch{$id=Invoke-RestMethod "$env:APP_URL/api/build-identity?ci=$stamp" -Headers @{"Cache-Control"="no-cache";"Pragma"="no-cache"}}
+              $commit=if($id.gitCommit){[string]$id.gitCommit}elseif($id.commit){[string]$id.commit}else{""}
+              if([string]$v.version -eq '17.0.32' -and $commit -eq $env:CHAOS_EXPECTED_GIT_COMMIT){$matched=$true;Write-Host "Exact deployment READY";break}
+              Write-Host "Waiting: version=$($v.version) commit=$commit"
+            }catch{Write-Host "Deployment not ready: $($_.Exception.Message)"}
+            Start-Sleep -Seconds 15
+          }
+          if(-not $matched){throw "Timed out waiting for exact 17.0.32 deployment"}
+      - name: Run full Play Store Release Gate
+        shell: pwsh
+        run: npm run test:play-store
+      - name: Upload full Release Gate artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: 86chaos-testing-17.0.32-full-release-gate
+          if-no-files-found: warn
+          retention-days: 30
+          path: |
+            test-results/**
+            86chaos-release-gate-SLIM-UPLOAD-ME.zip
+            playwright-report/**
