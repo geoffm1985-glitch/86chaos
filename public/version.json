@@ -1,16 +1,17 @@
 {
-  "version": "17.0.31",
-  "name": "86 Chaos 17.0.31",
-  "build": "17.0.31",
-  "label": "86 Chaos 17.0.31",
-  "releasedAt": "2026-09-25T18:50:11Z",
-  "releaseTitle": "Cross-Platform Source Manifest Parity Repair",
+  "version": "17.0.32",
+  "name": "86 Chaos 17.0.32",
+  "build": "17.0.32",
+  "label": "86 Chaos 17.0.32",
+  "releasedAt": "2026-09-25T20:45:00Z",
+  "releaseTitle": "Hostile Certification Assertion Parity Repair",
   "notes": [
-    "Preserves the complete 17.0.29 feature set including Spanish Phase 1, Schedule Builder assignment/delete/publish repairs, Request Off policy work and POS Bridge foundation.",
-    "Carries forward 16.0.244 testing/experimental alias safety, cross-platform validator hashing, QA role bootstrap, native-backup watchdog hardening and deployment-identity regressions.",
-    "Merges Schedule PDF behavior so normal months stay compact on one page while truly dense days spill to detail pages without hiding shift text."
+    "Preserves the complete 17.0.31 application behavior and cross-platform source-manifest repair.",
+    "Repairs stale hostile-certification assertions for translated Schedule and Request Off controls.",
+    "Updates Clear Month assertions for the authenticated optimized server cleanup path and current remaining-count safety contract.",
+    "Keeps native-backup IAM diagnostics verified against the current errorCategory implementation."
   ],
-  "title": "86 Chaos 17.0.31",
-  "summary": "Unified 17.0.29 feature line plus 16.0.244 robustness and release-gate repairs.",
-  "description": "Combines both divergent branches without dropping features, preserving the 17.x application surface while adding the newer 16.0.244 safety and certification infrastructure."
+  "title": "86 Chaos 17.0.32",
+  "summary": "Keeps the unified 17.x feature line while repairing stale Release Gate assertions against current translated and optimized implementations.",
+  "description": "Updates certification assertions to validate current behavior instead of obsolete literal UI copy or pre-optimization source shapes."
 }

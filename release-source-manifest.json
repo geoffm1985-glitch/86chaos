@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "sourceHash": "54b9c46a47b5781b159f561fca768db8102a8e08521ce43cbaf56f37c07facf4",
+  "sourceHash": "6bb8763e693d2da412f1264fa4b011f34d220ceeda6733296d9e6a8e5aebc4e2",
   "files": [
     {
       "file": ".gitattributes",
@@ -232,7 +232,7 @@
     },
     {
       "file": "api/_pos-bridge-config.js",
-      "sha256": "a6e35b4e036ca0f55cc1960b796e95c1d746586f87439c918d9d2d3b361f4ff2"
+      "sha256": "122355f7264ff171eb842b1de9bb41b881b0ec7a4e3d98f49de9868dcf8a9256"
     },
     {
       "file": "api/_pos-bridge-events.js",
@@ -364,7 +364,7 @@
     },
     {
       "file": "api/_version.js",
-      "sha256": "6d197d3f5ebcf627d29e20d314ca477e9e6791d51c9dd6159ae77977ed445e78"
+      "sha256": "3a1fb5fd2ae5123d574d465bd9e57024fd70398811650764c090509e3be257be"
     },
     {
       "file": "api/account-deletion-request.js",
@@ -412,7 +412,7 @@
     },
     {
       "file": "api/availability-delete-responsive-density-16-0-163.test.cjs",
-      "sha256": "e03af59139f74f3d2538b9cd298a06823d00a3a3c6787ab46bbb67d35bb4c3e0"
+      "sha256": "f1a62e78cade89cee55b8852f198013baf3dd0fe2943096b9be9f42f3c3cd7d0"
     },
     {
       "file": "api/availability-record.js",
@@ -456,7 +456,7 @@
     },
     {
       "file": "api/copy-clarity-16-0-232.test.cjs",
-      "sha256": "a73fe4afc1a220fdaabe66871404f33814dc53dc0d0283985439790606fa5fe8"
+      "sha256": "cbd18073a25f3cd0e17998ef848e9b940a276abb06cc7657072c7aad676aada1"
     },
     {
       "file": "api/current-blockers-release-gate-source-16-0-183.test.cjs",
@@ -620,7 +620,7 @@
     },
     {
       "file": "api/i18n-browser-runtime-17-0-28.test.cjs",
-      "sha256": "4b55ac98fa21b29e7fe0c5ace9b239312a1a27688b65554e8d06de71f2dedb20"
+      "sha256": "c3fa8afb0db40901cb2927e04d186dc854ef25fc29276f57d313169155a38fdd"
     },
     {
       "file": "api/i18n-phase1-17-0-26.test.cjs",
@@ -656,7 +656,7 @@
     },
     {
       "file": "api/merged-release-17-0-30.test.cjs",
-      "sha256": "fde41cda8bbdf917a10e47ec398a653b9f80d5fe8fecf9904ea375dcbb1ad3f7"
+      "sha256": "f99732794d9afbb49d8bf17fce326c9cf9499c76b60a50dad0d5c9bd07ee81c2"
     },
     {
       "file": "api/mfa-recovery-code.js",
@@ -956,7 +956,7 @@
     },
     {
       "file": "api/release-gate-expected-version-17-0-19.test.cjs",
-      "sha256": "b516cf3dd6bc2eda19de821d39407bf2e56d1677cd8079d607dc1ab8a1620088"
+      "sha256": "cec5c5a12d27b98d8cc56e1cf82f19af54b0726c1490d563f7ed7ac8b0a52df8"
     },
     {
       "file": "api/release-gate-failure-extractor.test.cjs",
@@ -984,19 +984,19 @@
     },
     {
       "file": "api/release-gate-maturity-16-0-207.test.cjs",
-      "sha256": "0935c885aa38aced3d2858afced6f0c3b97d3e4ebe43a71d9b6457c000d1d38e"
+      "sha256": "96abc5cb8f9f089315b59f6b8986926cb6acfed51f7e98b74c994f3429cc7254"
     },
     {
       "file": "api/release-gate-maturity-16-0-208.test.cjs",
-      "sha256": "0e9378d1dd6e06ee3fc6a33b34a56a3732e0bc342563fca47705b63d09d5ca35"
+      "sha256": "856328b3f512c933f5bbcef7531fd16a0b3b5df3bf8b81eefbc11da42fcae106"
     },
     {
       "file": "api/release-gate-maturity-16-0-209.test.cjs",
-      "sha256": "e75b91131aa3e0f87b7a87dac4e23c12a5be07749be45e9e51999114c6c9b6e3"
+      "sha256": "f9165265fa84fd72fc2d4d42ae6f9b54d28e13260cc5aa22f16b167ccc6708f1"
     },
     {
       "file": "api/release-gate-maturity-16-0-210.test.cjs",
-      "sha256": "da7b5f6ee6d26659833357f7fd1a1761355861cf528615a43dabf16d8bf43b4a"
+      "sha256": "e8e2de8aa96817942fea1970db269ace89905c8cf3a1742ed617610a164d70d1"
     },
     {
       "file": "api/release-gate-provisioning-report.test.cjs",
@@ -1056,7 +1056,7 @@
     },
     {
       "file": "api/request-off-workflow-visibility-16-0-188.test.cjs",
-      "sha256": "34fe6616f0118a99d9c534bf882adfe8f85d25df5fe722562aac0d7112ad7567"
+      "sha256": "b5d899f9e96f7e7c30d1e84970c390881ebd284167f825856c233ce6b442cb9f"
     },
     {
       "file": "api/restaurant-brain-16-0-228.test.cjs",
@@ -1120,7 +1120,7 @@
     },
     {
       "file": "api/schedule-builder-clear-month-17-0-24.test.cjs",
-      "sha256": "513e274510bc74e91856a9c6e454081ffee4aca9aad86e738746d106c9c09618"
+      "sha256": "138c7639d67582455e3372c4652dc52c45d17608e60993e3f4b1e9fff96e67ee"
     },
     {
       "file": "api/schedule-builder-route-and-publish-identity-17-0-17.test.cjs",
@@ -1192,7 +1192,7 @@
     },
     {
       "file": "api/schedule-tools-period-awareness-16-0-233.test.cjs",
-      "sha256": "f88d13039e9e7044f284cd71f129b9760c41866364705e6052297d39f67e8b79"
+      "sha256": "a2cde6e446443d1f261383d6911509c205f85646e42ed49e0a5458055284a95e"
     },
     {
       "file": "api/schedule-warning-request-off-controls.test.cjs",
@@ -1328,7 +1328,7 @@
     },
     {
       "file": "api/system-admin-backup-health-16-0-169.test.cjs",
-      "sha256": "a34c1f0df7658d1c30011252dec1cb0bb933e0cda93e3bb13c63d6d9ce00b7f8"
+      "sha256": "36144bbe72c07c1db6f3040a918e85619a234112446e6aea4cd1196f8a68b2e9"
     },
     {
       "file": "api/system-admin-controlled-errors-16-0-192.test.cjs",
@@ -1492,11 +1492,11 @@
     },
     {
       "file": "package-lock.json",
-      "sha256": "2d40545d3aed2e5b3197d4da8f4814268b29a4a68e43033735c478945f42b3fe"
+      "sha256": "10a35942b262c1746b41eda1dfb25cf9c05677b7ac2f92a6ff28f2e4714cf67e"
     },
     {
       "file": "package.json",
-      "sha256": "e442d802edd153689940acc79e2c14a5550a6698396e44cdda57fd74afe50b7c"
+      "sha256": "325da47b02f60066d01bc41c65fe05067fb1de36e1243856450fbf789393407f"
     },
     {
       "file": "playwright.config.js",
@@ -1712,7 +1712,7 @@
     },
     {
       "file": "public/version.json",
-      "sha256": "459f6dfc2c572a42a50ca846bdb93607544f716e5a5df462916ad08247f87f98"
+      "sha256": "30a324da8bab8a40978f43d902e938bcbb4ea0e8ef2d19ae45a793081aec7deb"
     },
     {
       "file": "public/wisco.png",
@@ -1760,7 +1760,7 @@
     },
     {
       "file": "scripts/86chaos-release-gate/current-release-repair-scope.cjs",
-      "sha256": "ce745fff497d21eea1927a5d4df5dacc88fd273d89358f0a2dd77449e77456c4"
+      "sha256": "2925204f263f32c1e8dbb14ec2bc663fee0eb3fcc5ca80e2cd7a7a05652e2877"
     },
     {
       "file": "scripts/86chaos-release-gate/dependency-preflight.cjs",
@@ -2759,6 +2759,10 @@
       "sha256": "cc7c150959f59df169e49c921e3fb2364020b4cf12407ee3cc92c87a2e19bff0"
     },
     {
+      "file": "scripts/validate-17-0-32.js",
+      "sha256": "4f2e911fe0f80422c7cd6fa239711f344213711341d0477ef6e9e29749e64a2b"
+    },
+    {
       "file": "scripts/validate-17-0-4.js",
       "sha256": "d1c1f2267975edbc1173c9a148d53a64a3d0934f9f4a9a27b2367a58bf6bad62"
     },
@@ -2944,7 +2948,7 @@
     },
     {
       "file": "src/core/appCore.js",
-      "sha256": "b5bad7951bf2a5cdab28b260dd5736ab2bd7e88644d22956e960cb186ccb6303"
+      "sha256": "e072557545989aafafe8ee5af9738e69b8b31e84ca0a930274113e7461342030"
     },
     {
       "file": "src/core/csvSafety.test.js",
@@ -2952,11 +2956,11 @@
     },
     {
       "file": "src/core/customerHelpKnowledge.cjs",
-      "sha256": "1656b34c8c000689772a7ad2f8e7ee9f6c076714f4b8a08602024e6331776399"
+      "sha256": "d260070a9d951d580b779a9333fc0b6d7dc49cc21673f2afd56a212f42648adf"
     },
     {
       "file": "src/core/customerHelpKnowledge.js",
-      "sha256": "9369cceed6e1a24683e25e633d17868d489895503687163a45ad29ac77912a1e"
+      "sha256": "bc219e87c9cfd216022085de1f7400bd04c4e8798045e2863636970b5d8f6951"
     },
     {
       "file": "src/core/fileCompression.js",
@@ -3144,7 +3148,7 @@
     },
     {
       "file": "src/core/schedulePdf.js",
-      "sha256": "53c65339e2d9891a68f8b80eec9e0a34a25ef8284d5f24809d1ed9c2d21d2ef8"
+      "sha256": "fbce817749ac36402842517c23e5f84e5cec21475fbf9a83c2c5a73eb8234529"
     },
     {
       "file": "src/core/schedulePdf.test.js",
@@ -3340,11 +3344,11 @@
     },
     {
       "file": "test-tools/certification/cost-performance-baselines.json",
-      "sha256": "28138e1a4b719e44a4ad2fa9426b5bdb0e12e5956854a9af27a13ba272b7b361"
+      "sha256": "d8acd82bf25fbfe15ff718d7e69ee1a410115659188dc2861a09a4e3f066bb12"
     },
     {
       "file": "test-tools/certification/groups.json",
-      "sha256": "ba2bacdc47117aa3007d2d25e25521669620bb2b3d319f2a5bee8699c97489e4"
+      "sha256": "d1d4460b6e04b63566d781926555d929f18fc67b17ad0019b7554b0c27728fc4"
     },
     {
       "file": "test-tools/certification/permission-matrix.json",
@@ -3392,7 +3396,7 @@
     },
     {
       "file": "test-tools/regressions/registry.json",
-      "sha256": "5c6059fa4cefa7299450963d378f28e456c6f3e5550a9ce0552dfdc027670838"
+      "sha256": "2e16cb51340b4ad1c4180c3d8e0fd3834e5f5b7d926fcb9b358126755e3d3939"
     },
     {
       "file": "test-tools/reporters/chaos-release-gate-reporter.cjs",

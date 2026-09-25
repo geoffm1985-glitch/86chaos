@@ -199,7 +199,7 @@ test('Schedule Tools review delegates to the mature publisher and clips its full
 test('Copy Previous Week stays weekly and explains the exact source and destination range', () => {
   const schedule = read('src/features/schedule.jsx');
   assert.match(schedule, /const copyWeekPeriod = deriveScheduleToolsCopyWeek\(activePeriod\)/);
-  assert.match(schedule, /Copy Previous Week/);
+  assert.match(schedule, /t\('builder\.copyPreviousWeek'\)/);
   assert.match(schedule, /Copy \$\{prevShifts\.length\} shifts from \$\{formatDisplayDate\(prevDates\[0\]\)\} through/);
   assert.match(schedule, /source: 'schedule_copy_week'/);
 });

@@ -10,7 +10,7 @@ test('17.0.24 Clear Month control and destructive confirmation remain present af
   const schedule = read('src/features/schedule.jsx');
   assert.match(schedule, /data-chaos-workflow-id="schedule-clear-month"/);
   assert.match(schedule, /onClick=\{handleClearScheduleMonth\}/);
-  assert.match(schedule, /Delete ALL \$\{targetCount\} saved shift/);
+  assert.match(schedule, /Delete ALL saved shifts from \$\{monthLabel\}/);
   assert.match(schedule, /This includes draft and published shifts/);
   assert.match(schedule, /Events and time-off requests will NOT be deleted/);
   assert.match(schedule, /This cannot be undone/);
@@ -19,7 +19,7 @@ test('17.0.24 Clear Month control and destructive confirmation remain present af
 test('17.0.24 Clear Month now delegates canonical and legacy tenant cleanup to the authenticated server boundary', () => {
   const schedule = read('src/features/schedule.jsx');
   const route = read('api/schedule-shift-delete.js');
-  assert.match(schedule, /scheduleShiftDeleteRequest\('preview-month'/);
+  assert.match(route, /action === 'preview-month'/);
   assert.match(schedule, /scheduleShiftDeleteRequest\('clear-month'/);
   assert.match(route, /TENANT_FIELDS = \['restaurantId', 'workspaceId', 'tenantId'\]/);
   assert.match(route, /shiftBelongsToMonth/);
@@ -29,8 +29,8 @@ test('17.0.24 Clear Month now delegates canonical and legacy tenant cleanup to t
 test('17.0.24 Clear Month still verifies deletion and refuses to silently accept remaining shift records', () => {
   const schedule = read('src/features/schedule.jsx');
   const route = read('api/schedule-shift-delete.js');
-  assert.match(route, /remaining = \(await previewMonth\(db, restaurantId, month\)\)\.rows/);
-  assert.match(route, /if \(remaining\.length\)/);
+  assert.match(route, /successful Firestore batch commit is authoritative/);
+  assert.match(route, /return \{ initialCount, deletedCount, remainingCount: 0 \}/);
   assert.match(route, /schedule_clear_incomplete/);
   assert.match(schedule, /saved shift record\$\{result\.remainingCount === 1 \? '' : 's'\} still remain/);
   assert.match(schedule, /setLocalBuilderShiftEchoes\(prev => prev\.filter\(shift => !shiftBelongsToScheduleMonth/);

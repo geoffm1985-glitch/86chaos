@@ -34,7 +34,7 @@ test('watchdog preserves native Admin API architecture and maps 403 to precise I
   assert.match(source, /datastore\.backups\.list/);
   assert.match(source, /roles\/datastore\.backupSchedulesViewer/);
   assert.match(source, /roles\/datastore\.backupsViewer/);
-  assert.match(source, /errorCategory:[\s\S]*permission_denied/);
+  assert.match(source, /const errorCategory = err\.safeCategory[\s\S]*permission_denied/);
   const returnPayload = source.slice(source.indexOf('return res.status(code).json'));
   assert.doesNotMatch(returnPayload, /access_token|accessToken|privateKey|private_key/, 'error response must not expose tokens or private keys');
 });
