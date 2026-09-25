@@ -1,23 +1,23 @@
 {
-  "version": "17.1.11",
-  "name": "86 Chaos 17.1.11",
-  "build": "17.1.11",
-  "label": "86 Chaos 17.1.11",
-  "releasedAt": "2026-09-24T23:50:00Z",
-  "releaseTitle": "86Voice Mobile Physical Touch Activation Repair",
+  "version": "17.1.12",
+  "name": "86 Chaos 17.1.12",
+  "build": "17.1.12",
+  "label": "86 Chaos 17.1.12",
+  "releasedAt": "2026-09-25T00:30:00Z",
+  "releaseTitle": "Android PWA 86Voice Visible Panel Repair",
   "notes": [
-    "Activates the mobile Voice control on touch/pen pointer-down, before the global mobile touchend guard can cancel the synthesized click.",
-    "Deduplicates the follow-up compatibility click so one physical tap starts exactly one 86Voice session.",
-    "Blocks context-menu, drag, touch callout, and text selection behavior on the Voice control so the browser cannot turn the microphone gesture into a page/link address copy action.",
-    "Routes the toolbar through the same openAndListen controller used by the restored production 17.0.29 SpeechRecognition lifecycle."
+    "Moves the mobile 86Voice controller panel out of the zero-sized legacy dock and renders it as a top-level fixed surface inside the Concept 1 shell.",
+    "Forces the mobile panel open state to commit before starting the restored production Web Speech microphone lifecycle.",
+    "Preserves the 17.1.11 physical-touch activation and browser callout suppression on the toolbar microphone.",
+    "Leaves the working desktop 86Voice dock and production 17.0.29 SpeechRecognition path unchanged."
   ],
-  "title": "86 Chaos 17.1.11",
-  "summary": "Makes the mobile 86Voice toolbar react to the physical touch/pen press before mobile touchend cancellation and blocks browser URL-copy callouts.",
-  "description": "Preserves the production 17.0.29 Web Speech lifecycle and Concept 1 UI while repairing the mobile toolbar event path that could lose the synthesized click or trigger a browser copy-address callout.",
+  "title": "86 Chaos 17.1.12",
+  "summary": "Repairs the Android installed-PWA case where the microphone starts but the 86Voice controller panel is not visible.",
+  "description": "Keeps the current Concept 1 toolbar and production Web Speech controller, but portals the mobile 86Voice panel to a top-level fixed shell surface so Android Chrome/PWA rendering cannot strand it inside the hidden legacy dock.",
   "highlights": [
-    "Mobile Voice uses the physical touch event instead of depending only on onClick.",
-    "The browser copy-address/context-callout path is suppressed only on the Voice button.",
-    "Desktop voice behavior and the new six-button Concept 1 toolbar layout are unchanged.",
-    "The 17.0.29 SpeechRecognition/webkitSpeechRecognition lifecycle remains the microphone engine."
+    "Mobile 86Voice panel is rendered outside the hidden legacy dock.",
+    "The panel is fixed above the six-button toolbar with an explicit high stacking layer.",
+    "The panel is synchronously revealed before microphone startup on mobile.",
+    "Desktop 86Voice behavior is unchanged."
   ]
 }

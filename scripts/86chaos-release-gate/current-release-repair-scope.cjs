@@ -1,8 +1,13 @@
 'use strict';
 
-const CURRENT_RELEASE_VERSION = '17.1.11';
-const CURRENT_RELEASE_CARRY_FORWARD_NOTE = '17.1.11 preserves the complete Concept 1 redesign and production 17.0.29 speech lifecycle while repairing the physical mobile touch path so the first-position Voice toolbar button cannot lose its click or fall into a browser copy-address callout.';
+const CURRENT_RELEASE_VERSION = '17.1.12';
+const CURRENT_RELEASE_CARRY_FORWARD_NOTE = '17.1.12 preserves the complete Concept 1 redesign, the 17.1.11 physical-touch repair, and the production 17.0.29 speech lifecycle while moving the mobile 86Voice controller to a top-level fixed shell surface so Android installed-PWA rendering cannot hide the panel after microphone startup.';
 const CURRENT_RELEASE_REPAIR_SCOPE = [
+  {
+    specPath: '86chaos-new-implementations/27-mobile-voice-pwa-panel.spec.cjs',
+    fullSuitePath: '17.1.12 Android installed-PWA 86Voice panel repair',
+    exactTestTitle: 'real touchscreen tap renders the Voice panel outside the legacy dock and starts recognition once',
+  },
   {
     specPath: '86chaos-new-implementations/26-mobile-voice-physical-touch.spec.cjs',
     fullSuitePath: '17.1.11 mobile 86Voice physical touch repair',

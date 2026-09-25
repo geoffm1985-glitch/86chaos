@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo, useDeferredValue, useCallback, useImperativeHandle } from 'react';
+import { createPortal, flushSync } from 'react-dom';
 import { Bell, Check, Camera, ChevronLeft, ChevronRight, MessageSquare, Plus, Trash2, Users, Calendar, Clock, X, Loader2, Package, ClipboardList, Menu, Settings, LogOut, Shield, Send, Repeat, Edit, Moon, Sun, TrendingUp, BookOpen, Search, ChefHat, Scale, Coffee, Star, Bug, Wrench, Globe, Mic, MicOff, Sparkles, Network } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, orderBy, limit, getDoc, setDoc, getDocs } from 'firebase/firestore';
@@ -2108,7 +2109,13 @@ const VoiceCommandDockBase = React.forwardRef(({ appUser, inventoryItems = [], r
 
   const openDock = () => {
     stopActiveRecognition('reopen');
-    setOpen(true);
+    const revealPanel = () => setOpen(true);
+    const isMobileVoiceSurface = typeof window !== 'undefined' && window.matchMedia?.('(max-width: 720px)')?.matches;
+    if (isMobileVoiceSurface) {
+      try { flushSync(revealPanel); } catch (_) { revealPanel(); }
+    } else {
+      revealPanel();
+    }
     setPending(null);
     setHeardText('');
     setManualText('');
@@ -3035,8 +3042,7 @@ const VoiceCommandDockBase = React.forwardRef(({ appUser, inventoryItems = [], r
 
   const executePending = () => executeAction(pending, heardText, true, true);
 
-  return <div className="voice-command-dock fixed bottom-5 left-4 z-50 flex flex-col items-start gap-2">
-    {open && <div data-testid="voice-command-panel" className="cockpit-panel rounded-2xl p-3 w-[min(92vw,360px)] shadow-2xl border border-[#2A353D] bg-[#1A2126]">
+  const voicePanel = open ? <div data-testid="voice-command-panel" className="voice-command-panel-surface cockpit-panel rounded-2xl p-3 w-[min(92vw,360px)] shadow-2xl border border-[#2A353D] bg-[#1A2126]">
       <div className="flex items-center justify-between gap-2 border-b border-[#2A353D] pb-2 mb-3">
         <div><div className="text-[10px] font-black uppercase tracking-widest text-[#D4A381] flex items-center gap-1"><Sparkles size={13}/> 86 Voice</div><div className="text-[10px] text-slate-500 font-bold">Tap once, speak, and safe commands run. Destructive commands still ask first.</div></div>
         <button type="button" aria-label="Close 86Voice panel" title="Close 86Voice panel" onClick={closeDock} className="p-1.5 rounded-lg hover:bg-[#12161A] text-slate-400"><X size={16}/></button>
@@ -3101,7 +3107,23 @@ const VoiceCommandDockBase = React.forwardRef(({ appUser, inventoryItems = [], r
         </div>}
         {!canUseSpeech && <div className="text-[10px] text-amber-300 bg-amber-900/10 border border-amber-900/40 rounded-xl p-2 font-bold">This browser does not support built-in speech recognition. Type the command here, or use Chrome/Android for voice.</div>}
       </div>
-    </div>}
+    </div> : null;
+
+  // Android installed-web-app rendering can lose a fixed panel when it lives
+  // inside the zero-sized/pointer-disabled mobile dock. Portal only the mobile
+  // panel to the already-mounted shell so it is a top-level fixed surface while
+  // retaining the same app theme and React state/controller. Desktop stays on
+  // the proven in-dock path.
+  const isMobileVoiceSurface = typeof window !== 'undefined' && window.matchMedia?.('(max-width: 720px)')?.matches;
+  const mobileVoicePortalTarget = isMobileVoiceSurface && typeof document !== 'undefined'
+    ? (document.querySelector('.concept17-shell') || document.body)
+    : null;
+  const renderedVoicePanel = voicePanel && mobileVoicePortalTarget
+    ? createPortal(voicePanel, mobileVoicePortalTarget)
+    : voicePanel;
+
+  return <div className="voice-command-dock fixed bottom-5 left-4 z-50 flex flex-col items-start gap-2">
+    {renderedVoicePanel}
     <button type="button" aria-label={open ? 'Hide 86Voice assistant' : 'Open 86Voice'} aria-expanded={open} onClick={open ? closeDock : openDock} className="voice-command-trigger no-compact w-14 h-14 rounded-full bg-[#0B0E11] border border-[#D4A381]/70 text-[#D4A381] shadow-2xl flex items-center justify-center hover:scale-105 transition-transform" title={open ? 'Hide 86Voice assistant' : 'Open 86Voice'}><Mic size={24}/><span className="voice-command-trigger-label">Voice</span></button>
   </div>;
 });

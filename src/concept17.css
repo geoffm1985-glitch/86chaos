@@ -2805,3 +2805,25 @@ body {
     pointer-events: auto !important;
   }
 }
+
+/* 17.1.12 Android installed-PWA 86Voice panel repair.
+   On mobile the controller surface is portaled out of the zero-sized,
+   pointer-disabled legacy dock and becomes a top-level fixed app surface.
+   This avoids Android Chrome/PWA fixed-descendant rendering loss while keeping
+   the desktop dock path and the six-button Concept 1 toolbar unchanged. */
+@media (max-width: 720px) {
+  .voice-command-panel-surface {
+    position: fixed !important;
+    left: 50% !important;
+    right: auto !important;
+    bottom: calc(82px + env(safe-area-inset-bottom, 0px)) !important;
+    transform: translateX(-50%) !important;
+    width: min(calc(100vw - 20px), 420px) !important;
+    max-width: calc(100vw - 20px) !important;
+    max-height: calc(100dvh - 170px) !important;
+    overflow-y: auto !important;
+    overscroll-behavior: contain;
+    pointer-events: auto !important;
+    z-index: 120 !important;
+  }
+}
