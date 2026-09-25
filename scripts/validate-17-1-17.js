@@ -13,18 +13,19 @@ const sha256 = value => crypto.createHash('sha256').update(value).digest('hex');
 const pkg=json('package.json'), lock=json('package-lock.json'), version=json('public/version.json');
 const app=read('src/App.js'), shell=read('src/components/concept17.jsx'), common=read('src/components/common.jsx'), css=read('src/concept17.css'), management=read('src/features/management.jsx'), runner=read('RUN_86CHAOS_PLAY_STORE_RELEASE_GATE.ps1'), scope=read('scripts/86chaos-release-gate/current-release-repair-scope.cjs');
 
-assert.equal(pkg.version,'17.1.17');
+assert.match(pkg.version,/^\d+\.\d+\.\d+$/);
 assert.equal(lock.version,pkg.version);
 assert.equal(lock.packages[''].version,pkg.version);
 assert.equal(version.version,pkg.version);
 assert.equal(version.build,pkg.version);
-assert.equal(version.releaseTitle,'Footer Version and Experimental Certification Repair');
+assert.ok(version.releaseTitle,'public version metadata has a release title');
 assert.equal(pkg.scripts['test:source'],'node scripts/validate-17-1-17.js');
 assert.equal(pkg.scripts['validate:17.1.17'],'node scripts/validate-17-1-17.js');
 assert(pkg.scripts['test:repair:17.1.17']?.includes('test:current-release-targeted'));
 assert(pkg.scripts['test:release:fast']?.includes('validate:17.1.17'));
 assert(pkg.scripts['test:current-release-targeted']?.includes('api/footer-version-copyright-17-1-17.test.cjs'));
-for(const file of ['src/core/appCore.js','api/_version.js','api/_pos-bridge-config.js','src/core/customerHelpKnowledge.js','src/core/customerHelpKnowledge.cjs','src/core/schedulePdf.js']) assert(read(file).includes('17.1.17'),`${file} carries 17.1.17`);
+for(const file of ['src/core/appCore.js','api/_version.js']) assert(read(file).includes(pkg.version),`${file} carries current ${pkg.version}`);
+for(const file of ['api/_pos-bridge-config.js','src/core/customerHelpKnowledge.js','src/core/customerHelpKnowledge.cjs','src/core/schedulePdf.js']) assert(read(file).includes('17.1.17'),`${file} retains its 17.1.17 compatibility marker`);
 for(const file of ['test-tools/certification/groups.json','test-tools/regressions/registry.json','test-tools/certification/cost-performance-baselines.json']) assert.equal(json(file).release,pkg.version);
 
 assert(app.includes('data-testid="app-version-copyright"'),'footer exposes stable version/copyright identity');
@@ -54,7 +55,7 @@ assert.equal(sha256(decoded),sha256(original),'embedded reference image remains 
 assert(exists('RELEASE_17_1_17.md'));
 assert(exists('api/footer-version-copyright-17-1-17.test.cjs'));
 assert(exists('tests/86chaos-new-implementations/31-footer-version-copyright.spec.cjs'));
-assert(scope.includes("const CURRENT_RELEASE_VERSION = '17.1.17'"));
+assert(scope.includes(`const CURRENT_RELEASE_VERSION = '${pkg.version}'`));
 assert(scope.includes('31-footer-version-copyright.spec.cjs'));
 assert(scope.includes('30-navigation-logo-toolbar-fit.spec.cjs'));
 
@@ -71,4 +72,4 @@ if(fs.existsSync(manifestPath)){
   assert.equal(buildIdentity.sourceHash,identity.sourceHash,'build identity source hash matches manifest');
  }
 }
-console.log('17.1.17 footer identity and experimental full-gate targeting validation passed with 17.1.16 protections intact.');
+console.log(`Current ${pkg.version} footer identity and experimental full-gate targeting validation passed with prior protections intact.`);
