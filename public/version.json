@@ -1,22 +1,22 @@
 {
-  "version": "17.1.20",
-  "name": "86 Chaos 17.1.20",
-  "build": "17.1.20",
-  "label": "86 Chaos 17.1.20",
-  "releasedAt": "2026-09-25T20:41:00Z",
-  "releaseTitle": "Experimental Gate Manifest and Branch Validation Repair",
+  "version": "17.1.21",
+  "name": "86 Chaos 17.1.21",
+  "build": "17.1.21",
+  "label": "86 Chaos 17.1.21",
+  "releasedAt": "2026-09-25T21:20:00Z",
+  "releaseTitle": "Experimental Full-Gate Dynamic Version Contract Repair",
   "notes": [
-    "Corrects the release-source manifest hash used by exact-build certification.",
-    "Preserves branch-scoped experimental.86chaos.com testing through every preflight validation pass.",
-    "Keeps package, runtime, footer, public version, and server identity synchronized.",
-    "Adds regression coverage so the second deployment identity validation cannot silently fall back to testing-only behavior."
+    "Removes the stale hard-coded 17.1.11 hostile-certification expectation that blocked the full Play Store gate before Playwright.",
+    "Keeps the full runner's expected version dynamically pinned to package.json after local environment loading.",
+    "Preserves experimental branch isolation and production release-target safeguards.",
+    "Carries the regression assertion in the mandatory hostile-contract release-gate coverage."
   ],
-  "title": "86 Chaos 17.1.20",
-  "summary": "Repairs the remaining pre-test certification blockers for the experimental full Play Store gate.",
-  "description": "Release-gate infrastructure repair only. Existing application behavior is preserved.",
+  "title": "86 Chaos 17.1.21",
+  "summary": "Repairs the experimental pre-Playwright full-gate blocker without changing application behavior.",
+  "description": "Release-gate test-contract repair only. Existing application behavior and production safeguards are preserved.",
   "highlights": [
-    "Version 17.1.20 remains synchronized across runtime identity surfaces.",
-    "Experimental domain validation is branch-aware in both release-target validation passes.",
-    "Release-source evidence is regenerated with the canonical deterministic ordering."
+    "Version 17.1.21 is synchronized across release identity surfaces.",
+    "Hostile certification now validates a semantic package version instead of a stale release literal.",
+    "The full Play Store gate remains mandatory and branch-scoped."
   ]
 }
