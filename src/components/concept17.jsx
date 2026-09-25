@@ -3,6 +3,7 @@ import {
   BarChart3,
   Bell,
   BookOpen,
+  Bug,
   Calendar,
   CalendarClock,
   ChefHat,
@@ -11,8 +12,8 @@ import {
   HelpCircle,
   Home,
   MessageSquare,
+  LogOut,
   Mic,
-  Menu,
   MoreHorizontal,
   Network,
   Package,
@@ -56,13 +57,13 @@ const NavIcon = ({ id, size = 18 }) => {
 
 export const Concept17Wordmark = ({ compact = false }) => (
   <div className={`concept17-wordmark ${compact ? 'is-compact' : ''}`} aria-label="86 Chaos Kitchen Management OS">
-    <span className="concept17-wordmark-86">86</span>
-    <span className="concept17-wordmark-chaos">CHAOS</span>
+    <img src="/6139.png" alt="86 Chaos Kitchen Management OS" className="concept17-brand-logo" />
   </div>
 );
 
 export const Concept17Sidebar = ({
   items = [],
+  sections = [],
   activeTab = 'today',
   onNavigate,
   restaurantName = '',
@@ -72,61 +73,87 @@ export const Concept17Sidebar = ({
   workspaceSwitchEnabled = false,
   menuLabel = 'Navigation',
   currentRestaurantLabel = 'Current Restaurant',
-}) => (
-  <aside className="concept17-sidebar" data-testid="concept17-desktop-sidebar" aria-label={menuLabel}>
-    <div className="concept17-sidebar-brand">
-      <button type="button" className="concept17-sidebar-brand-menu" aria-label={menuLabel} tabIndex={-1}>
-        <Menu size={18} aria-hidden="true" />
-      </button>
-      <Concept17Wordmark />
-    </div>
+  onReportProblem,
+  onLogout,
+  reportProblemLabel = 'Report Problem',
+  logoutLabel = 'Log Out',
+}) => {
+  const normalizedSections = sections.length
+    ? sections
+    : [{ label: '', items }];
 
-    <nav className="concept17-sidebar-nav">
-      {items.map(item => {
-        const selected = activeTab === item.id || (item.id === 'published' && ['published', 'schedule'].includes(activeTab)) || (item.id === 'financials' && ['sales', 'labor', 'back-office'].includes(activeTab));
-        return (
-          <button
-            key={item.id}
-            type="button"
-            className={`concept17-sidebar-item ${selected ? 'is-active' : ''}`}
-            data-shell-route={item.id}
-            aria-current={selected ? 'page' : undefined}
-            onClick={() => onNavigate?.(item.id)}
-          >
-            <span className="concept17-sidebar-icon"><NavIcon id={item.id} /></span>
-            <span className="concept17-sidebar-label">{item.label}</span>
-            {item.alert && <span className="concept17-nav-alert" aria-label="New activity" />}
-          </button>
-        );
-      })}
-    </nav>
-
-    <div className="concept17-sidebar-footer">
-      <button
-        type="button"
-        className={`concept17-workspace-mini ${workspaceSwitchEnabled ? 'is-switchable' : ''}`}
-        onClick={workspaceSwitchEnabled ? onOpenWorkspaceSwitcher : undefined}
-        aria-label={`${currentRestaurantLabel}: ${restaurantName}.`}
-      >
-        <span className="concept17-workspace-home"><Home size={15} aria-hidden="true" /></span>
-        <span className="min-w-0">
-          <strong>{restaurantName || currentRestaurantLabel}</strong>
-          <small>{workspaceSwitchEnabled ? currentRestaurantLabel : 'Restaurant'}</small>
-        </span>
-        {workspaceSwitchEnabled && <ChevronRight size={14} aria-hidden="true" />}
-      </button>
-      <div className="concept17-user-mini">
-        <span className="concept17-user-avatar" aria-hidden="true">
-          {String(userName || '86').split(/\s+/).filter(Boolean).slice(0, 2).map(part => part.charAt(0)).join('').toUpperCase() || '86'}
-        </span>
-        <span className="min-w-0">
-          <strong>{userName || '86 Chaos'}</strong>
-          <small>{userRole || 'Restaurant team'}</small>
-        </span>
+  return (
+    <aside className="concept17-sidebar" data-testid="concept17-desktop-sidebar" aria-label={menuLabel}>
+      <div className="concept17-sidebar-brand">
+        <Concept17Wordmark />
       </div>
-    </div>
-  </aside>
-);
+
+      <nav className="concept17-sidebar-nav">
+        {normalizedSections.map(section => (
+          <section key={section.label || 'primary'} className="concept17-sidebar-section" aria-label={section.label || undefined}>
+            {section.label && <div className="concept17-sidebar-section-label">{section.label}</div>}
+            <div className="concept17-sidebar-section-items">
+              {(section.items || section.tabs || []).map(item => {
+                const selected = activeTab === item.id || (item.id === 'published' && ['published', 'schedule'].includes(activeTab)) || (item.id === 'financials' && ['sales', 'labor', 'back-office'].includes(activeTab));
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    className={`concept17-sidebar-item ${selected ? 'is-active' : ''}`}
+                    data-shell-route={item.id}
+                    aria-current={selected ? 'page' : undefined}
+                    onClick={() => onNavigate?.(item.id)}
+                  >
+                    <span className="concept17-sidebar-icon"><NavIcon id={item.id} /></span>
+                    <span className="concept17-sidebar-label">{item.label}</span>
+                    {item.alert && <span className="concept17-nav-alert" aria-label="New activity" />}
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+        ))}
+      </nav>
+
+      <div className="concept17-sidebar-footer">
+        <button
+          type="button"
+          className={`concept17-workspace-mini ${workspaceSwitchEnabled ? 'is-switchable' : ''}`}
+          onClick={workspaceSwitchEnabled ? onOpenWorkspaceSwitcher : undefined}
+          aria-label={`${currentRestaurantLabel}: ${restaurantName}.`}
+        >
+          <span className="concept17-workspace-home"><Home size={15} aria-hidden="true" /></span>
+          <span className="min-w-0">
+            <strong>{restaurantName || currentRestaurantLabel}</strong>
+            <small>{workspaceSwitchEnabled ? currentRestaurantLabel : 'Restaurant'}</small>
+          </span>
+          {workspaceSwitchEnabled && <ChevronRight size={14} aria-hidden="true" />}
+        </button>
+        <div className="concept17-user-mini">
+          <span className="concept17-user-avatar" aria-hidden="true">
+            {String(userName || 'RT').split(/\s+/).filter(Boolean).slice(0, 2).map(part => part.charAt(0)).join('').toUpperCase() || 'RT'}
+          </span>
+          <span className="min-w-0">
+            <strong>{userName || 'Restaurant Team'}</strong>
+            <small>{userRole || 'Restaurant team'}</small>
+          </span>
+        </div>
+        <div className="concept17-sidebar-actions">
+          {typeof onReportProblem === 'function' && (
+            <button type="button" onClick={onReportProblem} className="concept17-sidebar-action" data-testid="concept17-sidebar-report-problem">
+              <Bug size={14} aria-hidden="true" /><span>{reportProblemLabel}</span>
+            </button>
+          )}
+          {typeof onLogout === 'function' && (
+            <button type="button" onClick={onLogout} className="concept17-sidebar-action is-danger" data-testid="concept17-sidebar-logout">
+              <LogOut size={14} aria-hidden="true" /><span>{logoutLabel}</span>
+            </button>
+          )}
+        </div>
+      </div>
+    </aside>
+  );
+};
 
 export const Concept17MobileNav = ({
   items = [],
@@ -160,12 +187,11 @@ export const Concept17MobileNav = ({
 
   return (
     <nav className="concept17-mobile-nav" data-testid="concept17-mobile-bottom-nav" aria-label="Primary navigation">
-      {/* Keep the hardened physical-touch Voice entry point in the DOM for the
-          production regression contract. The visible Voice launcher now lives
-          in More so the bottom bar can match the approved five-slot reference. */}
+      {/* 86Voice is a real first-class bottom-toolbar action again. Keep the
+          hardened pointer/tap path so Android/PWA activation remains reliable. */}
       <button
         type="button"
-        className="concept17-mobile-voice-button concept17-voice-regression-proxy"
+        className="concept17-mobile-nav-item concept17-mobile-voice-button"
         data-testid="concept17-mobile-voice-button"
         data-shell-action="voice"
         onPointerDown={activateVoiceFromPointer}
@@ -175,8 +201,8 @@ export const Concept17MobileNav = ({
         aria-label={voiceLabel}
         aria-haspopup="dialog"
       >
-        <Mic size={1} aria-hidden="true" />
-        <span>{voiceLabel}</span>
+        <span className="concept17-mobile-nav-icon"><Mic size={19} aria-hidden="true" /></span>
+        <span className="concept17-mobile-nav-label">{voiceLabel}</span>
       </button>
 
       {items.slice(0, 4).map(item => {
@@ -266,9 +292,9 @@ const SUBROUTE_LABELS = {
   'schedule-builder': 'Schedule Builder',
 };
 
-export const Concept17RouteFrame = ({ route = 'today', subroute = '', restaurantName = '86 Chaos', language = 'en', children }) => {
+export const Concept17RouteFrame = ({ route = 'today', subroute = '', restaurantName = 'Current Restaurant', language = 'en', children }) => {
   const copyCatalog = String(language || '').toLowerCase().startsWith('es') ? ROUTE_COPY_ES : ROUTE_COPY;
-  const [eyebrow, title, description] = copyCatalog[route] || ['86 Chaos', String(route || 'Workspace').replace(/[-_]/g, ' '), String(language || '').toLowerCase().startsWith('es') ? 'Espacio de gestión del restaurante.' : 'Restaurant management workspace.'];
+  const [eyebrow, title, description] = copyCatalog[route] || ['Restaurant Operations', String(route || 'Workspace').replace(/[-_]/g, ' '), String(language || '').toLowerCase().startsWith('es') ? 'Espacio de gestión del restaurante.' : 'Restaurant management workspace.'];
   const Icon = ICONS[route] || ICONS.today;
   const isToday = route === 'today';
   return (

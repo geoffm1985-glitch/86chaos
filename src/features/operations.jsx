@@ -2415,7 +2415,7 @@ const TabToday = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequ
   const todayPrepOpen = Math.max(0, todayPrepRows.length - todayPrepDone);
   const greetingHour = new Date().getHours();
   const referenceGreeting = greetingHour < 12 ? 'Good morning' : greetingHour < 17 ? 'Good afternoon' : 'Good evening';
-  const referenceRestaurant = clientData?.name || appUser?.restaurantName || '86 Chaos';
+  const referenceRestaurant = clientData?.name || appUser?.restaurantName || 'Current Restaurant';
   const referencePriorityRows = (attentionProblems.length ? attentionProblems.slice(0, 4) : [
     { title: 'Prep list', detail: todayPrepOpen ? `${todayPrepOpen} prep item${todayPrepOpen === 1 ? '' : 's'} remaining.` : 'Today’s prep list is buttoned up.', tab: 'prep', tone: todayPrepOpen ? 'amber' : 'green' },
     { title: 'Schedule coverage', detail: todaysShifts.length ? `${todaysShifts.length} published shift${todaysShifts.length === 1 ? '' : 's'} today.` : 'No published shifts are showing for today.', tab: 'published', tone: todaysShifts.length ? 'green' : 'amber' },

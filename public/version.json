@@ -1,23 +1,25 @@
 {
-  "version": "17.1.15",
-  "name": "86 Chaos 17.1.15",
-  "build": "17.1.15",
-  "label": "86 Chaos 17.1.15",
-  "releasedAt": "2026-09-25T03:20:00Z",
-  "releaseTitle": "Authenticated App Shell Hook-Order Repair",
+  "version": "17.1.16",
+  "name": "86 Chaos 17.1.16",
+  "build": "17.1.16",
+  "label": "86 Chaos 17.1.16",
+  "releasedAt": "2026-09-25T04:05:00Z",
+  "releaseTitle": "Navigation, Brand, and Mobile Voice Toolbar Repair",
   "notes": [
-    "Fixes the post-login blank-app failure introduced when the shared 86Voice shell callback was added below conditional authentication/session returns.",
-    "Moves the 86Voice shell callback above all App-level conditional returns so React sees the same hook order before, during, and after session hydration.",
-    "Restores the visible 86Voice entry in the actual shared More/drawer component used by App.js.",
-    "Preserves the complete 17.1.13 reference redesign, the 17.1.14 Vercel image-resolution repair, and every existing route, subroute, workflow, permission boundary, and data feature."
+    "Restores every legacy menu destination in the legacy category order inside the redesigned desktop sidebar and mobile More drawer.",
+    "Removes the phone hamburger and prevents the legacy overlay drawer from appearing as a second desktop menu.",
+    "Moves 86Voice out of the More drawer and back to the first slot of the six-button mobile bottom toolbar.",
+    "Replaces the generated generic 86 CHAOS wordmark with the supplied 6139.png brand artwork in the redesigned shell.",
+    "Keeps Message Board category buttons on one readable line on desktop without removing any workflow."
   ],
-  "title": "86 Chaos 17.1.15",
-  "summary": "Repairs the authenticated shell runtime crash without changing the approved redesign or removing any feature, page, tab, or subtab.",
-  "description": "A surgical React hook-order repair for the login/session transition, plus restoration of the existing 86Voice drawer access in the shared menu actually rendered by the application.",
+  "title": "86 Chaos 17.1.16",
+  "summary": "Restores the full legacy menu universe inside the new categorized navigation, returns 86Voice to the mobile toolbar, removes the phone hamburger, uses the supplied 86 Chaos logo artwork, and fixes desktop Message Board button fit.",
+  "description": "A navigation and presentation repair that preserves all routes and workflows while making the new shell match the requested desktop/mobile behavior.",
   "highlights": [
-    "Stable hook order through signed-out, session-hydrating, and signed-in renders.",
-    "86Voice remains available from the shared More/drawer path.",
-    "Approved desktop/mobile visual redesign remains intact.",
-    "No business workflow or route removal."
+    "Full categorized legacy navigation preserved in the new shell.",
+    "Visible first-slot 86Voice on mobile.",
+    "Clean phone header with no hamburger.",
+    "Official supplied logo artwork in shell branding.",
+    "Desktop Message Board controls no longer stack letters."
   ]
 }

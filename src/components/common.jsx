@@ -113,7 +113,7 @@ const reminderNeedsAttention = (reminder = {}, appUser = {}) => {
   return Number.isFinite(dueAt) && dueAt <= Date.now();
 };
 
-const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppUser, hasUnreadMessages, hasMyShiftAlert, hasScheduleBuilderAlert, hasHelpUpdate = false, clientFeatures = {}, clientData = {}, addToast, availableWorkspaces = [], activeWorkspaceName = '', onOpenWorkspaceSwitcher, platformAdminAccessState = null, onVoice }) => {
+const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppUser, hasUnreadMessages, hasMyShiftAlert, hasScheduleBuilderAlert, hasHelpUpdate = false, clientFeatures = {}, clientData = {}, addToast, availableWorkspaces = [], activeWorkspaceName = '', onOpenWorkspaceSwitcher, platformAdminAccessState = null }) => {
   const { t } = useI18n();
   const [menuSearch, setMenuSearch] = useState('');
 
@@ -215,10 +215,10 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
   return (
     <>
       {isOpen && (
-        <div className="fixed inset-0 z-[70] flex justify-end" role="presentation">
+        <div className="concept17-menu-drawer fixed inset-0 z-[70] flex justify-end" role="presentation">
           <div className="absolute inset-0 bg-[#12161A]/60 backdrop-blur-sm" onClick={onClose}></div>
-          <div className={`app-drawer-readable w-72 bg-[#1A2126] border-l ${T.border} h-full shadow-2xl flex flex-col relative animate-[slideIn_0.3s_ease-out]`} role="dialog" aria-modal="true" aria-label={t('drawer.mainMenu', {}, 'Main menu')}>
-            <div className={`p-4 border-b ${T.border} bg-[#12161A] flex justify-between items-start`}>
+          <div className={`concept17-menu-drawer-panel app-drawer-readable w-72 bg-[#1A2126] border-l ${T.border} h-full shadow-2xl flex flex-col relative animate-[slideIn_0.3s_ease-out]`} role="dialog" aria-modal="true" aria-label={t('drawer.mainMenu', {}, 'Main menu')}>
+            <div className={`concept17-menu-drawer-header p-4 border-b ${T.border} bg-[#12161A] flex justify-between items-start`}>
                <div className="flex items-center gap-3">
                  <img src={getAvatar(appUser.name, appUser.photoURL)} alt="Profile" className={`w-10 h-10 rounded-full border ${T.border} object-cover`}/>
                  <div>
@@ -240,7 +240,7 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
                </div>
                <button onClick={onClose} aria-label={t('drawer.closeMenu')} className="drawer-icon-button no-compact w-11 h-11 p-0 bg-[#1A2126] border border-[#2A353D] rounded-full text-slate-400 hover:text-white transition-colors flex items-center justify-center shrink-0"><X size={20}/></button>
             </div>
-            <div className="p-2 border-b border-[#2A353D]">
+            <div className="concept17-menu-drawer-search p-2 border-b border-[#2A353D]">
               <div className="relative">
                 <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
                 <input value={menuSearch} onChange={e => setMenuSearch(e.target.value)} placeholder={t('drawer.searchPlaceholder')} aria-label={t('drawer.searchAria')} className="w-full bg-[#12161A] border border-[#2A353D] rounded-xl pl-9 pr-3 py-1.5 text-xs font-bold text-white outline-none focus:border-[#D4A381]" />
@@ -250,10 +250,10 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
                {visibleSections.length === 0 && visibleActions.length === 0 && <div className="p-4 text-center text-xs font-bold text-slate-500 border border-dashed border-[#2A353D] rounded-xl">{t('drawer.noResults')}</div>}
                {visibleSections.map(section => (
                  <div key={section.label} className="mb-1.5 last:mb-0">
-                   <div className="drawer-section-label px-2 pt-1.5 pb-0.5 text-[9px] font-black uppercase tracking-[0.18em] text-slate-500">{section.label}</div>
+                   <div className="concept17-menu-section-label drawer-section-label px-2 pt-1.5 pb-0.5 text-[9px] font-black uppercase tracking-[0.18em] text-slate-500">{section.label}</div>
                    <div className="space-y-0.5">
                      {section.tabs.map(tab => (
-                       <button key={tab.id} data-shell-route={tab.id} aria-label={`Open ${tab.label}`} onClick={() => { setActiveTab(tab.id); onClose(); }} className={`w-full flex items-center justify-between px-3 py-1.5 rounded-lg font-bold text-[13px] transition-all duration-200 ${activeTab === tab.id ? `${T.grad} text-slate-900 shadow-md` : 'text-slate-400 hover:bg-[#12161A] hover:text-white'}`}>
+                       <button key={tab.id} data-shell-route={tab.id} aria-label={`Open ${tab.label}`} onClick={() => { setActiveTab(tab.id); onClose(); }} className={`concept17-menu-item w-full flex items-center justify-between px-3 py-1.5 rounded-lg font-bold text-[13px] transition-all duration-200 ${activeTab === tab.id ? `${T.grad} text-slate-900 shadow-md` : 'text-slate-400 hover:bg-[#12161A] hover:text-white'}`}>
                          <div className="flex items-center gap-2.5">
                            <div className="relative flex items-center">
                              <span className={activeTab === tab.id ? 'text-slate-900' : T.copper}>{tab.icon}</span>
@@ -271,7 +271,6 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
                ))}</div>}
             </div>
             <div className={`p-3 border-t ${T.border} bg-[#12161A] space-y-2`}>
-             {typeof onVoice === 'function' && <button type="button" data-testid="drawer-86voice-button" onClick={() => { onClose?.(); window.setTimeout(() => onVoice(), 40); }} className="w-full flex items-center justify-center gap-2 py-2.5 text-[#D4A381] text-sm font-bold rounded-xl hover:bg-[#D4A381]/10 transition-colors border border-[#D4A381]/25"><Mic size={16} /> 86Voice</button>}
              <button onClick={() => { setActiveTab('help'); onClose(); window.setTimeout(() => window.dispatchEvent(new CustomEvent('chaosOpenProblemReport')), 150); }} className="w-full flex items-center justify-center gap-2 py-2.5 text-orange-400 text-sm font-bold rounded-xl hover:bg-orange-900/20 transition-colors border border-orange-900/30"><Bug size={16} /> {t('drawer.reportProblem')}</button>
              <button onClick={() => { setAppUser(null); localStorage.removeItem('86chaosUser'); onClose(); }} className="w-full flex items-center justify-center gap-2 py-2.5 text-red-400 text-sm font-bold rounded-xl hover:bg-red-900/20 transition-colors"><LogOut size={16} /> {t('drawer.logOut')}</button>
             </div>
@@ -3142,7 +3141,7 @@ const KitchenTVMode = React.memo(({ isOpen, onClose, shifts, events, prepItems, 
   const low = useMemo(() => (inventoryItems || []).filter(i => Number(i.parLevel||0) > 0 && Number(i.currentStock||0) < Number(i.parLevel||0)).slice(0, 6), [inventoryItems]);
   if (!isOpen) return null;
   return <div className="fixed inset-0 z-[100000] bg-[#0B0E11] text-white p-5 sm:p-8 overflow-y-auto">
-    <div className="flex justify-between items-start mb-6"><div><div className="text-[#D4A381] text-sm font-black uppercase tracking-widest">86 Chaos Kitchen TV</div><h1 className="text-4xl sm:text-6xl font-black">{formatDisplayFullDate(today)}</h1></div><button onClick={onClose} className="bg-white text-slate-900 rounded-xl px-4 py-2 font-black uppercase text-xs">Exit</button></div>
+    <div className="flex justify-between items-start mb-6"><div><div className="flex items-center gap-3"><img src="/6139.png" alt="86 Chaos Kitchen Management OS" className="h-10 sm:h-12 w-auto object-contain"/><span className="text-[#D4A381] text-sm font-black uppercase tracking-widest">Kitchen TV</span></div><h1 className="text-4xl sm:text-6xl font-black mt-2">{formatDisplayFullDate(today)}</h1></div><button onClick={onClose} className="bg-white text-slate-900 rounded-xl px-4 py-2 font-black uppercase text-xs">Exit</button></div>
     <div className="grid md:grid-cols-3 gap-4">
       <div className="cockpit-panel rounded-2xl p-5"><h2 className="text-2xl font-black mb-3">Prep Now</h2>{prep.length ? prep.map(p => <div key={p.id} className="text-xl font-bold border-b border-[#2A353D] py-2">{p.text}</div>) : <p className="text-slate-500 text-xl">Prep is clear.</p>}</div>
       <div className="cockpit-panel rounded-2xl p-5"><h2 className="text-2xl font-black mb-3">86 / Alerts</h2>{alerts.length ? alerts.map(a => <div key={a.id} className="text-xl font-bold border-b border-red-500/30 py-2 text-red-300">{a.title}</div>) : <p className="text-slate-500 text-xl">No active alerts.</p>}{low.map(i => <div key={i.id} className="text-xl font-bold border-b border-red-500/30 py-2 text-red-300">Low: {i.name}</div>)}</div>

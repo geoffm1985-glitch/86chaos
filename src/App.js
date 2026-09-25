@@ -546,7 +546,7 @@ class AppSurfaceErrorBoundary extends React.Component {
     const chunkProblem = isChunkLoadFailure(error);
     return (
       <div className={`${T.card} max-w-2xl mx-auto p-6 sm:p-8 text-center space-y-4`} role="alert">
-        <div className="text-[10px] font-black uppercase tracking-[0.25em] text-[#D4A381]">86 Chaos App Recovery</div>
+        <div className="flex items-center justify-center gap-2"><img src="/6139.png" alt="86 Chaos Kitchen Management OS" className="h-8 w-auto object-contain"/><span className="text-[10px] font-black uppercase tracking-[0.2em] text-[#D4A381]">App Recovery</span></div>
         <h2 className="text-2xl font-black text-white">{chunkProblem ? 'App update required' : 'This section hit a snag'}</h2>
         <p className="text-sm font-bold text-slate-300 leading-relaxed">
           {chunkProblem ? 'This device has an older app file. Refresh to load the latest version without clearing your login or restaurant data.' : 'This section could not open. Try it again; if the problem returns, send a bug report from Help.'}
@@ -565,7 +565,7 @@ class AppSurfaceErrorBoundary extends React.Component {
 const RouteLoading = ({ label = 'Loading section...' }) => (
   <div className={`${T.card} p-6 sm:p-8 max-w-xl mx-auto text-center space-y-3`}>
     <Loader2 className="animate-spin mx-auto text-[#D4A381]" size={28} />
-    <div className="text-[10px] font-black uppercase tracking-[0.25em] text-[#D4A381]">86 Chaos</div>
+    <img src="/6139.png" alt="86 Chaos Kitchen Management OS" className="h-8 w-auto object-contain mx-auto" />
     <p className="text-sm font-bold text-slate-300">{label}</p>
   </div>
 );
@@ -2429,7 +2429,10 @@ What I clicked / expected:
   }, [appUser?.preferences?.defaultTab, addToast, disarmPwaBackExit, transitionActiveTabState]);
 
   const offlineQueue = liveAppUser ? getOfflineQueue(liveAppUser.restaurantId, liveAppUser.id) : [];
-  const openMenu = useCallback(() => setIsMenuOpen(true), []);
+  const openMenu = useCallback(() => {
+    if (typeof window !== 'undefined' && window.matchMedia?.('(min-width: 1180px)').matches) return;
+    setIsMenuOpen(true);
+  }, []);
   const closeMenu = useCallback(() => setIsMenuOpen(false), []);
   const closeGlobalSearch = useCallback(() => setIsGlobalSearchOpen(false), []);
   const closeKitchenTV = useCallback(() => setIsKitchenTVOpen(false), []);
@@ -3303,7 +3306,7 @@ What I clicked / expected:
         </div>
         <div className="flex flex-col sm:flex-row gap-2 justify-center">
           <button onClick={() => setActiveTab('today')} className={T.btn}>Go to Today</button>
-          <button onClick={() => setIsMenuOpen(true)} className={T.btnAlt}>Open Menu</button>
+          <button onClick={openMenu} className={T.btnAlt}>Open Menu</button>
         </div>
       </div>
     );
@@ -3346,26 +3349,44 @@ What I clicked / expected:
     if (route === 'godmode') return Boolean(serverSaysSuperAdmin || ((serverAdminCheckPending || serverAdminCheckTemporarilyUnavailable) && pendingLocalSystemAdminHint));
     try { return planAccess.canRoute(route, shellAccessContext)?.allowed !== false; } catch (_) { return false; }
   };
+  const shellFeatureEnabled = (feature) => !feature || displayClientFeatures?.[feature] !== false;
+  const shellManagerBriefAccess = resolveFeatureAccess({ workspace: displayClientData || {}, user: liveAppUser || {}, featureKey: FEATURE_KEYS.MANAGER_BRIEF });
   const shellNavCatalog = [
-    { id: 'today', label: shellText('drawer.todayHome', 'Today'), mobileLabel: shellText('shell.home', 'Home') },
-    { id: 'ops', label: shellText('drawer.kitchenCommandCenter', 'Kitchen Command'), mobileLabel: shellText('shell.kitchen', 'Kitchen') },
-    { id: 'prep', label: shellText('drawer.prepTasks', 'Prep & Tasks'), mobileLabel: shellText('shell.prep', 'Prep') },
-    { id: 'inventory', label: shellText('drawer.inventoryOrders', 'Inventory & Orders'), mobileLabel: shellText('shell.inventory', 'Inventory') },
-    { id: 'recipes', label: shellText('drawer.recipeBook', 'Recipes') },
-    { id: 'team', label: shellText('drawer.staffRoster', 'Staff Roster'), mobileLabel: shellText('shell.staff', 'Staff') },
-    { id: 'published', label: shellText('drawer.timeClockSchedule', 'Time Clock & Schedule'), mobileLabel: shellText('shell.schedule', 'Time Clock'), alert: hasMyShiftAlert || hasScheduleBuilderAlert },
+    { id: 'published', label: shellText('drawer.timeClockSchedule', 'Time Clock & Schedule'), mobileLabel: shellText('shell.schedule', 'Schedule'), alert: hasMyShiftAlert || hasScheduleBuilderAlert, feature: 'schedule' },
+    { id: 'team', label: shellText('drawer.staffRoster', 'Staff Roster'), mobileLabel: shellText('shell.staff', 'Staff'), feature: 'team' },
+    { id: 'hr-training', label: shellText('drawer.hrTraining', 'HR & Training') },
+    { id: 'today', label: shellManagerBriefAccess.allowed ? shellText('drawer.managerBrief', 'Manager Brief') : shellText('drawer.todayHome', 'Today Home'), mobileLabel: shellText('shell.home', 'Home') },
+    { id: 'ops', label: shellText('drawer.kitchenCommandCenter', 'Kitchen Command Center'), mobileLabel: shellText('shell.kitchen', 'Kitchen') },
+    { id: 'reminders', label: shellText('drawer.myReminders', 'My Reminders') },
+    { id: 'events', label: shellText('drawer.eventCalendar', 'Event Calendar'), feature: 'events' },
+    { id: 'messages', label: shellText('drawer.messageBoard', 'Message Board'), alert: hasUnreadMessages, feature: 'messages' },
+    { id: 'prep', label: shellText('drawer.prepTasks', 'Prep & Tasks'), mobileLabel: shellText('shell.prep', 'Prep'), feature: 'prep' },
+    { id: 'inventory', label: shellText('drawer.inventoryOrders', 'Inventory & Orders'), mobileLabel: shellText('shell.inventory', 'Inventory'), feature: 'inventory' },
+    { id: 'recipes', label: shellText('drawer.recipeBook', 'Recipe Book'), feature: 'recipes' },
     { id: 'financials', label: shellText('drawer.financials', 'Financials') },
-    { id: 'messages', label: shellText('drawer.messageBoard', 'Message Board'), alert: hasUnreadMessages },
-    { id: 'godmode', label: shellText('drawer.systemAdministrator', 'System Administrator') },
+    { id: 'back-office', label: shellText('drawer.backOffice', 'Back Office') },
+    { id: 'maintenance', label: shellText('drawer.maintenanceLog', 'Maintenance') },
+    { id: 'ai-tools', label: shellText('drawer.kitchenTools', 'Kitchen Tools') },
+    { id: 'menu-intelligence', label: shellText('drawer.menuIntelligence', 'Menu Intelligence') },
     { id: 'settings', label: shellText('drawer.settings', 'Settings') },
     { id: 'help', label: shellText('drawer.helpCenter', 'Help Center'), alert: hasHelpUpdate },
+    { id: 'audit', label: shellText('drawer.systemAudit', 'System Audit') },
+    { id: 'godmode', label: shellText('drawer.systemAdministrator', 'System Administrator') },
   ];
-  const shellNavItems = shellNavCatalog.filter(item => shellRouteAllowed(item.id));
+  const shellNavItems = shellNavCatalog.filter(item => shellFeatureEnabled(item.feature) && shellRouteAllowed(item.id));
+  const shellNavSections = [
+    { label: shellText('drawer.peopleScheduling', 'People & Scheduling'), ids: ['published', 'team', 'hr-training'] },
+    { label: shellText('drawer.today', 'Today'), ids: ['today', 'ops', 'reminders', 'events', 'messages'] },
+    { label: shellText('drawer.kitchenOperations', 'Kitchen Operations'), ids: ['prep', 'inventory', 'recipes'] },
+    { label: shellText('drawer.businessFinancials', 'Business & Financials'), ids: ['financials', 'back-office', 'maintenance'] },
+    { label: shellText('drawer.toolsAutomation', 'Tools & Automation'), ids: ['ai-tools', 'menu-intelligence'] },
+    { label: shellText('drawer.systemSupport', 'System & Support'), ids: ['settings', 'help', 'audit', 'godmode'] },
+  ].map(section => ({ ...section, items: section.ids.map(id => shellNavItems.find(item => item.id === id)).filter(Boolean) })).filter(section => section.items.length > 0);
   const preferredMobileRoutes = ['today', 'published', 'ops', 'team'];
   const shellMobileNavItems = preferredMobileRoutes.map(id => shellNavItems.find(item => item.id === id)).filter(Boolean).slice(0, 4);
-  const shellUserName = liveAppUser?.name || liveAppUser?.displayName || liveAppUser?.email || '86 Chaos';
+  const shellUserName = liveAppUser?.name || liveAppUser?.displayName || liveAppUser?.email || 'Restaurant Team';
   const shellUserRole = liveAppUser?.role || (liveAppUser?.isAdmin ? 'Administrator' : 'Team Member');
-  const shellUserInitials = String(shellUserName).split(/\s+/).filter(Boolean).slice(0, 2).map(part => part.charAt(0)).join('').toUpperCase() || '86';
+  const shellUserInitials = String(shellUserName).split(/\s+/).filter(Boolean).slice(0, 2).map(part => part.charAt(0)).join('').toUpperCase() || 'RT';
 
 return (
     <I18nProvider language={appLanguage}>
@@ -3449,6 +3470,7 @@ return (
 
       <Concept17Sidebar
         items={shellNavItems}
+        sections={shellNavSections}
         activeTab={activeTabState}
         onNavigate={stableSetActiveTab}
         clientData={displayClientData}
@@ -3459,6 +3481,10 @@ return (
         workspaceSwitchEnabled={availableWorkspaces.length > 1 && !ghostTenant && !isDemoMode}
         menuLabel={shellText('drawer.mainMenu', 'Main menu')}
         currentRestaurantLabel={shellText('drawer.currentRestaurant', 'Current Restaurant')}
+        onReportProblem={() => { stableSetActiveTab('help'); window.setTimeout(() => window.dispatchEvent(new CustomEvent('chaosOpenProblemReport')), 150); }}
+        onLogout={clearSessionAndLogout}
+        reportProblemLabel={shellText('drawer.reportProblem', 'Report Problem')}
+        logoutLabel={shellText('drawer.logOut', 'Log Out')}
       />
 
       {chunkRecoveryBanner && <div className="px-3 pt-3 flex justify-center">{chunkRecoveryBanner}</div>}
@@ -3497,11 +3523,6 @@ return (
       )}
 
       <header className="app-header sticky top-0 z-40 border-b" data-testid="concept17-command-header">
-        <button type="button" className="concept17-mobile-menu-toggle" onClick={openMenu} aria-label="Open navigation menu">
-          <Menu size={21} aria-hidden="true" />
-          {hasAnyMenuAlert && <span className="concept17-nav-alert" aria-label="New activity"></span>}
-        </button>
-
         <div className="concept17-header-brand">
           <Concept17Wordmark compact />
         </div>
@@ -3535,11 +3556,11 @@ return (
 
         <div className="concept17-header-actions">
           {offlineQueue.length > 0 && <button type="button" aria-label="Offline queued actions" onClick={() => openProblemReport({ title: 'Offline Queue', message: `${offlineQueue.length} queued action(s) waiting to sync.`, category: 'Data Looks Wrong' })} className="concept17-header-queue" title="Offline queued actions">{offlineQueue.length}</button>}
-          <button type="button" aria-label="Open notifications" title="Notifications" onClick={openMenu} className="concept17-header-bell">
+          <button type="button" aria-label="Open notifications" title="Notifications" onClick={() => stableSetActiveTab('messages')} className="concept17-header-bell">
             <Bell size={19} />
             {hasAnyMenuAlert && <span className="concept17-notification-dot" aria-label="New activity"></span>}
           </button>
-          <button type="button" className="concept17-header-avatar" onClick={openMenu} aria-label={shellText('shell.openProfileMenu', 'Open profile menu')}>{shellUserInitials}</button>
+          <button type="button" className="concept17-header-avatar" onClick={() => stableSetActiveTab('settings')} aria-label={shellText('shell.openProfileMenu', 'Open profile menu')}>{shellUserInitials}</button>
         </div>
       </header>
 
@@ -3570,7 +3591,7 @@ return (
         </div>
       )}
 
-      <DrawerMenu isOpen={isMenuOpen} onClose={closeMenu} activeTab={activeTabState} setActiveTab={stableSetActiveTab} appUser={liveAppUser} setAppUser={setAppUser} hasUnreadMessages={hasUnreadMessages} hasMyShiftAlert={hasMyShiftAlert} hasScheduleBuilderAlert={hasScheduleBuilderAlert} hasHelpUpdate={hasHelpUpdate} clientFeatures={displayClientFeatures} clientData={displayClientData} addToast={addToast} availableWorkspaces={availableWorkspaces} activeWorkspaceName={liveAppUser?.restaurantName || displayClientData?.name || ''} onOpenWorkspaceSwitcher={openWorkspaceSwitcherFromDrawer} platformAdminAccessState={platformAdminAccessState} onVoice={openVoiceFromShell} />
+      <DrawerMenu isOpen={isMenuOpen} onClose={closeMenu} activeTab={activeTabState} setActiveTab={stableSetActiveTab} appUser={liveAppUser} setAppUser={setAppUser} hasUnreadMessages={hasUnreadMessages} hasMyShiftAlert={hasMyShiftAlert} hasScheduleBuilderAlert={hasScheduleBuilderAlert} hasHelpUpdate={hasHelpUpdate} clientFeatures={displayClientFeatures} clientData={displayClientData} addToast={addToast} availableWorkspaces={availableWorkspaces} activeWorkspaceName={liveAppUser?.restaurantName || displayClientData?.name || ''} onOpenWorkspaceSwitcher={openWorkspaceSwitcherFromDrawer} platformAdminAccessState={platformAdminAccessState} />
       <GlobalSearchModal isOpen={isGlobalSearchOpen} onClose={closeGlobalSearch} queryText={globalSearchQuery} setQueryText={setGlobalSearchQuery} users={displayUsers} events={events} shifts={shifts} recipes={recipes} inventoryItems={inventoryItems} maintenanceLogs={maintenanceLogs} setActiveTab={stableSetActiveTab} appUser={liveAppUser} clientData={displayClientData} clientFeatures={displayClientFeatures} />
       <KitchenTVMode isOpen={isKitchenTVOpen} onClose={closeKitchenTV} shifts={shifts} events={events} prepItems={prepItems} maintenanceLogs={maintenanceLogs} inventoryItems={inventoryItems} />
       <UndoBar undoItem={undoItem} clearUndo={clearUndoItem} />
@@ -3581,7 +3602,7 @@ return (
         activeTab={activeTabState}
         onNavigate={stableSetActiveTab}
         onVoice={openVoiceFromShell}
-        voiceLabel={shellText('shell.voice', 'Voice')}
+        voiceLabel={shellText('shell.voice', '86Voice')}
         onMore={openMenu}
         moreLabel={shellText('shell.more', 'More')}
       />

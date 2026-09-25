@@ -19,12 +19,17 @@
     <script>
       (function () {
         var testingHost = window.location.hostname === 'testing.86chaos.com';
+        var experimentalHost = window.location.hostname === 'experimental.86chaos.com';
+        var manifest = document.getElementById('app-manifest');
+        var appleTitle = document.querySelector('meta[name="apple-mobile-web-app-title"]');
         if (testingHost) {
-          var manifest = document.getElementById('app-manifest');
           if (manifest) manifest.setAttribute('href', '/manifest-testing.json');
-          var appleTitle = document.querySelector('meta[name="apple-mobile-web-app-title"]');
           if (appleTitle) appleTitle.setAttribute('content', '86chaos testing');
           document.title = '86chaos testing';
+        } else if (experimentalHost) {
+          if (manifest) manifest.setAttribute('href', '/manifest-experimental.json');
+          if (appleTitle) appleTitle.setAttribute('content', '86chaos experimental');
+          document.title = '86chaos experimental';
         }
       }());
     </script>
