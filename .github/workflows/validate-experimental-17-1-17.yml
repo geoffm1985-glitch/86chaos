@@ -13,10 +13,10 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 360
     env:
-      CHAOS_RELEASE_GATE_TARGET_URL: https://86chaos-jtrrwmaio-cheers-portal-s-projects.vercel.app
-      APP_URL: https://86chaos-jtrrwmaio-cheers-portal-s-projects.vercel.app
-      CHAOS_BASE_URL: https://86chaos-jtrrwmaio-cheers-portal-s-projects.vercel.app
-      PLAYWRIGHT_BASE_URL: https://86chaos-jtrrwmaio-cheers-portal-s-projects.vercel.app
+      CHAOS_RELEASE_GATE_TARGET_URL: https://experimental.86chaos.com
+      APP_URL: https://experimental.86chaos.com
+      CHAOS_BASE_URL: https://experimental.86chaos.com
+      PLAYWRIGHT_BASE_URL: https://experimental.86chaos.com
       CHAOS_EXPECTED_VERSION: 17.1.17
       CHAOS_EXPECTED_GIT_COMMIT: da15eb3dac013fedce3728300c14dd4896be17e1
       CHAOS_EXPECTED_BRANCH: experimental
