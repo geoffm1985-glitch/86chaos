@@ -1,4 +1,4 @@
-name: 86 Chaos Targeted Validation - testing 16.0.243
+name: 86 Chaos Targeted Validation - testing 16.0.244
 
 on:
   push:
@@ -20,8 +20,8 @@ jobs:
       APP_URL: https://testing.86chaos.com
       CHAOS_BASE_URL: https://testing.86chaos.com
       PLAYWRIGHT_BASE_URL: https://testing.86chaos.com
-      CHAOS_EXPECTED_GIT_COMMIT: c772217e285440766bb82537ae22783c3896af20
-      CHAOS_EXPECTED_VERSION: 16.0.243
+      CHAOS_EXPECTED_GIT_COMMIT: 907de4f2a1529dec31c1f3344b00e15630e51007
+      CHAOS_EXPECTED_VERSION: 16.0.244
     steps:
       - name: Check out exact testing branch
         uses: actions/checkout@v4
@@ -54,7 +54,7 @@ jobs:
           [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path '.\RUN_86CHAOS_PLAY_STORE_RELEASE_GATE.ps1'), [ref]$tokens, [ref]$errors) | Out-Null
           if ($errors.Count -gt 0) { $errors | Format-List | Out-String | Write-Host; throw "Release-gate PowerShell has parse errors." }
 
-      - name: Run 16.0.243 source validator
+      - name: Run 16.0.244 source validator
         shell: pwsh
         run: node scripts/validate-16-0-243.js
 
@@ -93,7 +93,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: 86chaos-testing-16.0.243-targeted-validation
+          name: 86chaos-testing-16.0.244-targeted-validation
           if-no-files-found: ignore
           retention-days: 30
           path: |
