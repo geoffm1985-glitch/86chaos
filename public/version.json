@@ -1,16 +1,16 @@
 {
-  "version": "16.0.238",
-  "name": "86 Chaos 16.0.238",
-  "build": "16.0.238",
-  "label": "86 Chaos 16.0.238",
+  "version": "16.0.239",
+  "name": "86 Chaos 16.0.239",
+  "build": "16.0.239",
+  "label": "86 Chaos 16.0.239",
   "releasedAt": "2026-09-25T00:00:00.000Z",
-  "releaseTitle": "Testing Alias Release-Gate Safety Repair",
+  "releaseTitle": "Testing Alias Validator Repair",
   "notes": [
-    "Recognizes testing.86chaos.com and experimental.86chaos.com as explicit non-production release-gate aliases.",
-    "Preserves fail-closed protection for app.86chaos.com, 86chaos.com, www.86chaos.com, unknown 86chaos subdomains, retired Vercel projects, and production Firebase.",
-    "Adds Node and Play Store release-gate regression coverage for custom testing-alias mutation safety."
+    "Retains the explicit testing.86chaos.com and experimental.86chaos.com non-production release-gate alias allowlist from 16.0.238.",
+    "Repairs the source-validator wiring so test:source and validate:16.0.239 point to the correct validator.",
+    "Replaces brittle raw-byte freeze checks with a fail-closed Git diff invariant that proves this validator repair does not alter Shift4, Schedule PDF, Firebase rules/config, messaging worker, or Vercel configuration."
   ],
-  "title": "86 Chaos 16.0.238",
-  "summary": "Repairs release-gate testing-alias classification without weakening production safeguards.",
-  "description": "Allows the known testing and experimental aliases through release-gate target validation while keeping production and unknown custom 86 Chaos hosts fail-closed."
+  "title": "86 Chaos 16.0.239",
+  "summary": "Repairs the 16.0.238 validation contract while retaining the testing-alias release-gate safety fix.",
+  "description": "Replaces stale line-ending-sensitive byte-hash checks with behavioral alias checks and Git-diff protection for unrelated certified areas."
 }
