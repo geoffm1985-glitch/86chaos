@@ -2,6 +2,7 @@
 
 const { test, expect } = require('@playwright/test');
 const { ownerLikeCreds, requireCreds, login } = require('../86chaos-full-audit/utils/audit-helpers.cjs');
+const { version: APP_VERSION } = require('../../package.json');
 
 test.describe('17.1.17 footer version and copyright identity', () => {
   test('footer shows the current version together with the copyright on desktop', async ({ page }) => {
@@ -12,7 +13,7 @@ test.describe('17.1.17 footer version and copyright identity', () => {
     const footer = page.getByTestId('app-version-copyright');
     await footer.scrollIntoViewIfNeeded();
     await expect(footer).toBeVisible();
-    await expect(footer).toContainText('Version 17.1.17');
+    await expect(footer).toContainText(`Version ${APP_VERSION}`);
     await expect(footer).toContainText('© 2026 Chilton App Works LLC');
   });
 
@@ -24,7 +25,7 @@ test.describe('17.1.17 footer version and copyright identity', () => {
     const footer = page.getByTestId('app-version-copyright');
     await footer.scrollIntoViewIfNeeded();
     await expect(footer).toBeVisible();
-    await expect(footer).toContainText('Version 17.1.17');
+    await expect(footer).toContainText(`Version ${APP_VERSION}`);
     await expect(footer).toContainText('© 2026 Chilton App Works LLC');
     const nav = page.getByTestId('concept17-mobile-bottom-nav');
     await expect(nav).toBeVisible();
