@@ -10,7 +10,9 @@ const json = file => JSON.parse(read(file));
 
 test('17.1.17 footer binds current version and copyright into one explicit app identity line', () => {
   const app = read('src/App.js');
-  assert.equal(json('package.json').version, '17.1.17');
+  const currentVersion = json('package.json').version;
+  assert.equal(json('public/version.json').version, currentVersion);
+  assert.ok(read('src/core/appCore.js').includes(`CURRENT_VERSION = '${currentVersion}'`));
   assert.match(app, /data-testid="app-version-copyright"/);
   assert.match(app, /Version \{CURRENT_VERSION\} • © 2026 Chilton App Works LLC/);
   assert.match(app, /className="app-version-copyright[^"]*text-center/);
