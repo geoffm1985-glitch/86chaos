@@ -1,16 +1,16 @@
 {
-  "version": "16.0.243",
-  "name": "86 Chaos 16.0.243",
-  "build": "16.0.243",
-  "label": "86 Chaos 16.0.243",
+  "version": "16.0.244",
+  "name": "86 Chaos 16.0.244",
+  "build": "16.0.244",
+  "label": "86 Chaos 16.0.244",
   "releasedAt": "2026-09-25T00:00:00.000Z",
-  "releaseTitle": "Release-Gate QA Credential Bootstrap Repair",
+  "releaseTitle": "Release-Gate QA Credential Bootstrap Validator Repair",
   "notes": [
-    "Generates dedicated testing-only SYSTEM_ADMIN, OWNER, MANAGER, and STAFF credential pairs in the parent release-gate process when auto-provisioning is enabled and no pair was configured.",
-    "Refuses partially configured role pairs, preserves fully configured pairs, uses cryptographic random passwords, and never prints generated passwords.",
-    "Full Play Store certification is not limited to 20 individual tests. Each certification execution runs the complete configured test universe; the 20-execution cap applies only to this current repair cycle."
+    "Retains secure parent-process generation of testing-only QA role credentials before release-gate preflight.",
+    "Corrects inherited validator wiring so 16.0.244 validates scripts/validate-16-0-244.js consistently.",
+    "Full Play Store certification still runs the complete configured test universe; the 20-run cap applies to full-suite executions in this current repair cycle, not individual tests."
   ],
-  "title": "86 Chaos 16.0.243",
-  "summary": "Lets the full release gate create safe testing-only QA role credentials before preflight while retaining the Firebase Admin boundary.",
-  "description": "Repairs the release-gate ordering defect that required role credentials before automatic provisioning could run. Full Play Store certification still executes the complete configured test universe and remains fail-closed without testing Firebase Admin authority."
+  "title": "86 Chaos 16.0.244",
+  "summary": "Corrects validator inheritance for the QA credential-bootstrap release without changing application behavior.",
+  "description": "Keeps the 16.0.243 secure QA credential bootstrap intact and fixes the inherited source-validator target so CI validates the current release script rather than the prior version."
 }
