@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
   "version": "17.1.21",
-  "sourceHash": "c6c28384d67771e93c7ee4086399554494da03c965703c879f912132f647de7e",
+  "sourceHash": "38865222738a4d2112fb0e4baa332505a3c6fa7f01e6ba96f4a4abe87f10d5af",
   "files": [
     {
       "file": ".gitattributes",
@@ -1089,7 +1089,7 @@
     },
     {
       "file": "api/release-gate-expected-version-17-0-19.test.cjs",
-      "sha256": "e9e2d9bb23c3cc30f0c3ea6c5a866e2e5849885207d28c74c35a42142a5693c5"
+      "sha256": "88f5b8fbba8be32843d9f408496c1803a477553b7217ed782412517483bd4192"
     },
     {
       "file": "api/release-gate-failure-extractor.test.cjs",
