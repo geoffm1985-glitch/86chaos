@@ -14,8 +14,11 @@ test('17.0.30 makes testing.86chaos.com the canonical testing target without wea
   const safety = require('../scripts/86chaos-release-gate/mutation-safety.cjs');
   assert.match(runner, /\$canonicalPreviewUrl = 'https:\/\/testing\.86chaos\.com\/'/);
   assert.match(fullRunner, /\$CanonicalTestingUrl = 'https:\/\/testing\.86chaos\.com'/);
-  assert.match(fullRunner, /\$env:APP_URL = \$CanonicalTestingUrl/);
-  assert.match(fullRunner, /\$env:CHAOS_BASE_URL = \$CanonicalTestingUrl/);
+  assert.match(fullRunner, /if \(-not \$ExpectedBranch\) \{ \$ExpectedBranch = 'testing' \}/);
+  assert.match(fullRunner, /\$env:APP_URL = \$ResolvedReleaseTargetUrl/);
+  assert.match(fullRunner, /\$env:CHAOS_BASE_URL = \$ResolvedReleaseTargetUrl/);
+  assert.match(fullRunner, /\$CanonicalExperimentalUrl = 'https:\/\/experimental\.86chaos\.com'/);
+  assert.match(fullRunner, /CHAOS_RELEASE_GATE_TARGET_URL/);
   assert.equal(targets.TESTING_HOST, 'testing.86chaos.com');
   assert.equal(targets.isTestingHost('testing.86chaos.com'), true);
   const accepted = targets.validateReleaseTarget({ appUrl: 'https://testing.86chaos.com', chaosBaseUrl: 'https://testing.86chaos.com/', expectedVersion: '17.0.30', sourceVersion: '17.0.30', deployedVersion: '17.0.30' });
