@@ -39,6 +39,41 @@ const formatUploadBytes = (bytes = 0) => `${(Math.max(0, bytes) / (1024 * 1024))
 
 const REMINDER_SNOOZE_OPTIONS = [30, 60, 90, 120, 180, 240];
 
+const reminderDisplayText=(value,fallback='',max=1200)=>{
+  if(value==null)return fallback;
+  if(typeof value==='string')return value.trim().slice(0,max);
+  if(typeof value==='number'||typeof value==='boolean')return String(value).slice(0,max);
+  return fallback;
+};
+const reminderDisplayDate=(value)=>{
+  try{
+    if(!value)return'';
+    if(value instanceof Date)return Number.isNaN(value.getTime())?'':value.toISOString();
+    if(typeof value?.toDate==='function'){const d=value.toDate();return d instanceof Date&&!Number.isNaN(d.getTime())?d.toISOString():''}
+    if(typeof value?.seconds==='number'){const d=new Date(Number(value.seconds)*1000);return Number.isNaN(d.getTime())?'':d.toISOString()}
+    if(typeof value==='string'||typeof value==='number'){const d=new Date(value);return Number.isNaN(d.getTime())?'':d.toISOString()}
+  }catch(_){}
+  return'';
+};
+const normalizeReminderUiRow=(row,index=0,deviceLocal=false)=>{
+  if(!row||typeof row!=='object'||Array.isArray(row))return null;
+  const id=reminderDisplayText(row.id??row.docId,'',180)||`${deviceLocal?'local':'cloud'}-recovered-${index+1}`;
+  return{
+    ...row,
+    id,
+    title:reminderDisplayText(row.title??row.message,'Reminder',300)||'Reminder',
+    notes:reminderDisplayText(row.notes,'',1200),
+    status:reminderDisplayText(row.status,'scheduled',60)||'scheduled',
+    recurrence:reminderDisplayText(row.recurrence,'none',40)||'none',
+    scheduledAt:reminderDisplayDate(row.scheduledAt),
+    nextDispatchAt:reminderDisplayDate(row.nextDispatchAt),
+    nextReminderAt:reminderDisplayDate(row.nextReminderAt),
+    snoozedUntil:reminderDisplayDate(row.snoozedUntil),
+    completedAt:reminderDisplayDate(row.completedAt),
+    deviceLocal:deviceLocal||row.deviceLocal===true
+  };
+};
+
 const getReminderWakeAt = (reminder = {}) => reminder.snoozedUntil || reminder.nextReminderAt || reminder.scheduledAt || '';
 
 
@@ -93,7 +128,10 @@ const TabPersonalReminders = ({ appUser, addToast, onEnableNotifications }) => {
   const [title,setTitle]=useState(''),[notes,setNotes]=useState(''),[dateInput,setDateInput]=useState(initial.date),[timeInput,setTimeInput]=useState(initial.time);
   const [deliveryMode,setDeliveryMode]=useState(()=>hasNativeLocalReminderBridge()?'device':'cloud'),[editing,setEditing]=useState(null),[localRows,setLocalRows]=useState(()=>readDeviceLocalReminders()),[showCompleted,setShowCompleted]=useState(false);
   const cloudRows=usePersonalReminderRows(appUser,{enabled:!!appUser?.restaurantId&&!!appUser?.id,limitCount:120,fallbackLimitCount:60,debugLabel:'personal-reminders'});
-  const rows=useMemo(()=>[...(cloudRows||[]),...localRows.map(r=>({...r,deviceLocal:true}))],[cloudRows,localRows]);
+  const rows=useMemo(()=>[
+    ...(Array.isArray(cloudRows)?cloudRows:[]).map((r,i)=>normalizeReminderUiRow(r,i,false)),
+    ...(Array.isArray(localRows)?localRows:[]).map((r,i)=>normalizeReminderUiRow(r,i,true))
+  ].filter(Boolean),[cloudRows,localRows]);
   const pending=rows.filter(r=>!['done','completed','cancelled','canceled','dismissed','archived','sent'].includes(String(r.status||'').toLowerCase())).sort((x,y)=>String(getReminderWakeAt(x)).localeCompare(String(getReminderWakeAt(y))));
   const closed=showCompleted?rows.filter(r=>['sent','done','completed','dismissed','archived','cancelled','canceled'].includes(String(r.status||'').toLowerCase())):[];
   const reset=()=>{const n=getInitialReminderDate();setTitle('');setNotes('');setDateInput(n.date);setTimeInput(n.time);setEditing(null)};
@@ -105,7 +143,7 @@ const TabPersonalReminders = ({ appUser, addToast, onEnableNotifications }) => {
   const remove=async r=>{if(r.deviceLocal){await cancelDeviceLocalReminder(r.id);setLocalRows(removeDeviceLocalReminder(r.id))}else await cloudAction(r,'cancel')};
   const share=async r=>{try{await shareReminderWithoutServer(r);addToast('Reminder Shared','Used this device only. Nothing was saved to Firebase.')}catch(err){addToast('Share Unavailable',err.message||'Could not share reminder.')}};
   const edit=r=>{const d=new Date(r.scheduledAt||Date.now());setEditing(r);setTitle(r.title||'');setNotes(r.notes||'');setDateInput(toDateInputValue(d));setTimeInput(toTimeInputValue(d));setDeliveryMode(r.deviceLocal?'device':'cloud')};
-  return <div className="space-y-4" data-testid="personal-reminders-v17-0-35"><div className={`${T.card} p-4`}><h2 className="text-xl font-black text-white">Personal Reminders</h2><p className="text-xs text-slate-400 font-bold">Cloud self-reminders or device-local reminders. Sharing uses the OS/Web Share API with zero Firebase persistence.</p></div>
+  return <div className="space-y-4" data-testid="personal-reminders-v17-0-35" data-reminder-runtime-safety="17.0.38"><div className={`${T.card} p-4`}><h2 className="text-xl font-black text-white">Personal Reminders</h2><p className="text-xs text-slate-400 font-bold">Cloud self-reminders or device-local reminders. Sharing uses the OS/Web Share API with zero Firebase persistence.</p></div>
   <div className={`${T.card} p-4`} data-testid="device-local-reminder-status"><div className="text-xs font-black text-white">Device-local reminders</div><div className="text-[10px] text-slate-400 mt-1">{hasNativeLocalReminderBridge()?'Native bridge connected: closed-app reminders are available.':'Web fallback active. Closed-app delivery requires the native Android/iPhone wrapper.'}</div></div>
   <form onSubmit={save} className={`${T.card} p-4 grid lg:grid-cols-[1.35fr_.62fr_.52fr_.72fr_auto] gap-3 items-end`}><div><label className={T.label}>Reminder</label><input value={title} onChange={e=>setTitle(e.target.value)} className={T.input}/></div><div><label className={T.label}>Date</label><input type="date" value={dateInput} onChange={e=>setDateInput(e.target.value)} className={T.input}/></div><div><label className={T.label}>Time</label><input type="time" value={timeInput} onChange={e=>setTimeInput(e.target.value)} className={T.input}/></div><div><label className={T.label}>Delivery</label><select aria-label="Reminder delivery" value={deliveryMode} onChange={e=>setDeliveryMode(e.target.value)} className={T.input}><option value="device">This device only</option><option value="cloud">86 Chaos cloud</option></select></div><button className={`${T.btn} h-11`}>{editing?'Save':'Add'}</button><div className="lg:col-span-5"><label className={T.label}>Notes</label><input value={notes} onChange={e=>setNotes(e.target.value)} className={T.input}/></div></form>
   <div className={`${T.card} overflow-hidden`}><div className={T.th}>Upcoming</div>{pending.length===0?<SmartEmptyState title="No reminders yet" desc="Add a cloud or device-local reminder."/>:pending.map(r=><div key={(r.deviceLocal?'local:':'cloud:')+r.id} className={`${T.row} flex items-center justify-between gap-3`}><div><div className="font-black text-white text-sm">{r.title}</div><div className="text-[10px] text-[#D4A381] font-black uppercase mt-1">{formatClockDateTime(getReminderWakeAt(r))} • {r.deviceLocal?'Device local':'Cloud'}</div></div><div className="flex gap-1"><button type="button" aria-label="Share reminder" onClick={()=>share(r)} className={T.btnAlt}><Share2 size={15}/></button><button type="button" aria-label="Complete reminder" onClick={()=>done(r)} className={T.btnAlt}><Check size={15}/></button><button type="button" aria-label="Edit reminder" onClick={()=>edit(r)} className={T.btnAlt}><Edit3 size={15}/></button><button type="button" aria-label="Cancel reminder" onClick={()=>remove(r)} className={T.btnAlt}><Trash2 size={15}/></button></div></div>)}</div>

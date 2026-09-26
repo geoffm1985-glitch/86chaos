@@ -1,4 +1,4 @@
-name: Testing Targeted Delta
+name: Testing Gate
 
 on:
   push:
@@ -10,12 +10,12 @@ permissions:
   contents: write
 
 concurrency:
-  group: testing-targeted-delta
+  group: testing-gate
   cancel-in-progress: false
 
 jobs:
   targeted-delta:
-    if: github.ref_name == 'testing'
+    if: ${{ github.ref_name == 'testing' && github.event_name == 'push' && !contains(github.event.head_commit.message, '[full-gate]') }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -23,16 +23,13 @@ jobs:
         uses: actions/checkout@v5
         with:
           fetch-depth: 0
-
       - name: Set up Node 24
         uses: actions/setup-node@v5
         with:
           node-version: 24
           cache: npm
-
       - name: Install dependencies
         run: npm ci --no-audit --no-fund --progress=false
-
       - name: Repair source manifest parity when needed
         shell: bash
         run: |
@@ -49,11 +46,94 @@ jobs:
             git config user.name "86 Chaos Gate Bot"
             git config user.email "actions@users.noreply.github.com"
             git add release-source-manifest.json
-            git commit -m "ci: refresh 17.0.37 testing source manifest parity"
+            git commit -m "ci: refresh 17.0.38 testing source manifest parity"
             git push origin HEAD:testing
             echo "Manifest repaired; the follow-up testing push will run targeted/delta against the exact repaired commit."
             exit 0
           fi
-
-      - name: Run 17.0.37 targeted delta only
+      - name: Run 17.0.38 targeted delta only
         run: npm run test:current-release-targeted
+
+  full-release-gate:
+    if: ${{ github.ref_name == 'testing' && (github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[full-gate]')) }}
+    runs-on: windows-latest
+    timeout-minutes: 360
+    env:
+      APP_URL: https://testing.86chaos.com
+      CHAOS_BASE_URL: https://testing.86chaos.com
+      PLAYWRIGHT_BASE_URL: https://testing.86chaos.com
+      CHAOS_EXPECTED_BRANCH: testing
+      CHAOS_EXPECTED_VERCEL_PROJECT_SLUG: 86chaos
+      REACT_APP_TEST_FIREBASE_PROJECT_ID: chaos-test-d1601
+      FIREBASE_TEST_SERVICE_ACCOUNT_KEY: ${{ secrets.FIREBASE_TEST_SERVICE_ACCOUNT_KEY }}
+      FIREBASE_SERVICE_ACCOUNT_KEY: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_KEY }}
+      SYSTEM_ADMIN_EMAIL: ${{ secrets.SYSTEM_ADMIN_EMAIL }}
+      SYSTEM_ADMIN_PASSWORD: ${{ secrets.SYSTEM_ADMIN_PASSWORD }}
+      OWNER_EMAIL: ${{ secrets.OWNER_EMAIL }}
+      OWNER_PASSWORD: ${{ secrets.OWNER_PASSWORD }}
+      MANAGER_EMAIL: ${{ secrets.MANAGER_EMAIL }}
+      MANAGER_PASSWORD: ${{ secrets.MANAGER_PASSWORD }}
+      STAFF_EMAIL: ${{ secrets.STAFF_EMAIL }}
+      STAFF_PASSWORD: ${{ secrets.STAFF_PASSWORD }}
+      MASTER_ADMIN_EMAIL: ${{ secrets.MASTER_ADMIN_EMAIL }}
+    steps:
+      - name: Check out exact testing commit
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Capture exact testing identity
+        shell: pwsh
+        run: |
+          $sha=(git rev-parse HEAD).Trim()
+          $pkg=Get-Content package.json -Raw | ConvertFrom-Json
+          "CHAOS_EXPECTED_GIT_COMMIT=$sha" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+          "CHAOS_EXPECTED_VERSION=$($pkg.version)" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+      - name: Set up Node 24
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund --progress=false
+      - name: Verify source manifest parity
+        shell: pwsh
+        run: |
+          node -e "const fs=require('fs');const i=require('./scripts/86chaos-release-gate/source-identity.cjs');const a=i.captureSourceIdentity(process.cwd());const m=JSON.parse(fs.readFileSync('release-source-manifest.json','utf8'));if(a.sourceHash!==m.sourceHash)throw new Error('Tracked source does not match release-source-manifest.json');console.log('Source manifest verified:',a.sourceHash)"
+      - name: Read reported mobile crash diagnostics
+        shell: pwsh
+        env:
+          CHAOS_CRASH_REPORT_ID: qwifs3AdG2dJ8kqwmp40
+        run: node scripts/read-crash-report-for-ci.cjs
+      - name: Wait for exact testing deployment
+        shell: pwsh
+        run: |
+          $matched=$false
+          for($i=0;$i -lt 180;$i++){
+            try{
+              $s=[DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
+              $v=Invoke-RestMethod "$env:APP_URL/version.json?ci=$s"
+              $id=Invoke-RestMethod "$env:APP_URL/build-identity.json?ci=$s"
+              $c=if($id.gitCommit){[string]$id.gitCommit}else{[string]$id.commit}
+              if([string]$v.version -eq $env:CHAOS_EXPECTED_VERSION -and $c -eq $env:CHAOS_EXPECTED_GIT_COMMIT){$matched=$true;break}
+            }catch{}
+            Start-Sleep 10
+          }
+          if(-not $matched){throw "Timed out waiting for exact testing deployment."}
+      - name: Run full Release Gate
+        shell: pwsh
+        run: npm run test:play-store
+      - name: Upload Release Gate artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: 86chaos-testing-full-release-gate
+          if-no-files-found: warn
+          retention-days: 30
+          path: |
+            test-results/**
+            86chaos-release-gate-SLIM-UPLOAD-ME.zip

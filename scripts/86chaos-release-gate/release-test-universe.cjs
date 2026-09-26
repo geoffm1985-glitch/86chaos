@@ -28,6 +28,7 @@ const RELEASE_CRITICAL_SPECS = Object.freeze([
   'tests/86chaos-release-gate/44-device-local-reminders.spec.cjs',
   'tests/86chaos-release-gate/45-firebase-admin-url-api.spec.cjs',
   'tests/86chaos-release-gate/46-firebase-admin-runtime-module-load.spec.cjs',
+  'tests/86chaos-release-gate/47-reminder-mobile-runtime-recovery.spec.cjs',
 ]);
 
 const PWA_SPEC_PATTERN = /86chaos-release-gate\/(26-pwa-icon-source-deployed-parity|27-pwa-browser-icon-matrix)\.spec\.cjs/;

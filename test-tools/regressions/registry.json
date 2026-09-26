@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "release": "17.0.37",
+  "release": "17.0.38",
   "defects": [
     {
       "defectId": "RG-API-WRAPPER-FIDELITY",
@@ -513,6 +513,19 @@
       "fidelity": "ACTUAL DEPENDENCY LOCK / DEPLOYED SERVERLESS RUNTIME PROBE",
       "fixedVersion": "17.0.37",
       "mandatoryGroup": "hostile-contracts"
+    },
+    {
+      "defectId": "RG-MOBILE-REMINDER-RENDER-17038",
+      "origin": "17.0.37 real-device My Reminders recovery report qwifs3AdG2dJ8kqwmp40",
+      "affectedInvariant": "Malformed or legacy device-local reminder values must be normalized before React render and must never collapse the My Reminders surface.",
+      "reproducer": "reminder-mobile-runtime-17-0-38.test.cjs / 47-reminder-mobile-runtime-recovery.spec.cjs",
+      "permanentTestIds": [
+        "17.0.38 normalizes persisted device-local reminder values before React render",
+        "mobile reminder surface survives malformed persisted rows and live cloud loading"
+      ],
+      "fidelity": "ACTUAL SOURCE / DEPLOYED MOBILE PLAYWRIGHT",
+      "fixedVersion": "17.0.38",
+      "mandatoryGroup": "deployed"
     }
   ]
 }
