@@ -3,6 +3,7 @@ const path = require('path');
 const { expect } = require('@playwright/test');
 let runContext = null;
 try { runContext = require('../../../scripts/86chaos-release-gate/run-context.cjs'); } catch (_) { runContext = null; }
+const { parseHost, isProductionHost, isTestingPreviewHost } = require('../../../scripts/86chaos-release-gate/mutation-safety.cjs');
 
 const ENV_FILE_NAMES = ['.env.test.local', '.env.test', '.env.local', '.env'];
 const ENV_SEARCH_ROOTS = [process.cwd(), path.resolve(__dirname, '..', '..', '..')];
@@ -88,9 +89,8 @@ const RUN_ID = envValue('CHAOS_FULL_AUDIT_RUN_ID') || `${Date.now()}-${Math.rand
 const BASE_URL = envValue('APP_URL', 'CHAOS_BASE_URL', 'PLAYWRIGHT_BASE_URL', 'BASE_URL').replace(/\/$/, '');
 const EXPECTED_VERSION = envValue('CHAOS_EXPECTED_VERSION') || readVersionFromDisk() || '16.0.32';
 const QA_WORKSPACE_NAME = process.env.CHAOS_QA_WORKSPACE_NAME || `86 Chaos Release Gate QA ${RUN_ID}`;
-const SAFE_TESTING_URL_RE = /localhost|127\.0\.0\.1|vercel\.app|testing|test|preview/i;
-const PRODUCTION_URL_RE = /(^|\.)app\.86chaos\.com|(^|\.)86chaos\.com/i;
-const ALLOW_MUTATION = boolEnv('CHAOS_ALLOW_MUTATION') && SAFE_TESTING_URL_RE.test(BASE_URL) && !PRODUCTION_URL_RE.test(BASE_URL);
+const BASE_HOST = parseHost(BASE_URL);
+const ALLOW_MUTATION = boolEnv('CHAOS_ALLOW_MUTATION') && isTestingPreviewHost(BASE_HOST) && !isProductionHost(BASE_HOST);
 
 function readVersionFromDisk() {
   try {
@@ -660,7 +660,8 @@ async function collectTextNear(page, needle, radius = 1200) {
 async function neutralizeTestingPreviewOverlays(page, options = {}) {
   const evidence = [];
   const url = page.url?.() || BASE_URL || '';
-  if (!SAFE_TESTING_URL_RE.test(url) || PRODUCTION_URL_RE.test(url)) {
+  const overlayHost = parseHost(url);
+  if (!isTestingPreviewHost(overlayHost) || isProductionHost(overlayHost)) {
     return { ok: true, skipped: true, reason: 'not a safe testing-preview URL', evidence };
   }
   const result = await page.evaluate(() => {

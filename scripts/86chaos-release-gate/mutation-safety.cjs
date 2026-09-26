@@ -1,6 +1,7 @@
 const APPROVED_TEST_PROJECT = 'chaos-test-d1601';
 const PRODUCTION_PROJECT = 'cheers-34b8d';
 const PRODUCTION_HOSTS = new Set(['86chaos.com', 'www.86chaos.com', 'app.86chaos.com']);
+const APPROVED_NON_PRODUCTION_ALIASES = new Set(['testing.86chaos.com', 'experimental.86chaos.com']);
 const RETIRED_VERCEL_PROJECT_SLUGS = ['cheers-portal-4oxv'];
 const CANONICAL_VERCEL_PROJECT_SLUG = '86chaos';
 const APPROVED_QA_EMAIL_RE = /^86chaos\.qa\.(system-admin|owner|manager|staff)\.\d{8}-\d{4}@example\.test$/i;
@@ -12,8 +13,12 @@ function normalizeHost(value = '') {
 function parseHost(url = '') {
   try { return normalizeHost(new URL(String(url || '')).hostname); } catch (_) { return ''; }
 }
+function isApprovedNonProductionAlias(host = '') {
+  return APPROVED_NON_PRODUCTION_ALIASES.has(normalizeHost(host));
+}
 function isProductionHost(host = '') {
   const clean = normalizeHost(host);
+  if (isApprovedNonProductionAlias(clean)) return false;
   return PRODUCTION_HOSTS.has(clean) || /(^|\.)86chaos\.com$/i.test(clean);
 }
 function isRetiredVercelHost(host = '') {
@@ -30,6 +35,7 @@ function isCanonicalVercelPreviewHost(host = '', slug = CANONICAL_VERCEL_PROJECT
 function isTestingPreviewHost(host = '') {
   const clean = normalizeHost(host);
   if (!clean) return false;
+  if (isApprovedNonProductionAlias(clean)) return true;
   if (isProductionHost(clean)) return false;
   if (isRetiredVercelHost(clean)) return false;
   if (/\.vercel\.app$/i.test(clean)) return isCanonicalVercelPreviewHost(clean);
@@ -83,4 +89,4 @@ function assertMutationSafety(options = {}) {
   if (!result.ok && options.throwOnFailure) throw new Error(result.errors.join('\n'));
   return result;
 }
-module.exports = { APPROVED_TEST_PROJECT, PRODUCTION_PROJECT, PRODUCTION_HOSTS, APPROVED_QA_EMAIL_RE, normalizeHost, parseHost, isProductionHost, isRetiredVercelHost, isCanonicalVercelPreviewHost, isTestingPreviewHost, assertMutationSafety, redactSecrets, collectQaEmails };
+module.exports = { APPROVED_TEST_PROJECT, PRODUCTION_PROJECT, PRODUCTION_HOSTS, APPROVED_NON_PRODUCTION_ALIASES, APPROVED_QA_EMAIL_RE, normalizeHost, parseHost, isApprovedNonProductionAlias, isProductionHost, isRetiredVercelHost, isCanonicalVercelPreviewHost, isTestingPreviewHost, assertMutationSafety, redactSecrets, collectQaEmails };

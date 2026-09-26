@@ -1,17 +1,17 @@
 {
-  "version": "17.0.29",
-  "name": "86 Chaos 17.0.29",
-  "build": "17.0.29",
-  "label": "86 Chaos 17.0.29",
-  "releasedAt": "2026-09-23T20:20:26Z",
-  "releaseTitle": "Spanish Release-Gate Locator Fidelity Repair",
+  "version": "17.0.33",
+  "name": "86 Chaos 17.0.33",
+  "build": "17.0.33",
+  "label": "86 Chaos 17.0.33",
+  "releasedAt": "2026-09-26T02:40:00Z",
+  "releaseTitle": "Customer Help Release Identity Parity Repair",
   "notes": [
-    "Repairs the desktop Phase 1 Spanish release-gate assertion to verify the translated visible Preferences tab text instead of its intentionally English accessibility label.",
-    "Preserves strict browser coverage: the test still switches the per-user interface to Spanish and verifies Spanish drawer, schedule, prep, and Today surfaces on desktop and mobile Chromium.",
-    "Leaves production Settings behavior unchanged because the failure snapshot proves the Spanish interface was already rendered correctly.",
-    "Preserves the 17.0.28 browser-safe i18n runtime, 17.0.27 Schedule Builder assignment repair, and 17.0.25 schedule delete/delta repairs."
+    "Preserves the complete 17.0.32 application behavior and hostile-certification assertion repair.",
+    "Makes Customer Help release identity verification compare against the package release instead of a stale hard-coded version.",
+    "Updates current-release maturity and i18n certification assertions for 17.0.33.",
+    "Adds full server-test validation before the candidate can move to testing."
   ],
-  "title": "86 Chaos 17.0.29",
-  "summary": "Release-gate fidelity repair for the desktop Spanish interface check without changing working production localization behavior.",
-  "description": "Corrects the Playwright locator that confused the translated visible label “Preferencias” with the button accessibility name “Open Preferences”, while retaining the full Spanish browser regression coverage."
+  "title": "86 Chaos 17.0.33",
+  "summary": "Repairs stale customer-help and current-release version assertions that blocked the full Release Gate before Playwright.",
+  "description": "Keeps 17.0.32 application behavior unchanged while making release-version certification checks follow the active release identity."
 }

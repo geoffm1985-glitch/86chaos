@@ -28,6 +28,7 @@ test('long names, roles, times, and dense days are retained in the pure model wh
   expect(day.shifts[0].label).toMatch(/Deliberately Long Name/);
   expect(day.shifts[0].role).toBe('Lead Line Cook');
   expect(day.shifts[0].label).not.toContain('Lead Line Cook');
+  expect(day.shifts[0].detailLabel).toContain('Lead Line Cook');
 });
 
 test('printed labels retain identity and convert times to 12-hour AM/PM without role text', () => {
@@ -37,6 +38,7 @@ test('printed labels retain identity and convert times to 12-hour AM/PM without 
   expect(day.shifts).toHaveLength(1);
   expect(day.shifts[0].label).toBe('Zoë 李 · 9:00 AM – 5:30 PM');
   expect(day.shifts[0].label).not.toContain('Lead Cook');
+  expect(day.shifts[0].detailLabel).toBe('Zoë 李 · 9:00 AM – 5:30 PM · Lead Cook');
 });
 
 test('12-hour formatting handles midnight, noon, afternoon, and already-12-hour inputs', () => {

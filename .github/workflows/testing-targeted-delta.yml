@@ -1,0 +1,59 @@
+name: Testing Targeted Delta
+
+on:
+  push:
+    branches:
+      - testing
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: testing-targeted-delta
+  cancel-in-progress: false
+
+jobs:
+  targeted-delta:
+    if: github.ref_name == 'testing'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out exact testing commit
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund --progress=false
+
+      - name: Repair source manifest parity when needed
+        shell: bash
+        run: |
+          node - <<'NODE'
+          const fs = require('fs');
+          const identity = require('./scripts/86chaos-release-gate/source-identity.cjs');
+          const captured = identity.captureSourceIdentity(process.cwd());
+          const manifest = { schemaVersion: 1, sourceHash: captured.sourceHash, files: captured.files };
+          fs.writeFileSync('release-source-manifest.json', JSON.stringify(manifest, null, 2) + '\n');
+          NODE
+          if git diff --quiet -- release-source-manifest.json; then
+            echo "Source manifest already matches tracked source."
+          else
+            git config user.name "86 Chaos Gate Bot"
+            git config user.email "actions@users.noreply.github.com"
+            git add release-source-manifest.json
+            git commit -m "ci: refresh testing source manifest parity"
+            git push origin HEAD:testing
+            echo "Manifest repaired in testing; the follow-up push will run targeted/delta against the exact repaired commit."
+            exit 0
+          fi
+
+      - name: Run testing targeted delta
+        run: npm run test:current-release-targeted

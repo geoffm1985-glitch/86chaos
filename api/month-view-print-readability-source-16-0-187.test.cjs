@@ -28,8 +28,8 @@ test('active Month View uses a readable vector PDF and legacy TabMonth keeps its
   assert.match(pdf, /PAGE_WIDTH = 792/);
   assert.match(pdf, /PAGE_HEIGHT = 612/);
   assert.match(pdf, /MIN_FONT_SIZE = 6\.5/);
-  assert.match(pdf, /candidateSizes = \[8, 7\.5, 7, MIN_FONT_SIZE\]/, 'active PDF prefers readable 8pt text and only shrinks when needed to preserve full shift text');
-  assert.equal((pdf.match(/document\.addPage\(/g) || []).length, 1, 'active Month PDF creates exactly one calendar page');
-  assert.doesNotMatch(pdf, /detailPage\s*=\s*document\.addPage/, 'active Month PDF does not create per-day detail pages');
+  assert.match(pdf, /candidateSizes = \[8, 7\.5, 7, MIN_FONT_SIZE\]/, 'active PDF prefers readable 8pt text and only shrinks when needed');
+  assert.match(pdf, /detailPage\s*=\s*document\.addPage/, 'dense Month PDFs retain all shifts on overflow detail pages instead of clipping or failing');
+  assert.match(pdf, /detailLabel/, 'overflow detail pages retain role-aware full shift text');
   assertReadableOnePagePrintCss(tabMonth, 'legacy TabMonth print view');
 });

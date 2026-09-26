@@ -1,7 +1,7 @@
 'use strict';
 
-const CURRENT_RELEASE_VERSION = '17.0.29';
-const CURRENT_RELEASE_CARRY_FORWARD_NOTE = 'Current release browser coverage for Phase 1 Spanish including the corrected visible-label locator, the emergency Schedule Builder shift-assignment repair, and the browser-safe i18n bootstrap repair. These tests run in failed+new/repair selection until a later release replaces this scope.';
+const CURRENT_RELEASE_VERSION = '17.0.33';
+const CURRENT_RELEASE_CARRY_FORWARD_NOTE = '17.0.33 preserves the complete 17.0.30 unified feature set and adds cross-platform source-manifest parity coverage for Windows and Vercel/Linux certification runners.';
 const CURRENT_RELEASE_REPAIR_SCOPE = [
   {
     specPath: '86chaos-new-implementations/08-phase1-spanish-interface.spec.cjs',

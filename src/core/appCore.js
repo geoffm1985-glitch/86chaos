@@ -73,7 +73,7 @@ const explicitFirebaseProject = normalizeDeployMode(env('REACT_APP_FIREBASE_ACTI
 const explicitDeployMode = normalizeDeployMode(env('REACT_APP_FIREBASE_DEPLOYMENT_MODE', ''));
 const genericFirebaseProjectId = env('REACT_APP_FIREBASE_PROJECT_ID', '').trim();
 const currentHostname = typeof window !== 'undefined' ? String(window.location.hostname || '').toLowerCase() : '';
-const isVercelPreviewHost = currentHostname === 'localhost' || currentHostname === '127.0.0.1' || currentHostname.endsWith('.vercel.app');
+const isVercelPreviewHost = currentHostname === 'testing.86chaos.com' || currentHostname === 'experimental.86chaos.com' || currentHostname === 'localhost' || currentHostname === '127.0.0.1' || currentHostname.endsWith('.vercel.app');
 const isProductionFirebaseHost = isProdFirebaseHost(currentHostname);
 const trustedBrowserProjects = ['chaos-test-d1601', 'cheers-34b8d'];
 const exactGenericBrowserProject = trustedBrowserProjects.includes(genericFirebaseProjectId) ? genericFirebaseProjectId : '';
@@ -425,7 +425,7 @@ export const MASTER_ADMIN_EMAIL = (process.env.REACT_APP_MASTER_ADMIN_EMAIL || '
 export const EVENT_TAGS = ['Standard Day', 'Packers Game', 'Brewers Game', 'Live Music', 'Severe Weather', 'Private Catering', 'Holiday'];
 
 // --- VERSION TRACKING ---
-export const CURRENT_VERSION = '17.0.29';
+export const CURRENT_VERSION = '17.0.33';
 
 // --- Helpers ---
 const usePageVisible = () => {
