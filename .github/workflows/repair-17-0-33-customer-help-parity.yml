@@ -1,0 +1,72 @@
+name: Repair and deploy 17.0.33 customer help parity
+
+on:
+  push:
+    branches:
+      - ci-repair-17-0-33-customer-help-version
+
+permissions:
+  contents: write
+
+concurrency:
+  group: repair-17-0-33-customer-help-version
+  cancel-in-progress: false
+
+jobs:
+  repair-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out clean repair candidate
+        uses: actions/checkout@v4
+        with:
+          ref: repair-17-0-33-customer-help-version
+          fetch-depth: 0
+      - name: Check out repair control
+        uses: actions/checkout@v4
+        with:
+          ref: ci-repair-17-0-33-customer-help-version
+          path: .ci-control
+          fetch-depth: 1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Verify exact 17.0.32 baseline
+        shell: bash
+        run: |
+          test "$(git rev-parse HEAD)" = "1a958202fb5b36484d7e85f006a448cdbac2c6fe"
+          test "$(node -p "require('./package.json').version")" = "17.0.32"
+      - name: Apply 17.0.33 repair
+        shell: bash
+        run: |
+          node .ci-control/.ci/repair-17-0-33.cjs
+          rm -rf .ci-control
+          git add -A
+      - name: Generate exact bundled source manifest
+        shell: bash
+        run: |
+          node -e "const fs=require('fs');const id=require('./scripts/86chaos-release-gate/source-identity.cjs');const c=id.captureSourceIdentity(process.cwd());fs.writeFileSync('release-source-manifest.json',JSON.stringify({schemaVersion:1,sourceHash:c.sourceHash,files:c.files},null,2)+'\n');console.log('manifest',c.sourceHash,'files',c.files.length)"
+          git add release-source-manifest.json
+      - name: Install dependencies
+        run: npm ci --include=dev --no-audit --no-fund --progress=false
+      - name: Re-run exact gate blocker
+        run: node --test api/customer-help-intelligence.test.cjs
+      - name: Run full server tests
+        run: npm run test:server
+      - name: Run current release targeted checks
+        run: npm run test:current-release-targeted
+      - name: Verify source manifest parity
+        run: node -e "const id=require('./scripts/86chaos-release-gate/source-identity.cjs');const a=id.captureSourceIdentity(process.cwd()),b=id.readBundledSourceManifest(process.cwd());if(a.sourceHash!==b.sourceHash)throw new Error(a.sourceHash+' != '+b.sourceHash);console.log(a.sourceHash)"
+      - name: Production build
+        env:
+          CI: "true"
+        run: npm run build
+      - name: Commit validated 17.0.33 candidate and fast-forward testing
+        shell: bash
+        run: |
+          git config user.name "86 Chaos Release Bot"
+          git config user.email "actions@users.noreply.github.com"
+          git commit -m "Release 17.0.33: repair Customer Help release identity parity"
+          git fetch origin testing
+          test "$(git rev-parse origin/testing)" = "1a958202fb5b36484d7e85f006a448cdbac2c6fe"
+          git push origin HEAD:testing
+          echo "Validated 17.0.33 pushed to testing: $(git rev-parse HEAD)"
