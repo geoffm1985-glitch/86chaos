@@ -36,7 +36,8 @@ test('schedule actions state their outcome while stable accessibility hooks rema
   assert.match(source, /Fill Coverage Gaps/);
   assert.match(source, /t\('builder\.reviewPublish'\)/);
   assert.match(i18n, /'builder\.reviewPublish': 'Review & Publish'/);
-  assert.match(source, /Copy Month/);
+  assert.match(source, /t\('builder\.copyMonth'\)/);
+  assert.match(i18n, /'builder\.copyMonth': 'Copy Month'/);
   assert.match(source, /aria-label="Open Copilot Tools"/);
   assert.match(source, /aria-label="Smart Fill"/);
   assert.match(source, /aria-label="Auto-Fill"/);
