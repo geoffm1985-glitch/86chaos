@@ -1,4 +1,4 @@
-name: 86 Chaos Targeted Validation - testing 16.0.244
+name: 86 Chaos Full Play Store Gate - testing
 
 on:
   push:
@@ -9,60 +9,75 @@ permissions:
   contents: read
 
 concurrency:
-  group: 86chaos-testing-targeted-16-0-243
+  group: 86chaos-testing-full-play-store
   cancel-in-progress: true
 
 jobs:
-  targeted-validation:
+  full-play-store-testing:
     runs-on: windows-latest
-    timeout-minutes: 90
+    timeout-minutes: 360
     env:
       APP_URL: https://testing.86chaos.com
       CHAOS_BASE_URL: https://testing.86chaos.com
       PLAYWRIGHT_BASE_URL: https://testing.86chaos.com
-      CHAOS_EXPECTED_GIT_COMMIT: 907de4f2a1529dec31c1f3344b00e15630e51007
-      CHAOS_EXPECTED_VERSION: 16.0.244
+      CHAOS_EXPECTED_BRANCH: testing
+      CHAOS_EXPECTED_VERCEL_PROJECT_SLUG: 86chaos
+      REACT_APP_FIREBASE_PROJECT_ID: chaos-test-d1601
+      REACT_APP_TEST_FIREBASE_PROJECT_ID: chaos-test-d1601
+      REACT_APP_FIREBASE_API_KEY: AIzaSyBIRGMeLnVE3w3i1WZJzurcp-LkeaNZ3hw
+      REACT_APP_TEST_FIREBASE_API_KEY: AIzaSyBIRGMeLnVE3w3i1WZJzurcp-LkeaNZ3hw
+      REACT_APP_FIREBASE_AUTH_DOMAIN: chaos-test-d1601.firebaseapp.com
+      REACT_APP_TEST_FIREBASE_AUTH_DOMAIN: chaos-test-d1601.firebaseapp.com
+      REACT_APP_FIREBASE_APP_ID: 1:534993379994:web:9fefb6e10309223afe7523
+      REACT_APP_TEST_FIREBASE_APP_ID: 1:534993379994:web:9fefb6e10309223afe7523
+      REACT_APP_FIREBASE_STORAGE_BUCKET: chaos-test-d1601.firebasestorage.app
+      REACT_APP_TEST_FIREBASE_STORAGE_BUCKET: chaos-test-d1601.firebasestorage.app
+      REACT_APP_FIREBASE_MESSAGING_SENDER_ID: '534993379994'
+      REACT_APP_TEST_FIREBASE_MESSAGING_SENDER_ID: '534993379994'
+      REACT_APP_TEST_FIREBASE_DATABASE_URL: https://chaos-test-d1601-default-rtdb.firebaseio.com
+      FIREBASE_TEST_SERVICE_ACCOUNT_KEY: ${{ secrets.FIREBASE_TEST_SERVICE_ACCOUNT_KEY }}
+      FIREBASE_SERVICE_ACCOUNT_KEY: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_KEY }}
+      SYSTEM_ADMIN_EMAIL: ${{ secrets.SYSTEM_ADMIN_EMAIL }}
+      SYSTEM_ADMIN_PASSWORD: ${{ secrets.SYSTEM_ADMIN_PASSWORD }}
+      OWNER_EMAIL: ${{ secrets.OWNER_EMAIL }}
+      OWNER_PASSWORD: ${{ secrets.OWNER_PASSWORD }}
+      MANAGER_EMAIL: ${{ secrets.MANAGER_EMAIL }}
+      MANAGER_PASSWORD: ${{ secrets.MANAGER_PASSWORD }}
+      STAFF_EMAIL: ${{ secrets.STAFF_EMAIL }}
+      STAFF_PASSWORD: ${{ secrets.STAFF_PASSWORD }}
+      MASTER_ADMIN_EMAIL: ${{ secrets.MASTER_ADMIN_EMAIL }}
     steps:
-      - name: Check out exact testing branch
+      - name: Check out current testing branch
         uses: actions/checkout@v4
         with:
           ref: testing
           fetch-depth: 0
 
-      - name: Verify exact source identity
+      - name: Capture exact testing identity
         shell: pwsh
         run: |
-          $actual = (git rev-parse HEAD).Trim()
-          if ($actual -ne $env:CHAOS_EXPECTED_GIT_COMMIT) { throw "Expected $env:CHAOS_EXPECTED_GIT_COMMIT but testing is $actual" }
+          $sha = (git rev-parse HEAD).Trim()
+          $branch = (git rev-parse --abbrev-ref HEAD).Trim()
+          if ($branch -ne 'testing') { throw "Expected testing branch, got $branch" }
           $pkg = Get-Content package.json -Raw | ConvertFrom-Json
-          if ([string]$pkg.version -ne $env:CHAOS_EXPECTED_VERSION) { throw "Expected version $env:CHAOS_EXPECTED_VERSION but package is $($pkg.version)" }
+          "CHAOS_EXPECTED_GIT_COMMIT=$sha" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "CHAOS_EXPECTED_VERSION=$($pkg.version)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          Write-Host "Full Play Store attempt 1/20 for this testing build"
+          Write-Host "Testing commit: $sha"
+          Write-Host "Testing version: $($pkg.version)"
 
       - name: Set up Node 24
         uses: actions/setup-node@v4
         with:
           node-version: '24'
 
-      - name: Install locked test dependencies
-        shell: pwsh
-        run: npm ci --include=dev --no-audit --no-fund --progress=false
+      - name: Set up Java 21 for Firebase emulators
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
 
-      - name: Parse full release-gate PowerShell
-        shell: pwsh
-        run: |
-          $tokens = $null
-          $errors = $null
-          [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path '.\RUN_86CHAOS_PLAY_STORE_RELEASE_GATE.ps1'), [ref]$tokens, [ref]$errors) | Out-Null
-          if ($errors.Count -gt 0) { $errors | Format-List | Out-String | Write-Host; throw "Release-gate PowerShell has parse errors." }
-
-      - name: Run 16.0.244 source validator
-        shell: pwsh
-        run: node scripts/validate-16-0-244.js
-
-      - name: Run QA credential bootstrap Node regression
-        shell: pwsh
-        run: node --test api/release-gate-auto-provision-role-env.test.cjs
-
-      - name: Wait for exact deployed identity
+      - name: Wait for exact testing deployment
         shell: pwsh
         run: |
           $matched = $false
@@ -73,7 +88,7 @@ jobs:
               $id = Invoke-RestMethod "$env:APP_URL/build-identity.json?ci=$stamp" -Headers @{ "Cache-Control" = "no-cache"; "Pragma" = "no-cache" }
               $commit = if ($id.gitCommit) { [string]$id.gitCommit } elseif ($id.commit) { [string]$id.commit } else { "" }
               if ([string]$v.version -eq $env:CHAOS_EXPECTED_VERSION -and $commit -eq $env:CHAOS_EXPECTED_GIT_COMMIT) {
-                Write-Host "Exact testing deployment verified: version=$($v.version) commit=$commit"
+                Write-Host "Exact testing deployment READY: version=$($v.version) commit=$commit"
                 $matched = $true
                 break
               }
@@ -85,17 +100,17 @@ jobs:
           }
           if (-not $matched) { throw "Timed out waiting for exact testing deployment." }
 
-      - name: Run targeted Play Store release-gate regressions
+      - name: Run full Play Store release gate - attempt 1 of 20
         shell: pwsh
-        run: .\node_modules\.bin\playwright.cmd test --config=playwright.inventory.config.cjs tests/86chaos-release-gate/39-testing-alias-mutation-safety.spec.cjs tests/86chaos-release-gate/40-validator-line-ending-safety.spec.cjs tests/86chaos-release-gate/41-auto-provision-role-env.spec.cjs --project=chromium
+        run: npm run test:play-store
 
-      - name: Upload targeted validation evidence
+      - name: Upload full Play Store gate artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: 86chaos-testing-16.0.244-targeted-validation
-          if-no-files-found: ignore
+          name: 86chaos-testing-full-play-store-attempt-01
+          if-no-files-found: warn
           retention-days: 30
           path: |
             test-results/**
-            playwright-report/**
+            86chaos-release-gate-SLIM-UPLOAD-ME.zip
