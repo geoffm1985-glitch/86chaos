@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
-  "version": "17.1.24",
-  "sourceHash": "d9513c3add1b274093f340d0a9d541eab194f530e44873f63a3d0f9106f20d1c",
+  "version": "17.1.25",
+  "sourceHash": "29cb90de69783a686c978b70defd7f5b99714ee371dc9984d01c8e02626e68ac",
   "files": [
     {
       "file": ".gitattributes",
@@ -461,7 +461,7 @@
     },
     {
       "file": "api/_version.js",
-      "sha256": "727321057a824040b09797d579149e7f4842fbc3870b1945eed20ee58c23c7ac"
+      "sha256": "b0b97a9750809269fba19e4e4bdb09a47608da974e06c63f88d86aa1f0e094bc"
     },
     {
       "file": "api/account-deletion-request.js",
@@ -597,7 +597,7 @@
     },
     {
       "file": "api/customer-help-intelligence.test.cjs",
-      "sha256": "f83b9efb282dbd8abdd31e64ef76c2aa29592b8fe5a73d01290dc9ca95684c9b"
+      "sha256": "8c7bcbadecd602b49de2d0985966a0bafac3c9f8f94bc1965e0a27f6d67edc7d"
     },
     {
       "file": "api/daily-close.js",
@@ -1669,11 +1669,11 @@
     },
     {
       "file": "package-lock.json",
-      "sha256": "2a0e0869a6089ec283fd5060a308e624ed766c0ae5053edcb48bbf7d19a7be69"
+      "sha256": "59c475d8b6a9dcc8c4941a1f4b7733d1b7b9d0d64d79dc6327cbc2301db2d07f"
     },
     {
       "file": "package.json",
-      "sha256": "bfd6980f2aba7e2286d9be2becf71b7d42d9c3fc688a2a9986acf12ef2bf275c"
+      "sha256": "64df5d68b445d12ab231cae9da92fcef4c6331375ce1298dfc74b69b0d1d9ece"
     },
     {
       "file": "playwright.config.js",
@@ -1901,7 +1901,7 @@
     },
     {
       "file": "public/version.json",
-      "sha256": "4beb9f2f62ed6928bb2228dc663b8ef5d3b8fc8172351d49a094b8c27f4d3a27"
+      "sha256": "59bac888019a9a5bd7f3f5f670d07f54f8361d629aabdb167eb031db3af56335"
     },
     {
       "file": "public/wisco.png",

@@ -1,18 +1,18 @@
 {
-  "version": "17.1.24",
-  "name": "86 Chaos 17.1.24",
-  "build": "17.1.24",
-  "label": "86 Chaos 17.1.24",
-  "releasedAt": "2026-09-26T03:48:00Z",
-  "releaseTitle": "Cross-Platform TypeScript Source Identity Repair",
+  "version": "17.1.25",
+  "name": "86 Chaos 17.1.25",
+  "build": "17.1.25",
+  "label": "86 Chaos 17.1.25",
+  "releasedAt": "2026-09-26T06:55:00Z",
+  "releaseTitle": "Localized Schedule Gate Fidelity Repair",
   "notes": [
     "Adds .ts and .tsx to canonical text normalization for release source hashing.",
     "Adds regression coverage proving LF and CRLF TypeScript source produce the same certification identity.",
     "Preserves dirty-tree, exact-commit, branch, deployment, and Firebase safeguards."
   ],
-  "title": "86 Chaos 17.1.24",
-  "summary": "Normalizes TypeScript source line endings so exact Windows certification checkouts match the deployed Vercel source manifest.",
-  "description": "Release-gate source identity portability repair. Application behavior is unchanged.",
+  "title": "86 Chaos 17.1.25",
+  "summary": "Repairs stale pre-Playwright source assertions so localized Schedule Builder actions are validated through translation keys and the current Help corpus version.",
+  "description": "Release-gate test-fidelity repair. Application behavior is unchanged.",
   "highlights": [
     "Version 17.1.24 repairs the pre-Playwright manifest mismatch.",
     "No application behavior changed.",
