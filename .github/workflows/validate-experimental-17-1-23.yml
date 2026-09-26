@@ -109,3 +109,5 @@ jobs:
           path: |
             test-results/**
             86chaos-release-gate-SLIM-UPLOAD-ME.zip
+
+# full-gate trigger
