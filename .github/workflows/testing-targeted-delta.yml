@@ -23,11 +23,12 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 24
-      - name: Generate Firebase Admin 14.5 lockfile
+      - name: Generate exact 17.0.36 Firebase Admin 14.5 lockfile
         shell: bash
         run: |
-          npm install --package-lock-only --ignore-scripts --no-audit --no-fund --progress=false --save-exact firebase-admin@14.5.0
-          echo "LOCK_B64_BEGIN"
-          gzip -9 -c package-lock.json | base64 -w 0
-          echo
-          echo "LOCK_B64_END"
+          npm pkg set version=17.0.36
+          npm pkg set dependencies.firebase-admin=14.5.0
+          npm install --package-lock-only --ignore-scripts --no-audit --no-fund --progress=false
+          echo "LOCK_JSON_BEGIN"
+          cat package-lock.json
+          echo "LOCK_JSON_END"
