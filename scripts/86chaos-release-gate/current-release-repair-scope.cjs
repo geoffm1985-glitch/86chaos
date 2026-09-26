@@ -1,7 +1,7 @@
 'use strict';
 
-const CURRENT_RELEASE_VERSION = '17.1.23';
-const CURRENT_RELEASE_CARRY_FORWARD_NOTE = '17.1.23 preserves application behavior while repairing Schedule copy source-test fidelity for the existing i18n-backed Review & Publish action.';
+const CURRENT_RELEASE_VERSION = '17.1.24';
+const CURRENT_RELEASE_CARRY_FORWARD_NOTE = '17.1.24 preserves application behavior while repairing cross-platform TypeScript source identity normalization for full certification.';
 const CURRENT_RELEASE_REPAIR_SCOPE = [
   {
     specPath: '86chaos-new-implementations/31-footer-version-copyright.spec.cjs',
