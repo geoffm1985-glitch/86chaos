@@ -1,34 +1,59 @@
-name: Prepare Firebase Admin 14 Lock
+name: Testing Targeted Delta
 
 on:
   push:
     branches:
       - testing
+  workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
-  group: prepare-firebase-admin-lock
-  cancel-in-progress: true
+  group: testing-targeted-delta
+  cancel-in-progress: false
 
 jobs:
-  prepare-lock:
+  targeted-delta:
+    if: github.ref_name == 'testing'
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 30
     steps:
-      - name: Check out testing
+      - name: Check out exact testing commit
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
       - name: Set up Node 24
         uses: actions/setup-node@v4
         with:
           node-version: 24
-      - name: Generate exact 17.0.36 Firebase Admin 14.5 lockfile
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund --progress=false
+
+      - name: Repair source manifest parity when needed
         shell: bash
         run: |
-          npm pkg set version=17.0.36
-          npm pkg set dependencies.firebase-admin=14.5.0
-          npm install --package-lock-only --ignore-scripts --no-audit --no-fund --progress=false
-          echo "LOCK_JSON_BEGIN"
-          cat package-lock.json
-          echo "LOCK_JSON_END"
+          node - <<'NODE'
+          const fs = require('fs');
+          const identity = require('./scripts/86chaos-release-gate/source-identity.cjs');
+          const captured = identity.captureSourceIdentity(process.cwd());
+          const manifest = { schemaVersion: 1, sourceHash: captured.sourceHash, files: captured.files };
+          fs.writeFileSync('release-source-manifest.json', JSON.stringify(manifest, null, 2) + '\n');
+          NODE
+          if git diff --quiet -- release-source-manifest.json; then
+            echo "Source manifest already matches tracked source."
+          else
+            git config user.name "86 Chaos Gate Bot"
+            git config user.email "actions@users.noreply.github.com"
+            git add release-source-manifest.json
+            git commit -m "ci: refresh 17.0.36 testing source manifest parity"
+            git push origin HEAD:testing
+            echo "Manifest repaired; the follow-up testing push will run targeted/delta against the exact repaired commit."
+            exit 0
+          fi
+
+      - name: Run 17.0.36 targeted delta only
+        run: npm run test:current-release-targeted

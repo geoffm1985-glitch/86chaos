@@ -10,7 +10,7 @@
   account JSON, or set GOOGLE_APPLICATION_CREDENTIALS to a production service
   account file path.
 */
-const admin = require('firebase-admin');
+const admin = require('../api/_firebase-admin-compat');
 
 const POLICY = Object.freeze({
   policySource: '86 Chaos Legal Document Packet - Security, Backup, and Data Retention Policy section 6.4',

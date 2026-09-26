@@ -1,4 +1,4 @@
-const admin = require('firebase-admin');
+const admin = require('./_firebase-admin-compat');
 const crypto = require('crypto');
 const fs = require('fs');
 

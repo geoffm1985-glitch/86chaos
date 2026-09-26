@@ -24,9 +24,9 @@ module.exports = async function handler(req, res) {
       status: 'ok',
       lastAttemptedAt: started.toISOString(),
       lastRunStartedAt: started.toISOString(),
-      lastRunFinishedAt: require('firebase-admin').firestore.FieldValue.serverTimestamp(),
-      lastRunAt: require('firebase-admin').firestore.FieldValue.serverTimestamp(),
-      lastSuccessAt: require('firebase-admin').firestore.FieldValue.serverTimestamp(),
+      lastRunFinishedAt: require('./_firebase-admin-compat').firestore.FieldValue.serverTimestamp(),
+      lastRunAt: require('./_firebase-admin-compat').firestore.FieldValue.serverTimestamp(),
+      lastSuccessAt: require('./_firebase-admin-compat').firestore.FieldValue.serverTimestamp(),
       workDurationMs: workFinished.getTime() - started.getTime(),
       durationMeasurement: 'work-before-final-status-commit',
       version: APP_VERSION,
@@ -37,7 +37,7 @@ module.exports = async function handler(req, res) {
     const historyId = `weekly_${started.getTime()}_${Math.random().toString(36).slice(2,8)}`;
     const batch = db.batch();
     batch.set(db.collection('system').doc('weeklyMaintenance'), payload, { merge: true });
-    batch.set(db.collection('weeklyMaintenanceRuns').doc(historyId), { ...payload, id: historyId, createdAt: require('firebase-admin').firestore.FieldValue.serverTimestamp() }, { merge: true });
+    batch.set(db.collection('weeklyMaintenanceRuns').doc(historyId), { ...payload, id: historyId, createdAt: require('./_firebase-admin-compat').firestore.FieldValue.serverTimestamp() }, { merge: true });
     const commitStarted = Date.now();
     await batch.commit();
     const committedAt = new Date();

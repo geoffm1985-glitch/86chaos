@@ -2,7 +2,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
-const admin = require('firebase-admin');
+const admin = require('./_firebase-admin-compat');
 const backupRoute = require('./firestore-backup.js');
 const { ORDINARY_BACKUP_EXCLUSIONS } = require('./_pos-bridge-boundaries');
 

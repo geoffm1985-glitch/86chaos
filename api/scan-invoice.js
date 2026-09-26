@@ -285,7 +285,7 @@ function normalizeInvoicePayload(parsed) {
   };
 }
 
-const admin = require('firebase-admin');
+const admin = require('./_firebase-admin-compat');
 const { getAdminAppForRequest, verifyRequestToken } = require('./_firebase-project-admin');
 const {
   getIdempotencyKey,

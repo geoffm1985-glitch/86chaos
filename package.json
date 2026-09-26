@@ -1,6 +1,6 @@
 {
   "name": "86chaos",
-  "version": "17.0.35",
+  "version": "17.0.36",
   "private": true,
   "dependencies": {
     "@fontsource/noto-sans": "^5.3.0",
@@ -9,7 +9,7 @@
     "ajv": "^8.20.0",
     "ajv-keywords": "^5.1.0",
     "firebase": "^10.8.1",
-    "firebase-admin": "^12.1.1",
+    "firebase-admin": "14.5.0",
     "jose": "6.2.12",
     "leaflet": "^1.9.4",
     "lucide-react": "^0.344.0",
@@ -30,13 +30,13 @@
     "deploy:check": "npm run test:ci && NODE_OPTIONS=--max-old-space-size=4096 GENERATE_SOURCEMAP=false npm run build",
     "validate:audit-repair": "node scripts/validate-repair.js",
     "rules:check": "node scripts/validate-rules.js",
-    "test:source": "node scripts/validate-17-0-35.js",
+    "test:source": "node scripts/validate-17-0-36.js",
     "validate:16.0.232": "node scripts/validate-16-0-232.js",
     "validate:16.0.233": "node scripts/validate-16-0-233.js",
     "validate:16.0.234": "node scripts/validate-16-0-234.js",
     "test:shift4": "node --test api/shift4-auth-16-0-234.test.cjs api/shift4-client-16-0-234.test.cjs api/shift4-concurrency-16-0-234.test.cjs api/shift4-normalization-16-0-234.test.cjs api/shift4-review-export-16-0-234.test.cjs api/shift4-storage-16-0-234.test.cjs api/shift4-routes-16-0-234.test.cjs api/shift4-sync-16-0-234.test.cjs api/release-universe-16-0-234.test.cjs && playwright test --config=playwright.play-store-release.config.cjs tests/86chaos-new-implementations/01-shift4-connection.spec.cjs tests/86chaos-new-implementations/02-shift4-import-review-export.spec.cjs tests/86chaos-new-implementations/03-shift4-security-boundary.spec.cjs --project=chromium --project=mobile-chromium",
     "test:schedule-pdf": "react-scripts test --watchAll=false --runInBand src/core/schedulePrintModel.test.js src/core/schedulePdf.test.js src/core/schedulePdfDelivery.test.js src/core/schedulePublishProgress.test.js && playwright test --config=playwright.play-store-release.config.cjs tests/86chaos-new-implementations/04-schedule-pdf-print.spec.cjs tests/86chaos-new-implementations/05-mobile-schedule-pdf-delivery.spec.cjs --project=chromium --project=mobile-chromium",
-    "test:new-implementations": "npm run validate:17.0.35 && npm run test:merged-release && npm run test:shift4 && npm run test:schedule-pdf && npm run test:pos-bridge && npm run test:schedule-publish",
+    "test:new-implementations": "npm run validate:17.0.36 && npm run test:merged-release && npm run test:shift4 && npm run test:schedule-pdf && npm run test:pos-bridge && npm run test:schedule-publish",
     "syntax:api": "node scripts/check-api-syntax.js",
     "test:unit": "npm run test:client && npm run test:server",
     "test:rules": "firebase emulators:exec --only firestore,storage \"node scripts/run-rules-tests.js\"",
@@ -85,7 +85,7 @@
     "test:hostile:contracts": "node --test api/source-evidence-16-0-228.test.cjs api/api-contract-analyzer-17-0-0.test.cjs api/firestore-emulator-trace-17-0-3.test.cjs api/schedule-publish-17-0-0.test.cjs api/safe-write-tenant-17-0-0.test.cjs api/safe-write-hostile-17-0-1.test.cjs api/canonical-authority-17-0-0.test.cjs api/pos-bridge-mapping-pagination-17-0-0.test.cjs api/repair-17-0-5.test.cjs api/release-gate-execution-17-0-5.test.cjs api/vercel-build-identity-17-0-6.test.cjs api/vercel-build-identity-17-0-7.test.cjs api/vercel-build-identity-17-0-8.test.cjs api/vercel-protected-config-17-0-9.test.cjs api/request-off-runtime-safety-17-0-9.test.cjs api/repository-safety-17-0-10.test.cjs api/release-gate-expected-version-17-0-19.test.cjs",
     "test:hostile:mutations": "node scripts/86chaos-release-gate/run-mutations.cjs",
     "test:schedule-publish": "npm run test:schedule-publish:core && npm run test:mobile-voice-layout",
-    "test:release:fast": "npm run node:check && npm run lock:integrity && npm run validate:17.0.35 && npm run syntax:api && npm run test:hostile:contracts && npm run test:schedule-publish",
+    "test:release:fast": "npm run node:check && npm run lock:integrity && npm run validate:17.0.36 && npm run syntax:api && npm run test:hostile:contracts && npm run test:schedule-publish",
     "test:schedule-publish:emulator": "node scripts/run-schedule-publish-emulator-tests.cjs",
     "test:release:firebase": "npm run test:rules && npm run test:pos-bridge:emulator && npm run test:schedule-publish:emulator",
     "test:release:recovery": "node scripts/run-recovery-emulator-tests.cjs",
@@ -133,7 +133,7 @@
     "validate:17.0.25": "node scripts/validate-17-0-25.js",
     "test:schedule-shift-delete": "node --test api/schedule-shift-delete-17-0-25.test.cjs",
     "test:delta-clean-baseline": "node --test api/release-gate-delta-clean-baseline-17-0-25.test.cjs",
-    "test:current-release-targeted": "node --test api/device-local-reminders-17-0-35.test.cjs api/restaurant-readiness-17-0-34.test.cjs api/source-manifest-parity-17-0-31.test.cjs && node scripts/validate-17-0-35.js",
+    "test:current-release-targeted": "node --test api/firebase-admin-url-api-17-0-36.test.cjs api/device-local-reminders-17-0-35.test.cjs api/restaurant-readiness-17-0-34.test.cjs api/source-manifest-parity-17-0-31.test.cjs && node scripts/validate-17-0-36.js",
     "test:repair:17.0.25": "npm run test:current-release-targeted",
     "validate:17.0.26": "node scripts/validate-17-0-26.js",
     "test:i18n-phase1": "node --test api/i18n-phase1-17-0-26.test.cjs",
@@ -166,7 +166,8 @@
     "validate:17.0.33": "node scripts/validate-17-0-33.js",
     "test:repair:17.0.33": "npm run test:current-release-targeted",
     "validate:17.0.34": "node scripts/validate-17-0-34.js",
-    "validate:17.0.35": "node scripts/validate-17-0-35.js"
+    "validate:17.0.35": "node scripts/validate-17-0-35.js",
+    "validate:17.0.36": "node scripts/validate-17-0-36.js"
   },
   "browserslist": {
     "production": [

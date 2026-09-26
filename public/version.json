@@ -1,17 +1,17 @@
 {
-  "version": "17.0.35",
-  "name": "86 Chaos 17.0.35",
-  "build": "17.0.35",
-  "label": "86 Chaos 17.0.35",
-  "releasedAt": "2026-09-26T12:30:00Z",
-  "releaseTitle": "Device-Local Reminder and Native Share Foundation",
+  "version": "17.0.36",
+  "name": "86 Chaos 17.0.36",
+  "build": "17.0.36",
+  "label": "86 Chaos 17.0.36",
+  "releasedAt": "2026-09-26T15:30:00Z",
+  "releaseTitle": "Firebase Admin WHATWG URL Modernization",
   "notes": [
-    "Adds device-local reminder storage and a native LocalNotifications bridge contract.",
-    "Device-local reminder and share paths use zero Firebase persistence.",
-    "Removes teammate Firebase reminder sharing while preserving cloud self-reminders.",
-    "Adds explicit Release Gate coverage for the new reminder behavior."
+    "Upgrades Firebase Admin from 12.7.0 to 14.5.0, which replaces deprecated url.parse() usage with the WHATWG URL API.",
+    "Adds an internal modular Firebase Admin compatibility facade so existing server routes keep their current Auth, Firestore, App Check, Messaging, Storage, and Realtime Database behavior.",
+    "Adds targeted regression coverage that rejects legacy firebase-admin namespace imports and verifies the installed Admin SDK no longer contains url.parse() in its request/URL validators.",
+    "Preserves the 17.0.35 device-local reminder foundation and the 17.0.34 Restaurant Readiness Command Center."
   ],
-  "title": "86 Chaos 17.0.35",
-  "summary": "Device-local reminders and zero-server sharing.",
-  "description": "Major reminder subsystem update with native bridge support and web fallback."
+  "title": "86 Chaos 17.0.36",
+  "summary": "Removes the legacy Firebase Admin url.parse() path on Node 24 while preserving existing server behavior.",
+  "description": "Upgrades Firebase Admin to 14.5.0 and routes legacy 86 Chaos server callers through a modular compatibility facade so Node 24 no longer emits DEP0169 from Firebase Admin."
 }

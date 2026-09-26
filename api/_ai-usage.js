@@ -1,6 +1,6 @@
 const crypto = require('crypto');
 const { PDFDocument } = require('pdf-lib');
-const admin = require('firebase-admin');
+const admin = require('./_firebase-admin-compat');
 const { norm, masterEmails, readWorkspaceMember, userHasWorkspace, profileForWorkspace } = require('./_chaos-admin');
 const { assertPlanAllowsScan, isInternalTestingUser } = require('./_plan-access');
 
