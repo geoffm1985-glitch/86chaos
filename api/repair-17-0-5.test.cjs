@@ -69,3 +69,12 @@ test('17.0.5 CRLF, tracked generated junk and generated ZIPs cannot change sourc
  fs.unlinkSync(path.join(dir,'src/app.js'));assert.throws(()=>identity.captureSourceIdentity(dir),/ENOENT/);
  }finally{fs.rmSync(dir,{recursive:true,force:true});}
 });
+
+test('source identity normalizes TypeScript line endings across Linux and Windows checkouts',()=>{
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'identity-ts-eol-'));try{
+  fs.writeFileSync(path.join(dir,'package.json'),'{"version":"17.1.24"}\n');fs.mkdirSync(path.join(dir,'functions'),{recursive:true});
+  fs.writeFileSync(path.join(dir,'functions','index.ts'),'export const value = 1;\n');const lf=identity.captureSourceIdentity(dir);
+  fs.writeFileSync(path.join(dir,'functions','index.ts'),'export const value = 1;\r\n');const crlf=identity.captureSourceIdentity(dir);
+  assert.equal(crlf.sourceHash,lf.sourceHash);
+ }finally{fs.rmSync(dir,{recursive:true,force:true});}
+});
