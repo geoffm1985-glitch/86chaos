@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
   "version": "17.1.24",
-  "sourceHash": "70f861b74356558ce1393eea15e76419076ecb4acf639f7c923db255c5642402",
+  "sourceHash": "d9513c3add1b274093f340d0a9d541eab194f530e44873f63a3d0f9106f20d1c",
   "files": [
     {
       "file": ".gitattributes",
@@ -569,7 +569,7 @@
     },
     {
       "file": "api/copy-clarity-16-0-232.test.cjs",
-      "sha256": "9c0368913d7b15e38ed87e161dd94fa84169b7ba5e592f049b44ab2a0fd26b2b"
+      "sha256": "993b042ae58ea73441b17c0697d99e6c74fab6b9a4d14302707bf25624e85c5d"
     },
     {
       "file": "api/current-blockers-release-gate-source-16-0-183.test.cjs",
