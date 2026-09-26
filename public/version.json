@@ -1,17 +1,17 @@
 {
-  "version": "17.0.34",
-  "name": "86 Chaos 17.0.34",
-  "build": "17.0.34",
-  "label": "86 Chaos 17.0.34",
-  "releasedAt": "2026-09-26T08:35:00Z",
-  "releaseTitle": "Restaurant Readiness Command Center",
+  "version": "17.0.35",
+  "name": "86 Chaos 17.0.35",
+  "build": "17.0.35",
+  "label": "86 Chaos 17.0.35",
+  "releasedAt": "2026-09-26T12:30:00Z",
+  "releaseTitle": "Device-Local Reminder and Native Share Foundation",
   "notes": [
-    "Adds a deterministic Restaurant Readiness Command Center to Manager Brief.",
-    "Scores only categories backed by currently loaded data and marks missing evidence as Needs data instead of silently showing green.",
-    "Connects Inventory, Prep, Staffing, Maintenance, Food Safety, Financial, Operations, and System readiness to direct review actions.",
-    "Adds dedicated 17.0.34 logic, release-validator, and Play Store browser coverage including mobile/desktop parity."
+    "Adds device-local reminder storage and a native LocalNotifications bridge contract.",
+    "Device-local reminder and share paths use zero Firebase persistence.",
+    "Removes teammate Firebase reminder sharing while preserving cloud self-reminders.",
+    "Adds explicit Release Gate coverage for the new reminder behavior."
   ],
-  "title": "86 Chaos 17.0.34",
-  "summary": "Turns Manager Brief into an explainable eight-area restaurant readiness dashboard with direct review actions and explicit data-coverage truth.",
-  "description": "Daily Briefing and Competitive Review implementation: deterministic, review-first readiness intelligence across core restaurant operations. No automatic restaurant-data changes are made."
+  "title": "86 Chaos 17.0.35",
+  "summary": "Device-local reminders and zero-server sharing.",
+  "description": "Major reminder subsystem update with native bridge support and web fallback."
 }

@@ -1,0 +1,12 @@
+const KEY='86chaos:deviceLocalReminders:v1';
+const plugin=()=>typeof window!=='undefined'?window.Capacitor?.Plugins?.LocalNotifications:null;
+export const hasNativeLocalReminderBridge=()=>Boolean(plugin()?.schedule);
+export const readDeviceLocalReminders=()=>{try{const x=JSON.parse(localStorage.getItem(KEY)||'[]');return Array.isArray(x)?x:[]}catch(_){return[]}};
+export const writeDeviceLocalReminders=rows=>{localStorage.setItem(KEY,JSON.stringify(rows||[]));return rows||[]};
+export const requestDeviceReminderPermission=async()=>{const p=plugin();if(p?.requestPermissions){const r=await p.requestPermissions();if(!/granted|prompt-with-rationale/i.test(String(r?.display||r?.receive||'')))throw new Error('Notification permission is required for device reminders.');return r}if(typeof Notification!=='undefined'){const s=Notification.permission==='default'?await Notification.requestPermission():Notification.permission;if(s!=='granted')throw new Error('Notification permission is required for browser reminder alerts.');return s}return'unsupported'};
+const nid=id=>{let n=0;for(const c of String(id||''))n=((n*31)+c.charCodeAt(0))>>>0;return Math.max(1,n%2147483000)};
+export const scheduleDeviceLocalReminder=async r=>{const at=new Date(r?.scheduledAt||0);if(!r?.id||Number.isNaN(at.getTime()))throw new Error('A valid device reminder time is required.');await requestDeviceReminderPermission();const p=plugin();if(p?.schedule){await p.schedule({notifications:[{id:nid(r.id),title:'86 Chaos Reminder',body:String(r.title||'Reminder'),schedule:{at},extra:{chaosLocalReminderId:r.id}}]});return{mode:'native',closedApp:true}}return{mode:'web-fallback',closedApp:false}};
+export const cancelDeviceLocalReminder=async id=>{const p=plugin();if(p?.cancel)await p.cancel({notifications:[{id:nid(id)}]})};
+export const shareReminderWithoutServer=async r=>{const text=[r?.title,r?.scheduledAt?new Date(r.scheduledAt).toLocaleString():'',r?.notes].filter(Boolean).join('\n');if(navigator?.share){await navigator.share({title:'86 Chaos Reminder',text});return'native-share'}if(navigator?.clipboard?.writeText){await navigator.clipboard.writeText(text);return'clipboard'}throw new Error('Sharing is not available on this device.')};
+export const upsertDeviceLocalReminder=r=>{const next=[...readDeviceLocalReminders().filter(x=>x.id!==r.id),r].sort((a,b)=>String(a.scheduledAt).localeCompare(String(b.scheduledAt)));return writeDeviceLocalReminders(next)};
+export const removeDeviceLocalReminder=id=>writeDeviceLocalReminders(readDeviceLocalReminders().filter(r=>r.id!==id));
