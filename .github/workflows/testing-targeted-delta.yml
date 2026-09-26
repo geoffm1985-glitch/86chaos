@@ -49,11 +49,11 @@ jobs:
             git config user.name "86 Chaos Gate Bot"
             git config user.email "actions@users.noreply.github.com"
             git add release-source-manifest.json
-            git commit -m "ci: refresh 17.0.36 testing source manifest parity"
+            git commit -m "ci: refresh 17.0.37 testing source manifest parity"
             git push origin HEAD:testing
             echo "Manifest repaired; the follow-up testing push will run targeted/delta against the exact repaired commit."
             exit 0
           fi
 
-      - name: Run 17.0.36 targeted delta only
+      - name: Run 17.0.37 targeted delta only
         run: npm run test:current-release-targeted

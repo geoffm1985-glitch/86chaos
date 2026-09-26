@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "release": "17.0.36",
+  "release": "17.0.37",
   "defects": [
     {
       "defectId": "RG-API-WRAPPER-FIDELITY",
@@ -499,6 +499,19 @@
       ],
       "fidelity": "ACTUAL DEPENDENCY / SOURCE ASSERTION",
       "fixedVersion": "17.0.36",
+      "mandatoryGroup": "hostile-contracts"
+    },
+    {
+      "defectId": "RG-FIREBASE-ADMIN-JOSE-CJS-17037",
+      "origin": "17.0.36 Vercel Personal Reminder runtime 500 after Firebase Admin 14.5.0 upgrade",
+      "affectedInvariant": "Firebase Admin server routes must load in the Vercel CommonJS/serverless runtime; My Reminders must reach handler-level auth/method checks instead of crashing during module initialization.",
+      "reproducer": "firebase-admin-runtime-17-0-37.test.cjs",
+      "permanentTestIds": [
+        "jwks-rsa resolves the JOSE 4.15.9 compatibility override",
+        "deployed Personal Reminder APIs return handler-level 405 responses instead of runtime 500"
+      ],
+      "fidelity": "ACTUAL DEPENDENCY LOCK / DEPLOYED SERVERLESS RUNTIME PROBE",
+      "fixedVersion": "17.0.37",
       "mandatoryGroup": "hostile-contracts"
     }
   ]

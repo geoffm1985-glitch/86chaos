@@ -1,17 +1,17 @@
 {
-  "version": "17.0.36",
-  "name": "86 Chaos 17.0.36",
-  "build": "17.0.36",
-  "label": "86 Chaos 17.0.36",
-  "releasedAt": "2026-09-26T15:30:00Z",
-  "releaseTitle": "Firebase Admin WHATWG URL Modernization",
+  "version": "17.0.37",
+  "name": "86 Chaos 17.0.37",
+  "build": "17.0.37",
+  "label": "86 Chaos 17.0.37",
+  "releasedAt": "2026-09-26T17:35:00Z",
+  "releaseTitle": "Emergency Reminder Runtime Compatibility Repair",
   "notes": [
-    "Upgrades Firebase Admin from 12.7.0 to 14.5.0, which replaces deprecated url.parse() usage with the WHATWG URL API.",
-    "Adds an internal modular Firebase Admin compatibility facade so existing server routes keep their current Auth, Firestore, App Check, Messaging, Storage, and Realtime Database behavior.",
-    "Adds targeted regression coverage that rejects legacy firebase-admin namespace imports and verifies the installed Admin SDK no longer contains url.parse() in its request/URL validators.",
-    "Preserves the 17.0.35 device-local reminder foundation and the 17.0.34 Restaurant Readiness Command Center."
+    "Repairs the Vercel serverless crash that prevented My Reminders from loading cloud reminders after the Firebase Admin 14.5.0 upgrade.",
+    "Keeps Firebase Admin 14.5.0 and its WHATWG URL modernization while pinning jwks-rsa to a compatible JOSE 4.15.9 CommonJS runtime through an npm override.",
+    "Adds targeted dependency-lock regression coverage and a deployed Release Gate/Play Store probe for the Personal Reminder API module-load path.",
+    "Preserves device-local reminders and all 17.0.36 Firebase Admin compatibility behavior."
   ],
-  "title": "86 Chaos 17.0.36",
-  "summary": "Removes the legacy Firebase Admin url.parse() path on Node 24 while preserving existing server behavior.",
-  "description": "Upgrades Firebase Admin to 14.5.0 and routes legacy 86 Chaos server callers through a modular compatibility facade so Node 24 no longer emits DEP0169 from Firebase Admin."
+  "title": "86 Chaos 17.0.37",
+  "summary": "Restores My Reminders cloud loading without reintroducing the legacy url.parse() path.",
+  "description": "Emergency compatibility repair for the Firebase Admin 14.x jwks-rsa/JOSE CommonJS serverless collision observed on Vercel."
 }
