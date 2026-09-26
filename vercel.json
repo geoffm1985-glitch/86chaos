@@ -108,9 +108,11 @@
   },
   "git": {
     "deploymentEnabled": {
-      "ci-*": false,
-      "repair-*": false,
-      "experimental-*": false
+      "*": false,
+      "main": true,
+      "testing": true,
+      "experimental": true
     }
-  }
+  },
+  "$schema": "https://openapi.vercel.sh/vercel.json"
 }
