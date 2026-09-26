@@ -1,0 +1,32 @@
+name: Regenerate experimental 17.1.23 source manifest
+on:
+  push:
+    branches:
+      - ci-manifest-experimental-17-1-23
+permissions:
+  contents: write
+jobs:
+  manifest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: experimental
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Regenerate manifest and commit to experimental
+        shell: bash
+        run: |
+          node - <<'NODE'
+          const fs=require('fs');
+          const {captureSourceIdentity}=require('./scripts/86chaos-release-gate/source-identity.cjs');
+          const x=captureSourceIdentity(process.cwd());
+          fs.writeFileSync('release-source-manifest.json', JSON.stringify({schemaVersion:x.schemaVersion,version:x.version,sourceHash:x.sourceHash,files:x.files},null,2)+'\n');
+          NODE
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add release-source-manifest.json
+          git commit -m "release: regenerate 17.1.23 source manifest"
+          git push origin HEAD:experimental
