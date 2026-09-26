@@ -1,7 +1,7 @@
 'use strict';
 
-const CURRENT_RELEASE_VERSION = '17.0.32';
-const CURRENT_RELEASE_CARRY_FORWARD_NOTE = '17.0.32 preserves the complete 17.0.30 unified feature set and adds cross-platform source-manifest parity coverage for Windows and Vercel/Linux certification runners.';
+const CURRENT_RELEASE_VERSION = '17.0.33';
+const CURRENT_RELEASE_CARRY_FORWARD_NOTE = '17.0.33 preserves the complete 17.0.30 unified feature set and adds cross-platform source-manifest parity coverage for Windows and Vercel/Linux certification runners.';
 const CURRENT_RELEASE_REPAIR_SCOPE = [
   {
     specPath: '86chaos-new-implementations/08-phase1-spanish-interface.spec.cjs',

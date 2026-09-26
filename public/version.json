@@ -1,17 +1,17 @@
 {
-  "version": "17.0.32",
-  "name": "86 Chaos 17.0.32",
-  "build": "17.0.32",
-  "label": "86 Chaos 17.0.32",
-  "releasedAt": "2026-09-25T20:45:00Z",
-  "releaseTitle": "Hostile Certification Assertion Parity Repair",
+  "version": "17.0.33",
+  "name": "86 Chaos 17.0.33",
+  "build": "17.0.33",
+  "label": "86 Chaos 17.0.33",
+  "releasedAt": "2026-09-26T02:40:00Z",
+  "releaseTitle": "Customer Help Release Identity Parity Repair",
   "notes": [
-    "Preserves the complete 17.0.31 application behavior and cross-platform source-manifest repair.",
-    "Repairs stale hostile-certification assertions for translated Schedule and Request Off controls.",
-    "Updates Clear Month assertions for the authenticated optimized server cleanup path and current remaining-count safety contract.",
-    "Keeps native-backup IAM diagnostics verified against the current errorCategory implementation."
+    "Preserves the complete 17.0.32 application behavior and hostile-certification assertion repair.",
+    "Makes Customer Help release identity verification compare against the package release instead of a stale hard-coded version.",
+    "Updates current-release maturity and i18n certification assertions for 17.0.33.",
+    "Adds full server-test validation before the candidate can move to testing."
   ],
-  "title": "86 Chaos 17.0.32",
-  "summary": "Keeps the unified 17.x feature line while repairing stale Release Gate assertions against current translated and optimized implementations.",
-  "description": "Updates certification assertions to validate current behavior instead of obsolete literal UI copy or pre-optimization source shapes."
+  "title": "86 Chaos 17.0.33",
+  "summary": "Repairs stale customer-help and current-release version assertions that blocked the full Release Gate before Playwright.",
+  "description": "Keeps 17.0.32 application behavior unchanged while making release-version certification checks follow the active release identity."
 }
