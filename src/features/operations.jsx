@@ -17,6 +17,7 @@ import { prepareScannerUploadFile, isPdfFile } from '../core/fileCompression';
 import { createAiScanIdempotencyKey, resolveClientScanPageCount, normalizeAiUsage, aiPageLimitMessage } from '../core/aiScanUsage';
 import { buildAiOrderAssistant, formatAiOrderDraftText, summarizeAiOrderAssistant } from '../core/aiOrderAssistant';
 import { buildRestaurantAiInsightBundle, buildNeedAttentionExplanation } from '../core/restaurantAiInsights';
+import restaurantReadinessHelpers from '../core/restaurantReadiness.cjs';
 import { classifyInvoiceRow, inferInvoiceProductFields, invoiceProductKey, invoiceRowText, isPurchasedInvoiceLine, LEADING_PURCHASE_RE, normalizeInvoiceName as normalizeName, normalizeInvoiceSku as normalizeSku } from '../core/invoiceRowClassification';
 import { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, MapClickListener, SmartEmptyState, MiniProblemCard, getHomeProfile, calculatePunchHours, getWeekStart, getWeekDates, roleMatches, toLocalTimeInput, makeLocalIso, PunchTable, StatusTile, FriendlyEmpty, GlobalSearchModal, QuickActionDock, KitchenTVMode, ChangeLogModal, UndoBar } from '../components/common';
 import { usePlanAccess } from '../hooks/usePlanAccess';
@@ -25,6 +26,7 @@ import { canViewRestaurantOpsIntelligence } from '../lib/featureAccess';
 import { useI18n } from '../core/i18n';
 
 const { FOOD_SAFETY_CATEGORIES, evaluateFoodSafety, missedFoodSafetyChecks } = foodSafetyHelpers;
+const { buildRestaurantReadiness } = restaurantReadinessHelpers;
 
 const readableApiError = (value) => {
   if (!value) return '';
@@ -2134,6 +2136,7 @@ const TabToday = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequ
   const today = getToday();
   const profile = getHomeProfile(appUser);
   const safeTodayWrite = (args) => safeWriteWithQueue({ user: appUser, addToast, ...args });
+  const canReviewRestaurantAdminAlerts = Boolean(appUser?.isOwner || appUser?.owner || appUser?.accountOwner || appUser?.workspaceOwner || appUser?.isAdmin || appUser?.permissions?.settings || appUser?.permissions?.team);
   const activeUserIds = useMemo(() => new Set((users || []).filter(u => u?.isActive !== false).flatMap(u => [u.id, u.uid, u.authUid, u.userId].filter(Boolean))), [users]);
   const todaysShifts = useMemo(() => (shifts || [])
     .filter(s => s.date === today && s.isPublished && s.isDeleted !== true && s.cancelled !== true && !s.deletedAt)
@@ -2190,6 +2193,20 @@ const TabToday = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequ
     menuDependencies,
     maintenanceLogs
   }), [today, appUser, clientData, sales, events, prepItems, tasks, shifts, timePunches, timeOffRequests, users, inventoryItems, recipes, menuDependencies, maintenanceLogs]);
+  const restaurantReadiness = useMemo(() => buildRestaurantReadiness({
+    currentDate: today, inventoryItems, prepItems, tasks, users, shifts, timePunches, timeOffRequests, maintenanceLogs, sales, events, restaurantAdminAlerts,
+    systemDataVisible: canReviewRestaurantAdminAlerts
+  }), [today, inventoryItems, prepItems, tasks, users, shifts, timePunches, timeOffRequests, maintenanceLogs, sales, events, restaurantAdminAlerts, canReviewRestaurantAdminAlerts]);
+  const openReadinessCategory = (row = {}) => {
+    const action = row.action || {};
+    try {
+      if (action.tab === 'inventory' && action.focus) sessionStorage.setItem('inventoryFocus', action.focus);
+      if (action.tab === 'prep' && action.focus) sessionStorage.setItem('prepFocus', action.focus);
+      if ((action.tab === 'schedule' || action.tab === 'published') && action.focus) sessionStorage.setItem('scheduleFocus', action.focus);
+    } catch (_) {}
+    setActiveTab(action.tab || 'today');
+  };
+  const readinessTone = (status) => status === 'critical' ? 'border-red-500/40 bg-red-950/15 text-red-200' : status === 'attention' ? 'border-amber-500/40 bg-amber-950/15 text-amber-200' : status === 'needs-data' ? 'border-slate-500/40 bg-slate-950/20 text-slate-300' : 'border-emerald-500/30 bg-emerald-950/10 text-emerald-200';
   const briefOpsSummary = briefOpsIntel?.summary || {};
   const briefOpsFindings = [
     ...(briefOpsIntel?.priceWatch || []).map(row => ({ area: 'Inventory', title: row.itemName || 'Price watch', detail: row.summary || row.detail || 'Review invoice pricing.', tab: 'inventory', focus: 'invoices', severity: row.severity || 'medium' })),
@@ -2286,7 +2303,6 @@ const TabToday = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequ
       addToast?.('Copy Failed', 'Your browser blocked clipboard access.');
     }
   };
-  const canReviewRestaurantAdminAlerts = Boolean(appUser?.isOwner || appUser?.owner || appUser?.accountOwner || appUser?.workspaceOwner || appUser?.isAdmin || appUser?.permissions?.settings || appUser?.permissions?.team);
   const openRestaurantAdminAlerts = (restaurantAdminAlerts || [])
     .filter(alert => !['acknowledged', 'dismissed', 'resolved', 'completed'].includes(String(alert.status || 'open').toLowerCase()))
     .sort((a, b) => new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0))
@@ -2436,6 +2452,24 @@ const TabToday = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequ
       <button onClick={openMessageBoard} className="brief-quick-action bg-[#1A2126] border border-[#2A353D] text-slate-200 rounded-xl p-3 font-black text-xs uppercase tracking-widest">{t('today.openMessages')}</button>
       {canUseCleaningRoutines && <button onClick={openMaintenanceCenter} className="brief-quick-action bg-amber-900/20 border border-amber-500/40 text-amber-300 rounded-xl p-3 font-black text-xs uppercase tracking-widest">{t('today.openFixIt')}</button>}
     </div>
+
+    {canUseManagerBrief && <section data-testid="restaurant-readiness-command-center" className={`${T.card} brief-card p-4 border-[#D4A381]/30`}>
+      <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+        <div><div className="text-[9px] font-black uppercase tracking-[0.2em] text-[#D4A381]">Restaurant Readiness</div><h2 className="font-black text-white text-xl mt-1">What needs attention before service</h2><p className="text-xs text-slate-400 font-bold mt-1">Deterministic signals from currently loaded restaurant data. Review-first • No automatic changes.</p></div>
+        <div className="flex gap-2">
+          <div className="rounded-xl border border-[#2A353D] bg-[#0B0E11] px-3 py-2 text-center min-w-[84px]"><div className="text-xl font-black text-white" data-testid="restaurant-readiness-score">{restaurantReadiness.overallScore == null ? '—' : `${restaurantReadiness.overallScore}%`}</div><div className="text-[8px] uppercase tracking-widest font-black text-slate-500">Readiness</div></div>
+          <div className="rounded-xl border border-[#2A353D] bg-[#0B0E11] px-3 py-2 text-center min-w-[84px]"><div className="text-xl font-black text-[#D4A381]" data-testid="restaurant-readiness-coverage">{restaurantReadiness.groundedCategoryCount}/{restaurantReadiness.totalCategoryCount}</div><div className="text-[8px] uppercase tracking-widest font-black text-slate-500">Grounded</div></div>
+        </div>
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-2 mt-3">
+        {restaurantReadiness.categories.map(row => <button type="button" key={row.key} data-readiness-category={row.key} onClick={() => openReadinessCategory(row)} className={`rounded-xl border p-3 text-left transition-colors hover:border-[#D4A381]/60 ${readinessTone(row.status)}`}>
+          <div className="flex items-center justify-between gap-2"><span className="font-black text-white text-sm">{row.label}</span><span className="text-[8px] font-black uppercase tracking-widest">{row.statusLabel}</span></div>
+          <p className="text-[11px] font-bold leading-snug mt-2 text-slate-300">{row.reason}</p>
+          <div className="text-[9px] font-black uppercase tracking-widest mt-2 text-[#D4A381]">{row.action?.label || 'Review'} →</div>
+        </button>)}
+      </div>
+      {restaurantReadiness.coveragePct < 100 && <p className="mt-3 text-[10px] font-bold text-slate-500">Coverage: {restaurantReadiness.coveragePct}%. Categories without enough loaded evidence stay marked Needs data instead of being counted as healthy.</p>}
+    </section>}
 
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
       <div className="lg:col-span-2 space-y-3">

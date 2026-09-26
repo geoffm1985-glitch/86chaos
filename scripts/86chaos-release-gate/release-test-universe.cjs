@@ -24,6 +24,7 @@ const RELEASE_CRITICAL_SPECS = Object.freeze([
   'tests/86chaos-release-gate/40-validator-line-ending-safety.spec.cjs',
   'tests/86chaos-release-gate/41-auto-provision-role-env.spec.cjs',
   'tests/86chaos-release-gate/42-merged-17-0-30-parity.spec.cjs',
+  'tests/86chaos-release-gate/43-restaurant-readiness-command-center.spec.cjs',
 ]);
 
 const PWA_SPEC_PATTERN = /86chaos-release-gate\/(26-pwa-icon-source-deployed-parity|27-pwa-browser-icon-matrix)\.spec\.cjs/;
