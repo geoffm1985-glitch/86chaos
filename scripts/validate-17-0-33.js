@@ -55,6 +55,8 @@ const targets = read('scripts/86chaos-release-gate/vercel-targets.cjs');
 const universe = read('scripts/86chaos-release-gate/release-test-universe.cjs');
 assert(runner.includes('Initialize-AutoProvisionRoleAccounts'));
 assert(runner.includes('RandomNumberGenerator]::Create()'));
+assert(runner.includes('function Ensure-RunnerLogPath {'), 'release runner recreates missing runner-log directories');
+assert(runner.includes('Ensure-RunnerLogPath $LogPath; Add-Content -Path $LogPath -Value $_'), 'live Playwright logging repairs a removed log directory before every append');
 assert(mutation.includes('testing.86chaos.com') && mutation.includes('experimental.86chaos.com'));
 assert(targets.includes('APPROVED_NON_PRODUCTION_ALIASES'));
 assert(read('src/core/appCore.js').includes("currentHostname === 'testing.86chaos.com'") && read('src/core/appCore.js').includes("currentHostname === 'experimental.86chaos.com'"));
