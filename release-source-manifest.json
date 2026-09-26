@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
   "version": "17.1.26",
-  "sourceHash": "250b4dbb453fde37d8214bb2ba5c8b41abc36d4211416e93278caa43986ca32f",
+  "sourceHash": "fb1627d1f7377b48a4cb2102ad0799d5640d6333591577ec4cf2dd4471a2b091",
   "files": [
     {
       "file": ".gitattributes",
@@ -4073,7 +4073,7 @@
     },
     {
       "file": "vercel.json",
-      "sha256": "e1c8e5c82522245ed3df91098390e880f2ed4c4183037611e1404733ea95384d"
+      "sha256": "aa0babf47f1c5599dbcdd13768c3434de47e982c560f96c455aad2eee7db2e72"
     }
   ]
 }
