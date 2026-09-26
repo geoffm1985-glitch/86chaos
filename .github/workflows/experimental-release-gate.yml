@@ -1,0 +1,50 @@
+name: 86 Chaos Full Release Gate - experimental
+on:
+  push:
+    branches: [experimental]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: 86chaos-experimental-full-release-gate
+  cancel-in-progress: true
+jobs:
+  full-release-gate:
+    runs-on: windows-latest
+    timeout-minutes: 360
+    env:
+      APP_URL: https://experimental.86chaos.com
+      CHAOS_BASE_URL: https://experimental.86chaos.com
+      PLAYWRIGHT_BASE_URL: https://experimental.86chaos.com
+      CHAOS_EXPECTED_BRANCH: experimental
+      CHAOS_EXPECTED_VERCEL_PROJECT_SLUG: 86chaos
+      REACT_APP_TEST_FIREBASE_PROJECT_ID: chaos-test-d1601
+      FIREBASE_TEST_SERVICE_ACCOUNT_KEY: ${{ secrets.FIREBASE_TEST_SERVICE_ACCOUNT_KEY }}
+      FIREBASE_SERVICE_ACCOUNT_KEY: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_KEY }}
+      SYSTEM_ADMIN_EMAIL: ${{ secrets.SYSTEM_ADMIN_EMAIL }}
+      SYSTEM_ADMIN_PASSWORD: ${{ secrets.SYSTEM_ADMIN_PASSWORD }}
+      OWNER_EMAIL: ${{ secrets.OWNER_EMAIL }}
+      OWNER_PASSWORD: ${{ secrets.OWNER_PASSWORD }}
+      MANAGER_EMAIL: ${{ secrets.MANAGER_EMAIL }}
+      MANAGER_PASSWORD: ${{ secrets.MANAGER_PASSWORD }}
+      STAFF_EMAIL: ${{ secrets.STAFF_EMAIL }}
+      STAFF_PASSWORD: ${{ secrets.STAFF_PASSWORD }}
+      MASTER_ADMIN_EMAIL: ${{ secrets.MASTER_ADMIN_EMAIL }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0}
+      - shell: pwsh
+        run: |
+          $sha=(git rev-parse HEAD).Trim();$pkg=Get-Content package.json -Raw|ConvertFrom-Json;"CHAOS_EXPECTED_GIT_COMMIT=$sha"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append;"CHAOS_EXPECTED_VERSION=$($pkg.version)"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+      - uses: actions/setup-node@v4
+        with: {node-version: '24'}
+      - uses: actions/setup-java@v4
+        with: {distribution: temurin, java-version: '21'}
+      - run: npm ci --no-audit --no-fund --progress=false
+      - name: Wait for exact experimental deployment
+        shell: pwsh
+        run: |
+          $m=$false;for($i=0;$i -lt 180;$i++){try{$s=[DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds();$v=Invoke-RestMethod "$env:APP_URL/version.json?ci=$s";$id=Invoke-RestMethod "$env:APP_URL/build-identity.json?ci=$s";$c=if($id.gitCommit){[string]$id.gitCommit}else{[string]$id.commit};if([string]$v.version -eq $env:CHAOS_EXPECTED_VERSION -and $c -eq $env:CHAOS_EXPECTED_GIT_COMMIT){$m=$true;break}}catch{};Start-Sleep 10};if(-not $m){throw "Timed out waiting for exact experimental deployment."}
+      - name: Run full Release Gate
+        shell: pwsh
+        run: npm run test:play-store

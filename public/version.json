@@ -1,21 +1,16 @@
 {
-  "version": "17.1.26",
-  "name": "86 Chaos 17.1.26",
-  "build": "17.1.26",
-  "label": "86 Chaos 17.1.26",
-  "releasedAt": "2026-09-26T07:20:00Z",
-  "releaseTitle": "Release Source Manifest Parity Repair",
+  "version": "17.1.27",
+  "name": "86 Chaos Experimental 17.1.27",
+  "build": "17.1.27",
+  "label": "86 Chaos Experimental 17.1.27",
+  "releasedAt": "2026-09-26T12:40:00Z",
+  "releaseTitle": "Experimental Device-Local Reminder and Native Share Foundation",
   "notes": [
-    "Regenerates the canonical source manifest against the exact tracked 17.1.26 source tree.",
-    "Corrects the stale vercel.json source hash that blocked Playwright before browser tests could start.",
-    "Preserves the existing application behavior, deployment target, Firebase safeguards, and release-gate protections."
+    "Independent experimental implementation of device-local reminders.",
+    "Zero-Firebase OS/Web Share behavior.",
+    "Explicit Release Gate coverage."
   ],
-  "title": "86 Chaos 17.1.26",
-  "summary": "Repairs release-source manifest parity for vercel.json so the exact deployed experimental commit can pass certification preflight.",
-  "description": "Release-gate source identity repair. Application behavior is unchanged.",
-  "highlights": [
-    "Version 17.1.26 repairs source-manifest parity for the experimental release gate.",
-    "No application behavior changed.",
-    "The full Play Store gate remains required before certification."
-  ]
+  "title": "86 Chaos Experimental 17.1.27",
+  "summary": "Independent experimental local-reminder implementation.",
+  "description": "Experimental reminder subsystem update."
 }

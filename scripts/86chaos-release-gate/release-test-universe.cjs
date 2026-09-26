@@ -5,7 +5,8 @@ const RELEASE_TEST_MATCH = Object.freeze([
   '86chaos-release-gate/**/*.spec.cjs',
   'e2e/**/*.spec.cjs',
   '86chaos-cross-browser/**/*.spec.cjs',
-  '86chaos-new-implementations/**/*.spec.cjs',
+  '86chaos-new-implementations/**/*.spec.cjs',,
+  'tests/86chaos-release-gate/44-device-local-reminders-experimental.spec.cjs',
 ]);
 
 const RELEASE_CRITICAL_SPECS = Object.freeze([

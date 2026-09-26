@@ -1,6 +1,6 @@
 {
   "name": "86chaos",
-  "version": "17.1.26",
+  "version": "17.1.27",
   "private": true,
   "dependencies": {
     "@fontsource/noto-sans": "^5.3.0",
@@ -30,7 +30,7 @@
     "deploy:check": "npm run test:ci && NODE_OPTIONS=--max-old-space-size=4096 GENERATE_SOURCEMAP=false npm run build",
     "validate:audit-repair": "node scripts/validate-repair.js",
     "rules:check": "node scripts/validate-rules.js",
-    "test:source": "node scripts/validate-17-1-17.js",
+    "test:source": "node scripts/validate-17-1-27.js",
     "validate:16.0.232": "node scripts/validate-16-0-232.js",
     "validate:16.0.233": "node scripts/validate-16-0-233.js",
     "validate:16.0.234": "node scripts/validate-16-0-234.js",
@@ -132,7 +132,7 @@
     "test:repair:17.0.24": "node --test api/schedule-builder-clear-month-17-0-24.test.cjs && node scripts/validate-17-0-24.js",
     "validate:17.0.25": "node scripts/validate-17-0-25.js",
     "test:schedule-shift-delete": "node --test api/schedule-shift-delete-17-0-25.test.cjs",
-    "test:current-release-targeted": "node --test api/footer-version-copyright-17-1-17.test.cjs api/navigation-brand-toolbar-17-1-16.test.cjs api/app-shell-hook-order-17-1-15.test.cjs api/vercel-reference-asset-resolution-17-1-14.test.cjs api/pixel-reference-full-app-17-1-13.test.cjs api/mobile-voice-pwa-panel-17-1-12.test.cjs api/mobile-voice-touch-activation-17-1-11.test.cjs api/voice-production-parity-17-1-10.test.cjs api/mobile-voice-toolbar-interaction-17-1-7.test.cjs api/release-gate-microphone-delta-repair-17-1-6.test.cjs api/mobile-bottom-nav-single-line-17-1-5.test.cjs api/release-gate-browser-stability-17-1-4.test.cjs api/mobile-workflow-repair-17-1-3.test.cjs api/app-wide-concept1-complete-migration-17-1-2.test.cjs api/app-wide-concept1-deep-migration-17-1-1.test.cjs api/app-wide-concept1-redesign-17-1-0.test.cjs api/system-admin-desktop-full-width-17-0-38.test.cjs api/system-admin-desktop-concept1-isolation-17-0-37.test.cjs api/system-admin-complete-directory-desktop-17-0-36.test.cjs api/system-admin-subpage-polish-qa-seed-17-0-35.test.cjs api/system-admin-subpages-back-navigation-17-0-34.test.cjs api/system-admin-concept1-exact-17-0-33.test.cjs api/system-admin-live-concept1-17-0-32.test.cjs api/system-admin-refresh-spanish-phase2-17-0-31.test.cjs api/presence-retirement-testing-domain-17-0-30.test.cjs api/spanish-release-gate-fidelity-17-0-29.test.cjs api/i18n-browser-runtime-17-0-28.test.cjs api/schedule-shift-assignment-emergency-17-0-27.test.cjs api/i18n-phase1-17-0-26.test.cjs api/schedule-shift-delete-17-0-25.test.cjs api/time-off-policy-17-0-23.test.cjs && node scripts/validate-17-1-17.js",
+    "test:current-release-targeted": "node --test api/device-local-reminders-17-1-27.test.cjs && node scripts/validate-17-1-27.js",
     "test:repair:17.0.25": "npm run test:current-release-targeted",
     "validate:17.0.26": "node scripts/validate-17-0-26.js",
     "test:i18n-phase1": "node --test api/i18n-phase1-17-0-26.test.cjs",
@@ -195,7 +195,8 @@
     "validate:17.1.16": "node scripts/validate-17-1-16.js",
     "test:repair:17.1.16": "npm run test:current-release-targeted",
     "validate:17.1.17": "node scripts/validate-17-1-17.js",
-    "test:repair:17.1.17": "npm run test:current-release-targeted"
+    "test:repair:17.1.17": "npm run test:current-release-targeted",
+    "validate:17.1.27": "node scripts/validate-17-1-27.js"
   },
   "browserslist": {
     "production": [
