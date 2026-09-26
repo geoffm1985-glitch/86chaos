@@ -1,0 +1,111 @@
+name: 86 Chaos Play Store Gate - experimental 17.1.23 full
+
+on:
+  push:
+    branches:
+      - ci-validate-experimental-17-1-23
+
+permissions:
+  contents: read
+
+jobs:
+  play-store-experimental:
+    runs-on: windows-latest
+    timeout-minutes: 360
+    env:
+      CHAOS_RELEASE_GATE_TARGET_URL: https://experimental.86chaos.com
+      APP_URL: https://experimental.86chaos.com
+      CHAOS_BASE_URL: https://experimental.86chaos.com
+      PLAYWRIGHT_BASE_URL: https://experimental.86chaos.com
+      CHAOS_EXPECTED_VERSION: 17.1.23
+      CHAOS_EXPECTED_GIT_COMMIT: 01bfe68b9d5dca0f51cba0a9790a4d001bbab912
+      CHAOS_EXPECTED_BRANCH: experimental
+      CHAOS_EXPECTED_VERCEL_PROJECT_SLUG: 86chaos
+      REACT_APP_FIREBASE_PROJECT_ID: chaos-test-d1601
+      REACT_APP_TEST_FIREBASE_PROJECT_ID: chaos-test-d1601
+      REACT_APP_FIREBASE_API_KEY: AIzaSyBIRGMeLnVE3w3i1WZJzurcp-LkeaNZ3hw
+      REACT_APP_TEST_FIREBASE_API_KEY: AIzaSyBIRGMeLnVE3w3i1WZJzurcp-LkeaNZ3hw
+      REACT_APP_FIREBASE_AUTH_DOMAIN: chaos-test-d1601.firebaseapp.com
+      REACT_APP_TEST_FIREBASE_AUTH_DOMAIN: chaos-test-d1601.firebaseapp.com
+      REACT_APP_FIREBASE_APP_ID: 1:534993379994:web:9fefb6e10309223afe7523
+      REACT_APP_TEST_FIREBASE_APP_ID: 1:534993379994:web:9fefb6e10309223afe7523
+      REACT_APP_FIREBASE_STORAGE_BUCKET: chaos-test-d1601.firebasestorage.app
+      REACT_APP_TEST_FIREBASE_STORAGE_BUCKET: chaos-test-d1601.firebasestorage.app
+      REACT_APP_FIREBASE_MESSAGING_SENDER_ID: '534993379994'
+      REACT_APP_TEST_FIREBASE_MESSAGING_SENDER_ID: '534993379994'
+      REACT_APP_TEST_FIREBASE_DATABASE_URL: https://chaos-test-d1601-default-rtdb.firebaseio.com
+      FIREBASE_TEST_SERVICE_ACCOUNT_KEY: ${{ secrets.FIREBASE_TEST_SERVICE_ACCOUNT_KEY }}
+      FIREBASE_SERVICE_ACCOUNT_KEY: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_KEY }}
+      SYSTEM_ADMIN_EMAIL: ${{ secrets.SYSTEM_ADMIN_EMAIL }}
+      SYSTEM_ADMIN_PASSWORD: ${{ secrets.SYSTEM_ADMIN_PASSWORD }}
+      OWNER_EMAIL: ${{ secrets.OWNER_EMAIL }}
+      OWNER_PASSWORD: ${{ secrets.OWNER_PASSWORD }}
+      MANAGER_EMAIL: ${{ secrets.MANAGER_EMAIL }}
+      MANAGER_PASSWORD: ${{ secrets.MANAGER_PASSWORD }}
+      STAFF_EMAIL: ${{ secrets.STAFF_EMAIL }}
+      STAFF_PASSWORD: ${{ secrets.STAFF_PASSWORD }}
+      MASTER_ADMIN_EMAIL: ${{ secrets.MASTER_ADMIN_EMAIL }}
+
+    steps:
+      - name: Check out exact experimental branch
+        uses: actions/checkout@v4
+        with:
+          ref: experimental
+          fetch-depth: 0
+
+      - name: Verify exact experimental commit
+        shell: pwsh
+        run: |
+          $actual = (git rev-parse HEAD).Trim()
+          if ($actual -ne $env:CHAOS_EXPECTED_GIT_COMMIT) {
+            throw "experimental moved before attempt 1. Expected $env:CHAOS_EXPECTED_GIT_COMMIT but got $actual"
+          }
+          $branch = (git rev-parse --abbrev-ref HEAD).Trim()
+          if ($branch -ne 'experimental') { throw "Expected local experimental branch, got $branch" }
+
+      - name: Set up Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Set up Java 21 for Firebase emulators
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Wait for exact 17.1.23 experimental deployment
+        shell: pwsh
+        run: |
+          $deadline = (Get-Date).AddMinutes(60)
+          $base = $env:CHAOS_RELEASE_GATE_TARGET_URL.TrimEnd('/')
+          while ((Get-Date) -lt $deadline) {
+            try {
+              $v = Invoke-RestMethod "$base/version.json?gatewait=$([DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds())" -Headers @{ "Cache-Control" = "no-cache" }
+              $b = Invoke-RestMethod "$base/api/build-identity?gatewait=$([DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds())" -Headers @{ "Cache-Control" = "no-cache" }
+              if ($v.version -eq '17.1.23' -and $b.version -eq '17.1.23' -and $b.gitCommit -eq $env:CHAOS_EXPECTED_GIT_COMMIT -and $b.gitBranch -eq 'experimental') {
+                Write-Host "Exact experimental deployment is READY: $base"
+                exit 0
+              }
+              Write-Host "Deployment reachable but not exact yet: version=$($v.version), commit=$($b.gitCommit), branch=$($b.gitBranch)"
+            } catch {
+              Write-Host "Deployment not ready yet: $($_.Exception.Message)"
+            }
+            Start-Sleep -Seconds 15
+          }
+          throw "Timed out waiting for exact 17.1.23 experimental deployment."
+
+      - name: Run full Play Store release gate
+        shell: pwsh
+        run: npm run test:play-store
+
+      - name: Upload Play Store gate artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: 86chaos-experimental-17.1.23-play-store-full
+          if-no-files-found: ignore
+          retention-days: 30
+          path: |
+            test-results/**
+            86chaos-release-gate-SLIM-UPLOAD-ME.zip
