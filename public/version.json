@@ -1,22 +1,22 @@
 {
-  "version": "17.1.22",
-  "name": "86 Chaos 17.1.22",
-  "build": "17.1.22",
-  "label": "86 Chaos 17.1.22",
-  "releasedAt": "2026-09-25T23:44:00Z",
-  "releaseTitle": "Request Off i18n Gate Fidelity Repair",
+  "version": "17.1.23",
+  "name": "86 Chaos 17.1.23",
+  "build": "17.1.23",
+  "label": "86 Chaos 17.1.23",
+  "releasedAt": "2026-09-26T02:34:00Z",
+  "releaseTitle": "Schedule Copy i18n Gate Fidelity Repair",
   "notes": [
-    "Updates the Request Off employee-filter source assertion to recognize the production i18n token.",
-    "Verifies the English translation still resolves to All Employees.",
-    "Preserves the accessible select, role-grouped employee options, and existing filtering behavior.",
-    "Retains exact branch, commit, source-manifest, deployment, and Firebase certification safeguards."
+    "Updates the Schedule source assertion to recognize the production builder.reviewPublish i18n token.",
+    "Verifies the English translation still resolves to Review & Publish.",
+    "Preserves existing Schedule behavior and accessibility hooks.",
+    "Retains branch isolation and exact deployment certification safeguards."
   ],
-  "title": "86 Chaos 17.1.22",
-  "summary": "Repairs a stale source assertion in the pre-Playwright release checks while preserving the translated Request Off employee filter.",
+  "title": "86 Chaos 17.1.23",
+  "summary": "Repairs the stale Review & Publish source assertion while preserving the translated Schedule action.",
   "description": "Release-gate test fidelity repair only. Application behavior is unchanged.",
   "highlights": [
-    "Version 17.1.22 synchronizes the release identity after the gate-test repair.",
-    "The failing test now validates production behavior instead of obsolete literal JSX.",
-    "No Request Off UI behavior was changed."
+    "Version 17.1.23 synchronizes release identity after the gate-test repair.",
+    "The failing certification now validates production behavior instead of obsolete literal JSX.",
+    "No Schedule UI behavior was changed."
   ]
 }
