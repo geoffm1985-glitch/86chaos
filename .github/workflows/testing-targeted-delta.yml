@@ -1,35 +1,33 @@
-name: Testing Targeted Delta
+name: Prepare Firebase Admin 14 Lock
 
 on:
   push:
     branches:
       - testing
-  workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: testing-targeted-delta
-  cancel-in-progress: false
+  group: prepare-firebase-admin-lock
+  cancel-in-progress: true
 
 jobs:
-  targeted-delta:
-    if: github.ref_name == 'testing'
+  prepare-lock:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 10
     steps:
-      - name: Check out exact testing commit
+      - name: Check out testing
         uses: actions/checkout@v4
-
       - name: Set up Node 24
         uses: actions/setup-node@v4
         with:
           node-version: 24
-          cache: npm
-
-      - name: Install dependencies
-        run: npm ci --no-audit --no-fund --progress=false
-
-      - name: Run 17.0.35 targeted delta only
-        run: npm run test:current-release-targeted
+      - name: Generate Firebase Admin 14.5 lockfile
+        shell: bash
+        run: |
+          npm install --package-lock-only --ignore-scripts --no-audit --no-fund --progress=false --save-exact firebase-admin@14.5.0
+          echo "LOCK_B64_BEGIN"
+          gzip -9 -c package-lock.json | base64 -w 0
+          echo
+          echo "LOCK_B64_END"
