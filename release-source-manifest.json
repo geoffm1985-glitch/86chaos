@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
-  "version": "17.1.22",
-  "sourceHash": "7a72ecd9d2e2e16fd493a5c1f61613abbd4b6656856ed3241fa315c4ea063b39",
+  "version": "17.1.23",
+  "sourceHash": "110de97181ae5a1d3f2aca49c815ba8b61c68c7edaf643757d1f7fd54b2a6214",
   "files": [
     {
       "file": ".gitattributes",
@@ -461,7 +461,7 @@
     },
     {
       "file": "api/_version.js",
-      "sha256": "18d5eed95100ecbd84138f908095c34018a370d564ad637cb75b6014f43ce474"
+      "sha256": "6d929cdbff94ac3dc503038fa90a898b549575b36943eed5e42ec8c5b8b81176"
     },
     {
       "file": "api/account-deletion-request.js",
@@ -569,7 +569,7 @@
     },
     {
       "file": "api/copy-clarity-16-0-232.test.cjs",
-      "sha256": "a73fe4afc1a220fdaabe66871404f33814dc53dc0d0283985439790606fa5fe8"
+      "sha256": "9c0368913d7b15e38ed87e161dd94fa84169b7ba5e592f049b44ab2a0fd26b2b"
     },
     {
       "file": "api/current-blockers-release-gate-source-16-0-183.test.cjs",
@@ -1657,11 +1657,11 @@
     },
     {
       "file": "functions/src/index.ts",
-      "sha256": "dae3be727ac4586adeaa5a298ea3b35a93a2bb2f1ad8239e15228a2e7352aaf1"
+      "sha256": "61352b3d7e05938b2f73d7ce4b2c4c6f2ea31e5eee0bff2e84d6c1eb13c75696"
     },
     {
       "file": "functions/src/retention.ts",
-      "sha256": "f9d42c469432bea15342b54acf12842a3b4225fd828d30cf03072c370e73b488"
+      "sha256": "5fa1d13775ed19cd59e15fcb8819f4678c91fb93720eae12ac4282ba4a20f6c9"
     },
     {
       "file": "functions/tsconfig.json",
@@ -1669,11 +1669,11 @@
     },
     {
       "file": "package-lock.json",
-      "sha256": "d6c6944988362505a43e3a37143c4ca335ce11cce14207b462bdf781066158a1"
+      "sha256": "6ca6330d2fba0ca9c9cf4116fd5e8bda77d4c8abfed96bc6a64b772e19a7e1b3"
     },
     {
       "file": "package.json",
-      "sha256": "4b264db0a86ddfb8cfa171f075f3cbd3de84d20c4b2a482f29f8ad659757503a"
+      "sha256": "e90cd4341dfb747ff9d1f0488513cea59cc44aeba113d70bae791c2e274b5b8e"
     },
     {
       "file": "playwright.config.js",
@@ -1901,7 +1901,7 @@
     },
     {
       "file": "public/version.json",
-      "sha256": "a7de4003dafe402fe67bc7a06fa503c5ce40af7fa584b9da2953f7cc8e3d5091"
+      "sha256": "79ac0c5f9c417048ca668f6770bbd5ca9d57ef599b247994139aef76c147b568"
     },
     {
       "file": "public/wisco.png",
@@ -1949,7 +1949,7 @@
     },
     {
       "file": "scripts/86chaos-release-gate/current-release-repair-scope.cjs",
-      "sha256": "2fd65ce23d64d5cfa9613d671edcd2cc43152e9a0ab41afcced7606973c68138"
+      "sha256": "d0ec983c5b6f551b4a1f4e9855b9aebd9cfe69bef1b3e5232fb3c4113c85d952"
     },
     {
       "file": "scripts/86chaos-release-gate/dependency-preflight.cjs",
@@ -3209,7 +3209,7 @@
     },
     {
       "file": "src/core/appCore.js",
-      "sha256": "4c8b8e94566fff196d87098bd04bb3e052c8d4390450be945c5314a660d05025"
+      "sha256": "0c4e94f33231c84ef0e026caa9b632dbb53250d1130d818b6dfac87a110f1c53"
     },
     {
       "file": "src/core/csvSafety.test.js",
@@ -3605,11 +3605,11 @@
     },
     {
       "file": "test-tools/certification/cost-performance-baselines.json",
-      "sha256": "653c219ae06f9f31b93a46c4c2ccb7e80c669d5ea2f450c3d0c4f559434c7f0e"
+      "sha256": "b60e44b498a61850c155cef754c3c5e9210c299c4a016aee1cefafef5f3fd93f"
     },
     {
       "file": "test-tools/certification/groups.json",
-      "sha256": "f13493d67cadc971b903dab146625978110a1b6d9574f77275d3cc73b606bcc7"
+      "sha256": "0c5b9494b7470360beb7e4bfbbfedcc9de07995f65168eb25f576ee8a16a7e6b"
     },
     {
       "file": "test-tools/certification/permission-matrix.json",
@@ -3657,7 +3657,7 @@
     },
     {
       "file": "test-tools/regressions/registry.json",
-      "sha256": "1eff753d5cc6942ab1bbc9fedeecc6f37f35e916008d89a5359278fded6a56ff"
+      "sha256": "a040d050dc7318350e833e5f3c06c6402a616b61773c38961192f169d7d877d1"
     },
     {
       "file": "test-tools/reporters/chaos-release-gate-reporter.cjs",
@@ -4075,13 +4075,5 @@
       "file": "vercel.json",
       "sha256": "e72ac33171a97c4a10cfa2a2d77449fb272b8b4b50b4da81621d185ccde39d8a"
     }
-  ],
-  "commit": null,
-  "branch": null,
-  "dirty": false,
-  "dirtyPaths": [],
-  "capturedAt": "2026-09-25T23:44:00.000Z",
-  "previewUrl": null,
-  "intendedProductionUrl": "https://app.86chaos.com",
-  "sourceArtifact": null
+  ]
 }
