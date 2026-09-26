@@ -1,4 +1,4 @@
-name: 86 Chaos Play Store Gate - experimental 17.1.25 full
+name: 86 Chaos Play Store Gate - experimental 17.1.26 full
 
 on:
   push:
@@ -17,8 +17,8 @@ jobs:
       APP_URL: https://experimental.86chaos.com
       CHAOS_BASE_URL: https://experimental.86chaos.com
       PLAYWRIGHT_BASE_URL: https://experimental.86chaos.com
-      CHAOS_EXPECTED_VERSION: 17.1.25
-      CHAOS_EXPECTED_GIT_COMMIT: 7673687c7c365e5855ebc01ec4cda262c42ff476
+      CHAOS_EXPECTED_VERSION: 17.1.26
+      CHAOS_EXPECTED_GIT_COMMIT: 5561e9a74f6f7d8ed17f1fd6c1589da5ce96dee1
       CHAOS_EXPECTED_BRANCH: experimental
       CHAOS_EXPECTED_VERCEL_PROJECT_SLUG: 86chaos
       REACT_APP_FIREBASE_PROJECT_ID: chaos-test-d1601
@@ -74,7 +74,7 @@ jobs:
           distribution: temurin
           java-version: '21'
 
-      - name: Wait for exact 17.1.25 experimental deployment
+      - name: Wait for exact 17.1.26 experimental deployment
         shell: pwsh
         run: |
           $deadline = (Get-Date).AddMinutes(60)
@@ -83,7 +83,7 @@ jobs:
             try {
               $v = Invoke-RestMethod "$base/version.json?gatewait=$([DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds())" -Headers @{ "Cache-Control" = "no-cache" }
               $b = Invoke-RestMethod "$base/api/build-identity?gatewait=$([DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds())" -Headers @{ "Cache-Control" = "no-cache" }
-              if ($v.version -eq '17.1.25' -and $b.version -eq '17.1.25' -and $b.gitCommit -eq $env:CHAOS_EXPECTED_GIT_COMMIT -and $b.gitBranch -eq 'experimental') {
+              if ($v.version -eq '17.1.26' -and $b.version -eq '17.1.26' -and $b.gitCommit -eq $env:CHAOS_EXPECTED_GIT_COMMIT -and $b.gitBranch -eq 'experimental') {
                 Write-Host "Exact experimental deployment is READY: $base"
                 exit 0
               }
@@ -93,7 +93,7 @@ jobs:
             }
             Start-Sleep -Seconds 15
           }
-          throw "Timed out waiting for exact 17.1.25 experimental deployment."
+          throw "Timed out waiting for exact 17.1.26 experimental deployment."
 
       - name: Run full Play Store release gate
         shell: pwsh
@@ -103,7 +103,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: 86chaos-experimental-17.1.25-play-store-full
+          name: 86chaos-experimental-17.1.26-play-store-full
           if-no-files-found: ignore
           retention-days: 30
           path: |
