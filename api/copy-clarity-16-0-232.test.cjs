@@ -31,9 +31,11 @@ test('ordinary recovery and sign-in copy avoids implementation terminology', () 
 
 test('schedule actions state their outcome while stable accessibility hooks remain', () => {
   const source = read('src/features/schedule.jsx');
+  const i18n = read('src/core/i18n.js');
   assert.match(source, /Open Schedule Tools/);
   assert.match(source, /Fill Coverage Gaps/);
-  assert.match(source, /Review & Publish/);
+  assert.match(source, /t\('builder\.reviewPublish'\)/);
+  assert.match(i18n, /'builder\.reviewPublish': 'Review & Publish'/);
   assert.match(source, /Copy Month/);
   assert.match(source, /aria-label="Open Copilot Tools"/);
   assert.match(source, /aria-label="Smart Fill"/);
