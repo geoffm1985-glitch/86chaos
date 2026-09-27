@@ -22,6 +22,12 @@
 	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>NSCameraUsageDescription</key>
+	<string>86 Chaos uses the camera to scan restaurant documents and menu or inventory information you choose to capture.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>86 Chaos uses the microphone when you choose to use 86Voice.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>86 Chaos can access photos you choose for restaurant scans and attachments.</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>UIApplicationSceneManifest</key>
