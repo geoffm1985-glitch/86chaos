@@ -26,9 +26,9 @@ This is intentionally bounded rather than immediate. Very short app interruption
 
 ## Native packaging status
 
-This commit establishes the deployment-safe native contract without changing the npm dependency graph. Capacitor platform packages and generated Android/iOS projects are the next native-build step so the existing Vercel web build remains installable with the current lockfile during foundation work.
+Capacitor 8.5.2 is now installed for core, Android, iOS, and CLI. Both native projects have been generated from the same React build with Android package ID and iOS bundle ID `com.chiltonappworks.chaos86`. Android and iOS native release identities are aligned to 18.0.0 / build 180000.
 
-No signing key, Apple credential, Google Play credential, Firebase service account, or other secret belongs in Git.
+The generated native projects intentionally do not commit copied React build output. Native builds must run the web build and Capacitor sync step before packaging. No signing key, Apple credential, Google Play credential, Firebase service account, or other secret belongs in Git.
 
 ## Distribution
 
