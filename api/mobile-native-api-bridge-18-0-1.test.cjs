@@ -17,10 +17,10 @@ test('18.0.1 native API bridge intercepts only local /api traffic and targets te
   assert.match(core,/import \{ Capacitor, CapacitorHttp \} from '@capacitor\/core'/);
   assert.match(core,/NATIVE_API_BASE_URL[\s\S]{0,180}https:\/\/testing\.86chaos\.com/);
   assert.match(core,/nativeApiRequestPath/);
-  assert.match(core,/^\/api\//m);
+  assert.match(core,/if \(\/\^\\\/api\\\//);
   assert.match(core,/CapacitorHttp\.request\(/);
   assert.match(core,/window\.fetch = nativeApiFetch/);
-  assert.match(core,/Firebase SDK unchanged|firebaseTransport/i);
+  assert.equal(contract.nativeApiBridge.firebaseTransport,'browser Firebase SDK unchanged');
 });
 
 test('18.0.1 native release identities align on Android and iOS',()=>{

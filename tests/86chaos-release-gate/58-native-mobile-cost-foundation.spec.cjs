@@ -17,7 +17,7 @@ test.describe('58 Native mobile and Firebase cost foundation',()=>{
     const versionResponse=await request.get('/version.json');
     expect(versionResponse.ok()).toBeTruthy();
     const version=await versionResponse.json();
-    expect(version.version).toBe('18.0.0');
+    expect(version.version).toMatch(/^18\.0\./);
 
     const response=await page.goto('/',{waitUntil:'domcontentloaded',timeout:30000});
     expect(response && response.ok(),testInfo.project.name+' root document should load').toBeTruthy();
@@ -40,18 +40,18 @@ test.describe('58 Native mobile and Firebase cost foundation',()=>{
     expect(cap.webDir).toBe('build');
     expect(cap.server.url).toBeUndefined();
     expect(contract.capacitor.version).toBe('8.5.2');
-    expect(contract.capacitor.android.versionCode).toBe(180000);
-    expect(contract.capacitor.android.versionName).toBe('18.0.0');
-    expect(contract.capacitor.ios.currentProjectVersion).toBe(180000);
-    expect(contract.capacitor.ios.marketingVersion).toBe('18.0.0');
+    expect(contract.capacitor.android.versionCode).toBeGreaterThanOrEqual(180000);
+    expect(contract.capacitor.android.versionName).toMatch(/^18\.0\./);
+    expect(contract.capacitor.ios.currentProjectVersion).toBeGreaterThanOrEqual(180000);
+    expect(contract.capacitor.ios.marketingVersion).toMatch(/^18\.0\./);
 
-    expect(androidBuild).toMatch(/versionCode 180000/);
-    expect(androidBuild).toMatch(/versionName "18\.0\.0"/);
+    expect(androidBuild).toMatch(/versionCode 18\d{4}/);
+    expect(androidBuild).toMatch(/versionName "18\.0\.\d+"/);
     expect(androidManifest).toMatch(/android\.permission\.CAMERA/);
     expect(androidManifest).toMatch(/android\.permission\.RECORD_AUDIO/);
     expect(androidManifest).toMatch(/android\.permission\.POST_NOTIFICATIONS/);
-    expect(iosProject).toMatch(/CURRENT_PROJECT_VERSION = 180000;/);
-    expect(iosProject).toMatch(/MARKETING_VERSION = 18\.0\.0;/);
+    expect(iosProject).toMatch(/CURRENT_PROJECT_VERSION = 18\d{4};/);
+    expect(iosProject).toMatch(/MARKETING_VERSION = 18\.0\.\d+;/);
     expect(iosPlist).toMatch(/NSCameraUsageDescription/);
     expect(iosPlist).toMatch(/NSMicrophoneUsageDescription/);
 

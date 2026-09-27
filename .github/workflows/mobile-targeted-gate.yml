@@ -36,7 +36,7 @@ jobs:
       - name: Install exact dependencies
         run: npm ci --no-audit --no-fund --progress=false
 
-      - name: Run 18.0.0 native targeted source tests
+      - name: Run current native targeted source tests
         run: |
           npm run test:mobile-foundation
           npm run validate:18.0.1
@@ -122,7 +122,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: 86chaos-mobile-18-0-0-failure
+          name: 86chaos-mobile-current-failure
           if-no-files-found: ignore
           retention-days: 3
           path: |
