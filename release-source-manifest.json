@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "sourceHash": "ebdc2eb4935b2d249c3b48d01c04dcb5bbb8624d5c14bf8669e2900c5493f0fa",
+  "sourceHash": "1c411750065bf02abd426f1f5fc47baecbb51615dc399944c1956e73b7de527e",
   "files": [
     {
       "file": ".gitattributes",
@@ -8,7 +8,7 @@
     },
     {
       "file": ".github/workflows/testing-targeted-delta.yml",
-      "sha256": "835015ba1ccb7e553aa90e696111bfad26a03e0fa2d8d40f5dcbedf921057c3a"
+      "sha256": "59935c5f0a683950935c49a29dab4e277fbd23d9f9971e3c3f064461c73b2f8a"
     },
     {
       "file": ".gitignore",
@@ -137,6 +137,10 @@
     {
       "file": "RELEASE_17_0_44.md",
       "sha256": "898268d1141a453277f307c91bc7b9448004f2c3ddde789e267676d0aa687987"
+    },
+    {
+      "file": "RELEASE_17_0_45.md",
+      "sha256": "6e79840963a9f4ae247011d2d54a8b3a1c3bcf8ff78e038dbdbe1d6cc7b48fec"
     },
     {
       "file": "RELEASE_17_0_5.md",
@@ -268,7 +272,7 @@
     },
     {
       "file": "api/_pos-bridge-config.js",
-      "sha256": "138d1311f1629a2f3f6a7798cae4fd4496cf39cd3b5e06dfa29ccc6bd067f1d7"
+      "sha256": "e78498e0ee0ad0aa236ee5a14f2fbaf8efa98b82c156362f184aa6aa2442c9b5"
     },
     {
       "file": "api/_pos-bridge-events.js",
@@ -404,7 +408,7 @@
     },
     {
       "file": "api/_version.js",
-      "sha256": "fdb89b2f54ac817bfbaa27b1de4f0662c53462ceba14cc515a1d2ffc0d56c8e6"
+      "sha256": "696c2062d563cb9899941c4c4db89ae2332f8d146e3b4e71377d197306fbfebb"
     },
     {
       "file": "api/account-deletion-request.js",
@@ -527,8 +531,8 @@
       "sha256": "2bff50b3c8ad808a0d4fa3bd900a2b3c7c6ebfa0402e5aa19c7c997e57a2bc58"
     },
     {
-      "file": "api/customer-help-version-17-0-44.test.cjs",
-      "sha256": "7b819020dc8454c11ae402d93a3b401b05c47b9f6ec2ed3fe68b2a007f43a22e"
+      "file": "api/customer-help-version-17-0-45.test.cjs",
+      "sha256": "c24723df1bb7b9db7848f18abaf972c28d9588ec41bfad37e1d569e850fac8bd"
     },
     {
       "file": "api/daily-close.js",
@@ -1464,7 +1468,7 @@
     },
     {
       "file": "api/testing-gate-17-0-43.test.cjs",
-      "sha256": "ead5518c4311f585a7520489cf4477a6cac4ca6d12751630f206088f0a20e064"
+      "sha256": "756edaf7215edce28c33702fe74614d46d73bc583032ad3cc9e35a98bd29300c"
     },
     {
       "file": "api/time-off-policy-17-0-23.test.cjs",
@@ -1596,11 +1600,11 @@
     },
     {
       "file": "package-lock.json",
-      "sha256": "3e2d61a1b438120a250e569eee0a27872aecf1777323899d61aeae4337b4a5de"
+      "sha256": "a9e369b8911138e57439024a4712bb2762dcb1ae35d3aa52622bb4e6823097fb"
     },
     {
       "file": "package.json",
-      "sha256": "c04ac2ad7a4fba181630637cebffd56fbfcb172542ea1125020888d87271e510"
+      "sha256": "7a37a89bc4baf105d5744859dacc19d066fb0388a94b9f2d4aa7fa6720cab7fc"
     },
     {
       "file": "playwright.config.js",
@@ -1816,7 +1820,7 @@
     },
     {
       "file": "public/version.json",
-      "sha256": "4cb50ab551797d21ec0478094f74ad5dcd1f573c83264508494980537727637a"
+      "sha256": "ea6cb9aa164bcdeb144354d42ddcbdd9398bdf0b1359ae2b497b6ae329948ff1"
     },
     {
       "file": "public/wisco.png",
@@ -1936,7 +1940,7 @@
     },
     {
       "file": "scripts/86chaos-release-gate/release-test-universe.cjs",
-      "sha256": "2ae876b40b61456a06ef2e2f3f605cc4dd81072859bab4041432c0c99321fd90"
+      "sha256": "63ae9d7739d6579561abf407e9ea74c962ba4c57dfdf57130e1c7f5d289e7c1f"
     },
     {
       "file": "scripts/86chaos-release-gate/reported-current-blockers-20260814-064437.json",
@@ -2927,6 +2931,10 @@
       "sha256": "fc8338dd5fe8dbef88c7094e87760048b7644ad5d2c803a7441bea86c00f1051"
     },
     {
+      "file": "scripts/validate-17-0-45.js",
+      "sha256": "f9257da0d1002f395d431289db55ced12209d70612bebab7070ee3356205715a"
+    },
+    {
       "file": "scripts/validate-17-0-5.js",
       "sha256": "b52dc67d3fc01dd79b886116f70ec76313fbd6088722c9c0b385a968ab31952f"
     },
@@ -3108,7 +3116,7 @@
     },
     {
       "file": "src/core/appCore.js",
-      "sha256": "002493f2c8afbc0b439c55fdeb1073b91a356ff019aac361a4e9411073fbaf87"
+      "sha256": "c126f29e1655dc58291246a5835a2e1e479a76bb1333ea3e23406a2669bc246c"
     },
     {
       "file": "src/core/csvSafety.test.js",
@@ -3116,11 +3124,11 @@
     },
     {
       "file": "src/core/customerHelpKnowledge.cjs",
-      "sha256": "9dd3f2031a43b8f68fa3e54aa889871e9bd6217795759750eec25e9359570351"
+      "sha256": "95438393befa117a43f90309919635cb07f280e76db3eb590de0925aceb7c945"
     },
     {
       "file": "src/core/customerHelpKnowledge.js",
-      "sha256": "362dc397217293f6c0f5a3f922f1032afded880885c968ec29e10282fd52d09b"
+      "sha256": "ee72b9d1edbd549630f4a436d89ed8de8f348c54ccbc30509cf48d384a6c928b"
     },
     {
       "file": "src/core/fileCompression.js",
@@ -3564,11 +3572,11 @@
     },
     {
       "file": "test-tools/certification/cost-performance-baselines.json",
-      "sha256": "d813d052a3a954fc9f10de2f84bfc0a290668ea8efe0b05f5bbfa9842c27cdd6"
+      "sha256": "5e2956bccbfeaaa09b12b9015ea1d038fcbefa573532a5441b62fa3befbe1101"
     },
     {
       "file": "test-tools/certification/groups.json",
-      "sha256": "f4a072eab1c66b72372e954ad8ca0eaea474b854ffc56b364df844a11419ee53"
+      "sha256": "8b532d1a02cbdc1a16c0c455d9bb5841a9d4a04b2f63edcb2175a6a1e4a07592"
     },
     {
       "file": "test-tools/certification/permission-matrix.json",
@@ -3620,7 +3628,7 @@
     },
     {
       "file": "test-tools/regressions/registry.json",
-      "sha256": "974235aca263d09db0041032d02f9d1eddb9a397f74976629ba19a9d8120d7c3"
+      "sha256": "f45429af364af5f860509d6ce79f3cf2d060c3e5763ba6cabe2a46122bc7aa75"
     },
     {
       "file": "test-tools/reporters/chaos-release-gate-reporter.cjs",
@@ -3976,11 +3984,11 @@
     },
     {
       "file": "tests/86chaos-release-gate/58-testing-gate-17-0-43.spec.cjs",
-      "sha256": "6a665a30bc5e4431fecdd2a2552c344be8ed7969db1961d0122c91b8e2dd8930"
+      "sha256": "d4f296f9f827a3c01d2cad46754c31e8c93fb001ff84426cc694597cbcc4c706"
     },
     {
-      "file": "tests/86chaos-release-gate/59-customer-help-version-17-0-44.spec.cjs",
-      "sha256": "5b332b20e468ad29d6fa768792a94d970a882f8c7e9992b87f5007165a453065"
+      "file": "tests/86chaos-release-gate/60-customer-help-version-17-0-45.spec.cjs",
+      "sha256": "2f12dc976dd271945aad3c5ec0f86a9736d4c131254cd452c05d8b5644612442"
     },
     {
       "file": "tests/86chaos-release-gate/exhaustive-surface-matrix.cjs",
