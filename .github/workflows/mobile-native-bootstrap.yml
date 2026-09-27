@@ -1,0 +1,74 @@
+name: Mobile Native Bootstrap
+
+on:
+  push:
+    branches:
+      - mobile
+
+permissions:
+  contents: write
+
+concurrency:
+  group: mobile-native-bootstrap
+  cancel-in-progress: false
+
+jobs:
+  generate-native-platforms:
+    if: ${{ contains(github.event.head_commit.message, '[mobile-bootstrap]') && !contains(github.event.head_commit.message, '[mobile-bootstrap-result]') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out exact mobile commit
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node 24
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install locked web dependencies
+        run: npm ci --no-audit --no-fund --progress=false
+
+      - name: Install Capacitor 8 Android and iOS packages
+        run: |
+          npm install --save @capacitor/core@8 @capacitor/android@8 @capacitor/ios@8 --no-audit --no-fund --progress=false
+          npm install --save-dev @capacitor/cli@8 --no-audit --no-fund --progress=false
+
+      - name: Build web assets
+        env:
+          CI: "false"
+          REACT_APP_FIREBASE_DEPLOYMENT_MODE: testing
+          REACT_APP_FIREBASE_ACTIVE_PROJECT_ID: chaos-test-d1601
+        run: npm run build
+
+      - name: Generate Android and iOS native projects
+        run: |
+          test ! -d android || { echo "android/ already exists; refusing destructive regeneration"; exit 1; }
+          test ! -d ios || { echo "ios/ already exists; refusing destructive regeneration"; exit 1; }
+          npx cap add android
+          npx cap add ios
+          npx cap sync android
+          npx cap sync ios
+
+      - name: Verify cross-platform native scaffold
+        run: |
+          test -f android/app/src/main/AndroidManifest.xml
+          test -f ios/App/App.xcodeproj/project.pbxproj
+          node -e "const p=require('./package.json'); for(const n of ['@capacitor/core','@capacitor/android','@capacitor/ios']) if(!p.dependencies?.[n]) throw new Error(n+' missing'); if(!p.devDependencies?.['@capacitor/cli']) throw new Error('@capacitor/cli missing');"
+          node -e "const c=require('./capacitor.config.json'); if(c.appId!=='com.chiltonappworks.chaos86'||c.webDir!=='build') throw new Error('Capacitor config mismatch');"
+
+      - name: Commit generated native projects atomically
+        shell: bash
+        run: |
+          git config user.name "86 Chaos Mobile Bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add package.json package-lock.json capacitor.config.json android ios
+          if git diff --cached --quiet; then
+            echo "No native scaffold changes produced."
+            exit 1
+          fi
+          git commit -m "18.0.0 generate Capacitor Android and iOS projects [mobile-bootstrap-result]"
+          git push origin HEAD:mobile
