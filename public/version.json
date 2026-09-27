@@ -1,19 +1,20 @@
 {
-  "version": "18.0.6",
-  "name": "86 Chaos 18.0.6",
-  "build": "18.0.6",
-  "label": "86 Chaos 18.0.6",
-  "releasedAt": "2026-09-27T09:35:00Z",
-  "releaseTitle": "Native Targeted Identity Test Repair",
+  "version": "18.0.7",
+  "name": "86 Chaos 18.0.7",
+  "build": "18.0.7",
+  "label": "86 Chaos 18.0.7",
+  "releasedAt": "2026-09-27T10:00:00Z",
+  "releaseTitle": "Real-Device Native Viewport Containment Repair",
   "notes": [
-    "Preserves Android system-bar/cutout insets and branded launcher icon.",
-    "Preserves iPhone/iPad safe-area fallback.",
-    "Only targeted mobile tests are run.",
-    "No new paid service or Firebase project is introduced."
+    "Android system-bar/display-cutout insets are applied to the native activity content container, not the WebView.",
+    "The WebView receives zero internal system-bar padding so fixed-position web UI uses the already-constrained viewport.",
+    "The 86 Chaos Android launcher icon remains branded.",
+    "iPhone/iPad safe-area fallback remains in place.",
+    "Only targeted mobile tests are run; no full Release Gate."
   ],
-  "title": "86 Chaos 18.0.6",
-  "summary": "Preserves the native system-bar and branded launcher repair while removing the final hard-coded 18.0.4 identity assertion.",
-  "description": "No functional behavior change beyond release identity. The targeted system-bar/branding test now validates the current native contract instead of one frozen patch.",
+  "title": "86 Chaos 18.0.7",
+  "summary": "Moves Android system-bar insets to the native activity content container so the WebView viewport itself stays between the status and navigation bars.",
+  "description": "Repairs the real-device Android overlap reported after 18.0.6 while preserving branded launcher assets, testing-only Firebase routing, and iPhone/iPad safe-area behavior.",
   "highlights": [
     "Packaged native app no longer sends /api requests to the phone-local asset server.",
     "CapacitorHttp carries authenticated API calls to https://testing.86chaos.com while Firebase stays on the testing project.",

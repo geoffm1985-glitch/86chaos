@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "release": "18.0.6",
+  "release": "18.0.7",
   "baseline": {
     "branch": "testing",
     "version": "17.0.42",
@@ -59,14 +59,14 @@
       "minSdk": 24,
       "compileSdk": 36,
       "targetSdk": 36,
-      "versionCode": 180006,
-      "versionName": "18.0.6"
+      "versionCode": 180007,
+      "versionName": "18.0.7"
     },
     "ios": {
       "bundleIdentifier": "com.chiltonappworks.chaos86",
       "minimumVersion": "15.0",
-      "currentProjectVersion": 180006,
-      "marketingVersion": "18.0.6",
+      "currentProjectVersion": 180007,
+      "marketingVersion": "18.0.7",
       "packageManager": "SPM"
     }
   },
@@ -94,8 +94,10 @@
   },
   "nativeViewport": {
     "android": {
-      "strategy": "WindowInsetsCompat systemBars + displayCutout",
-      "webViewPadding": true,
+      "strategy": "android.R.id.content WindowInsetsCompat systemBars + displayCutout",
+      "containerPadding": true,
+      "webViewPadding": false,
+      "clipToPadding": true,
       "darkSystemBarIcons": false
     },
     "ios": {

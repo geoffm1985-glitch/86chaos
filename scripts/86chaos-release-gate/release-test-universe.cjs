@@ -42,6 +42,7 @@ const RELEASE_CRITICAL_SPECS = Object.freeze([
   'tests/86chaos-release-gate/58-native-mobile-cost-foundation.spec.cjs',
   'tests/86chaos-release-gate/59-native-packaged-api-bridge.spec.cjs',
   'tests/86chaos-release-gate/60-native-system-bars-branding.spec.cjs',
+  'tests/86chaos-release-gate/61-native-container-insets.spec.cjs',
 ]);
 
 const PWA_SPEC_PATTERN = /86chaos-release-gate\/(26-pwa-icon-source-deployed-parity|27-pwa-browser-icon-matrix)\.spec\.cjs/;

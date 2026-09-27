@@ -9,7 +9,7 @@ const baseURL =
 
 module.exports = defineConfig({
   testDir: './tests/86chaos-release-gate',
-  testMatch: /(58-native-mobile-cost-foundation|59-native-packaged-api-bridge|60-native-system-bars-branding)\.spec\.cjs/,
+  testMatch: /(58-native-mobile-cost-foundation|59-native-packaged-api-bridge|60-native-system-bars-branding|61-native-container-insets)\.spec\.cjs/,
   timeout: 60_000,
   expect: { timeout: 10_000 },
   fullyParallel: false,

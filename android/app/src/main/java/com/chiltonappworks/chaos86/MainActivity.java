@@ -3,6 +3,7 @@ package com.chiltonappworks.chaos86;
 import android.graphics.Color;
 import android.os.Bundle;
 import android.view.View;
+import android.view.ViewGroup;
 
 import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
@@ -19,22 +20,35 @@ public class MainActivity extends BridgeActivity {
 
         WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
 
+        final View contentView = findViewById(android.R.id.content);
         final View webView = getBridge().getWebView();
+
+        contentView.setBackgroundColor(Color.parseColor("#12161A"));
         webView.setBackgroundColor(Color.parseColor("#12161A"));
+        webView.setPadding(0, 0, 0, 0);
+
+        if (contentView instanceof ViewGroup) {
+            ((ViewGroup) contentView).setClipToPadding(true);
+        }
 
         final WindowInsetsControllerCompat controller =
             WindowCompat.getInsetsController(getWindow(), getWindow().getDecorView());
         controller.setAppearanceLightStatusBars(false);
         controller.setAppearanceLightNavigationBars(false);
 
-        ViewCompat.setOnApplyWindowInsetsListener(webView, (view, windowInsets) -> {
+        ViewCompat.setOnApplyWindowInsetsListener(contentView, (view, windowInsets) -> {
             Insets safeInsets = windowInsets.getInsets(
                 WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.displayCutout()
             );
-            view.setPadding(safeInsets.left, safeInsets.top, safeInsets.right, safeInsets.bottom);
+            view.setPadding(
+                safeInsets.left,
+                safeInsets.top,
+                safeInsets.right,
+                safeInsets.bottom
+            );
             return windowInsets;
         });
 
-        ViewCompat.requestApplyInsets(webView);
+        ViewCompat.requestApplyInsets(contentView);
     }
 }

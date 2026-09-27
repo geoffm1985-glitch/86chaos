@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "release": "18.0.6",
+  "release": "18.0.7",
   "defects": [
     {
       "defectId": "RG-API-WRAPPER-FIDELITY",
@@ -635,6 +635,19 @@
       ],
       "fidelity": "ACTUAL ANDROID NATIVE SOURCE / ACTUAL BRAND ASSET / ANDROID CHROMIUM / IPHONE WEBKIT / REAL DEVICE",
       "fixedVersion": "18.0.4",
+      "mandatoryGroup": "native-mobile-foundation"
+    },
+    {
+      "defectId": "RG-NATIVE-CONTAINER-INSETS-1807",
+      "origin": "18.0.6 real-device Android screenshot",
+      "affectedInvariant": "The installed Android WebView viewport itself must begin below status/cutout UI and end above navigation UI so fixed notification banners, headers, microphones, and bottom controls cannot render beneath Android system bars.",
+      "reproducer": "mobile-native-container-insets-18-0-7.test.cjs / 61-native-container-insets.spec.cjs",
+      "permanentTestIds": [
+        "Android activity constrains the native content container instead of padding the WebView",
+        "native container inset contract remains active for the current Android build"
+      ],
+      "fidelity": "ACTUAL ANDROID NATIVE SOURCE / ANDROID CHROMIUM / IPHONE WEBKIT / REAL DEVICE",
+      "fixedVersion": "18.0.7",
       "mandatoryGroup": "native-mobile-foundation"
     }
   ]

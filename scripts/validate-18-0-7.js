@@ -1,0 +1,20 @@
+#!/usr/bin/env node
+'use strict';
+const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict');
+const root=path.resolve(__dirname,'..'),read=file=>fs.readFileSync(path.join(root,file),'utf8'),json=file=>JSON.parse(read(file));
+const v='18.0.7',p=json('package.json'),l=json('package-lock.json'),pub=json('public/version.json'),contract=json('mobile/native-platform-contract.json');
+assert.equal(p.version,v);assert.equal(l.version,v);assert.equal(l.packages[''].version,v);assert.equal(pub.version,v);assert.equal(pub.build,v);
+assert.equal(p.scripts['test:source'],'node scripts/validate-18-0-7.js');assert.equal(p.scripts['validate:18.0.7'],'node scripts/validate-18-0-7.js');
+assert.match(p.scripts['test:mobile-foundation'],/mobile-native-container-insets-18-0-7\.test\.cjs/);
+assert.match(read('api/_version.js'),/APP_VERSION = '18\.0\.7'/);assert.match(read('api/_pos-bridge-config.js'),/APP_RELEASE = '18\.0\.7'/);
+assert.match(read('src/core/appCore.js'),/CURRENT_VERSION = '18\.0\.7'/);
+const activity=read('android/app/src/main/java/com/chiltonappworks/chaos86/MainActivity.java');
+assert.match(activity,/findViewById\(android\.R\.id\.content\)/);assert.match(activity,/setOnApplyWindowInsetsListener\(contentView/);
+assert.match(activity,/webView\.setPadding\(0, 0, 0, 0\)/);assert.doesNotMatch(activity,/setOnApplyWindowInsetsListener\(webView/);
+assert.match(read('android/app/build.gradle'),/versionCode 180007/);assert.match(read('android/app/build.gradle'),/versionName "18\.0\.7"/);
+assert.match(read('ios/App/App.xcodeproj/project.pbxproj'),/CURRENT_PROJECT_VERSION = 180007;/);assert.match(read('ios/App/App.xcodeproj/project.pbxproj'),/MARKETING_VERSION = 18\.0\.7;/);
+assert.equal(contract.release,v);assert.equal(contract.nativeViewport.android.containerPadding,true);assert.equal(contract.nativeViewport.android.webViewPadding,false);
+assert.match(read('scripts/86chaos-release-gate/release-test-universe.cjs'),/61-native-container-insets\.spec\.cjs/);
+assert.match(read('playwright.mobile-foundation.config.cjs'),/61-native-container-insets/);
+for(const file of ['test-tools/certification/groups.json','test-tools/regressions/registry.json','test-tools/certification/cost-performance-baselines.json'])assert.equal(json(file).release,v);
+console.log('18.0.7 native container inset repair validated.');
