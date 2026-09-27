@@ -1,0 +1,53 @@
+{
+  "schemaVersion": 1,
+  "release": "18.0.0",
+  "baseline": {
+    "branch": "testing",
+    "version": "17.0.42",
+    "commit": "e35079bccabb967b5a637b8faa6f40b5f0af2e31"
+  },
+  "branch": "mobile",
+  "applicationId": "com.chiltonappworks.chaos86",
+  "platforms": [
+    "android",
+    "ios"
+  ],
+  "equalPlatformPriority": true,
+  "webDir": "build",
+  "firebase": {
+    "environment": "testing",
+    "projectId": "chaos-test-d1601",
+    "separateMobileProject": false,
+    "productionProjectAllowed": false
+  },
+  "costControls": {
+    "newPaidServices": false,
+    "persistentLocalCache": true,
+    "sharedListeners": true,
+    "pauseWhenHidden": true,
+    "nativeBackgroundReleaseGraceMs": 15000,
+    "realtimeDatabasePresenceInsteadOfFirestoreHeartbeat": true,
+    "noPollingForPushCapableEvents": true,
+    "noOpWriteSuppressionRequired": true,
+    "paginationAndQueryLimitsRequired": true
+  },
+  "distribution": {
+    "android": [
+      "signed-apk",
+      "google-play-aab"
+    ],
+    "ios": [
+      "testflight",
+      "app-store"
+    ],
+    "publicDownloadPage": "https://86chaos.com/download"
+  },
+  "requiredCoverage": [
+    "android-responsive",
+    "ios-responsive",
+    "firebase-cost",
+    "native-lifecycle",
+    "release-gate",
+    "real-device-before-public-release"
+  ]
+}
