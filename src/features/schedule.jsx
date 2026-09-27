@@ -1819,6 +1819,7 @@ const TabSchedule = ({ currentDate, users: rawUsers, shifts: rawShifts, events: 
   const scheduleBuilderHeaderScrollRef = useRef(null);
   const scheduleBuilderBodyScrollRef = useRef(null);
   const scheduleBuilderScrollSyncRef = useRef(false);
+  const scheduleBuilderHeaderTouchRef = useRef({ axis: null, lastX: 0, lastY: 0 });
   const [scheduleBuilderStickyTop, setScheduleBuilderStickyTop] = useState(0);
   
   const [isEventModalOpen, setIsEventModalOpen] = useState(false); 
@@ -1892,6 +1893,52 @@ const [eventDate, setEventDate] = useState(getToday());
     if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') window.requestAnimationFrame(release);
     else setTimeout(release, 0);
   }, []);
+
+
+  useEffect(() => {
+    if (subTab !== 'schedule' || typeof document === 'undefined') return undefined;
+    const header = scheduleBuilderHeaderScrollRef.current;
+    if (!header) return undefined;
+    const touchState = scheduleBuilderHeaderTouchRef.current;
+    const getScrollHost = () => header.closest('.desktop-pro-shell[data-active-tab="schedule"]')?.querySelector('.app-content-shell');
+    const reset = () => { touchState.axis = null; touchState.lastX = 0; touchState.lastY = 0; };
+    const onTouchStart = event => {
+      if (event.touches?.length !== 1) { reset(); return; }
+      const touch = event.touches[0];
+      touchState.axis = null;
+      touchState.lastX = touch.clientX;
+      touchState.lastY = touch.clientY;
+    };
+    const onTouchMove = event => {
+      if (event.touches?.length !== 1) return;
+      const touch = event.touches[0];
+      const dx = touch.clientX - touchState.lastX;
+      const dy = touch.clientY - touchState.lastY;
+      if (!touchState.axis && Math.max(Math.abs(dx), Math.abs(dy)) >= 6) {
+        touchState.axis = Math.abs(dy) > Math.abs(dx) ? 'vertical' : 'horizontal';
+      }
+      if (touchState.axis === 'vertical') {
+        if (event.cancelable) event.preventDefault();
+        const scrollHost = getScrollHost();
+        const deltaY = touchState.lastY - touch.clientY;
+        if (scrollHost && Number.isFinite(deltaY)) scrollHost.scrollTop += deltaY;
+        else if (typeof window !== 'undefined' && Number.isFinite(deltaY)) window.scrollBy(0, deltaY);
+      }
+      touchState.lastX = touch.clientX;
+      touchState.lastY = touch.clientY;
+    };
+    header.addEventListener('touchstart', onTouchStart, { passive: true });
+    header.addEventListener('touchmove', onTouchMove, { passive: false });
+    header.addEventListener('touchend', reset, { passive: true });
+    header.addEventListener('touchcancel', reset, { passive: true });
+    return () => {
+      header.removeEventListener('touchstart', onTouchStart);
+      header.removeEventListener('touchmove', onTouchMove);
+      header.removeEventListener('touchend', reset);
+      header.removeEventListener('touchcancel', reset);
+      reset();
+    };
+  }, [subTab]);
 
   useEffect(() => {
     if (subTab !== 'schedule' || typeof window === 'undefined') return undefined;

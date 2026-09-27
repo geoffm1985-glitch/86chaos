@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "sourceHash": "be01b9ec3793268a88eace057bf763ce3413ff6b9d2c40824beda96c9f73294d",
+  "sourceHash": "c6e1a6c603128d5bf266f2066cda0318fd3c8ef9a69a35d4fc8ba6de1f487fed",
   "files": [
     {
       "file": ".gitattributes",
@@ -8,7 +8,7 @@
     },
     {
       "file": ".github/workflows/testing-targeted-delta.yml",
-      "sha256": "714761cbbdf703b6a6bb9ca89acec50ce9767a29f2f9a07ecc61d1ed6305c044"
+      "sha256": "f951a03fd5edaf31cecf7f91f37eb4dca6475ce18a0361037bf391625ac2dc09"
     },
     {
       "file": ".gitignore",
@@ -125,6 +125,10 @@
     {
       "file": "RELEASE_17_0_41.md",
       "sha256": "7de6586f05969e9f8dd391d3a72cbe6b99fcd425601815cde0401ce6e70f4116"
+    },
+    {
+      "file": "RELEASE_17_0_42.md",
+      "sha256": "5edb0aa9934d484d2827eea36e550634a6af25f07fe064fa6445f64296e73c1d"
     },
     {
       "file": "RELEASE_17_0_5.md",
@@ -256,7 +260,7 @@
     },
     {
       "file": "api/_pos-bridge-config.js",
-      "sha256": "9580ec9c3d10d710375c864657b50181451492fa75745305a7a22e7e9737d941"
+      "sha256": "011b76bf06e6be111b708a13ccb03eb459964051b7cf6d7f8122d2ea42c33a3e"
     },
     {
       "file": "api/_pos-bridge-events.js",
@@ -392,7 +396,7 @@
     },
     {
       "file": "api/_version.js",
-      "sha256": "ff233eeeffeff442e1d799e573d6c024ebfa4f96cdfd871e7defdedee8f5975a"
+      "sha256": "f544b290e9dc14980b97c639a889f583d1e20e0ec31f2e77cc42bb3b55f54866"
     },
     {
       "file": "api/account-deletion-request.js",
@@ -553,6 +557,10 @@
     {
       "file": "api/emergency-schedule-requestoff-17-0-40.test.cjs",
       "sha256": "c3c275b5dfc89d829fe221c64ed60736bbafbd684c8a38df82cc2b4a5763a69d"
+    },
+    {
+      "file": "api/emergency-sticky-touch-17-0-42.test.cjs",
+      "sha256": "5bb1e454afe821db55a763b56a9aabecc7f74385df35ff18566668504dfe28e8"
     },
     {
       "file": "api/employee-access-firestore-icon-16-0-161.test.cjs",
@@ -1572,11 +1580,11 @@
     },
     {
       "file": "package-lock.json",
-      "sha256": "f78876bd153641342a7d85147bed0bb9260927fe3fc492f7e327c15aff1d9c8a"
+      "sha256": "2ad2acb2afeb2ae12648b251b92e74601da99aa41e3b0c212d05ef4a6120466c"
     },
     {
       "file": "package.json",
-      "sha256": "e04c87fc154fceb3a68f662ec1f045a309da4a908ca9bfc07472ec2cc82f8f17"
+      "sha256": "4511571fbcc7de793ab38d40015af57c5c957c0d7808de849d5ffef5b21bfb28"
     },
     {
       "file": "playwright.config.js",
@@ -1792,7 +1800,7 @@
     },
     {
       "file": "public/version.json",
-      "sha256": "caaf4dde853c14ace6122564ee03a5dc749e65d5a5a16b69b5135c61256196f9"
+      "sha256": "01318b22c1b57872cf84491f6424eb91b47942f6f30258a4336206a1a0457144"
     },
     {
       "file": "public/wisco.png",
@@ -1912,7 +1920,7 @@
     },
     {
       "file": "scripts/86chaos-release-gate/release-test-universe.cjs",
-      "sha256": "b43f50f25bb1eafb450be4eb6ed40b8feb2dc0148675d487e593fbdcc1ca6f9c"
+      "sha256": "44441f232392f31cc7ae48d575d55040d848a7f267c5f9f327d7a1e672d480f0"
     },
     {
       "file": "scripts/86chaos-release-gate/reported-current-blockers-20260814-064437.json",
@@ -2891,6 +2899,10 @@
       "sha256": "6772a61f1d2144879c55afbc78e48b903b80c02a440df26c6c9611000f83ca63"
     },
     {
+      "file": "scripts/validate-17-0-42.js",
+      "sha256": "6c0391c21957e3b843130dc846378b568117f5c25bfdd8ed74552c99c2fa18e7"
+    },
+    {
       "file": "scripts/validate-17-0-5.js",
       "sha256": "b52dc67d3fc01dd79b886116f70ec76313fbd6088722c9c0b385a968ab31952f"
     },
@@ -3072,7 +3084,7 @@
     },
     {
       "file": "src/core/appCore.js",
-      "sha256": "f77dde279b1bce74fb0c7ccfe3dab7e4874e9b3a7fc47145eb824ba2eb762d09"
+      "sha256": "ad50172dbc3276ff1ad4764d966ca7b4873f91540053459eaff4e86e8643f022"
     },
     {
       "file": "src/core/csvSafety.test.js",
@@ -3080,11 +3092,11 @@
     },
     {
       "file": "src/core/customerHelpKnowledge.cjs",
-      "sha256": "e19f7700ade1a54e348d035e78523124aec2e52b3b20a6f236bfc0624ff449d3"
+      "sha256": "5ff3a57be3b3ea6cd263907015eb0b504ec90305d184c8a1bb01d280889d80a1"
     },
     {
       "file": "src/core/customerHelpKnowledge.js",
-      "sha256": "4daa627a8ad416576382b277573950e82182a9dca842bb4693caf195f6483529"
+      "sha256": "362dc397217293f6c0f5a3f922f1032afded880885c968ec29e10282fd52d09b"
     },
     {
       "file": "src/core/fileCompression.js",
@@ -3324,7 +3336,7 @@
     },
     {
       "file": "src/core/schedulePdf.js",
-      "sha256": "9d846dc6ae0476bc6b835447ca53bec6225f861b86e0feefd0b8d945000b45b0"
+      "sha256": "d6d78a55f65d1df7b09f64902a1f55d137f6858426fa71483cddd42a77b9379a"
     },
     {
       "file": "src/core/schedulePdf.test.js",
@@ -3472,7 +3484,7 @@
     },
     {
       "file": "src/features/schedule.jsx",
-      "sha256": "28bdb6f86e85732bb04e71355acd8f3c6a0331aa041640662f7cfde855ef793f"
+      "sha256": "d2ed546ac325efe84421b2f07a13cd3759ba7da1dffb3d5e759e84bcb51b8b43"
     },
     {
       "file": "src/features/trainingManual.js",
@@ -3508,7 +3520,7 @@
     },
     {
       "file": "src/styles.css",
-      "sha256": "ef5aa46edcb8a30a803ef34dd75585262c3d64570f4221251e4b20d8b1f9e234"
+      "sha256": "c26e13e69541f49937563897f36d6f32ecff6236a3688fb979ed1399935cd734"
     },
     {
       "file": "storage.rules",
@@ -3528,11 +3540,11 @@
     },
     {
       "file": "test-tools/certification/cost-performance-baselines.json",
-      "sha256": "5bd3a651dbe19f770629336a4b257b3b9327e6373d23d3c822c1af0316449921"
+      "sha256": "a99f93add13cccecb9c0c7dae1eb42af419a06b3d0d47f6c4900731b0e348aa8"
     },
     {
       "file": "test-tools/certification/groups.json",
-      "sha256": "427e53feeaa009274a2dae315b917db069c265ce3c749271f83f80956d83eb14"
+      "sha256": "4e09ba6ebefd42de27d985da8053d7674a1e42fe7a95b8d9d07bef86e0c373af"
     },
     {
       "file": "test-tools/certification/permission-matrix.json",
@@ -3584,7 +3596,7 @@
     },
     {
       "file": "test-tools/regressions/registry.json",
-      "sha256": "002d45e0ce90c420df00a24b545d6d7f44430bea5734415d2b8c6ae17f8de337"
+      "sha256": "5d0ea0001cf11b69e8c2a9a1129a9d35f8b527979955872a01eca86761b07729"
     },
     {
       "file": "test-tools/reporters/chaos-release-gate-reporter.cjs",
@@ -3933,6 +3945,10 @@
     {
       "file": "tests/86chaos-release-gate/56-manager-brief-sticky-day-header.spec.cjs",
       "sha256": "b151ac857af2709783938099934600df703216a0887dc1dbb5ef36e185cb70a8"
+    },
+    {
+      "file": "tests/86chaos-release-gate/57-sticky-header-touch-handoff.spec.cjs",
+      "sha256": "4d0a135244bc8457f171f3fa22fe9e8ec292630cf090ac282baf468867f451e9"
     },
     {
       "file": "tests/86chaos-release-gate/exhaustive-surface-matrix.cjs",
