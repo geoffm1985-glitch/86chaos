@@ -185,7 +185,7 @@
     "test:repair:17.0.42": "npm run test:current-release-targeted",
     "validate:18.0.0": "node scripts/validate-18-0-0.js",
     "test:mobile-foundation": "node --test api/mobile-native-foundation-18-0-0.test.cjs",
-    "test:mobile-release-gate": "playwright test --config=playwright.play-store-release.config.cjs tests/86chaos-release-gate/58-native-mobile-cost-foundation.spec.cjs --project=native-android --project=native-ios-webkit",
+    "test:mobile-release-gate": "playwright test --config=playwright.mobile-foundation.config.cjs",
     "test:repair:18.0.0": "npm run test:current-release-targeted"
   },
   "browserslist": {
