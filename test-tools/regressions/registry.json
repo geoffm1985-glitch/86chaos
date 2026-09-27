@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "release": "18.0.3",
+  "release": "18.0.4",
   "defects": [
     {
       "defectId": "RG-API-WRAPPER-FIDELITY",
@@ -621,6 +621,20 @@
       ],
       "fidelity": "ACTUAL SOURCE / CAPACITOR CONFIG / ANDROID CHROMIUM / IPHONE WEBKIT",
       "fixedVersion": "18.0.1",
+      "mandatoryGroup": "native-mobile-foundation"
+    },
+    {
+      "defectId": "RG-NATIVE-SYSTEM-BARS-BRANDING-1804",
+      "origin": "18.0.3 real-device Android preview",
+      "affectedInvariant": "Installed mobile UI must not render under Android status/navigation/cutout system UI, and Android launcher branding must use the 86 Chaos asset rather than Capacitor defaults.",
+      "reproducer": "mobile-native-system-bars-branding-18-0-4.test.cjs / 60-native-system-bars-branding.spec.cjs",
+      "permanentTestIds": [
+        "18.0.4 Android WebView respects status navigation and cutout insets",
+        "18.0.4 Android launcher uses the branded 86 Chaos asset instead of Capacitor defaults",
+        "native viewport contract stays safe on Android Chromium and iPhone WebKit"
+      ],
+      "fidelity": "ACTUAL ANDROID NATIVE SOURCE / ACTUAL BRAND ASSET / ANDROID CHROMIUM / IPHONE WEBKIT / REAL DEVICE",
+      "fixedVersion": "18.0.4",
       "mandatoryGroup": "native-mobile-foundation"
     }
   ]

@@ -5769,3 +5769,29 @@ span.bg-red-500.text-white,
   transform: translateZ(0);
   backface-visibility: hidden;
 }
+
+
+/* 18.0.4 native system-bar containment.
+   Android receives real WindowInsets in MainActivity. iOS keeps a CSS safe-area
+   fallback so packaged content never relies on browser chrome for protection. */
+html.chaos-native-runtime,
+html.chaos-native-runtime body,
+html.chaos-native-runtime #root {
+  background: #12161A;
+}
+
+html.chaos-native-ios body {
+  box-sizing: border-box;
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  padding-left: env(safe-area-inset-left, 0px);
+}
+
+html.chaos-native-ios .desktop-pro-shell {
+  min-height: calc(100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+}
+
+html.chaos-native-runtime body {
+  overscroll-behavior-y: none;
+}

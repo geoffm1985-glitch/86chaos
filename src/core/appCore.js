@@ -426,7 +426,7 @@ export const MASTER_ADMIN_EMAIL = (process.env.REACT_APP_MASTER_ADMIN_EMAIL || '
 export const EVENT_TAGS = ['Standard Day', 'Packers Game', 'Brewers Game', 'Live Music', 'Severe Weather', 'Private Catering', 'Holiday'];
 
 // --- VERSION TRACKING ---
-export const CURRENT_VERSION = '18.0.3';
+export const CURRENT_VERSION = '18.0.4';
 
 // --- Helpers ---
 const usePageVisible = () => {
@@ -457,6 +457,16 @@ export const getNativeMobilePlatform = () => {
 };
 
 export const isNativeMobileRuntime = () => getNativeMobilePlatform() !== 'web';
+
+export const installNativeViewportClass = () => {
+  if (typeof document === 'undefined') return 'web';
+  const platform = getNativeMobilePlatform();
+  if (platform === 'web') return platform;
+  document.documentElement.classList.add('chaos-native-runtime', `chaos-native-${platform}`);
+  document.documentElement.dataset.nativePlatform = platform;
+  return platform;
+};
+installNativeViewportClass();
 export const MOBILE_NATIVE_BACKGROUND_RELEASE_GRACE_MS = 15 * 1000;
 
 const nativeRuntimeIsBackgrounded = () => {
