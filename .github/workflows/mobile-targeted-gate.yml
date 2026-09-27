@@ -1,0 +1,88 @@
+name: Mobile Targeted Gate
+
+on:
+  push:
+    branches:
+      - mobile
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mobile-targeted-gate
+  cancel-in-progress: true
+
+jobs:
+  targeted:
+    if: ${{ contains(github.event.head_commit.message, '[mobile-test]') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      CI: "true"
+      REACT_APP_FIREBASE_DEPLOYMENT_MODE: testing
+      REACT_APP_FIREBASE_ACTIVE_PROJECT_ID: chaos-test-d1601
+    steps:
+      - name: Check out exact mobile commit
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node 24
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install exact dependencies
+        run: npm ci --no-audit --no-fund --progress=false
+
+      - name: Run 18.0.0 native targeted source tests
+        run: |
+          npm run test:mobile-foundation
+          npm run validate:18.0.0
+
+      - name: Build React assets
+        env:
+          CI: "false"
+        run: npm run build
+
+      - name: Verify Android and iOS Capacitor sync
+        run: |
+          npx cap sync android
+          npx cap sync ios
+          git diff --exit-code -- android ios capacitor.config.json package.json package-lock.json
+
+      - name: Install Android Chromium and iPhone WebKit engines
+        run: npx playwright install --with-deps chromium webkit
+
+      - name: Start local immutable mobile test server
+        shell: bash
+        run: |
+          python3 -m http.server 3000 --directory build > /tmp/86chaos-mobile-http.log 2>&1 &
+          echo $! > /tmp/86chaos-mobile-http.pid
+          for i in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:3000/version.json >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          cat /tmp/86chaos-mobile-http.log || true
+          exit 1
+
+      - name: Run Android and iPhone targeted Release Gate
+        env:
+          APP_URL: http://127.0.0.1:3000
+          CHAOS_BASE_URL: http://127.0.0.1:3000
+          PLAYWRIGHT_BASE_URL: http://127.0.0.1:3000
+        run: npm run test:mobile-release-gate
+
+      - name: Upload failure evidence only
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: 86chaos-mobile-18-0-0-failure
+          if-no-files-found: ignore
+          retention-days: 3
+          path: |
+            test-results/**
+            playwright-report/**
