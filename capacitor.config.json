@@ -1,0 +1,9 @@
+{
+  "appId": "com.chiltonappworks.chaos86",
+  "appName": "86 Chaos",
+  "webDir": "build",
+  "server": {
+    "androidScheme": "https",
+    "iosScheme": "https"
+  }
+}
