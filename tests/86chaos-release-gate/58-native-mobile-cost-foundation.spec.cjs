@@ -6,7 +6,8 @@ const read=file=>fs.readFileSync(path.join(root,file),'utf8');
 const json=file=>JSON.parse(read(file));
 
 test.describe('58 Native mobile and Firebase cost foundation',()=>{
-  test('deployed 18.0.0 identity and Android/iPhone responsive smoke stay aligned',async({browser,request})=>{
+  test('deployed/local 18.0.0 identity loads on Android Chromium and iPhone WebKit',async({page,request},testInfo)=>{
+    expect(['native-android','native-ios-webkit']).toContain(testInfo.project.name);
     const contract=json('mobile/native-platform-contract.json');
     expect(contract.platforms).toEqual(['android','ios']);
     expect(contract.equalPlatformPriority).toBe(true);
@@ -18,38 +19,42 @@ test.describe('58 Native mobile and Firebase cost foundation',()=>{
     const version=await versionResponse.json();
     expect(version.version).toBe('18.0.0');
 
-    const profiles=[
-      {
-        name:'android',
-        userAgent:'Mozilla/5.0 (Linux; Android 16; Pixel 9) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0 Mobile Safari/537.36',
-        viewport:{width:412,height:915}
-      },
-      {
-        name:'ios',
-        userAgent:'Mozilla/5.0 (iPhone; CPU iPhone OS 18_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1',
-        viewport:{width:393,height:852}
-      }
-    ];
-
-    for(const profile of profiles){
-      const context=await browser.newContext({userAgent:profile.userAgent,viewport:profile.viewport,isMobile:true,hasTouch:true});
-      const page=await context.newPage();
-      const response=await page.goto('/',{waitUntil:'domcontentloaded',timeout:30000});
-      expect(response && response.ok(),profile.name+' root document should load').toBeTruthy();
-      await expect(page.locator('body')).toBeVisible();
-      const body=(await page.locator('body').innerText()).slice(0,12000);
-      expect(body).not.toMatch(/application recovery|something went wrong/i);
-      const viewportMeta=await page.locator('meta[name="viewport"]').getAttribute('content');
-      expect(viewportMeta||'').toContain('width=device-width');
-      await context.close();
-    }
+    const response=await page.goto('/',{waitUntil:'domcontentloaded',timeout:30000});
+    expect(response && response.ok(),testInfo.project.name+' root document should load').toBeTruthy();
+    await expect(page.locator('body')).toBeVisible();
+    const body=(await page.locator('body').innerText()).slice(0,12000);
+    expect(body).not.toMatch(/application recovery|something went wrong/i);
+    const viewportMeta=await page.locator('meta[name="viewport"]').getAttribute('content');
+    expect(viewportMeta||'').toContain('width=device-width');
   });
 
-  test('source contract keeps native listener cost guard and local packaging intact',async()=>{
+  test('source contract keeps native identity permissions and Firebase cost guard aligned',async()=>{
     const core=read('src/core/appCore.js');
     const cap=json('capacitor.config.json');
+    const contract=json('mobile/native-platform-contract.json');
+    const androidBuild=read('android/app/build.gradle');
+    const androidManifest=read('android/app/src/main/AndroidManifest.xml');
+    const iosProject=read('ios/App/App.xcodeproj/project.pbxproj');
+    const iosPlist=read('ios/App/App/Info.plist');
+
     expect(cap.webDir).toBe('build');
     expect(cap.server.url).toBeUndefined();
+    expect(contract.capacitor.version).toBe('8.5.2');
+    expect(contract.capacitor.android.versionCode).toBe(180000);
+    expect(contract.capacitor.android.versionName).toBe('18.0.0');
+    expect(contract.capacitor.ios.currentProjectVersion).toBe(180000);
+    expect(contract.capacitor.ios.marketingVersion).toBe('18.0.0');
+
+    expect(androidBuild).toMatch(/versionCode 180000/);
+    expect(androidBuild).toMatch(/versionName "18\.0\.0"/);
+    expect(androidManifest).toMatch(/android\.permission\.CAMERA/);
+    expect(androidManifest).toMatch(/android\.permission\.RECORD_AUDIO/);
+    expect(androidManifest).toMatch(/android\.permission\.POST_NOTIFICATIONS/);
+    expect(iosProject).toMatch(/CURRENT_PROJECT_VERSION = 180000;/);
+    expect(iosProject).toMatch(/MARKETING_VERSION = 18\.0\.0;/);
+    expect(iosPlist).toMatch(/NSCameraUsageDescription/);
+    expect(iosPlist).toMatch(/NSMicrophoneUsageDescription/);
+
     expect(core).toMatch(/MOBILE_NATIVE_BACKGROUND_RELEASE_GRACE_MS = 15 \* 1000/);
     expect(core).toMatch(/listenerReleaseGraceMs\(current, 'collection'\)/);
     expect(core).toMatch(/listenerReleaseGraceMs\(current, 'document'\)/);
