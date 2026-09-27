@@ -4,6 +4,7 @@
   "webDir": "build",
   "server": {
     "androidScheme": "https",
-    "iosScheme": "https"
+    "iosScheme": "https",
+    "hostname": "testing.86chaos.com"
   }
 }

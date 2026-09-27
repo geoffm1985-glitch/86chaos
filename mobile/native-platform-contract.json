@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "release": "18.0.0",
+  "release": "18.0.1",
   "baseline": {
     "branch": "testing",
     "version": "17.0.42",
@@ -59,14 +59,14 @@
       "minSdk": 24,
       "compileSdk": 36,
       "targetSdk": 36,
-      "versionCode": 180000,
-      "versionName": "18.0.0"
+      "versionCode": 180001,
+      "versionName": "18.0.1"
     },
     "ios": {
       "bundleIdentifier": "com.chiltonappworks.chaos86",
       "minimumVersion": "15.0",
-      "currentProjectVersion": 180000,
-      "marketingVersion": "18.0.0",
+      "currentProjectVersion": 180001,
+      "marketingVersion": "18.0.1",
       "packageManager": "SPM"
     }
   },
@@ -83,5 +83,13 @@
       "NSMicrophoneUsageDescription",
       "NSPhotoLibraryUsageDescription"
     ]
+  },
+  "nativeApiBridge": {
+    "localOrigin": "https://testing.86chaos.com",
+    "backendBaseUrl": "https://testing.86chaos.com",
+    "transport": "CapacitorHttp",
+    "intercepts": "same-origin /api/* only",
+    "firebaseTransport": "browser Firebase SDK unchanged",
+    "paidServicesAdded": false
   }
 }

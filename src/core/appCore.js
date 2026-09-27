@@ -7,6 +7,7 @@ import { getMessaging, isSupported } from 'firebase/messaging';
 import { getStorage } from 'firebase/storage';
 import { getDatabase, ref as rtdbRef, onValue as onRtdbValue, onDisconnect as rtdbOnDisconnect, set as rtdbSet, serverTimestamp as rtdbServerTimestamp } from 'firebase/database';
 import L from 'leaflet';
+import { Capacitor, CapacitorHttp } from '@capacitor/core';
 
 
 // Fix for React-Leaflet invisible pin issue
@@ -425,7 +426,7 @@ export const MASTER_ADMIN_EMAIL = (process.env.REACT_APP_MASTER_ADMIN_EMAIL || '
 export const EVENT_TAGS = ['Standard Day', 'Packers Game', 'Brewers Game', 'Live Music', 'Severe Weather', 'Private Catering', 'Holiday'];
 
 // --- VERSION TRACKING ---
-export const CURRENT_VERSION = '18.0.0';
+export const CURRENT_VERSION = '18.0.1';
 
 // --- Helpers ---
 const usePageVisible = () => {
@@ -447,11 +448,8 @@ const usePageVisible = () => {
 };
 
 export const getNativeMobilePlatform = () => {
-  if (typeof window === 'undefined') return 'web';
-  const capacitor = window.Capacitor;
-  if (!capacitor) return 'web';
   try {
-    const platform = String(capacitor.getPlatform?.() || '').toLowerCase();
+    const platform = String(Capacitor?.getPlatform?.() || '').toLowerCase();
     return platform === 'android' || platform === 'ios' ? platform : 'web';
   } catch (_) {
     return 'web';
@@ -466,6 +464,88 @@ const nativeRuntimeIsBackgrounded = () => {
   if (typeof window !== 'undefined' && window.__chaosNativeAppActive === false) return true;
   return typeof document !== 'undefined' && document.visibilityState === 'hidden';
 };
+
+export const NATIVE_API_BASE_URL = String(env('REACT_APP_NATIVE_API_BASE_URL', 'https://testing.86chaos.com')).replace(/\/+$/, '');
+const nativeOriginalFetch = typeof window !== 'undefined' && typeof window.fetch === 'function'
+  ? window.fetch.bind(window)
+  : null;
+
+const nativeApiRequestPath = (input) => {
+  try {
+    const raw = typeof input === 'string' ? input : String(input?.url || '');
+    if (/^\/api\//.test(raw)) return raw;
+    if (typeof window === 'undefined') return '';
+    const parsed = new URL(raw, window.location.origin);
+    return parsed.origin === window.location.origin && /^\/api\//.test(parsed.pathname)
+      ? `${parsed.pathname}${parsed.search}${parsed.hash}`
+      : '';
+  } catch (_) {
+    return '';
+  }
+};
+
+const headersToPlainObject = (inputHeaders, extraHeaders) => {
+  const headers = new Headers(inputHeaders || undefined);
+  new Headers(extraHeaders || undefined).forEach((value, key) => headers.set(key, value));
+  return Object.fromEntries(headers.entries());
+};
+
+const nativeRequestBody = async (input, init, method) => {
+  if (init?.body !== undefined && init?.body !== null) {
+    if (typeof init.body === 'string') return init.body;
+    if (typeof URLSearchParams !== 'undefined' && init.body instanceof URLSearchParams) return init.body.toString();
+    if (typeof FormData !== 'undefined' && init.body instanceof FormData) {
+      const out = {};
+      for (const [key, value] of init.body.entries()) {
+        if (typeof value !== 'string') throw new Error('Native API file uploads require the dedicated native upload path.');
+        if (Object.prototype.hasOwnProperty.call(out, key)) out[key] = Array.isArray(out[key]) ? [...out[key], value] : [out[key], value];
+        else out[key] = value;
+      }
+      return out;
+    }
+    return init.body;
+  }
+  if (typeof Request !== 'undefined' && input instanceof Request && !['GET','HEAD'].includes(method)) {
+    return input.clone().text();
+  }
+  return undefined;
+};
+
+export const nativeApiFetch = async (input, init = {}) => {
+  const apiPath = nativeApiRequestPath(input);
+  if (!isNativeMobileRuntime() || !apiPath) {
+    if (!nativeOriginalFetch) throw new Error('Browser fetch is unavailable.');
+    return nativeOriginalFetch(input, init);
+  }
+
+  const requestMethod = String(init.method || (typeof Request !== 'undefined' && input instanceof Request ? input.method : '') || 'GET').toUpperCase();
+  const requestHeaders = headersToPlainObject(
+    typeof Request !== 'undefined' && input instanceof Request ? input.headers : undefined,
+    init.headers
+  );
+  const data = await nativeRequestBody(input, init, requestMethod);
+  const result = await CapacitorHttp.request({
+    url: `${NATIVE_API_BASE_URL}${apiPath}`,
+    method: requestMethod,
+    headers: requestHeaders,
+    data,
+    connectTimeout: 15000,
+    readTimeout: 30000,
+  });
+  const body = typeof result.data === 'string' ? result.data : JSON.stringify(result.data ?? null);
+  return new Response(body, {
+    status: Number(result.status || 500),
+    headers: result.headers || {},
+  });
+};
+
+export const installNativeApiFetchBridge = () => {
+  if (typeof window === 'undefined' || !isNativeMobileRuntime() || window.__chaosNativeApiFetchBridgeInstalled) return false;
+  window.__chaosNativeApiFetchBridgeInstalled = true;
+  window.fetch = nativeApiFetch;
+  return true;
+};
+installNativeApiFetchBridge();
 
 const LIVE_COLLECTION_RELEASE_GRACE_MS = 6 * 60 * 1000;
 const LIVE_COLLECTION_RELEASE_MIN_MS = 45 * 1000;

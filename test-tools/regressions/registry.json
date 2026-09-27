@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "release": "18.0.0",
+  "release": "18.0.1",
   "defects": [
     {
       "defectId": "RG-API-WRAPPER-FIDELITY",
@@ -608,6 +608,19 @@
       ],
       "fidelity": "ACTUAL SOURCE / DEPLOYED ANDROID-IOS RESPONSIVE PLAYWRIGHT / REAL DEVICE BEFORE PUBLIC RELEASE",
       "fixedVersion": "18.0.0",
+      "mandatoryGroup": "native-mobile-foundation"
+    },
+    {
+      "defectId": "RG-NATIVE-PACKAGED-API-BRIDGE-1801",
+      "origin": "18.0.0 packaged native review before direct Android distribution",
+      "affectedInvariant": "Installed Android and iOS packages must send app API traffic to the testing backend rather than the local Capacitor asset server while preserving the authorized testing Firebase origin.",
+      "reproducer": "mobile-native-api-bridge-18-0-1.test.cjs / 59-native-packaged-api-bridge.spec.cjs",
+      "permanentTestIds": [
+        "18.0.1 native API bridge intercepts only local /api traffic and targets testing backend",
+        "Android and iPhone packaged API bridge contract stays identical"
+      ],
+      "fidelity": "ACTUAL SOURCE / CAPACITOR CONFIG / ANDROID CHROMIUM / IPHONE WEBKIT",
+      "fixedVersion": "18.0.1",
       "mandatoryGroup": "native-mobile-foundation"
     }
   ]

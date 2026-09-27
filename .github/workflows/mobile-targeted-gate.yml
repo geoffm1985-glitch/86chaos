@@ -6,7 +6,7 @@ on:
       - mobile
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: mobile-targeted-gate
@@ -39,7 +39,7 @@ jobs:
       - name: Run 18.0.0 native targeted source tests
         run: |
           npm run test:mobile-foundation
-          npm run validate:18.0.0
+          npm run validate:18.0.1
 
       - name: Build React assets
         env:
@@ -75,6 +75,48 @@ jobs:
           CHAOS_BASE_URL: http://127.0.0.1:3000
           PLAYWRIGHT_BASE_URL: http://127.0.0.1:3000
         run: npm run test:mobile-release-gate
+
+      - name: Set up Java 21 for Android preview
+        if: ${{ contains(github.event.head_commit.message, '[android-preview]') }}
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Restore persistent preview signing key
+        if: ${{ contains(github.event.head_commit.message, '[android-preview]') }}
+        uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: 86chaos-mobile-preview-debug-keystore-v1
+
+      - name: Build signed Android preview APK
+        if: ${{ contains(github.event.head_commit.message, '[android-preview]') }}
+        shell: bash
+        run: |
+          npx cap sync android
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon
+          cd ..
+          cp android/app/build/outputs/apk/debug/app-debug.apk 86Chaos-18.0.1-android-preview.apk
+          sha256sum 86Chaos-18.0.1-android-preview.apk > 86Chaos-18.0.1-android-preview.apk.sha256
+
+      - name: Publish Android preview release
+        if: ${{ contains(github.event.head_commit.message, '[android-preview]') }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          tag="mobile-v18.0.1-preview"
+          gh release view "$tag" >/dev/null 2>&1 && gh release delete "$tag" --yes --cleanup-tag || true
+          gh release create "$tag" \
+            86Chaos-18.0.1-android-preview.apk \
+            86Chaos-18.0.1-android-preview.apk.sha256 \
+            --target "$GITHUB_SHA" \
+            --title "86 Chaos 18.0.1 Android Preview" \
+            --prerelease \
+            --notes "Internal Android preview for the 86 Chaos mobile branch. Uses the testing Firebase environment only. Preview signing is not the future Google Play production signing identity."
 
       - name: Upload failure evidence only
         if: failure()
