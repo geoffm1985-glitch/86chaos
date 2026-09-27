@@ -7,16 +7,18 @@
   "releaseTitle": "Native Mobile and Firebase Cost Foundation",
   "notes": [
     "Mobile branch only; testing, experimental, and production are unchanged.",
-    "Android and iPhone/iPad are equal targets.",
+    "Capacitor 8.5.2 Android and iOS projects are generated from the exact deployed 17.0.42 baseline.",
+    "Android and iPhone/iPad are equal targets with dedicated targeted and Release Gate coverage.",
     "No new paid service or separate Firebase project is introduced."
   ],
   "title": "86 Chaos 18.0.0",
   "summary": "Begins the isolated Android and iPhone/iPad mobile line from the exact deployed 17.0.42 testing baseline.",
   "description": "Adds the cross-platform mobile contract, mobile-specific Firebase listener cost controls, download/distribution groundwork, and explicit Android/iOS parity requirements without changing the production or testing branches.",
   "highlights": [
-    "Native mobile runtime contract targets both Android and iOS from the same React core.",
-    "Backgrounded native sessions use a shorter Firestore listener release window while retaining local cached data.",
-    "The mobile Vercel preview remains locked to the existing testing Firebase project.",
-    "New targeted and Release Gate coverage verifies mobile parity and cost controls."
+    "Native Android and iOS shells share application identity com.chiltonappworks.chaos86 and release version 18.0.0.",
+    "Backgrounded native sessions use a 15-second idle Firestore listener release window while retaining local cached data.",
+    "Camera, microphone, and notification permission foundations are present for existing 86 Chaos workflows.",
+    "The mobile Vercel preview is locked to the existing testing Firebase project and is isolated from testing/production branches.",
+    "Android Chromium and iPhone WebKit targeted Release Gate coverage is included."
   ]
 }
