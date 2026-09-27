@@ -132,8 +132,6 @@ async function runFirestoreTests(env) {
   const superAdmin = env.authenticatedContext('superAdmin', { email: 'super@example.com', superAdmin: true }).firestore();
   const anon = env.unauthenticatedContext().firestore();
 
-<<<<<<< HEAD
-=======
   setRuleCase('Request Off partial-day time-order validation');
   const ownTimeOffBase = {
     restaurantId: tenantA,
@@ -185,7 +183,6 @@ async function runFirestoreTests(env) {
     endTime: '09:00'
   }));
 
->>>>>>> 1fb9648590016d97432aa4c21a1d5758ab3b8992
   setRuleCase('Publication fencing and role lifecycle roots are server-owned');
   for (const client of [staffA, managerA, ownerA, restaurantAdminA, superAdmin, anon]) {
     await assertFails(setDoc(doc(client, 'schedulePublishOperations', 'forged'), { restaurantId:tenantA,status:'complete',generation:99 }));

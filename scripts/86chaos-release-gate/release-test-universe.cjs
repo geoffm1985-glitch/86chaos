@@ -18,8 +18,6 @@ const RELEASE_CRITICAL_SPECS = Object.freeze([
   'tests/86chaos-release-gate/36-restaurant-brain.spec.cjs',
   'tests/86chaos-new-implementations/06-pos-bridge-contract.spec.cjs',
   'tests/86chaos-new-implementations/07-pos-bridge-security.spec.cjs',
-<<<<<<< HEAD
-=======
   'tests/86chaos-release-gate/37-native-backup-watchdog-hardening.spec.cjs',
   'tests/86chaos-release-gate/38-release-identity-deployment-parity.spec.cjs',
   'tests/86chaos-release-gate/39-testing-alias-mutation-safety.spec.cjs',
@@ -43,7 +41,7 @@ const RELEASE_CRITICAL_SPECS = Object.freeze([
   'tests/86chaos-release-gate/57-sticky-header-touch-handoff.spec.cjs',
   'tests/86chaos-release-gate/58-testing-gate-17-0-43.spec.cjs',
   'tests/86chaos-release-gate/60-customer-help-version-17-0-45.spec.cjs',
->>>>>>> 1fb9648590016d97432aa4c21a1d5758ab3b8992
+  'tests/86chaos-release-gate/61-release-gate-surgical-repairs-17-0-46.spec.cjs',
 ]);
 
 const PWA_SPEC_PATTERN = /86chaos-release-gate\/(26-pwa-icon-source-deployed-parity|27-pwa-browser-icon-matrix)\.spec\.cjs/;

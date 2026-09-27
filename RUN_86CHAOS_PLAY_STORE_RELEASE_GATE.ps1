@@ -18,7 +18,6 @@ if (-not (Test-Path ".\package-lock.json")) {
 
 $ReleaseTargetKeys = @('APP_URL', 'CHAOS_BASE_URL', 'CHAOS_EXPECTED_VERCEL_PROJECT_SLUG')
 $CanonicalVercelProjectSlug = '86chaos'
-$CanonicalTestingUrl = 'https://testing.86chaos.com'
 
 function Read-EnvFileMap {
   param([string]$Path)
@@ -122,20 +121,6 @@ Assert-NoReleaseTargetConflicts $EnvTestLocal $EnvLocal
 Import-EnvFile $EnvTestLocal
 Import-EnvFile $EnvLocal
 
-<<<<<<< HEAD
-# Full certification always targets the permanent branch-bound testing domain.
-foreach ($key in @('APP_URL', 'CHAOS_BASE_URL')) {
-  $existing = [string][Environment]::GetEnvironmentVariable($key, 'Process')
-  if ($existing -and $existing.Trim().TrimEnd('/') -ne $CanonicalTestingUrl) {
-    Write-Host "Ignoring stale $key=$($existing.Trim()); full certification is pinned to $CanonicalTestingUrl." -ForegroundColor Yellow
-  }
-  [Environment]::SetEnvironmentVariable($key, $CanonicalTestingUrl, 'Process')
-}
-$env:APP_URL = $CanonicalTestingUrl
-$env:CHAOS_BASE_URL = $CanonicalTestingUrl
-
-=======
->>>>>>> 1fb9648590016d97432aa4c21a1d5758ab3b8992
 # Full certification always targets the version that is actually present in package.json.
 # CHAOS_EXPECTED_VERSION is transient release evidence, not persistent local configuration;
 # a stale value in the shell or .env.test.local must never block the next sequential release.
@@ -571,15 +556,11 @@ if ($PreflightExit -ne 0) {
                         $PlaywrightConfig = ".\playwright.play-store-release.config.cjs"
                         $RunnerState.playwrightStarted = $true
                         Save-RunnerState
-<<<<<<< HEAD
-                        Run-LiveStep "Playwright release gate" "& '$PlaywrightExe' test --config '$PlaywrightConfig'"
-=======
                         $PlaywrightExit = Run-LiveStep "Playwright release gate" "& '$PlaywrightExe' test --config '$PlaywrightConfig'"
                         $RunnerState.playwrightCompleted = $true
                         $RunnerState.playwrightExitCode = $PlaywrightExit
                         $RunnerState.playwrightFinishedAt = (Get-Date -Format o)
                         Save-RunnerState
->>>>>>> 1fb9648590016d97432aa4c21a1d5758ab3b8992
                       }
                     }
                   }

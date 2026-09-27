@@ -450,8 +450,6 @@ if(certificationMode){const base=String(appUrl||'').replace(/\/+$/,'');const cli
 const certificationGroups=readJsonIfExists(path.join(root,'test-tools/certification/groups.json'),releaseGateJsonDiagnostics)||{};const mandatoryGroupFailures=[];const nodeRows=nodeTestSummary.results||[];
 if(certificationMode)for(const [groupId,definition] of Object.entries(certificationGroups.groups||{})){if(definition.mandatory!==true)continue;if(definition.artifact){const evidence=readJsonIfExists(path.join(runDir,definition.artifact),releaseGateJsonDiagnostics);if(!evidence||evidence.ok!==true||evidence.sourceManifestHash!==sourceIdentityEnd.sourceHash||evidence.commit!==sourceIdentityEnd.commit)mandatoryGroupFailures.push(`Mandatory group ${groupId} is missing valid source-bound evidence.`);continue;}if(definition.evidence==='playwright'){if(!playwrightStarted||noTestsExecuted||failedTests.length||timedOutTests.length)mandatoryGroupFailures.push(`Mandatory group ${groupId} lacks passing Playwright evidence.`);continue;}const requiredRows=definition.runnerGroups||[];for(const name of requiredRows){const row=nodeRows.find(item=>item.group===name);if(!row||row.status!=='passed')mandatoryGroupFailures.push(`Mandatory group ${groupId} lacks passing runner evidence: ${name}.`);}}
 for(const text of deploymentIdentityFailures)addGroup('deployment-identity',text);for(const text of mandatoryGroupFailures)addGroup('mandatory-evidence',text);
-<<<<<<< HEAD
-=======
 const deploymentTruthSource=deploymentIdentityEnd?.server||preflight.deploymentIdentityStart?.server||{};
 const certificationTruth=evaluateCertificationTruth({
   mode:selectionMode,
@@ -467,7 +465,6 @@ const certificationTruth=evaluateCertificationTruth({
   artifact:{runId,version:preflight.expectedVersion||expectedVersion,sourceHash:sourceIdentityEnd.sourceHash}
 });
 for(const failure of certificationTruth.failures)addGroup('certification-truth',failure);
->>>>>>> 1fb9648590016d97432aa4c21a1d5758ab3b8992
 const primaryBlockingFailure = preflightFailures[0]
   || dependencyFailures[0]
   || serverBoundaryFailures[0]
@@ -484,10 +481,7 @@ const primaryBlockingFailure = preflightFailures[0]
   || sourceIdentityValidation.failures[0]
   || deploymentIdentityFailures[0]
   || mandatoryGroupFailures[0]
-<<<<<<< HEAD
-=======
   || certificationTruth.failures[0]
->>>>>>> 1fb9648590016d97432aa4c21a1d5758ab3b8992
   || (skipValidation.unexpected[0] ? `Unexpected skipped test [${skipValidation.unexpected[0].projectName}] ${skipValidation.unexpected[0].title}: ${skipValidation.unexpected[0].reason}` : '')
   || (missingArtifacts[0] ? `Missing artifact: ${missingArtifacts[0]}` : '');
 
@@ -508,10 +502,7 @@ const ok = sourceIdentityValidation.ok && failedTests.length === 0
   && nodeFailures.length === 0
   && deploymentIdentityFailures.length === 0
   && mandatoryGroupFailures.length === 0
-<<<<<<< HEAD
-=======
   && certificationTruth.ok
->>>>>>> 1fb9648590016d97432aa4c21a1d5758ab3b8992
   && !blockedBeforePlaywright
   && !(playwrightStarted && noTestsExecuted)
   && !(failedOnlyMode && (deltaReconciliation.selectedNotExecutedCount > 0 || deltaReconciliation.unexpectedExtraExecutionCount > 0));
@@ -521,10 +512,7 @@ const summary = {
   sourceIdentityValidation,
   deploymentIdentityValidation:{ok:deploymentIdentityFailures.length===0,start:preflight.deploymentIdentityStart||null,end:deploymentIdentityEnd,failures:deploymentIdentityFailures},
   mandatoryGroupValidation:{ok:mandatoryGroupFailures.length===0,failures:mandatoryGroupFailures},
-<<<<<<< HEAD
-=======
   certificationTruth,
->>>>>>> 1fb9648590016d97432aa4c21a1d5758ab3b8992
   skipValidation,
   sourceIdentity: { version: sourceIdentityEnd.version, sourceHash: sourceIdentityEnd.sourceHash, commit: sourceIdentityEnd.commit, branch: sourceIdentityEnd.branch },
   fullReleaseCertified: ok && !failedOnlyMode && certificationMode,

@@ -5,6 +5,16 @@ const GRID_SIDE_MARGIN = 8;
 const GRID_BOTTOM_MARGIN = 12;
 const MIN_FONT_SIZE = 6.5;
 const FONT_SUBSETS = Object.freeze(['latin', 'latin-ext', 'cyrillic', 'greek', 'vietnamese', 'devanagari', 'cjk-common-115']);
+const FONT_LOADERS = Object.freeze({
+  latin: [() => import('@fontsource/noto-sans/files/noto-sans-latin-400-normal.woff'), () => import('@fontsource/noto-sans/files/noto-sans-latin-700-normal.woff')],
+  'latin-ext': [() => import('@fontsource/noto-sans/files/noto-sans-latin-ext-400-normal.woff'), () => import('@fontsource/noto-sans/files/noto-sans-latin-ext-700-normal.woff')],
+  cyrillic: [() => import('@fontsource/noto-sans/files/noto-sans-cyrillic-400-normal.woff'), () => import('@fontsource/noto-sans/files/noto-sans-cyrillic-700-normal.woff')],
+  greek: [() => import('@fontsource/noto-sans/files/noto-sans-greek-400-normal.woff'), () => import('@fontsource/noto-sans/files/noto-sans-greek-700-normal.woff')],
+  vietnamese: [() => import('@fontsource/noto-sans/files/noto-sans-vietnamese-400-normal.woff'), () => import('@fontsource/noto-sans/files/noto-sans-vietnamese-700-normal.woff')],
+  devanagari: [() => import('@fontsource/noto-sans/files/noto-sans-devanagari-400-normal.woff'), () => import('@fontsource/noto-sans/files/noto-sans-devanagari-700-normal.woff')],
+  'cjk-common-115': [() => import('@fontsource/noto-sans-sc/files/noto-sans-sc-115-400-normal.woff'), () => import('@fontsource/noto-sans-sc/files/noto-sans-sc-115-700-normal.woff')]
+});
+const fontAssetCache = new Map();
 
 const graphemes = value => {
   const text = String(value == null ? '' : value);
@@ -12,27 +22,38 @@ const graphemes = value => {
   return Array.from(text);
 };
 
-async function bundledFontAssets() {
-  const modules = await Promise.all([
-    import('@fontsource/noto-sans/files/noto-sans-latin-400-normal.woff'), import('@fontsource/noto-sans/files/noto-sans-latin-700-normal.woff'),
-    import('@fontsource/noto-sans/files/noto-sans-latin-ext-400-normal.woff'), import('@fontsource/noto-sans/files/noto-sans-latin-ext-700-normal.woff'),
-    import('@fontsource/noto-sans/files/noto-sans-cyrillic-400-normal.woff'), import('@fontsource/noto-sans/files/noto-sans-cyrillic-700-normal.woff'),
-    import('@fontsource/noto-sans/files/noto-sans-greek-400-normal.woff'), import('@fontsource/noto-sans/files/noto-sans-greek-700-normal.woff'),
-    import('@fontsource/noto-sans/files/noto-sans-vietnamese-400-normal.woff'), import('@fontsource/noto-sans/files/noto-sans-vietnamese-700-normal.woff'),
-    import('@fontsource/noto-sans/files/noto-sans-devanagari-400-normal.woff'), import('@fontsource/noto-sans/files/noto-sans-devanagari-700-normal.woff'),
-    import('@fontsource/noto-sans-sc/files/noto-sans-sc-115-400-normal.woff'), import('@fontsource/noto-sans-sc/files/noto-sans-sc-115-700-normal.woff')
-  ]);
-  const urls = modules.map(module => module.default || module);
-  return Promise.all(urls.map(async url => {
-    const response = await fetch(url); if (!response.ok) throw new Error('The bundled schedule font could not be loaded.'); return new Uint8Array(await response.arrayBuffer());
-  }));
+export function schedulePdfFontSubsets(value = '') {
+  const text = String(value == null ? '' : value);
+  const subsets = ['latin'];
+  if (/[\u0100-\u024f]/u.test(text)) subsets.push('latin-ext');
+  if (/[\u0400-\u052f]/u.test(text)) subsets.push('cyrillic');
+  if (/[\u0370-\u03ff]/u.test(text)) subsets.push('greek');
+  if (/[\u1e00-\u1eff]/u.test(text)) subsets.push('vietnamese');
+  if (/[\u0900-\u097f]/u.test(text)) subsets.push('devanagari');
+  if (/[\u3400-\u9fff]/u.test(text)) subsets.push('cjk-common-115');
+  return subsets;
+}
+
+async function bundledFontAssets(subsets) {
+  const cacheKey = subsets.join('|');
+  if (!fontAssetCache.has(cacheKey)) {
+    fontAssetCache.set(cacheKey, (async () => {
+      const modules = await Promise.all(subsets.flatMap(subset => FONT_LOADERS[subset].map(load => load())));
+      const urls = modules.map(module => module.default || module);
+      return Promise.all(urls.map(async url => {
+        const response = await fetch(url); if (!response.ok) throw new Error('The bundled schedule font could not be loaded.'); return new Uint8Array(await response.arrayBuffer());
+      }));
+    })());
+  }
+  return fontAssetCache.get(cacheKey);
 }
 
 async function embedFontFamilies(document, options = {}) {
   const fontkitModule = options.fontkit || await import('@pdf-lib/fontkit');
   document.registerFontkit(fontkitModule.default || fontkitModule);
-  const assets = options.fontAssets || await bundledFontAssets();
-  if (!Array.isArray(assets) || assets.length !== FONT_SUBSETS.length * 2) throw new Error('The schedule PDF Unicode font set is incomplete.');
+  const subsets = options.fontAssets ? (options.fontSubsets || FONT_SUBSETS) : schedulePdfFontSubsets(options.requiredText);
+  const assets = options.fontAssets || await bundledFontAssets(subsets);
+  if (!Array.isArray(assets) || assets.length !== subsets.length * 2) throw new Error('The schedule PDF Unicode font set is incomplete.');
   const regular = []; const bold = [];
   for (let index = 0; index < assets.length; index += 2) {
     regular.push(await document.embedFont(assets[index], { subset: true }));
@@ -115,12 +136,8 @@ function compactShiftLabel(shift) {
 export async function generateMonthSchedulePdf(model, options = {}) {
   if (!model || model.page?.width !== PAGE_WIDTH || model.page?.height !== PAGE_HEIGHT) throw new Error('The Month Schedule PDF model is invalid.');
   const pdfLib = options.pdfLib || await import('pdf-lib'); const { PDFDocument, rgb } = pdfLib;
-  const document = await PDFDocument.create(); const fonts = await embedFontFamilies(document, options);
-<<<<<<< HEAD
-  document.setTitle(`86 Chaos Schedule ${model.monthTitle}`); document.setAuthor('86 Chaos'); document.setCreator('86 Chaos'); document.setProducer('86 Chaos 17.1.15');
-=======
-  document.setTitle(`86 Chaos Schedule ${model.monthTitle}`); document.setAuthor('86 Chaos'); document.setCreator('86 Chaos'); document.setProducer('86 Chaos 17.0.42');
->>>>>>> 1fb9648590016d97432aa4c21a1d5758ab3b8992
+  const document = await PDFDocument.create(); const fonts = await embedFontFamilies(document, { ...options, requiredText: JSON.stringify(model) });
+  document.setTitle(`86 Chaos Schedule ${model.monthTitle}`); document.setAuthor('86 Chaos'); document.setCreator('86 Chaos'); document.setProducer('86 Chaos 17.0.46');
   document.setKeywords(['86 Chaos', 'schedule', ...model.visibleShifts.map(shift => `shift:${shift.dedupeKey}`)]);
   const fixedDate = new Date('2000-01-01T00:00:00.000Z'); document.setCreationDate(fixedDate); document.setModificationDate(fixedDate);
   const black = rgb(0, 0, 0); const gray = rgb(0.94, 0.95, 0.96); const light = rgb(0.98, 0.98, 0.98); const page = document.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
@@ -128,10 +145,7 @@ export async function generateMonthSchedulePdf(model, options = {}) {
   drawRuns(page, fonts, fitText(fonts, title, 15, PAGE_WIDTH - MARGIN * 2, true), { x: MARGIN, y: PAGE_HEIGHT - MARGIN - 15, size: 15, bold: true, color: black });
   drawRuns(page, fonts, `${model.shiftCount} published shift${model.shiftCount === 1 ? '' : 's'} · Review-only PDF`, { x: MARGIN, y: PAGE_HEIGHT - MARGIN - 29, size: 8, color: black });
   const gridTop = PAGE_HEIGHT - MARGIN - 42; const weekdayHeight = 18; const gridWidth = PAGE_WIDTH - GRID_SIDE_MARGIN * 2; const columnWidth = gridWidth / 7; const rowHeight = (gridTop - GRID_BOTTOM_MARGIN - weekdayHeight) / model.weekCount;
-<<<<<<< HEAD
-=======
   const detailCells = [];
->>>>>>> 1fb9648590016d97432aa4c21a1d5758ab3b8992
   model.weekdayHeadings.forEach((day, index) => {
     const x = GRID_SIDE_MARGIN + index * columnWidth; page.drawRectangle({ x, y: gridTop - weekdayHeight, width: columnWidth, height: weekdayHeight, color: gray, borderColor: black, borderWidth: 0.7 });
     drawRuns(page, fonts, day, { x: x + columnWidth / 2 - measureText(fonts, day, 9, true) / 2, y: gridTop - 12.5, size: 9, bold: true, color: black });
@@ -141,19 +155,11 @@ export async function generateMonthSchedulePdf(model, options = {}) {
     page.drawRectangle({ x, y, width: columnWidth, height: rowHeight, color: cell.inMonth ? undefined : light, borderColor: black, borderWidth: 0.7 });
     if (!cell.inMonth) return;
     drawRuns(page, fonts, String(cell.dayNumber), { x: x + columnWidth - 13, y: y + rowHeight - 11, size: 9, bold: true, color: black });
-<<<<<<< HEAD
-
-=======
->>>>>>> 1fb9648590016d97432aa4c21a1d5758ab3b8992
     if (!cell.shifts.length) return;
     const contentHeight = Math.max(0, rowHeight - 24);
     const textWidth = columnWidth - 7;
     const candidateSizes = [8, 7.5, 7, MIN_FONT_SIZE];
     let layout = null;
-<<<<<<< HEAD
-
-=======
->>>>>>> 1fb9648590016d97432aa4c21a1d5758ab3b8992
     for (const fontSize of candidateSizes) {
       const lineHeight = fontSize + 0.75;
       const shiftGap = 0.5;
@@ -161,17 +167,9 @@ export async function generateMonthSchedulePdf(model, options = {}) {
         const fullLabel = String(shift.label || '').trim();
         const compactLabel = compactShiftLabel(shift);
         let lines;
-<<<<<<< HEAD
-        if (measureText(fonts, fullLabel, fontSize) <= textWidth) {
-          lines = [fullLabel];
-        } else if (measureText(fonts, compactLabel, fontSize) <= textWidth) {
-          lines = [compactLabel];
-        } else {
-=======
         if (measureText(fonts, fullLabel, fontSize) <= textWidth) lines = [fullLabel];
         else if (measureText(fonts, compactLabel, fontSize) <= textWidth) lines = [compactLabel];
         else {
->>>>>>> 1fb9648590016d97432aa4c21a1d5758ab3b8992
           const nameLines = wrapText(fonts, shift.employeeName || 'Open Shift', fontSize, textWidth);
           const timeLines = shift.timeLabel ? wrapText(fonts, shift.timeLabel, fontSize, textWidth) : [];
           lines = [...nameLines, ...timeLines].filter(Boolean);
@@ -180,11 +178,6 @@ export async function generateMonthSchedulePdf(model, options = {}) {
       });
       const lineCount = entries.reduce((sum, entry) => sum + entry.lines.length, 0);
       const requiredHeight = lineCount * lineHeight + Math.max(0, entries.length - 1) * shiftGap;
-<<<<<<< HEAD
-      if (requiredHeight <= contentHeight + 0.01) {
-        layout = { fontSize, lineHeight, shiftGap, entries };
-        break;
-=======
       if (requiredHeight <= contentHeight + 0.01) { layout = { fontSize, lineHeight, shiftGap, entries }; break; }
     }
     let cursorY = y + rowHeight - 23;
@@ -227,23 +220,10 @@ export async function generateMonthSchedulePdf(model, options = {}) {
         if (firstLine) detailPage.drawCircle({ x: MARGIN + 3, y: y + 3, size: 1.5, color: black });
         drawRuns(detailPage, fonts, lines[lineIndex], { x: MARGIN + 12, y, size: 10, color: black });
         y -= 12; lineIndex += 1; firstLine = false;
->>>>>>> 1fb9648590016d97432aa4c21a1d5758ab3b8992
       }
+      y -= 6;
     }
-
-    if (!layout) {
-      throw new Error(`The Month Schedule PDF cannot fit all ${cell.shifts.length} shifts for ${cell.date} on one calendar page without hiding shift text. Reduce the visible schedule density or print a filtered month.`);
-    }
-
-    let cursorY = y + rowHeight - 23;
-    layout.entries.forEach((entry, entryIndex) => {
-      entry.lines.forEach(line => {
-        drawRuns(page, fonts, line, { x: x + 3, y: cursorY, size: layout.fontSize, color: black });
-        cursorY -= layout.lineHeight;
-      });
-      if (entryIndex < layout.entries.length - 1) cursorY -= layout.shiftGap;
-    });
-  });
+  }
   return document.save({ useObjectStreams: false, addDefaultPage: false });
 }
 

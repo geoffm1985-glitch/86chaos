@@ -21,7 +21,7 @@ const scenarios = [
   { name: 'staff-availability', email: 'STAFF_EMAIL', password: 'STAFF_PASSWORD', tab: 'published', subtab: /Availability/i },
   { name: 'personal-reminders', email: 'STAFF_EMAIL', password: 'STAFF_PASSWORD', tab: 'reminders' },
   { name: 'system-admin-overview', email: 'SYSTEM_ADMIN_EMAIL', password: 'SYSTEM_ADMIN_PASSWORD', tab: 'godmode' },
-  { name: 'bug-ledger', email: 'SYSTEM_ADMIN_EMAIL', password: 'SYSTEM_ADMIN_PASSWORD', tab: 'godmode', subtab: /Open Support Diagnostics/i },
+  { name: 'bug-ledger', email: 'SYSTEM_ADMIN_EMAIL', password: 'SYSTEM_ADMIN_PASSWORD', tab: 'godmode', subtab: /^Support Diagnostics$/i },
   { name: 'audit-logs', email: 'SYSTEM_ADMIN_EMAIL', password: 'SYSTEM_ADMIN_PASSWORD', tab: 'audit' },
   { name: 'background-return', email: 'OWNER_EMAIL', password: 'OWNER_PASSWORD', tab: 'today', action: 'background' },
   { name: 'select-active-workspace', email: 'OWNER_EMAIL', password: 'OWNER_PASSWORD', tab: 'today', action: 'select-current-workspace' },

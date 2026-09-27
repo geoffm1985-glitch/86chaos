@@ -5,11 +5,7 @@ const path = require('path');
 const CANONICAL_VERCEL_PROJECT_SLUG = '86chaos';
 const RETIRED_VERCEL_PROJECT_SLUGS = ['cheers-portal-4oxv'];
 const PRODUCTION_HOST = 'app.86chaos.com';
-<<<<<<< HEAD
-const TESTING_HOST = 'testing.86chaos.com';
-=======
 const APPROVED_NON_PRODUCTION_ALIASES = new Set(['testing.86chaos.com', 'experimental.86chaos.com']);
->>>>>>> 1fb9648590016d97432aa4c21a1d5758ab3b8992
 const TARGET_ENV_KEYS = ['APP_URL', 'CHAOS_BASE_URL', 'CHAOS_EXPECTED_VERSION', 'CHAOS_EXPECTED_VERCEL_PROJECT_SLUG'];
 
 function parseEnvText(text = '') {
@@ -63,10 +59,6 @@ function isProductionHost(host = '') {
   const clean = String(host || '').toLowerCase().replace(/\.+$/, '');
   if (isApprovedNonProductionAlias(clean)) return false;
   return clean === PRODUCTION_HOST || clean === '86chaos.com' || clean === 'www.86chaos.com' || /(^|\.)86chaos\.com$/i.test(clean);
-}
-
-function isTestingHost(host = '') {
-  return String(host || '').toLowerCase().replace(/\.+$/, '') === TESTING_HOST;
 }
 
 function isRetiredVercelHost(host = '') {
@@ -124,8 +116,7 @@ function validateReleaseTarget(options = {}) {
   const warnings = [];
   const url = appUrl || chaosBaseUrl;
   const host = hostOf(url);
-  const canonicalTestingHost = isTestingHost(host);
-  const canonical = canonicalTestingHost || isCanonicalVercelPreviewHost(host, expectedSlug);
+  const canonical = isCanonicalVercelPreviewHost(host, expectedSlug);
   const retired = isRetiredVercelHost(host);
   const production = isProductionHost(host);
   const approvedAlias = isApprovedNonProductionAlias(host);
@@ -143,13 +134,9 @@ function validateReleaseTarget(options = {}) {
   if (production) errors.push(`Mutating release-gate testing refuses production host ${host}. Use a non-production preview from canonical Vercel project ${expectedSlug}.`);
   if (retired) errors.push(`APP_URL belongs to retired Vercel project cheers-portal-4oxv. Use a testing preview from canonical project ${expectedSlug}.`);
   if (host && host.endsWith('.vercel.app') && !canonical) errors.push(`APP_URL host ${host} is not in the canonical Vercel project family ${expectedSlug}.`);
-<<<<<<< HEAD
-  if (host && !host.endsWith('.vercel.app') && !canonicalTestingHost && !production && !allowLocal) errors.push(`APP_URL host ${host} is not the canonical testing domain or a Vercel testing preview. Use ${TESTING_HOST} or a non-production preview from canonical project ${expectedSlug}.`);
-=======
   if (host && !host.endsWith('.vercel.app') && !approvedAlias && !production && !allowLocal) errors.push(`APP_URL host ${host} is not an approved testing alias or Vercel testing preview. Use testing.86chaos.com, experimental.86chaos.com, or a non-production preview from canonical project ${expectedSlug}.`);
->>>>>>> 1fb9648590016d97432aa4c21a1d5758ab3b8992
   if (expectedVersion && sourceVersion && sourceVersion !== expectedVersion) errors.push(`Source version ${sourceVersion} does not match CHAOS_EXPECTED_VERSION ${expectedVersion}.`);
-  if (expectedVersion && deployedVersion && deployedVersion !== expectedVersion) errors.push(`Testing target is stale. Source/expected=${sourceVersion || expectedVersion}, deployed=${deployedVersion}. Deploy the current commit to canonical Vercel project ${expectedSlug} until ${TESTING_HOST} (or your chosen fresh canonical preview) reports ${expectedVersion}, then rerun the release gate.`);
+  if (expectedVersion && deployedVersion && deployedVersion !== expectedVersion) errors.push(`Testing preview is stale. Source/expected=${sourceVersion || expectedVersion}, deployed=${deployedVersion}. Deploy the current commit to canonical Vercel project ${expectedSlug}, then update APP_URL to that preview.`);
   return {
     ok: errors.length === 0,
     errors,
@@ -172,11 +159,7 @@ module.exports = {
   CANONICAL_VERCEL_PROJECT_SLUG,
   RETIRED_VERCEL_PROJECT_SLUGS,
   PRODUCTION_HOST,
-<<<<<<< HEAD
-  TESTING_HOST,
-=======
   APPROVED_NON_PRODUCTION_ALIASES,
->>>>>>> 1fb9648590016d97432aa4c21a1d5758ab3b8992
   TARGET_ENV_KEYS,
   parseEnvText,
   readEnvFile,
@@ -184,7 +167,6 @@ module.exports = {
   hostOf,
   isApprovedNonProductionAlias,
   isProductionHost,
-  isTestingHost,
   isRetiredVercelHost,
   isCanonicalVercelPreviewHost,
   inspectReleaseTargetEnvConflicts,

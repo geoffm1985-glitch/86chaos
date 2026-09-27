@@ -1,43 +1,20 @@
 {
-<<<<<<< HEAD
-  "version": "17.1.15",
-  "name": "86 Chaos 17.1.15",
-  "build": "17.1.15",
-  "label": "86 Chaos 17.1.15",
-  "releasedAt": "2026-09-25T03:20:00Z",
-  "releaseTitle": "Authenticated App Shell Hook-Order Repair",
+  "version": "17.0.46",
+  "name": "86 Chaos 17.0.46",
+  "build": "17.0.46",
+  "label": "86 Chaos 17.0.46",
+  "releasedAt": "2026-09-27T16:00:00Z",
+  "releaseTitle": "Release Gate Surgical Repair",
   "notes": [
-    "Fixes the post-login blank-app failure introduced when the shared 86Voice shell callback was added below conditional authentication/session returns.",
-    "Moves the 86Voice shell callback above all App-level conditional returns so React sees the same hook order before, during, and after session hydration.",
-    "Restores the visible 86Voice entry in the actual shared More/drawer component used by App.js.",
-    "Preserves the complete 17.1.13 reference redesign, the 17.1.14 Vercel image-resolution repair, and every existing route, subroute, workflow, permission boundary, and data feature."
+    "Repairs only the failures observed in the completed 17.0.45 full release gate.",
+    "Playwright retries are disabled so each failing identity executes once."
   ],
-  "title": "86 Chaos 17.1.15",
-  "summary": "Repairs the authenticated shell runtime crash without changing the approved redesign or removing any feature, page, tab, or subtab.",
-  "description": "A surgical React hook-order repair for the login/session transition, plus restoration of the existing 86Voice drawer access in the shared menu actually rendered by the application.",
+  "title": "86 Chaos 17.0.46",
+  "summary": "Surgical release-gate repairs for current selectors, PDF font loading, reminder controls, and mobile sticky positioning.",
+  "description": "Aligns release coverage with the current UI contract, removes failed-test retries, and fixes the real browser performance and mobile layout defects exposed by the 17.0.45 full gate.",
   "highlights": [
-    "Stable hook order through signed-out, session-hydrating, and signed-in renders.",
-    "86Voice remains available from the shared More/drawer path.",
-    "Approved desktop/mobile visual redesign remains intact.",
-    "No business workflow or route removal."
-=======
-  "version": "17.0.45",
-  "name": "86 Chaos 17.0.42",
-  "build": "17.0.45",
-  "label": "86 Chaos 17.0.42",
-  "releasedAt": "2026-09-27T06:45:00Z",
-  "releaseTitle": "Emergency Schedule Header Touch-Scroll Stability Repair",
-  "notes": [
-    "Emergency follow-up to 17.0.41 based on real-device touch-scroll evidence.",
-    "Build-only deployment; automated Release Gate / Play Store / targeted / delta execution remains suppressed until instructed."
-  ],
-  "title": "86 Chaos 17.0.42",
-  "summary": "Keeps the Schedule Builder day/date header pinned when a vertical touch gesture begins directly on the header.",
-  "description": "Adds touch-axis handoff for the horizontally scrollable Schedule Builder day/date header so vertical finger drags scroll the owning schedule content instead of allowing the sticky header to slide behind the control deck on mobile.",
-  "highlights": [
-    "Vertical touch drags that begin on the day/date header are handed to the Schedule Builder vertical scroll host while horizontal swipes remain native.",
-    "The header no longer temporarily slides behind the sticky assignment/control card during an active finger drag.",
-    "Release Gate coverage was added for the real-device touch interaction, but is not automatically executed by this build-only push."
->>>>>>> 1fb9648590016d97432aa4c21a1d5758ab3b8992
+    "Schedule PDFs load only the Unicode font subsets used by the current month model.",
+    "Schedule Builder sticky headers use the control deck's resolved CSS top on phones.",
+    "Release-gate controls use stable test IDs and current version identity instead of stale labels or historical patch numbers."
   ]
 }

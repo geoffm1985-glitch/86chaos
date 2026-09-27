@@ -1,7 +1,7 @@
 jest.setTimeout(15000);
 import { PDFDocument } from 'pdf-lib';
 import { buildMonthSchedulePrintModel } from './schedulePrintModel';
-import { generateMonthSchedulePdf, PAGE_WIDTH, PAGE_HEIGHT, MIN_FONT_SIZE } from './schedulePdf';
+import { generateMonthSchedulePdf, schedulePdfFontSubsets, PAGE_WIDTH, PAGE_HEIGHT, MIN_FONT_SIZE } from './schedulePdf';
 
 const fs = require('fs');
 const { spawnSync } = require('child_process');
@@ -20,6 +20,12 @@ const pdfOptions = { fontkit, fontAssets: fontPaths.map(path => new Uint8Array(f
 const makeModel = count => buildMonthSchedulePrintModel({
   monthStr: '2026-08', restaurantName: 'Cheers', roleFilter: 'All', prefiltered: true,
   shifts: Array.from({ length: count }, (_, index) => ({ date: '2026-08-03', published: true, dedupeKey: `s-${index}`, employeeName: `Employee ${index}`, role: 'Cook', startTime: '10:00', endTime: '18:00' }))
+});
+
+test('browser runtime loads only font subsets used by the schedule text', () => {
+  expect(schedulePdfFontSubsets('Allen QA · 10:00 AM – 6:00 PM')).toEqual(['latin']);
+  expect(schedulePdfFontSubsets('Zoë 李')).toEqual(['latin', 'cjk-common-115']);
+  expect(schedulePdfFontSubsets('Иван Ω')).toEqual(['latin', 'cyrillic', 'greek']);
 });
 
 const extractPdfText = bytes => {
@@ -57,10 +63,6 @@ test('a realistically dense day remains on the single Month calendar page', asyn
   expect(loaded.getPageCount()).toBe(1);
 });
 
-<<<<<<< HEAD
-test('impossible one-page density fails explicitly instead of clipping shifts or creating detail pages', async () => {
-  await expect(generateMonthSchedulePdf(makeModel(75), pdfOptions)).rejects.toThrow(/cannot fit all 75 shifts/i);
-=======
 test('impossible one-page density spills to deterministic detail pages without clipping shifts', async () => {
   const bytes = await generateMonthSchedulePdf(makeModel(75), pdfOptions);
   const extracted = extractPdfText(bytes);
@@ -68,7 +70,6 @@ test('impossible one-page density spills to deterministic detail pages without c
   expect(extracted.text).toMatch(/detail page/i);
   expect(extracted.text).toContain('Employee 74');
   expect(extracted.text).toContain('Cook');
->>>>>>> 1fb9648590016d97432aa4c21a1d5758ab3b8992
 });
 
 test('long and Unicode names remain on the single calendar page', async () => {
@@ -80,11 +81,7 @@ test('long and Unicode names remain on the single calendar page', async () => {
   expect(loaded.getKeywords()).toContain('shift:s-0');
 });
 
-<<<<<<< HEAD
-test('rendered PDF text uses 12-hour time, omits role text, and contains no detail-page markers', async () => {
-=======
 test('normal-density rendered PDF uses 12-hour time, omits role text, and stays on the month page', async () => {
->>>>>>> 1fb9648590016d97432aa4c21a1d5758ab3b8992
   const model = buildMonthSchedulePrintModel({
     monthStr: '2026-08', restaurantName: 'Cheers', roleFilter: 'All', prefiltered: true,
     shifts: [{ date: '2026-08-03', published: true, dedupeKey: 's-0', employeeName: 'Zoë 李', role: 'Cook', startTime: '10:00', endTime: '18:00' }]
@@ -98,10 +95,6 @@ test('normal-density rendered PDF uses 12-hour time, omits role text, and stays 
   expect(extracted.text).toContain('6:00 PM');
   expect(extracted.text).not.toContain('Cook');
   expect(extracted.text).not.toMatch(/detail page/i);
-<<<<<<< HEAD
-  expect(extracted.text).not.toMatch(/Full text/i);
-=======
->>>>>>> 1fb9648590016d97432aa4c21a1d5758ab3b8992
 });
 
 
@@ -136,10 +129,6 @@ test('same model generates deterministic bytes', async () => {
 test('PDF generation is read-only and has no Firebase or schedule mutation dependency', () => {
   const fs = require('fs'); const source = fs.readFileSync(require.resolve('./schedulePdf'), 'utf8');
   expect(source).not.toMatch(/firebase|setDoc|updateDoc|deleteDoc|writeBatch|addDoc/i);
-<<<<<<< HEAD
-  expect(source).not.toMatch(/detail page|Full text/i);
-=======
   expect(source).toMatch(/detail page/i);
   expect(source).toMatch(/detailLabel/);
->>>>>>> 1fb9648590016d97432aa4c21a1d5758ab3b8992
 });

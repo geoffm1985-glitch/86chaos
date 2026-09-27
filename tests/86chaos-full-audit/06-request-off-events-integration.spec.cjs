@@ -147,7 +147,7 @@ test.describe('06 request-off, availability, and scheduled events integration', 
     }
     async function openRequestOff() {
       await gotoTab(page, 'published', { settleMs: 1800, maxText: 70000 });
-      const requestOffTab = page.getByRole('button', { name: /^Schedule Request Off$/i }).first();
+      const requestOffTab = page.getByTestId('schedule-request-off-tab');
       await expect(requestOffTab, 'Request Off tab should be reachable from Time Clock & Schedule').toBeVisible({ timeout: 15000 });
       const ghostListResponsePromise = page
         .waitForResponse(response => isTimeOffResponseAction(response, 'ghost-list'), { timeout: 15000 })

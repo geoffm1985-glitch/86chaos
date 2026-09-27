@@ -144,268 +144,6 @@ const TabPersonalReminders = ({ appUser, addToast, onEnableNotifications }) => {
       recognition.start();
     }catch(err){reminderRecognitionRef.current=null;setListening(false);addToast('Reminder Voice',err?.message||'Could not start reminder voice entry.')}
   };
-<<<<<<< HEAD
-
-
-  const stopReminderRecognition = () => {
-    const rec = reminderRecognitionRef.current;
-    if (rec) {
-      try { rec._chaosIntentionalStop = true; } catch (_) {}
-      try { rec.abort?.(); } catch (_) { try { rec.stop?.(); } catch (e) {} }
-      reminderRecognitionRef.current = null;
-    }
-    setListening(false);
-  };
-
-  useEffect(() => () => stopReminderRecognition(), [appUser?.id, appUser?.restaurantId]);
-
-  const reminderVoiceErrorMessage = (error = {}) => {
-    const code = String(error?.error || error?.name || error?.message || '').toLowerCase();
-    if (/not-allowed|permission|denied/.test(code)) return 'Microphone permission is blocked. Type the reminder instead.';
-    if (/audio-capture|device/.test(code)) return 'No microphone was found. Type the reminder instead.';
-    if (/no-speech/.test(code)) return 'No speech was detected. Try again or type the reminder.';
-    if (/network/.test(code)) return 'Speech recognition had a network problem. Type the reminder instead.';
-    if (/abort/.test(code)) return '';
-    return 'Could not hear the reminder clearly. Type it instead.';
-  };
-
-  const allReminderRows = usePersonalReminderRows(appUser, {
-    enabled: !!appUser?.restaurantId && !!appUser?.id,
-    limitCount: 120,
-    fallbackLimitCount: 60,
-    debugLabel: 'personal-reminders'
-  });
-  const sortedActiveReminders = useMemo(() => [...(allReminderRows || [])]
-    .filter(r => r.dispatchEligible !== false)
-    .sort((a, b) => String(a.nextDispatchAt || a.scheduledAt || '').localeCompare(String(b.nextDispatchAt || b.scheduledAt || ''))), [allReminderRows]);
-  const pendingReminders = sortedActiveReminders.filter(r => !['done','completed','cancelled','canceled','dismissed','archived','sent'].includes(String(r.status || '').toLowerCase()));
-  const completedReminders = useMemo(() => showCompleted ? [...(allReminderRows || [])]
-    .filter(r => ['sent','done','completed','dismissed','archived','cancelled','canceled'].includes(String(r.status || '').toLowerCase()))
-    .sort((a,b) => String(b.terminalAt || b.completedAt || b.dispatchedAt || b.updatedAt || '').localeCompare(String(a.terminalAt || a.completedAt || a.dispatchedAt || a.updatedAt || ''))) : [], [allReminderRows, showCompleted]);
-  const dueReminderCount = pendingReminders.filter(reminderNeedsAttention).length;
-
-  useEffect(() => {
-    let cancelled = false;
-    if (!appUser?.restaurantId || shareMode !== 'team') {
-      setTeamMembers([]);
-      return undefined;
-    }
-    const loadTeam = async () => {
-      try {
-        setTeamLoadError('');
-        const snap = await getDocs(query(collection(db, 'users'), where('restaurantId', '==', appUser.restaurantId), where('isActive', '==', true), orderBy('name', 'asc'), firestoreLimit(80)));
-        if (cancelled) return;
-        const rows = snap.docs
-          .map(row => ({ ...row.data(), id: row.id, profileDocId: row.data()?.profileDocId || row.id }))
-          .filter(row => row.active !== false && row.disabled !== true)
-          .sort((a, b) => String(a.name || a.email || '').localeCompare(String(b.name || b.email || '')));
-        const hasSelf = rows.some(row => row.id === currentUserId);
-        setTeamMembers(hasSelf ? rows : [{ id: currentUserId, name: appUser.name, email: appUser.email, role: appUser.role }, ...rows]);
-      } catch (err) {
-        if (!cancelled) {
-          setTeamLoadError(err?.message || 'Team list could not load.');
-          setTeamMembers([{ id: currentUserId, name: appUser.name, email: appUser.email, role: appUser.role }]);
-        }
-      }
-    };
-    loadTeam();
-    return () => { cancelled = true; };
-  }, [appUser?.restaurantId, currentUserId, shareMode]);
-
-  const applyParsedText = (value) => {
-    const parsed = parseReminderCommand(value);
-    if (parsed) {
-      if (parsed.validationError) {
-        addToast('Reminder Date Blocked', parsed.validationError);
-        setTitle(parsed.title || value);
-        return;
-      }
-      setTitle(parsed.title);
-      if (parsed.dateInput) setDateInput(parsed.dateInput);
-      if (parsed.timeInput) setTimeInput(parsed.timeInput);
-      if (parsed.needsManualTime) addToast('Needs Time', 'I found the reminder text. Pick the date and time before saving.');
-    } else {
-      setTitle(value);
-    }
-  };
-
-  const startListening = () => {
-    const SpeechRecognition = typeof window !== 'undefined' ? (window.SpeechRecognition || window.webkitSpeechRecognition) : null;
-    if (!SpeechRecognition) return addToast('Mic Unavailable', 'This browser does not support built-in speech recognition. Type the reminder instead.');
-    if (reminderRecognitionRef.current) return addToast('Already Listening', 'Speak Reminder is already listening. Stop it before starting another microphone session.');
-    try {
-      const rec = new SpeechRecognition();
-      reminderRecognitionRef.current = rec;
-      rec.lang = 'en-US';
-      rec.interimResults = false;
-      rec.maxAlternatives = 1;
-      setListening(true);
-      rec.onresult = (event) => {
-        if (reminderRecognitionRef.current !== rec) return;
-        const text = event.results?.[0]?.[0]?.transcript || '';
-        reminderRecognitionRef.current = null;
-        setListening(false);
-        applyParsedText(text);
-      };
-      rec.onerror = (event) => {
-        if (reminderRecognitionRef.current !== rec) return;
-        reminderRecognitionRef.current = null;
-        setListening(false);
-        const message = rec._chaosIntentionalStop ? '' : reminderVoiceErrorMessage(event);
-        if (message) addToast('Voice Error', message);
-      };
-      rec.onend = () => {
-        if (reminderRecognitionRef.current !== rec) return;
-        reminderRecognitionRef.current = null;
-        setListening(false);
-      };
-      rec.start();
-    } catch (err) {
-      reminderRecognitionRef.current = null;
-      setListening(false);
-      addToast('Voice Error', reminderVoiceErrorMessage(err) || 'Could not start the microphone.');
-    }
-  };
-
-  const resetForm = () => {
-    const next = getInitialReminderDate();
-    setTitle('');
-    setNotes('');
-    setDateInput(next.date);
-    setTimeInput(next.time);
-    setShareMode('self');
-    setAssignedToUserId(auth?.currentUser?.uid || appUser?.id || '');
-    setEditing(null);
-  };
-
-  const saveReminder = async (e) => {
-    e.preventDefault();
-    if (!title.trim()) return addToast('Missing Text', 'Type what you want to be reminded about.');
-    const scheduledDate = makeReminderDate(dateInput, timeInput);
-    if (!scheduledDate) return addToast('Missing Time', 'Choose a valid reminder date and time.');
-    const targetUserId = shareMode === 'team' ? (assignedToUserId || auth?.currentUser?.uid || appUser.id || '') : (auth?.currentUser?.uid || appUser.id || '');
-    const response = await secureFetch('/api/personal-reminder-save', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        reminderId: editing?.id || '',
-        restaurantId: appUser.restaurantId,
-        assignedToUserId: targetUserId,
-        title: title.trim(),
-        notes: notes.trim(),
-        scheduledAt: scheduledDate.toISOString(),
-        recurrence: editing?.recurrence || 'none',
-        timezone: editing?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
-      })
-    });
-    const result = await response.json().catch(() => ({}));
-    if (!response.ok || result.ok === false) throw new Error(result.error || 'Reminder could not be saved.');
-    if (editing?.id) addToast('Reminder Updated', title.trim());
-    else if (shareMode === 'self' && !reminderNotificationsReady) addToast('Reminder Saved — Notifications Off', 'Use Enable Notifications on this page so this device can alert you when it is due.');
-    else addToast('Reminder Saved', `${title.trim()} at ${formatClockDateTime(scheduledDate.toISOString())}.`);
-    await logAudit(appUser, editing ? 'REMINDER_UPDATED' : 'REMINDER_CREATED', title.trim(), scheduledDate.toISOString());
-    requestPersonalReminderRefresh({ restaurantId: appUser.restaurantId, uid: auth?.currentUser?.uid || appUser?.authUid || appUser?.id || '' });
-    resetForm();
-  };
-
-  const editReminder = (reminder) => {
-    const d = reminder.scheduledAt ? new Date(reminder.scheduledAt) : new Date();
-    setEditing(reminder);
-    setTitle(reminder.title || '');
-    setNotes(reminder.notes || '');
-    setDateInput(toDateInputValue(d));
-    setTimeInput(toTimeInputValue(d));
-    const targetUserId = reminder.assignedToUserId || reminder.userId || currentUserId;
-    setAssignedToUserId(targetUserId);
-    setShareMode(targetUserId && targetUserId !== currentUserId ? 'team' : 'self');
-  };
-
-  const runReminderAction = async (reminder, action, extra = {}) => {
-    const response = await secureFetch('/api/personal-reminder-action', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ reminderId: reminder.id, action, ...extra })
-    });
-    const result = await response.json().catch(() => ({}));
-    if (!response.ok || !result.ok) throw new Error(result.error || 'Reminder action failed.');
-    requestPersonalReminderRefresh({ restaurantId: appUser.restaurantId, uid: auth?.currentUser?.uid || appUser?.authUid || appUser?.id || '' });
-    return result;
-  };
-
-  const markDone = async (reminder) => {
-    try {
-      await runReminderAction(reminder, 'complete');
-      addToast('Reminder Done', reminder.title || 'Reminder');
-    } catch (err) { addToast('Reminder Error', err.message || 'Could not complete reminder.'); }
-  };
-
-  const reopenReminder = async (reminder) => {
-    try {
-      const wakeAt = getReminderWakeAt(reminder) || new Date().toISOString();
-      await runReminderAction(reminder, 'reopen', { scheduledAt: wakeAt });
-      addToast('Reminder Reopened', reminder.title || 'Reminder');
-    } catch (err) { addToast('Reminder Error', err.message || 'Could not reopen reminder.'); }
-  };
-
-  const snoozeReminder = async (reminder, minutes) => {
-    try {
-      const next = new Date(Date.now() + Number(minutes || 0) * 60000).toISOString();
-      await runReminderAction(reminder, 'snooze', { minutes });
-      addToast('Reminder Snoozed', `${reminder.title || 'Reminder'} will return ${formatClockDateTime(next)}.`);
-    } catch (err) { addToast('Reminder Error', err.message || 'Could not snooze reminder.'); }
-  };
-
-  const removeReminder = async (reminder) => {
-    try {
-      await runReminderAction(reminder, 'cancel');
-      addToast('Reminder Cancelled', reminder.title || 'Reminder');
-    } catch (err) { addToast('Reminder Error', err.message || 'Could not cancel reminder.'); }
-  };
-
-  return (
-    <div className="concept17-surface concept17-reminders-surface space-y-4 animate-[slideIn_0.25s_ease-out]">
-      <div className={`${T.card} p-4 flex flex-col lg:flex-row lg:items-center justify-between gap-3`}>
-        <div><h2 className="text-xl font-black text-white">Personal Reminders</h2><p className="text-xs text-slate-400 font-bold">Private or teammate reminders, queued for the optimized dispatcher.</p></div>
-        <button type="button" aria-label={listening ? 'Stop reminder voice entry' : 'Speak Reminder'} aria-pressed={listening} onClick={listening ? stopReminderRecognition : startListening} className={`${T.btnAlt} flex items-center justify-center gap-2 ${listening ? 'text-red-300 border-red-500/40' : ''}`}><Mic size={16}/> {listening ? 'Listening' : 'Speak Reminder'}</button>
-      </div>
-
-      {!reminderNotificationsReady && <div role="status" className="rounded-xl border border-amber-700/50 bg-amber-950/20 p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3"><div className="flex items-start gap-2"><Bell size={17} className="text-amber-300 mt-0.5 shrink-0"/><div><div className="text-xs font-black text-amber-200">Reminder notifications are not connected on this device</div><div className="text-[10px] text-slate-400 font-bold mt-1">Reminders still save normally. Connect once so due reminders can create a real browser or installed-app notification.</div></div></div>{notificationPermission !== 'unsupported' && <button type="button" onClick={enableReminderNotifications} disabled={notificationConnecting} className={`${T.btnAlt} shrink-0 disabled:opacity-60`}>{notificationConnecting ? 'Connecting…' : 'Enable Notifications'}</button>}</div>}
-
-      <form data-concept-subtab={`reminders-share-${shareMode}`} onSubmit={saveReminder} className={`${T.card} concept17-nested-mode p-4 grid lg:grid-cols-[1.35fr_.62fr_.52fr_.72fr_auto] gap-3 items-end`}>
-        <div><label className={T.label}>Reminder</label><input value={title} onChange={e => setTitle(e.target.value)} onBlur={e => /^remind me/i.test(e.target.value) && applyParsedText(e.target.value)} className={T.input} placeholder="Remind me tomorrow at 9 AM to order buns" /></div>
-        <div><label className={T.label}>Date</label><input type="date" value={dateInput} onChange={e => setDateInput(e.target.value)} className={T.input} /></div>
-        <div><label className={T.label}>Time</label><input type="time" value={timeInput} onChange={e => setTimeInput(e.target.value)} className={T.input} /></div>
-        <div>
-          <label className={T.label}>Sharing</label>
-          <select value={shareMode} onChange={e => { const mode = e.target.value; setShareMode(mode); if (mode === 'self') setAssignedToUserId(auth?.currentUser?.uid || appUser?.id || ''); }} className={T.input}>
-            <option value="self">Just me</option>
-            <option value="team">Share with teammate</option>
-          </select>
-        </div>
-        <button className={`${T.btn} h-11 flex items-center justify-center gap-2`}>{editing ? <Save size={16}/> : <Plus size={16}/>} {editing ? 'Save' : 'Add'}</button>
-        {shareMode === 'team' && <div className="lg:col-span-5"><label className={T.label}>Teammate</label><select value={assignedToUserId} onChange={e => setAssignedToUserId(e.target.value)} className={T.input}>{teamMembers.length === 0 && <option value="">Loading teammates…</option>}{teamMembers.filter(member => member.id !== currentUserId).map(member => <option key={member.id} value={member.id}>{member.name || member.email || 'Team member'}{member.role ? ` • ${member.role}` : ''}</option>)}</select>{teamLoadError && <div className="mt-2 text-[10px] font-bold text-amber-300">Team list warning: {teamLoadError}</div>}</div>}
-        <div className="lg:col-span-5"><label className={T.label}>Notes</label><input value={notes} onChange={e => setNotes(e.target.value)} className={T.input} placeholder="Optional private note" />{editing && <button type="button" onClick={resetForm} className="mt-2 text-[10px] font-black uppercase tracking-widest text-slate-500 hover:text-white">Cancel edit</button>}</div>
-      </form>
-
-      <div className="grid lg:grid-cols-[1fr_.8fr] gap-4">
-        <div className={`${T.card} overflow-hidden`}>
-          <div className={`${T.th} flex items-center justify-between`}><span>Upcoming</span>{dueReminderCount > 0 && <span className="inline-flex items-center gap-1 text-[10px] text-red-200"><span className="h-2.5 w-2.5 rounded-full bg-red-500 shadow-[0_0_12px_rgba(239,68,68,.8)]"/> Due / overdue</span>}</div>
-          {pendingReminders.length === 0 ? <SmartEmptyState title="No reminders yet" desc="Add one by typing, sharing, or using the mic." /> : pendingReminders.map(reminder => {
-            const createdByMe = (reminder.createdBy || reminder.userId) === currentUserId;
-            const assignedToMe = (reminder.assignedToUserId || reminder.userId) === currentUserId;
-            const wakeAt = getReminderWakeAt(reminder);
-            const shareLabel = reminder.shared ? (createdByMe ? `For ${reminder.assignedToName || 'team member'}` : `From ${reminder.createdByName || 'team member'}`) : 'Just me';
-            return <div key={reminder.id} className={`${T.row} flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${reminderNeedsAttention(reminder) ? 'bg-red-950/10 border-red-500/25' : ''}`}><div className="min-w-0 flex-1"><div className="font-black text-white text-sm truncate flex items-center gap-2">{reminder.shared && <Share2 size={13} className="text-blue-300"/>}{reminder.title}</div><div className="text-[10px] text-[#D4A381] font-black uppercase tracking-widest mt-1 flex flex-wrap items-center gap-1"><Clock size={12}/> {wakeAt ? formatClockDateTime(wakeAt) : 'No time'} • {shareLabel}</div>{reminder.notes && <div className="text-xs text-slate-500 font-bold mt-1 truncate">{reminder.notes}</div>}</div><div className="flex flex-wrap items-center gap-1 justify-end"><select aria-label="Snooze reminder" value="" onChange={e => { if (e.target.value) snoozeReminder(reminder, Number(e.target.value)); }} disabled={!assignedToMe && !createdByMe} className="h-9 rounded-lg bg-[#12161A] border border-[#2A353D] px-2 text-[10px] font-black uppercase tracking-widest text-slate-300 disabled:opacity-40"><option value="">Snooze</option>{REMINDER_SNOOZE_OPTIONS.map(minutes => <option key={minutes} value={minutes}>{formatSnoozeLabel(minutes)}</option>)}</select><button onClick={() => markDone(reminder)} disabled={!assignedToMe && !createdByMe} className="p-2 rounded-lg bg-emerald-900/20 text-emerald-300 border border-emerald-900/50 disabled:opacity-40"><Check size={16}/></button><button onClick={() => editReminder(reminder)} disabled={!createdByMe} className="p-2 rounded-lg bg-[#12161A] text-slate-300 border border-[#2A353D] disabled:opacity-40"><Edit3 size={16}/></button><button type="button" aria-label="Cancel reminder" onClick={() => removeReminder(reminder)} disabled={!createdByMe} className="p-2 rounded-lg bg-red-900/20 text-red-300 border border-red-900/50 disabled:opacity-40"><Trash2 size={16}/></button></div></div>;
-          })}
-        </div>
-        <div className={`${T.card} overflow-hidden`}>
-          <div className={`${T.th} flex items-center justify-between`}><span>Recently Closed</span><button type="button" onClick={() => setShowCompleted(v => !v)} className="text-[10px] font-black uppercase tracking-widest text-[#D4A381]">{showCompleted ? 'Hide' : 'Load History'}</button></div>
-          {!showCompleted ? <div className="p-6 text-center text-xs font-bold text-slate-500">Completed history loads only when requested.</div> : completedReminders.length === 0 ? <div className="p-6 text-center text-xs font-bold text-slate-500">No completed reminders on this page.</div> : completedReminders.map(reminder => <div key={reminder.id} className={`${T.row} flex items-center justify-between gap-3`}><div className="min-w-0"><div className="font-bold text-slate-300 text-sm line-through truncate">{reminder.title}</div><div className="text-[10px] text-slate-500 font-bold mt-1 uppercase tracking-widest">{reminder.status}{reminder.completedAt ? ` • ${formatClockDateTime(reminder.completedAt)}` : ''}</div></div><button onClick={() => reopenReminder(reminder)} title="Unmark done" className="p-2 rounded-lg bg-emerald-900/20 text-emerald-300 border border-emerald-900/50"><Check size={16}/></button></div>)}
-        </div>
-      </div>
-    </div>
-  );
-=======
   const cloudRows=usePersonalReminderRows(appUser,{enabled:!!appUser?.restaurantId&&!!appUser?.id,limitCount:120,fallbackLimitCount:60,debugLabel:'personal-reminders'});
   const rows=useMemo(()=>[
     ...(Array.isArray(cloudRows)?cloudRows:[]).map((r,i)=>normalizeReminderUiRow(r,i,false)),
@@ -424,10 +162,9 @@ const TabPersonalReminders = ({ appUser, addToast, onEnableNotifications }) => {
   const edit=r=>{const d=new Date(r.scheduledAt||Date.now());setEditing(r);setTitle(r.title||'');setNotes(r.notes||'');setDateInput(toDateInputValue(d));setTimeInput(toTimeInputValue(d));setDeliveryMode(r.deviceLocal?'device':'cloud')};
   return <div className="space-y-4" data-testid="personal-reminders-v17-0-35" data-reminder-runtime-safety="17.0.38"><div className={`${T.card} p-4`}><h2 className="text-xl font-black text-white">Personal Reminders</h2><p className="text-xs text-slate-400 font-bold">Cloud self-reminders or device-local reminders. Sharing uses the OS/Web Share API with zero Firebase persistence.</p></div>
   <div className={`${T.card} p-4`} data-testid="device-local-reminder-status"><div className="text-xs font-black text-white">Device-local reminders</div><div className="text-[10px] text-slate-400 mt-1">{hasNativeLocalReminderBridge()?'Native bridge connected: closed-app reminders are available.':'Web fallback active. Closed-app delivery requires the native Android/iPhone wrapper.'}</div></div>
-  <form onSubmit={save} className={`${T.card} p-4 grid lg:grid-cols-[1.35fr_.62fr_.52fr_.72fr_auto] gap-3 items-end`}><div><label className={T.label}>Reminder</label><div className="flex gap-2"><input value={title} onChange={e=>setTitle(e.target.value)} className={T.input}/><button type="button" aria-label={listening ? 'Stop reminder voice entry' : 'Speak Reminder'} onClick={listening?stopReminderRecognition:startReminderVoiceEntry} className={`${T.btnAlt} min-h-11 min-w-11 flex items-center justify-center ${listening?'border-red-500 text-red-200':''}`}><Mic size={17}/></button></div></div><div><label className={T.label}>Date</label><input type="date" value={dateInput} onChange={e=>setDateInput(e.target.value)} className={T.input}/></div><div><label className={T.label}>Time</label><input type="time" value={timeInput} onChange={e=>setTimeInput(e.target.value)} className={T.input}/></div><div><label className={T.label}>Delivery</label><select aria-label="Reminder delivery" value={deliveryMode} onChange={e=>setDeliveryMode(e.target.value)} className={T.input}><option value="device">This device only</option><option value="cloud">86 Chaos cloud</option></select></div><button className={`${T.btn} h-11`}>{editing?'Save':'Add'}</button><div className="lg:col-span-5"><label className={T.label}>Notes</label><input value={notes} onChange={e=>setNotes(e.target.value)} className={T.input}/></div></form>
-  <div className={`${T.card} overflow-hidden`}><div className={T.th}>Upcoming</div>{pending.length===0?<SmartEmptyState title="No reminders yet" desc="Add a cloud or device-local reminder."/>:pending.map(r=><div key={(r.deviceLocal?'local:':'cloud:')+r.id} className={`${T.row} flex items-center justify-between gap-3`}><div><div className="font-black text-white text-sm">{r.title}</div><div className="text-[10px] text-[#D4A381] font-black uppercase mt-1">{formatClockDateTime(getReminderWakeAt(r))} • {r.deviceLocal?'Device local':'Cloud'}</div></div><div className="flex gap-1"><button type="button" aria-label="Share reminder" onClick={()=>share(r)} className={T.btnAlt}><Share2 size={15}/></button><button type="button" aria-label="Complete reminder" onClick={()=>done(r)} className={T.btnAlt}><Check size={15}/></button><button type="button" aria-label="Edit reminder" onClick={()=>edit(r)} className={T.btnAlt}><Edit3 size={15}/></button><button type="button" aria-label="Cancel reminder" onClick={()=>remove(r)} className={T.btnAlt}><Trash2 size={15}/></button></div></div>)}</div>
+  <form data-testid="personal-reminder-form" onSubmit={save} className={`${T.card} p-4 grid lg:grid-cols-[1.35fr_.62fr_.52fr_.72fr_auto] gap-3 items-end`}><div><label className={T.label}>Reminder</label><div className="flex gap-2"><input aria-label="Reminder text" value={title} onChange={e=>setTitle(e.target.value)} className={T.input}/><button type="button" aria-label={listening ? 'Stop reminder voice entry' : 'Speak Reminder'} onClick={listening?stopReminderRecognition:startReminderVoiceEntry} className={`${T.btnAlt} min-h-11 min-w-11 flex items-center justify-center ${listening?'border-red-500 text-red-200':''}`}><Mic size={17}/></button></div></div><div><label className={T.label}>Date</label><input type="date" value={dateInput} onChange={e=>setDateInput(e.target.value)} className={T.input}/></div><div><label className={T.label}>Time</label><input type="time" value={timeInput} onChange={e=>setTimeInput(e.target.value)} className={T.input}/></div><div><label className={T.label}>Delivery</label><select aria-label="Reminder delivery" value={deliveryMode} onChange={e=>setDeliveryMode(e.target.value)} className={T.input}><option value="device">This device only</option><option value="cloud">86 Chaos cloud</option></select></div><button aria-label={editing?'Save reminder':'Add reminder'} className={`${T.btn} h-11`}>{editing?'Save':'Add'}</button><div className="lg:col-span-5"><label className={T.label}>Notes</label><input value={notes} onChange={e=>setNotes(e.target.value)} className={T.input}/></div></form>
+  <div className={`${T.card} overflow-hidden`}><div className={T.th}>Upcoming</div>{pending.length===0?<SmartEmptyState title="No reminders yet" desc="Add a cloud or device-local reminder."/>:pending.map(r=><div key={(r.deviceLocal?'local:':'cloud:')+r.id} data-testid="personal-reminder-row" className={`${T.row} flex items-center justify-between gap-3`}><div><div className="font-black text-white text-sm">{r.title}</div><div className="text-[10px] text-[#D4A381] font-black uppercase mt-1">{formatClockDateTime(getReminderWakeAt(r))} • {r.deviceLocal?'Device local':'Cloud'}</div></div><div className="flex gap-1"><button type="button" aria-label="Share reminder" onClick={()=>share(r)} className={T.btnAlt}><Share2 size={15}/></button><button type="button" aria-label="Complete reminder" onClick={()=>done(r)} className={T.btnAlt}><Check size={15}/></button><button type="button" aria-label="Edit reminder" onClick={()=>edit(r)} className={T.btnAlt}><Edit3 size={15}/></button><button type="button" aria-label="Cancel reminder" onClick={()=>remove(r)} className={T.btnAlt}><Trash2 size={15}/></button></div></div>)}</div>
   <div className={`${T.card} overflow-hidden`}><div className={`${T.th} flex justify-between`}><span>Recently Closed</span><button type="button" onClick={()=>setShowCompleted(v=>!v)}>{showCompleted?'Hide':'Load History'}</button></div>{closed.map(r=><div key={'closed:'+r.id} className={T.row}>{r.title}</div>)}</div></div>;
->>>>>>> 1fb9648590016d97432aa4c21a1d5758ab3b8992
 };
 
 const TabMenuIntelligence = ({ appUser, clientData, inventoryItems = [], menuDependencies = [], recipes = [], addToast }) => {
@@ -652,7 +389,7 @@ const TabMenuIntelligence = ({ appUser, clientData, inventoryItems = [], menuDep
 
   if (!allowed) {
     return (
-      <div className="concept17-surface concept17-intelligence-locked-surface max-w-4xl mx-auto">
+      <div className="max-w-4xl mx-auto">
         <div className={`${T.card} p-8 text-center`}>
           <Sparkles className="mx-auto text-slate-500 mb-3" size={38}/>
           <h2 className="text-xl font-black text-white">Menu Intelligence is owner controlled</h2>
@@ -1010,7 +747,7 @@ const TabMenuIntelligence = ({ appUser, clientData, inventoryItems = [], menuDep
   const menuUsageWarning = aiPageLimitMessage('menu', menuAiUsage);
 
   return (
-    <div className="concept17-surface concept17-intelligence-surface intelligence-desktop max-w-7xl mx-auto space-y-4 pb-24">
+    <div className="intelligence-desktop max-w-7xl mx-auto space-y-4 pb-24">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#2A353D] pb-3">
         <div>
           <h2 className="text-2xl font-black flex items-center gap-2 text-white"><Sparkles size={24} className={T.copper}/> Menu Intelligence</h2>
@@ -1187,7 +924,7 @@ const TabAITools = ({ appUser, clientData, setActiveTab, setInventorySubTabTarge
     }
   ];
   return (
-    <div className="concept17-surface concept17-intelligence-surface intelligence-desktop max-w-7xl mx-auto space-y-4 pb-24">
+    <div className="intelligence-desktop max-w-7xl mx-auto space-y-4 pb-24">
       <div className="cockpit-panel cockpit-grid rounded-2xl p-5 border border-[#2A353D]">
         <div className="text-[10px] font-black uppercase tracking-widest text-[#D4A381]">Scans & Suggestions</div>
         <h2 className="text-2xl font-black text-white mt-1 flex items-center gap-2"><Sparkles size={24}/> Kitchen Tools</h2>
@@ -1197,8 +934,8 @@ const TabAITools = ({ appUser, clientData, setActiveTab, setInventorySubTabTarge
         {cards.map(card => (
           <div key={card.title} className={`${T.card} p-4 space-y-3 ${card.enabled ? '' : 'opacity-80'}`}>
             <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0 flex-1"><h3 className="font-black text-white text-lg">{card.title}</h3><p className="text-xs font-bold text-slate-400 mt-1 leading-relaxed">{card.desc}</p></div>
-              <span className={`kitchen-tool-status-badge px-2 py-1 rounded-lg border text-[9px] font-black uppercase tracking-widest whitespace-nowrap shrink-0 ${card.enabled ? 'bg-emerald-900/20 text-emerald-300 border-emerald-900/50' : 'bg-amber-900/20 text-amber-300 border-amber-900/50'}`}>{card.tag}</span>
+              <div><h3 className="font-black text-white text-lg">{card.title}</h3><p className="text-xs font-bold text-slate-400 mt-1 leading-relaxed">{card.desc}</p></div>
+              <span className={`px-2 py-1 rounded-lg border text-[9px] font-black uppercase tracking-widest ${card.enabled ? 'bg-emerald-900/20 text-emerald-300 border-emerald-900/50' : 'bg-amber-900/20 text-amber-300 border-amber-900/50'}`}>{card.tag}</span>
             </div>
             <p className="text-[10px] font-bold text-slate-500 leading-snug">{card.note}</p>
             <button type="button" onClick={() => { if (!card.enabled) return addToast?.('Access Needed', card.lockedMessage || 'Ask the account owner to enable this tool first.'); if (card.tab === 'inventory' && card.subTab) setInventorySubTabTarget?.(card.subTab); setActiveTab(card.tab); }} className={card.enabled ? T.btn : T.btnAlt}>{card.action}</button>

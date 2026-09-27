@@ -1,10 +1,6 @@
 {
   "schemaVersion": 1,
-<<<<<<< HEAD
-  "release": "17.1.15",
-=======
-  "release": "17.0.45",
->>>>>>> 1fb9648590016d97432aa4c21a1d5758ab3b8992
+  "release": "17.0.46",
   "defects": [
     {
       "defectId": "RG-API-WRAPPER-FIDELITY",
@@ -491,8 +487,6 @@
       "fidelity": "ACTUAL PREFLIGHT EXECUTION / STRUCTURED SOURCE-VALIDATOR CONTRACT",
       "fixedVersion": "17.0.20",
       "mandatoryGroup": "hostile-contracts"
-<<<<<<< HEAD
-=======
     },
     {
       "defectId": "RG-FIREBASE-ADMIN-URL-PARSE-17036",
@@ -602,7 +596,6 @@
       "fidelity": "ACTUAL SOURCE / DEPLOYED MOBILE PLAYWRIGHT TOUCHSCREEN",
       "fixedVersion": "17.0.42",
       "mandatoryGroup": "deployed"
->>>>>>> 1fb9648590016d97432aa4c21a1d5758ab3b8992
     }
   ]
 }

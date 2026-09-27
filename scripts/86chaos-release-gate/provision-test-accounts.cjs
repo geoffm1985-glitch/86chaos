@@ -45,6 +45,7 @@ function profileForAccount(account, uid, runId) {
     systemAdministrator: role.expectedPlatformAuthority,
     firestoreSuperAdmin: role.expectedSuperAdmin,
     firestoreSystemAdministrator: role.expectedPlatformAuthority,
+    preferences: { language: 'en' },
     qaOwned: true,
     testingOnly: true,
     qaRunId: runId,

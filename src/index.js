@@ -4,7 +4,6 @@ import { createRoot } from "react-dom/client";
 import App from "./App";
 import { installMobileNoZoomGuard } from "./core/mobileNoZoom";
 import "./styles.css";
-import "./concept17.css";
 
 installMobileNoZoomGuard();
 

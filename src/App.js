@@ -1,17 +1,12 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { Bell, Bug, ChevronDown, ChevronLeft, ChevronRight, Loader2, Menu, Moon, Search, Send, Store, X } from 'lucide-react';
+import { Bell, Bug, ChevronLeft, ChevronRight, Loader2, Menu, Moon, Send, X } from 'lucide-react';
 import { addDoc, collection, doc, onSnapshot, updateDoc } from 'firebase/firestore';
 import { getToken, onMessage } from 'firebase/messaging';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import 'leaflet/dist/leaflet.css';
-<<<<<<< HEAD
-import { T, db, auth, messagingReady, isFirebaseMessagingUnsupportedError, firebaseConfig, CURRENT_VERSION, MASTER_ADMIN_EMAIL, useLiveCollection, useLiveCollectionState, useLiveDocumentState, secureFetch, getToday, getMonthStr, formatDate, formatDisplayFullDate, formatDisplayMonth, logAudit, setActiveTimeFormat, getOfflineQueue, replayOfflineQueue, clearTenantListenerCache, recordScheduleOperationDiagnostic } from './core/appCore';
-=======
 import { T, db, auth, messagingReady, isFirebaseMessagingUnsupportedError, firebaseConfig, CURRENT_VERSION, MASTER_ADMIN_EMAIL, useLiveCollection, useLiveCollectionState, useLiveDocumentState, secureFetch, waitForAuthCurrentUser, getToday, getMonthStr, formatDate, formatDisplayFullDate, formatDisplayMonth, logAudit, setActiveTimeFormat, getOfflineQueue, replayOfflineQueue, startLowCostPresenceSession, useLowCostPresenceSummary, clearTenantListenerCache, releaseAbandonedRouteListeners, recordScheduleOperationDiagnostic } from './core/appCore';
->>>>>>> 1fb9648590016d97432aa4c21a1d5758ab3b8992
 import { buildAlertFingerprint, useRememberedAlert } from './core/alertMemory';
 import { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, GlobalSearchModal, KitchenTVMode, UndoBar, VoiceCommandDock } from './components/common';
-import { Concept17Sidebar, Concept17MobileNav, Concept17RouteFrame, Concept17Wordmark } from './components/concept17';
 import { LockedFeatureScreen } from './components/PlanGate';
 import { usePlanAccess } from './hooks/usePlanAccess';
 import { resolveFeatureAccess } from './lib/featureAccess';
@@ -21,11 +16,7 @@ import { FEATURE_KEYS } from './config/plans';
 import { LoginScreen } from './features/auth';
 import * as runtimeReportStateModule from './core/runtimeReportState.cjs';
 import { initChaosPostHog, identifyChaosPostHogUser, resetChaosPostHogIdentity, trackChaosPageView, trackChaosPostHogEvent, trackChaosRuntimeError } from './core/posthogClient';
-<<<<<<< HEAD
-import { I18nProvider, LANGUAGE_STORAGE_KEY, normalizeAppLanguage, translate } from './core/i18n';
-=======
 import { I18nProvider, LANGUAGE_STORAGE_KEY, normalizeAppLanguage } from './core/i18n';
->>>>>>> 1fb9648590016d97432aa4c21a1d5758ab3b8992
 
 const resolveCommonJsModule = (moduleValue) => {
   const candidate = moduleValue?.default && typeof moduleValue.default === 'object' ? moduleValue.default : moduleValue;
@@ -684,13 +675,7 @@ const isStandalone86ChaosPwa = () => {
   try { if (window.navigator?.standalone === true) return true; } catch (_) {}
   return false;
 };
-const appTabUrl = (tab = 'today', adminSubTab = '') => {
-  const normalized = normalizeRouteTab(tab);
-  const params = new URLSearchParams();
-  params.set('tab', normalized);
-  if (normalized === 'godmode' && adminSubTab && adminSubTab !== 'overview') params.set('admin', adminSubTab);
-  return `?${params.toString()}`;
-};
+const appTabUrl = (tab = 'today') => `?tab=${normalizeRouteTab(tab)}`;
 const buildSafeSessionCache = (user = {}) => user ? {
   id: user.id || user.userId || '',
   userId: user.userId || user.id || '',
@@ -858,17 +843,10 @@ export default function App() {
   });
   const [activeTabState, setActiveTabState] = useState(initialRouteState.topLevelTab);
   const activeTabStateRef = useRef(activeTabState);
-  const pwaBackExitRef = useRef({
-    armed: false,
-    timer: null,
-    initialized: false,
-    exiting: false,
-    previousTab: '',
-    currentAdminSubTab: 'overview',
-    previousAdminSubTab: ''
-  });
+  const pwaBackExitRef = useRef({ armed: false, timer: null, initialized: false, exiting: false });
   const [helpOriginState, setHelpOriginState] = useState('');
   const [clientData, setClientData] = useState(null);
+  const [heartbeatDebug, setHeartbeatDebug] = useState(null);
   const clientFeatures = clientData?.features || {};
   const [isGlobalSearchOpen, setIsGlobalSearchOpen] = useState(false);
   const [globalSearchQuery, setGlobalSearchQuery] = useState('');
@@ -885,7 +863,6 @@ export default function App() {
   const [voiceScheduleSubTabTarget, setVoiceScheduleSubTabTarget] = useState(null);
   const [voiceHelpSearchTarget, setVoiceHelpSearchTarget] = useState(null);
   const [voiceRecipeTarget, setVoiceRecipeTarget] = useState(null);
-  const voiceCommandDockRef = useRef(null);
   const [inventorySubTabTarget, setInventorySubTabTarget] = useState(null);
   const [isWorkspaceSwitcherOpen, setIsWorkspaceSwitcherOpen] = useState(false);
   const [workspaceMembershipRefreshKey, setWorkspaceMembershipRefreshKey] = useState(0);
@@ -1206,9 +1183,10 @@ const [currentDate, setCurrentDate] = useState(getToday());
   // and the staff-up row cannot show banquets, parties, holidays, or special events that affect coverage.
   const eventRangeClauses = schedulePlan.eventClauses;
   const eventOrderDirection = wantsScheduleScreen ? 'asc' : 'desc';
-  const eventLimitCount = activeTabState === 'messages' ? Math.max(schedulePlan.eventLimit || 0, 90) : (schedulePlan.eventLimit || 35);
+  const eventLimitCount = schedulePlan.eventLimit || (activeTabState === 'messages' ? 90 : 35);
   const prepDateWindow = Array.from(new Set([currentDate, getToday(), 'MASTER']));
   const canViewTeamScheduleData = Boolean(appUser?.isSuperAdmin || appUser?.isAdmin || appUser?.isOwner || appUser?.accountOwner || appUser?.workspaceOwner || appUser?.permissions?.schedule || appUser?.permissions?.team);
+  const canViewTeamPresenceData = Boolean(appUser?.isSuperAdmin || appUser?.isAdmin || appUser?.isOwner || appUser?.accountOwner || appUser?.workspaceOwner || appUser?.permissions?.team);
   const wantsFullRosterData = Boolean(rId && !ghostTenant && (
     schedulePlan.needsRoster || wantsToday || ['team', 'labor', 'financials', 'messages', 'hr-training', 'prep'].includes(activeTabState) || globalSearchHasMeaningfulQuery
   ));
@@ -1216,6 +1194,32 @@ const [currentDate, setCurrentDate] = useState(getToday());
 
   const users = useLiveCollection('users', rId, { enabled: wantsFullRosterData, limitCount: activeTabState === 'team' ? 220 : 90, fallbackLimitCount: 40, debugLabel: `app:${activeTabState}:roster` });
   const workspaceMembers = useLiveCollection('workspaceMembers', rId, { enabled: wantsWorkspaceMembershipList, limitCount: activeTabState === 'team' ? 220 : 60, fallbackLimitCount: 30, debugLabel: `app:${activeTabState}:workspace-members` });
+  // Low-cost presence: no Firestore live heartbeat/listener. When a manager/team screen needs
+  // last-seen hints, read tiny Realtime Database summaries instead of users/livePresence documents.
+  const wantsWorkspacePresenceSnapshot = Boolean(activeTabState === 'team' && canViewTeamPresenceData);
+  const [workspacePresenceRecords, setWorkspacePresenceRecords] = useState([]);
+  useEffect(() => {
+    if (!rId || ghostTenant || !wantsWorkspacePresenceSnapshot) {
+      setWorkspacePresenceRecords([]);
+      return undefined;
+    }
+    let alive = true;
+    secureFetch(`/api/presence-workspace-summary?restaurantId=${encodeURIComponent(rId)}&limit=500`, { method: 'GET' })
+      .then(response => response.json().then(data => ({ response, data })).catch(() => ({ response, data: {} })))
+      .then(({ response, data }) => {
+        if (!alive) return;
+        if (!response.ok || data?.ok === false) throw new Error(data?.error || `API ${response.status}`);
+        setWorkspacePresenceRecords(Array.isArray(data?.users) ? data.users : []);
+      })
+      .catch(err => {
+        if (!alive) return;
+        console.warn('Workspace presence summary unavailable; keeping last-known-good summary:', err?.message || err);
+      });
+    return () => { alive = false; };
+  }, [rId, ghostTenant, wantsWorkspacePresenceSnapshot]);
+  const livePresenceRecords = workspacePresenceRecords;
+  const selfPresenceRecord = useLowCostPresenceSummary(rId, appUser?.id || '', { enabled: !!rId && !ghostTenant && activeTabState === 'settings' && !!appUser?.id });
+  const presenceSessions = livePresenceRecords;
   const rawDateShiftsState = useLiveCollectionState('shifts', rId, { enabled: !!rId && wantsShiftData, whereClauses: schedulePlan.shiftClauses, orderByField: 'date', orderDirection: 'asc', limitCount: schedulePlan.shiftLimit, fallbackLimitCount: Math.min(schedulePlan.shiftLimit || 80, 80), debugLabel: `app:${activeTabState}:${activeScheduleSubTab}:shifts-date-plan` });
   const rawDateShifts = rawDateShiftsState.data || [];
   const enableScheduleDateKeyRescue = shouldEnableScheduleDateKeyRescue({ wantsShiftData, wantsScheduleScreen, canonicalState: rawDateShiftsState, clientData, shiftClauses: schedulePlan.shiftClauses });
@@ -1616,26 +1620,70 @@ if (liveAppUser && clientData) {
     sales: rawDemoFeatures.financials !== false && liveAppUser?.demoRole !== 'employee'
   } : clientFeatures;
   const maskDemoUser = (u, idx = 0) => ({ ...u, name: u.name || `Demo Staff ${idx+1}`, email: `employee${idx+1}@demo.hidden`, phone: 'Hidden for demo', address: 'Hidden for demo', emergencyContact: 'Hidden for demo', wage: 0, photoURL: u.photoURL || '' });
+  const parsePresenceTimeMs = (value) => {
+    if (!value) return 0;
+    if (typeof value === 'number') return value > 1000000000000 ? value : value * 1000;
+    if (typeof value === 'string') { const parsed = new Date(value).getTime(); return Number.isFinite(parsed) ? parsed : 0; }
+    if (typeof value?.toDate === 'function') { const parsed = value.toDate().getTime(); return Number.isFinite(parsed) ? parsed : 0; }
+    if (typeof value?.seconds === 'number') return value.seconds * 1000;
+    return 0;
+  };
+  const mergePresenceIntoUsers = (userList = [], sessionList = []) => {
+    if (!Array.isArray(userList) || !Array.isArray(sessionList) || sessionList.length === 0) return userList || [];
+    const now = Date.now();
+    const liveWindowMs = 5 * 60 * 1000;
+    const sessionsByUser = {};
+    sessionList.forEach(session => {
+      const userId = session.userId || session.uid || session.id;
+      if (!userId) return;
+      const lastMs = Math.max(
+        parsePresenceTimeMs(session.lastHeartbeatAt),
+        parsePresenceTimeMs(session.presenceUpdatedAt),
+        parsePresenceTimeMs(session.lastActive),
+        parsePresenceTimeMs(session.lastSeen),
+        parsePresenceTimeMs(session.heartbeatEpochMs),
+        parsePresenceTimeMs(session.lastChanged),
+        parsePresenceTimeMs(session.lastOnline)
+      );
+      if (!lastMs) return;
+      const explicitlyOnline = session.online === true || session.onlineState === 'online' || session.state === 'online';
+      const explicitlyOffline = session.online === false || session.onlineState === 'offline' || session.state === 'offline';
+      const enriched = { ...session, _presenceLastMs: lastMs, _presenceLive: explicitlyOnline || (!explicitlyOffline && (now - lastMs) < liveWindowMs) };
+      if (!sessionsByUser[userId]) sessionsByUser[userId] = [];
+      sessionsByUser[userId].push(enriched);
+    });
+    return (userList || []).map(user => {
+      const sessions = (sessionsByUser[user.id] || []).sort((a, b) => b._presenceLastMs - a._presenceLastMs);
+      if (sessions.length === 0) return user;
+      const liveSession = sessions.find(s => s._presenceLive);
+      const best = liveSession || sessions[0];
+      const bestTime = new Date(best._presenceLastMs).toISOString();
+      return {
+        ...user,
+        lastActive: bestTime,
+        lastSeen: bestTime,
+        lastHeartbeatAt: best.lastHeartbeatAt || bestTime,
+        presenceUpdatedAt: best.presenceUpdatedAt || bestTime,
+        onlineState: liveSession ? (best.onlineState || 'online') : (best.onlineState || user.onlineState),
+        activeTab: best.activeTab || user.activeTab,
+        activeSessionId: best.activeSessionId || user.activeSessionId,
+        activeDevice: best.activeDevice || user.activeDevice,
+        activeHost: best.activeHost || user.activeHost,
+        notificationPermission: best.notificationPermission || user.notificationPermission,
+        gpsPermission: best.gpsPermission || user.gpsPermission,
+        deviceDiagnostics: best.deviceDiagnostics || user.deviceDiagnostics,
+        presenceSessionCount: sessions.length,
+        presenceSource: liveSession ? 'live-session' : 'session-history'
+      };
+    });
+  };
   const wageSettings = clientData?.systemSettings || {};
   const wageViewAccess = Array.isArray(wageSettings.wageAccess) ? wageSettings.wageAccess : [];
   const wageEditAccess = Array.isArray(wageSettings.wageEditAccess) ? wageSettings.wageEditAccess : [];
   const sessionEmail = (liveAppUser?.email || appUser?.email || '').toLowerCase().trim();
   const sessionOwnerEmail = (clientData?.ownerEmail || '').toLowerCase().trim();
-  const sessionIsOwner = Boolean(
-    liveAppUser?.isSuperAdmin ||
-    serverSaysSuperAdmin ||
-    (MASTER_ADMIN_EMAIL && sessionEmail === MASTER_ADMIN_EMAIL.toLowerCase()) ||
-    liveAppUser?.isOwner ||
-    liveAppUser?.accountOwner ||
-    (sessionOwnerEmail && sessionEmail === sessionOwnerEmail)
-  );
-  const sessionCanViewWages = Boolean(
-    sessionIsOwner ||
-    liveAppUser?.permissions?.wageView ||
-    liveAppUser?.permissions?.wageEdit ||
-    wageViewAccess.includes(liveAppUser?.id) ||
-    wageEditAccess.includes(liveAppUser?.id)
-  );
+  const sessionIsOwner = Boolean(liveAppUser?.isSuperAdmin || serverSaysSuperAdmin || (MASTER_ADMIN_EMAIL && sessionEmail === MASTER_ADMIN_EMAIL.toLowerCase()) || liveAppUser?.isOwner || liveAppUser?.accountOwner || (sessionOwnerEmail && sessionEmail === sessionOwnerEmail));
+  const sessionCanViewWages = Boolean(sessionIsOwner || liveAppUser?.permissions?.wageView || liveAppUser?.permissions?.wageEdit || wageViewAccess.includes(liveAppUser?.id) || wageEditAccess.includes(liveAppUser?.id));
 
   const displayUsers = useMemo(() => {
     const accountById = new Map((users || []).map(u => [u.id, u]));
@@ -1646,12 +1694,14 @@ if (liveAppUser && clientData) {
     const legacyUsers = (users || []).filter(u => !memberIds.has(u.id) && u.isActive !== false);
     const combinedUsers = memberUsers.length ? [...memberUsers, ...legacyUsers] : (users || []);
     const baseUsers = isDemoMode ? combinedUsers.map(maskDemoUser) : combinedUsers;
-    let merged = baseUsers;
+    // Merge low-cost RTDB last-seen summaries only on screens that need it. This avoids
+    // constant Firestore presence reads/writes while still giving managers a useful hint.
+    let merged = mergePresenceIntoUsers(baseUsers, livePresenceRecords);
     if (!isDemoMode && !sessionCanViewWages) {
       merged = merged.map(u => ({ ...u, wage: 0, wageHidden: true }));
     }
     return merged;
-  }, [isDemoMode, users, workspaceMembers, sessionCanViewWages]);
+  }, [isDemoMode, users, workspaceMembers, sessionCanViewWages, livePresenceRecords]);
   const scheduleDisplayUsers = useMemo(() => {
     if (!wantsScheduleScreen && activeTabState !== 'published') return displayUsers;
     const merged = Array.isArray(displayUsers) ? [...displayUsers] : [];
@@ -1882,12 +1932,119 @@ if (liveAppUser && clientData) {
       }
     });
 
+// 2. Low-frequency presence check-in (no live scanner, no interval)
+    let cancelledPresenceCheck = false;
+
+    if (false && !ghostTenant && appUser?.id) {
+      const saveHeartbeatDebug = (next) => {
+        const packed = { ...(next || {}), at: new Date().toISOString(), restaurantId: rId, userId: appUser.id };
+        if (!cancelledPresenceCheck) setHeartbeatDebug(packed);
+        try { sessionStorage.setItem(`chaosPresenceCheckInDebug_${rId}_${appUser.id}`, JSON.stringify(packed)); } catch (err) {}
+      };
+
+      const collectDeviceDiagnostics = async () => {
+        const diag = {
+          notifications: typeof Notification !== 'undefined' ? Notification.permission : 'unsupported',
+          geolocation: navigator.geolocation ? 'supported' : 'unsupported',
+          gpsPermission: 'unknown',
+          serviceWorker: 'serviceWorker' in navigator,
+          indexedDb: 'indexedDB' in window,
+          language: navigator.language || 'unknown',
+          platform: navigator.platform || 'unknown',
+          screen: `${window.innerWidth}x${window.innerHeight}`,
+          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'unknown'
+        };
+        try {
+          if (navigator.permissions?.query && navigator.geolocation) {
+            const gps = await navigator.permissions.query({ name: 'geolocation' });
+            diag.gpsPermission = gps.state || 'unknown';
+          }
+        } catch (err) {
+          diag.gpsPermission = 'unknown';
+        }
+        return diag;
+      };
+
+      const sendPresenceCheckIn = async () => {
+        const checkKey = `chaosPresenceCheckIn_${rId}_${appUser.id}`;
+        let lastCheckIn = 0;
+        try { lastCheckIn = Number(sessionStorage.getItem(checkKey) || 0); } catch (err) {}
+        if (lastCheckIn && Date.now() - lastCheckIn < 10 * 60 * 1000) {
+          saveHeartbeatDebug({ ok: true, channel: 'manual-presence-mode', state: 'online', message: 'Presence check-in already saved for this browser session. No live heartbeat interval is running.', heartbeatEpochMs: lastCheckIn });
+          return;
+        }
+
+        const firebaseUser = await waitForAuthCurrentUser(8000);
+        if (!firebaseUser) {
+          saveHeartbeatDebug({ ok: false, channel: 'auth-wait', state: 'online', message: 'Presence check-in skipped because Firebase login is not active yet.', heartbeatEpochMs: Date.now() });
+          return;
+        }
+        const authUid = firebaseUser.uid;
+        if (appUser.id && appUser.id !== authUid) {
+          saveHeartbeatDebug({ ok: false, channel: 'auth-mismatch', state: 'online', message: `Cached app user does not match Firebase Auth user. Cached ${appUser.id}; Auth ${authUid}.`, heartbeatEpochMs: Date.now() });
+          return;
+        }
+
+        const stamp = new Date().toISOString();
+        const heartbeatEpochMs = Date.now();
+        const deviceDiagnostics = await collectDeviceDiagnostics();
+        const presenceSessionKey = `chaosSessionId_${rId}_${appUser.id}`;
+        let sessionId = sessionStorage.getItem(presenceSessionKey);
+        if (!sessionId) {
+          sessionId = `${rId}_${appUser.id}_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+          sessionStorage.setItem(presenceSessionKey, sessionId);
+        }
+        const safeSessionId = String(sessionId).replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 140);
+        const device = (navigator.userAgent || 'Unknown device').substring(0, 140);
+
+        try {
+          const response = await secureFetch('/api/presence-heartbeat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              restaurantId: rId,
+              state: 'online',
+              activeTab: 'app',
+              sessionId: safeSessionId,
+              device,
+              deviceDiagnostics,
+              notificationPermission: deviceDiagnostics.notifications,
+              gpsPermission: deviceDiagnostics.gpsPermission,
+              heartbeatEpochMs,
+              stamp
+            })
+          });
+          const data = await response.json().catch(() => ({}));
+          if (!response.ok || data?.ok === false) throw new Error(data?.error || `API ${response.status}`);
+          try { sessionStorage.setItem(checkKey, String(heartbeatEpochMs)); } catch (err) {}
+          saveHeartbeatDebug({ ok: true, channel: data?.mode || 'presence-check-in', state: 'online', message: 'One app-open presence check-in saved. No repeating heartbeat timer is running.', heartbeatEpochMs, apiProjectId: data?.projectId || '' });
+        } catch (err) {
+          saveHeartbeatDebug({ ok: false, channel: 'presence-check-in', state: 'online', message: err?.message || String(err), heartbeatEpochMs });
+        }
+      };
+
+      sendPresenceCheckIn();
+    }
+
     return () => {
+      cancelledPresenceCheck = true;
       unsub();
     };
-  }, [rId]);
+  }, [rId, ghostTenant, appUser?.id]);
 
 
+  // Low-cost presence: Realtime Database onDisconnect handles online/offline without Firestore heartbeats.
+  useEffect(() => {
+    if (!rId || ghostTenant || !appUser?.id) return undefined;
+    return startLowCostPresenceSession({
+      user: appUser,
+      restaurantId: rId,
+      activeTab: 'app',
+      onDebug: (next) => setHeartbeatDebug({ ...(next || {}), at: new Date().toISOString(), restaurantId: rId, userId: appUser.id })
+    });
+  }, [rId, ghostTenant, appUser?.id, appUser?.email, appUser?.name, appUser?.role]);
+
+ 
   const transitionActiveTabState = useCallback((nextTab) => {
     const normalized = normalizeRouteTab(nextTab);
     if (normalized === 'schedule') {
@@ -1918,16 +2075,15 @@ if (liveAppUser && clientData) {
   const writeTopLevelTabHistory = useCallback((tab, options = {}) => {
     if (typeof window === 'undefined') return;
     const normalized = normalizeRouteTab(tab);
-    const adminSubTab = normalized === 'godmode' ? (pwaBackExitRef.current.currentAdminSubTab || 'overview') : 'overview';
-    const nextUrl = appTabUrl(normalized, adminSubTab);
+    const nextUrl = appTabUrl(normalized);
     try {
       const currentState = window.history.state && typeof window.history.state === 'object' ? window.history.state : {};
       if (isStandalone86ChaosPwa()) {
-        window.history.replaceState({ ...currentState, tab: normalized, adminSubTab, chaosAppShell: true, chaosPwaBackGuard: true }, '', nextUrl);
+        window.history.replaceState({ ...currentState, tab: normalized, chaosAppShell: true, chaosPwaBackGuard: true }, '', nextUrl);
       } else if (options.replace === true) {
-        window.history.replaceState({ ...currentState, tab: normalized, adminSubTab }, '', nextUrl);
+        window.history.replaceState({ ...currentState, tab: normalized }, '', nextUrl);
       } else {
-        window.history.pushState({ tab: normalized, adminSubTab }, '', nextUrl);
+        window.history.pushState({ tab: normalized }, '', nextUrl);
       }
     } catch (_) {}
   }, []);
@@ -1955,22 +2111,6 @@ if (liveAppUser && clientData) {
         localStorage.setItem(key, JSON.stringify([tab, ...current].slice(0, 6)));
       } catch(e) {}
     }
-    const backState = pwaBackExitRef.current;
-    if (tab === 'godmode') {
-      if (previousActiveTab === 'godmode' && backState.currentAdminSubTab && backState.currentAdminSubTab !== 'overview') {
-        backState.previousAdminSubTab = backState.currentAdminSubTab;
-        backState.previousTab = '';
-      } else if (previousActiveTab !== 'godmode') {
-        backState.previousTab = previousActiveTab || '';
-        backState.previousAdminSubTab = '';
-      }
-      backState.currentAdminSubTab = 'overview';
-      try { window.dispatchEvent(new CustomEvent('chaos:system-admin-home')); } catch (_) {}
-    } else if (tab !== previousActiveTab) {
-      backState.previousTab = previousActiveTab || '';
-      backState.currentAdminSubTab = 'overview';
-      backState.previousAdminSubTab = '';
-    }
     disarmPwaBackExit();
     writeTopLevelTabHistory(tab);
     transitionActiveTabState(tab);
@@ -1979,39 +2119,6 @@ if (liveAppUser && clientData) {
   const setActiveTabRef = useRef(setActiveTab);
   useEffect(() => { setActiveTabRef.current = setActiveTab; });
   const stableSetActiveTab = useCallback((tab) => setActiveTabRef.current?.(tab), []);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return undefined;
-    const handleAdminSubTabChanged = (event) => {
-      const nextSubTab = String(event?.detail?.subTab || 'overview');
-      const previousSubTab = String(event?.detail?.previousSubTab || pwaBackExitRef.current.currentAdminSubTab || 'overview');
-      const state = pwaBackExitRef.current;
-      state.previousAdminSubTab = previousSubTab !== nextSubTab ? previousSubTab : '';
-      state.currentAdminSubTab = nextSubTab;
-      state.previousTab = '';
-      disarmPwaBackExit();
-    };
-    const handleAdminHome = () => {
-      const state = pwaBackExitRef.current;
-      if (state.currentAdminSubTab && state.currentAdminSubTab !== 'overview') state.previousAdminSubTab = state.currentAdminSubTab;
-      state.currentAdminSubTab = 'overview';
-      disarmPwaBackExit();
-      if (!isStandalone86ChaosPwa()) {
-        try {
-          const url = new URL(window.location.href);
-          url.searchParams.set('tab', 'godmode');
-          url.searchParams.delete('admin');
-          window.history.replaceState({ ...(window.history.state || {}), tab: 'godmode', adminSubTab: 'overview' }, '', `${url.pathname}${url.search}${url.hash}`);
-        } catch (_) {}
-      }
-    };
-    window.addEventListener('chaos:system-admin-subtab-changed', handleAdminSubTabChanged);
-    window.addEventListener('chaos:system-admin-home', handleAdminHome);
-    return () => {
-      window.removeEventListener('chaos:system-admin-subtab-changed', handleAdminSubTabChanged);
-      window.removeEventListener('chaos:system-admin-home', handleAdminHome);
-    };
-  }, [disarmPwaBackExit]);
 
   useEffect(() => {
     trackChaosPageView(activeTabState, {
@@ -2337,21 +2444,6 @@ What I clicked / expected:
     setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), reportable ? 9000 : 6000);
   }, []);
 
-  const openVoiceFromShell = useCallback(() => {
-    try { navigator?.vibrate?.(18); } catch (_) {}
-    const controller = voiceCommandDockRef.current;
-    if (controller?.openAndListen) {
-      controller.openAndListen();
-      return;
-    }
-    if (controller?.openPanel) {
-      controller.openPanel();
-      return;
-    }
-    try { window.dispatchEvent(new CustomEvent('chaos:voice-open-and-listen', { detail: { source: 'concept17-shell' } })); } catch (_) {}
-    addToast?.('86Voice', 'Opening voice controls…');
-  }, [addToast]);
-
 
   useEffect(() => {
     if (typeof window === 'undefined') return undefined;
@@ -2360,22 +2452,20 @@ What I clicked / expected:
     const preferredTab = normalizeRouteTab(appUser?.preferences?.defaultTab || 'today');
     const rawTab = params.get('tab') || preferredTab;
     const tab = normalizeRouteTab(rawTab);
-    const initialAdminSubTab = tab === 'godmode' ? (params.get('admin') || 'overview') : 'overview';
-    pwaBackExitRef.current.currentAdminSubTab = initialAdminSubTab;
     transitionActiveTabState(tab);
 
     try {
       if (isStandalone86ChaosPwa()) {
         const currentState = window.history.state && typeof window.history.state === 'object' ? window.history.state : {};
         if (!pwaBackExitRef.current.initialized || !currentState.chaosPwaBackGuard) {
-          window.history.replaceState({ ...currentState, tab, adminSubTab: initialAdminSubTab, chaosAppShell: true, chaosPwaBackBase: true }, '', appTabUrl(tab, initialAdminSubTab));
-          window.history.pushState({ tab, adminSubTab: initialAdminSubTab, chaosAppShell: true, chaosPwaBackGuard: true }, '', appTabUrl(tab, initialAdminSubTab));
+          window.history.replaceState({ ...currentState, tab, chaosAppShell: true, chaosPwaBackBase: true }, '', appTabUrl(tab));
+          window.history.pushState({ tab, chaosAppShell: true, chaosPwaBackGuard: true }, '', appTabUrl(tab));
           pwaBackExitRef.current.initialized = true;
         } else {
-          window.history.replaceState({ ...currentState, tab, adminSubTab: initialAdminSubTab, chaosAppShell: true, chaosPwaBackGuard: true }, '', appTabUrl(tab, initialAdminSubTab));
+          window.history.replaceState({ ...currentState, tab, chaosAppShell: true, chaosPwaBackGuard: true }, '', appTabUrl(tab));
         }
       } else {
-        window.history.replaceState({ ...(window.history.state || {}), tab, adminSubTab: initialAdminSubTab }, '', appTabUrl(tab, initialAdminSubTab));
+        window.history.replaceState({ ...(window.history.state || {}), tab }, '', appTabUrl(tab));
       }
     } catch (_) {}
 
@@ -2394,38 +2484,16 @@ What I clicked / expected:
           return;
         }
 
-        let targetTab = currentTab;
-        let targetAdminSubTab = state.currentAdminSubTab || 'overview';
-        let returnedToPreviousPage = false;
-
-        if (currentTab === 'godmode' && state.previousAdminSubTab) {
-          targetAdminSubTab = state.previousAdminSubTab;
-          state.previousAdminSubTab = '';
-          state.currentAdminSubTab = targetAdminSubTab;
-          returnedToPreviousPage = true;
-          try { window.dispatchEvent(new CustomEvent('chaos:system-admin-back-target', { detail: { subTab: targetAdminSubTab } })); } catch (_) {}
-        } else if (state.previousTab && normalizeRouteTab(state.previousTab) !== currentTab) {
-          targetTab = normalizeRouteTab(state.previousTab);
-          state.previousTab = '';
-          state.currentAdminSubTab = 'overview';
-          state.previousAdminSubTab = '';
-          returnedToPreviousPage = true;
-          transitionActiveTabState(targetTab);
-          if (targetTab === 'godmode') {
-            try { window.dispatchEvent(new CustomEvent('chaos:system-admin-back-target', { detail: { subTab: 'overview' } })); } catch (_) {}
-          }
-        }
-
         state.armed = true;
         if (state.timer) clearTimeout(state.timer);
         state.timer = setTimeout(() => {
           state.armed = false;
           state.timer = null;
         }, CHAOS_PWA_BACK_EXIT_WINDOW_MS);
-        addToast(returnedToPreviousPage ? 'Back' : 'Exit 86 Chaos', returnedToPreviousPage ? 'Returned to the previous page. Press back again within 2 seconds to exit.' : 'Press back again within 2 seconds to exit.');
-        if (!returnedToPreviousPage || targetTab === currentTab) transitionActiveTabState(targetTab);
+        addToast('Exit 86 Chaos', 'Press back again to exit.');
+        transitionActiveTabState(currentTab);
         try {
-          window.history.pushState({ tab: targetTab, adminSubTab: targetAdminSubTab, chaosAppShell: true, chaosPwaBackGuard: true }, '', appTabUrl(targetTab, targetAdminSubTab));
+          window.history.pushState({ tab: currentTab, chaosAppShell: true, chaosPwaBackGuard: true }, '', appTabUrl(currentTab));
         } catch (_) {}
         return;
       }
@@ -2434,12 +2502,7 @@ What I clicked / expected:
       disarmPwaBackExit();
       const nextParams = new URLSearchParams(window.location.search);
       const nextTab = normalizeRouteTab(event?.state?.tab || nextParams.get('tab') || 'published');
-      const nextAdminSubTab = nextTab === 'godmode' ? String(event?.state?.adminSubTab || nextParams.get('admin') || 'overview') : 'overview';
-      state.currentAdminSubTab = nextAdminSubTab;
       transitionActiveTabState(nextTab);
-      if (nextTab === 'godmode') {
-        try { window.dispatchEvent(new CustomEvent('chaos:system-admin-back-target', { detail: { subTab: nextAdminSubTab } })); } catch (_) {}
-      }
     };
 
     window.addEventListener('popstate', handlePopState);
@@ -2570,6 +2633,9 @@ What I clicked / expected:
       localStorage.setItem(`chaosActiveRestaurantId_${nextUser.id}`, workspace.restaurantId);
       sessionStorage.setItem('chaosWorkspaceSwitchedAt', new Date().toISOString());
       sessionStorage.setItem(`chaosWorkspacePickerSeen_${nextUser.id}`, 'true');
+      Object.keys(localStorage).forEach(k => {
+        if (k.startsWith('chaosLastHeartbeat_') || k.startsWith('chaosHeartbeatDebug_')) localStorage.removeItem(k);
+      });
     } catch (_) {}
     if (nextUser.id && nextUser.id !== 'dev-backdoor') {
       const alreadyActiveWorkspace = appUser?.activeRestaurantId === workspace.restaurantId && appUser?.lastWorkspaceId === workspace.restaurantId;
@@ -2909,15 +2975,7 @@ What I clicked / expected:
   }, []);
 
   const pushRepairRequestedByLink = Boolean(pushRepairLinkRequest.requested);
-  const currentPushDeviceId = typeof window !== 'undefined' ? getPushDeviceId() : '';
-  const currentPushDevice = currentPushDeviceId ? liveAppUser?.pushDevices?.[currentPushDeviceId] : null;
-  const notificationPermissionGranted = typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted';
-  const currentDevicePushHealthy = Boolean(notificationPermissionGranted && (
-    (currentPushDevice?.token && currentPushDevice?.active !== false && (!currentPushDevice?.host || currentPushDevice.host === window.location.hostname)) ||
-    (liveAppUser?.fcmToken && liveAppUser?.pushRepairStatus === 'connected' && (!liveAppUser?.pushTokenHost || liveAppUser.pushTokenHost === window.location.hostname))
-  ));
-  const pushRepairFlagged = Boolean(pushRepairRequestedByLink || liveAppUser?.pushNeedsRepair === true || liveAppUser?.pushForceServiceWorkerRefresh === true);
-  const pushRepairRequested = Boolean(!ghostTenant && !isDemoMode && liveAppUser?.id && pushRepairFlagged && !currentDevicePushHealthy);
+  const pushRepairRequested = Boolean(!ghostTenant && !isDemoMode && liveAppUser?.id && (pushRepairRequestedByLink || liveAppUser?.pushNeedsRepair === true || liveAppUser?.pushForceServiceWorkerRefresh === true));
   useEffect(() => {
     if (!pushRepairRequested || typeof window === 'undefined') {
       setPushRepairDismissed(false);
@@ -3266,7 +3324,7 @@ What I clicked / expected:
     if (activeTabState === 'team' && routeAllowed) return <TabTeam key={`tea-${rId}`} appUser={liveAppUser} users={displayUsers} clientData={displayClientData} addToast={addToast} />;
     if (activeTabState === 'hr-training' && routeAllowed) return <TabHrTraining key={`hrt-${rId}-${liveAppUser?.id}`} appUser={liveAppUser} users={displayUsers} addToast={addToast} />;
     if (activeTabState === 'maintenance' && routeAllowed) return <TabMaintenance key={`mtn-${rId}`} appUser={liveAppUser} addToast={addToast} />;
-    if (activeTabState === 'settings' && routeAllowed) return <TabSettings key={`set-${rId}`} addToast={addToast} appUser={liveAppUser} clientData={displayClientData} users={displayUsers} />;
+    if (activeTabState === 'settings' && routeAllowed) return <TabSettings key={`set-${rId}`} addToast={addToast} appUser={liveAppUser} clientData={displayClientData} users={displayUsers} presenceSelf={selfPresenceRecord} />;
     if (activeTabState === 'help' && routeAllowed) return <TabHelpCenter key={`help-${rId}`} appUser={liveAppUser} activeTab={activeTabState} helpOrigin={helpOriginState} voiceHelpSearchTarget={voiceHelpSearchTarget} addToast={addToast} setActiveTab={stableSetActiveTab} setScheduleSubTabTarget={setVoiceScheduleSubTabTarget} setInventorySubTabTarget={setInventorySubTabTarget} />;
     if (activeTabState === 'godmode' && serverSaysSuperAdmin) return <TabGodMode key={`god-${rId}-${serverAdminRetryKey}`} appUser={{ ...liveAppUser, isSuperAdmin: true, serverAdminCheck }} addToast={addToast} setGhostTenant={setGhostTenant} setActiveTab={stableSetActiveTab} />;
     if (activeTabState === 'godmode' && (serverAdminCheckPending || serverAdminCheckTemporarilyUnavailable) && pendingLocalSystemAdminHint) return (
@@ -3364,40 +3422,10 @@ What I clicked / expected:
 
   const appAccentColor = /^#[0-9A-Fa-f]{6}$/.test(displayClientData?.systemSettings?.accentColor || '') ? displayClientData.systemSettings.accentColor : '#D4A381';
   const appThemeStyle = { '--chaos-accent': appAccentColor };
-  const shellText = (key, fallback) => translate(appLanguage, key, {}, fallback);
-  const shellAccessContext = { clientFeatures: displayClientFeatures, serverVerifiedPlatformAdmin: serverSaysSuperAdmin, platformAdminPending: serverAdminCheckPending || serverAdminCheckTemporarilyUnavailable };
-  const shellRouteAllowed = (route) => {
-    if (route === 'godmode') return Boolean(serverSaysSuperAdmin || ((serverAdminCheckPending || serverAdminCheckTemporarilyUnavailable) && pendingLocalSystemAdminHint));
-    try { return planAccess.canRoute(route, shellAccessContext)?.allowed !== false; } catch (_) { return false; }
-  };
-  const shellNavCatalog = [
-    { id: 'today', label: shellText('drawer.todayHome', 'Today'), mobileLabel: shellText('shell.home', 'Home') },
-    { id: 'ops', label: shellText('drawer.kitchenCommandCenter', 'Kitchen Command'), mobileLabel: shellText('shell.kitchen', 'Kitchen') },
-    { id: 'prep', label: shellText('drawer.prepTasks', 'Prep & Tasks'), mobileLabel: shellText('shell.prep', 'Prep') },
-    { id: 'inventory', label: shellText('drawer.inventoryOrders', 'Inventory & Orders'), mobileLabel: shellText('shell.inventory', 'Inventory') },
-    { id: 'recipes', label: shellText('drawer.recipeBook', 'Recipes') },
-    { id: 'team', label: shellText('drawer.staffRoster', 'Staff Roster'), mobileLabel: shellText('shell.staff', 'Staff') },
-    { id: 'published', label: shellText('drawer.timeClockSchedule', 'Time Clock & Schedule'), mobileLabel: shellText('shell.schedule', 'Time Clock'), alert: hasMyShiftAlert || hasScheduleBuilderAlert },
-    { id: 'financials', label: shellText('drawer.financials', 'Financials') },
-    { id: 'messages', label: shellText('drawer.messageBoard', 'Message Board'), alert: hasUnreadMessages },
-    { id: 'godmode', label: shellText('drawer.systemAdministrator', 'System Administrator') },
-    { id: 'settings', label: shellText('drawer.settings', 'Settings') },
-    { id: 'help', label: shellText('drawer.helpCenter', 'Help Center'), alert: hasHelpUpdate },
-  ];
-  const shellNavItems = shellNavCatalog.filter(item => shellRouteAllowed(item.id));
-  const preferredMobileRoutes = ['today', 'published', 'ops', 'team'];
-  const shellMobileNavItems = preferredMobileRoutes.map(id => shellNavItems.find(item => item.id === id)).filter(Boolean).slice(0, 4);
-  const shellUserName = liveAppUser?.name || liveAppUser?.displayName || liveAppUser?.email || '86 Chaos';
-  const shellUserRole = liveAppUser?.role || (liveAppUser?.isAdmin ? 'Administrator' : 'Team Member');
-  const shellUserInitials = String(shellUserName).split(/\s+/).filter(Boolean).slice(0, 2).map(part => part.charAt(0)).join('').toUpperCase() || '86';
 
 return (
     <I18nProvider language={appLanguage}>
-<<<<<<< HEAD
-    <div data-active-tab={activeTabState} style={appThemeStyle} onClickCapture={blockDemoMutation} onSubmitCapture={blockDemoMutation} className={`concept17-shell desktop-pro-shell ui-v13-polished ui-v12-compact cockpit-shell ${activeTabState === 'godmode' ? '' : 'non-admin-controls-compact'} kitchen-simple-shell ui-density-${liveAppUser?.preferences?.uiDensity || displayClientData?.systemSettings?.uiDensity || 'compact'} recipe-density-${liveAppUser?.preferences?.recipeDensity || displayClientData?.systemSettings?.recipeCardDensity || 'tight'} motion-${liveAppUser?.preferences?.motionMode || displayClientData?.systemSettings?.cockpitLights || 'normal'} min-h-screen font-sans flex flex-col w-full max-w-[100vw] ${T.bg}`}>
-=======
     <div data-active-tab={activeTabState} style={appThemeStyle} onClickCapture={blockDemoMutation} onSubmitCapture={blockDemoMutation} className={`desktop-pro-shell ui-v13-polished ui-v12-compact cockpit-shell ${activeTabState === 'godmode' ? '' : 'non-admin-controls-compact'} kitchen-simple-shell ui-density-${liveAppUser?.preferences?.uiDensity || displayClientData?.systemSettings?.uiDensity || 'compact'} recipe-density-${liveAppUser?.preferences?.recipeDensity || displayClientData?.systemSettings?.recipeCardDensity || 'tight'} motion-${liveAppUser?.preferences?.motionMode || displayClientData?.systemSettings?.cockpitLights || 'normal'} min-h-screen font-sans flex flex-col w-full max-w-[100vw] ${T.bg}`}>
->>>>>>> 1fb9648590016d97432aa4c21a1d5758ab3b8992
       
       {/* GHOST / DEMO MODE BANNER */}
       {ghostTenant && (
@@ -3475,20 +3503,6 @@ return (
         }
       `}</style>
 
-      <Concept17Sidebar
-        items={shellNavItems}
-        activeTab={activeTabState}
-        onNavigate={stableSetActiveTab}
-        clientData={displayClientData}
-        restaurantName={liveAppUser?.restaurantName || displayClientData?.name || shellText('drawer.currentRestaurant', 'Current Restaurant')}
-        userName={shellUserName}
-        userRole={shellUserRole}
-        onOpenWorkspaceSwitcher={() => setIsWorkspaceSwitcherOpen(true)}
-        workspaceSwitchEnabled={availableWorkspaces.length > 1 && !ghostTenant && !isDemoMode}
-        menuLabel={shellText('drawer.mainMenu', 'Main menu')}
-        currentRestaurantLabel={shellText('drawer.currentRestaurant', 'Current Restaurant')}
-      />
-
       {chunkRecoveryBanner && <div className="px-3 pt-3 flex justify-center">{chunkRecoveryBanner}</div>}
 
       {/* UPDATE ALERT BANNER */}
@@ -3524,68 +3538,33 @@ return (
         </div>
       )}
 
-      <header className="app-header sticky top-0 z-40 border-b" data-testid="concept17-command-header">
-        <button type="button" className="concept17-mobile-menu-toggle" onClick={openMenu} aria-label="Open navigation menu">
-          <Menu size={21} aria-hidden="true" />
-          {hasAnyMenuAlert && <span className="concept17-nav-alert" aria-label="New activity"></span>}
-        </button>
+      <header className="app-header sticky top-0 z-40 shadow-sm border-b h-16 flex items-center justify-between px-4 bg-[#12161A]/95 backdrop-blur-md border-[#2A353D]">
+        <CheersLogo clientData={displayClientData} />
 
-        <div className="concept17-header-brand">
-          <Concept17Wordmark compact />
-        </div>
-
-        <div className="concept17-header-center">
-          <button
-            type="button"
-            className="concept17-header-search"
-            onClick={() => setIsGlobalSearchOpen(true)}
-            aria-label={shellText('shell.searchAria', 'Search 86 Chaos')}
-          >
-            <Search size={16} aria-hidden="true" />
-            <span className="concept17-header-search-label">{shellText('shell.searchPlaceholder', 'Search staff, inventory, recipes, schedules...')}</span>
-          </button>
-
-          {liveAppUser && (
+        {/* ACTIVE WORKSPACE NAME / SWITCHER */}
+        {liveAppUser && (
+          <div className="flex-1 text-center px-4 truncate mt-1">
             <button
               type="button"
-              data-testid="concept17-workspace-button"
               onClick={() => availableWorkspaces.length > 1 && !ghostTenant && !isDemoMode ? setIsWorkspaceSwitcherOpen(true) : null}
-              className="concept17-workspace-header"
-              title={availableWorkspaces.length > 1 ? `${shellText('shell.switchWorkspace', 'Switch workspace')}: ${liveAppUser.restaurantName || 'Restaurant'}` : `${shellText('drawer.currentWorkspace', 'Current restaurant workspace')}: ${liveAppUser.restaurantName || 'Restaurant'}`}
-              aria-label={availableWorkspaces.length > 1 ? `${shellText('shell.switchWorkspace', 'Switch workspace')}. ${liveAppUser.restaurantName || 'Restaurant'}.` : `${shellText('drawer.currentWorkspace', 'Current restaurant workspace')} ${liveAppUser.restaurantName || 'Restaurant'}.`}
+              className={`max-w-full truncate min-h-[44px] px-3 py-2 rounded-xl text-[10px] sm:text-[11px] font-black uppercase tracking-widest ${availableWorkspaces.length > 1 && !ghostTenant && !isDemoMode ? 'text-[#D4A381] hover:text-white cursor-pointer' : 'text-slate-400 cursor-default'}`}
+              title={availableWorkspaces.length > 1 ? `Switch workspace: ${liveAppUser.restaurantName || 'Restaurant'}` : `Active workspace: ${liveAppUser.restaurantName || 'Restaurant'}`}
+              aria-label={availableWorkspaces.length > 1 ? `Switch workspace. Active workspace ${liveAppUser.restaurantName || 'Restaurant'}.` : `Active workspace ${liveAppUser.restaurantName || 'Restaurant'}`}
             >
-              <Store size={16} aria-hidden="true" />
-              <span>{liveAppUser.restaurantName || displayClientData?.name || shellText('drawer.currentRestaurant', 'Current Restaurant')}</span>
-              <ChevronDown size={14} aria-hidden="true" />
+              {liveAppUser.restaurantName || "Restaurant"}{availableWorkspaces.length > 1 && !ghostTenant && !isDemoMode ? ' • Switch' : ''}
             </button>
-          )}
-        </div>
+          </div>
+        )}
 
-        <div className="concept17-header-actions">
-          {offlineQueue.length > 0 && <button type="button" aria-label="Offline queued actions" onClick={() => openProblemReport({ title: 'Offline Queue', message: `${offlineQueue.length} queued action(s) waiting to sync.`, category: 'Data Looks Wrong' })} className="concept17-header-queue" title="Offline queued actions">{offlineQueue.length}</button>}
-          <button type="button" aria-label="Open notifications" title="Notifications" onClick={openMenu} className="concept17-header-bell">
-            <Bell size={19} />
-            {hasAnyMenuAlert && <span className="concept17-notification-dot" aria-label="New activity"></span>}
-          </button>
-          <button type="button" className="concept17-header-avatar" onClick={openMenu} aria-label={shellText('shell.openProfileMenu', 'Open profile menu')}>{shellUserInitials}</button>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <button type="button" aria-label="Report a problem" onClick={() => openProblemReport({ title: 'Manual Problem Report', message: `Page: ${activeTabState}`, category: 'Bug / Error' })} className="hidden sm:flex p-2 border rounded-xl shadow-sm bg-[#1A2126] border-[#2A353D] text-orange-300 hover:text-white" title="Report a problem"><Bug size={18}/></button>
+          {offlineQueue.length > 0 && <button type="button" aria-label="Report a problem" onClick={() => openProblemReport({ title: 'Offline Queue', message: `${offlineQueue.length} queued action(s) waiting to sync.`, category: 'Data Looks Wrong' })} className="hidden sm:flex px-2.5 py-2 border rounded-xl shadow-sm bg-amber-900/20 border-amber-500/40 text-amber-200 text-[10px] font-black uppercase tracking-widest" title="Offline queued actions">Queue {offlineQueue.length}</button>}
+        <button type="button" aria-label="Open navigation menu" title="Open navigation menu" onClick={openMenu} className={`relative p-2 border rounded-xl shadow-sm transition-all outline-none bg-[#1A2126] border-[#2A353D] ${T.copper} hover:text-white flex-shrink-0`}>
+          <Menu size={20} />
+          {hasAnyMenuAlert && <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full border-2 border-[#12161A] shadow-[0_0_8px_rgba(239,68,68,0.8)] animate-pulse"></span>}
+        </button>
         </div>
       </header>
-
-      <div className="concept17-mobile-contextbar" data-testid="concept17-mobile-contextbar">
-        {liveAppUser && (
-          <button
-            type="button"
-            className="concept17-mobile-workspace"
-            onClick={() => availableWorkspaces.length > 1 && !ghostTenant && !isDemoMode ? setIsWorkspaceSwitcherOpen(true) : null}
-            aria-label={`${shellText('drawer.currentWorkspace', 'Current restaurant workspace')} ${liveAppUser.restaurantName || 'Restaurant'}.`}
-          >
-            <Store size={15} aria-hidden="true" />
-            <span>{liveAppUser.restaurantName || displayClientData?.name || shellText('drawer.currentRestaurant', 'Current Restaurant')}</span>
-            <ChevronDown size={13} aria-hidden="true" />
-          </button>
-        )}
-        <div className="concept17-mobile-open-status" aria-label="Restaurant status open"><span></span>OPEN<ChevronDown size={12} aria-hidden="true" /></div>
-      </div>
 
       {/* SYSTEM BROADCAST BANNER */}
       {displayClientData?.systemBanner && !broadcastAlertMemory.isDismissed && (
@@ -3598,21 +3577,11 @@ return (
         </div>
       )}
 
-      <DrawerMenu isOpen={isMenuOpen} onClose={closeMenu} activeTab={activeTabState} setActiveTab={stableSetActiveTab} appUser={liveAppUser} setAppUser={setAppUser} hasUnreadMessages={hasUnreadMessages} hasMyShiftAlert={hasMyShiftAlert} hasScheduleBuilderAlert={hasScheduleBuilderAlert} hasHelpUpdate={hasHelpUpdate} clientFeatures={displayClientFeatures} clientData={displayClientData} addToast={addToast} availableWorkspaces={availableWorkspaces} activeWorkspaceName={liveAppUser?.restaurantName || displayClientData?.name || ''} onOpenWorkspaceSwitcher={openWorkspaceSwitcherFromDrawer} platformAdminAccessState={platformAdminAccessState} onVoice={openVoiceFromShell} />
+      <DrawerMenu isOpen={isMenuOpen} onClose={closeMenu} activeTab={activeTabState} setActiveTab={stableSetActiveTab} appUser={liveAppUser} setAppUser={setAppUser} hasUnreadMessages={hasUnreadMessages} hasMyShiftAlert={hasMyShiftAlert} hasScheduleBuilderAlert={hasScheduleBuilderAlert} hasHelpUpdate={hasHelpUpdate} clientFeatures={displayClientFeatures} clientData={displayClientData} addToast={addToast} availableWorkspaces={availableWorkspaces} activeWorkspaceName={liveAppUser?.restaurantName || displayClientData?.name || ''} onOpenWorkspaceSwitcher={openWorkspaceSwitcherFromDrawer} platformAdminAccessState={platformAdminAccessState} />
       <GlobalSearchModal isOpen={isGlobalSearchOpen} onClose={closeGlobalSearch} queryText={globalSearchQuery} setQueryText={setGlobalSearchQuery} users={displayUsers} events={events} shifts={shifts} recipes={recipes} inventoryItems={inventoryItems} maintenanceLogs={maintenanceLogs} setActiveTab={stableSetActiveTab} appUser={liveAppUser} clientData={displayClientData} clientFeatures={displayClientFeatures} />
       <KitchenTVMode isOpen={isKitchenTVOpen} onClose={closeKitchenTV} shifts={shifts} events={events} prepItems={prepItems} maintenanceLogs={maintenanceLogs} inventoryItems={inventoryItems} />
       <UndoBar undoItem={undoItem} clearUndo={clearUndoItem} />
-      <VoiceCommandDock ref={voiceCommandDockRef} appUser={liveAppUser} inventoryItems={inventoryItems} recipes={recipes} users={displayUsers} prepItems={prepItems} tasks={tasks} events={events} maintenanceLogs={maintenanceLogs} menuDependencies={menuDependencies} shifts={shifts} timePunches={timePunches} timeOffRequests={timeOffRequests} sales={sales} clientFeatures={displayClientFeatures} clientData={displayClientData} setActiveTab={stableSetActiveTab} setCurrentDate={setCurrentDate} setScheduleSubTabTarget={setVoiceScheduleSubTabTarget} setHelpSearchTarget={setVoiceHelpSearchTarget} setRecipeTarget={setVoiceRecipeTarget} addToast={addToast} />
-
-      <Concept17MobileNav
-        items={shellMobileNavItems}
-        activeTab={activeTabState}
-        onNavigate={stableSetActiveTab}
-        onVoice={openVoiceFromShell}
-        voiceLabel={shellText('shell.voice', 'Voice')}
-        onMore={openMenu}
-        moreLabel={shellText('shell.more', 'More')}
-      />
+      <VoiceCommandDock appUser={liveAppUser} inventoryItems={inventoryItems} recipes={recipes} users={displayUsers} prepItems={prepItems} tasks={tasks} events={events} maintenanceLogs={maintenanceLogs} menuDependencies={menuDependencies} shifts={shifts} timePunches={timePunches} timeOffRequests={timeOffRequests} sales={sales} clientFeatures={displayClientFeatures} clientData={displayClientData} setActiveTab={stableSetActiveTab} setCurrentDate={setCurrentDate} setScheduleSubTabTarget={setVoiceScheduleSubTabTarget} setHelpSearchTarget={setVoiceHelpSearchTarget} setRecipeTarget={setVoiceRecipeTarget} addToast={addToast} />
 
       <Modal isOpen={problemModal.open} onClose={() => !isSubmittingProblem && setProblemModal({ open: false, title: '', message: '', category: 'Bug / Error' })} title="Report Problem" sizeClass="max-w-3xl">
         <form onSubmit={submitProblemReport} className="space-y-4">
@@ -3743,21 +3712,9 @@ return (
           surfaceContext={`${activeTabState}${['schedule','published'].includes(activeTabState) ? `/${activeScheduleSubTab}` : ''}`}
         >
           <React.Suspense fallback={<RouteLoading />} >
-            <div
-              key={`${activeTabState}-${liveAppUser?.restaurantId || 'no-restaurant'}-${surfaceRetryKey}`}
-              className={`concept17-route-page concept17-route-${String(activeTabState || 'today').replace(/[^a-z0-9_-]/gi, '-')}`}
-              data-concept-route={activeTabState}
-              data-concept-subroute={['schedule','published'].includes(activeTabState) ? activeScheduleSubTab : ''}
-            >
-              <Concept17RouteFrame
-                route={activeTabState}
-                subroute={['schedule','published'].includes(activeTabState) ? activeScheduleSubTab : ''}
-                restaurantName={displayClientData?.name || liveAppUser?.restaurantName || liveAppUser?.workspaceName || '86 Chaos'}
-                language={appLanguage}
-              >
-                {renderMainContent()}
-              </Concept17RouteFrame>
-            </div>
+            <React.Fragment key={`${activeTabState}-${liveAppUser?.restaurantId || 'no-restaurant'}-${surfaceRetryKey}`}>
+              {renderMainContent()}
+            </React.Fragment>
           </React.Suspense>
         </AppSurfaceErrorBoundary>
       </main>

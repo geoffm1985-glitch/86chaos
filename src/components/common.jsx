@@ -1,5 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo, useDeferredValue, useCallback, useImperativeHandle } from 'react';
-import { createPortal, flushSync } from 'react-dom';
+import React, { useState, useEffect, useRef, useMemo, useDeferredValue, useCallback } from 'react';
 import { Bell, Check, Camera, ChevronLeft, ChevronRight, MessageSquare, Plus, Trash2, Users, Calendar, Clock, X, Loader2, Package, ClipboardList, Menu, Settings, LogOut, Shield, Send, Repeat, Edit, Moon, Sun, TrendingUp, BookOpen, Search, ChefHat, Scale, Coffee, Star, Bug, Wrench, Globe, Mic, MicOff, Sparkles, Network } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, orderBy, limit, getDoc, setDoc, getDocs } from 'firebase/firestore';
@@ -18,10 +17,7 @@ import { PLATFORM_ADMIN_ACCESS_STATES, resolvePlatformAdminAccessState } from '.
 import { requestPersonalReminderRefresh, usePersonalReminderRows } from '../core/personalReminderQueries';
 import { FEATURE_KEYS } from '../config/plans';
 import { useI18n } from '../core/i18n';
-<<<<<<< HEAD
-=======
 import { validatePartialRequestOffTimeRange } from '../core/requestOffValidation';
->>>>>>> 1fb9648590016d97432aa4c21a1d5758ab3b8992
 
 
 const buildReminderQueueFields = (scheduledAt, status = 'scheduled') => ({
@@ -117,11 +113,7 @@ const reminderNeedsAttention = (reminder = {}, appUser = {}) => {
   return Number.isFinite(dueAt) && dueAt <= Date.now();
 };
 
-<<<<<<< HEAD
-const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppUser, hasUnreadMessages, hasMyShiftAlert, hasScheduleBuilderAlert, hasHelpUpdate = false, clientFeatures = {}, clientData = {}, addToast, availableWorkspaces = [], activeWorkspaceName = '', onOpenWorkspaceSwitcher, platformAdminAccessState = null, onVoice }) => {
-=======
 const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppUser, hasUnreadMessages, hasMyShiftAlert, hasScheduleBuilderAlert, hasHelpUpdate = false, clientFeatures = {}, clientData = {}, addToast, availableWorkspaces = [], activeWorkspaceName = '', onOpenWorkspaceSwitcher, platformAdminAccessState = null }) => {
->>>>>>> 1fb9648590016d97432aa4c21a1d5758ab3b8992
   const { t } = useI18n();
   const [menuSearch, setMenuSearch] = useState('');
 
@@ -156,13 +148,8 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
   const pushTab = (tab) => { if (planAllowsTab(tab.id)) tabs.push(tab); };
 
   const managerBriefAccess = resolveFeatureAccess({ workspace: clientData || {}, user: appUser || {}, featureKey: FEATURE_KEYS.MANAGER_BRIEF });
-<<<<<<< HEAD
-  if (isEnabled('schedule')) pushTab({ id: 'published', label: t('drawer.timeClockSchedule'), icon: <Clock size={18}/>, dot: hasMyShiftAlert });
-  pushTab({ id: 'today', label: managerBriefAccess.allowed ? t('drawer.managerBrief') : t('drawer.todayHome'), icon: <Star size={18}/>, dot: hasUnreadMessages || hasScheduleBuilderAlert });
-=======
   pushTab({ id: 'today', label: managerBriefAccess.allowed ? t('drawer.managerBrief') : t('drawer.todayHome'), icon: <Star size={18}/>, dot: hasUnreadMessages || hasMyShiftAlert || hasScheduleBuilderAlert });
   if (isEnabled('schedule')) pushTab({ id: 'published', label: t('drawer.timeClockSchedule'), icon: <Clock size={18}/>, dot: hasMyShiftAlert }); 
->>>>>>> 1fb9648590016d97432aa4c21a1d5758ab3b8992
   if (planAllowsTab('financials')) pushTab({ id: 'financials', label: t('drawer.financials'), icon: <Scale size={18}/> });
   if (planAllowsTab('back-office')) pushTab({ id: 'back-office', label: t('drawer.backOffice'), icon: <ClipboardList size={18}/> });
   if (planAllowsTab('ops')) pushTab({ id: 'ops', label: t('drawer.kitchenCommandCenter'), icon: <ChefHat size={18}/> }); 
@@ -266,7 +253,7 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
                    <div className="drawer-section-label px-2 pt-1.5 pb-0.5 text-[9px] font-black uppercase tracking-[0.18em] text-slate-500">{section.label}</div>
                    <div className="space-y-0.5">
                      {section.tabs.map(tab => (
-                       <button key={tab.id} data-shell-route={tab.id} aria-label={`Open ${tab.label}`} onClick={() => { setActiveTab(tab.id); onClose(); }} className={`w-full flex items-center justify-between px-3 py-1.5 rounded-lg font-bold text-[13px] transition-all duration-200 ${activeTab === tab.id ? `${T.grad} text-slate-900 shadow-md` : 'text-slate-400 hover:bg-[#12161A] hover:text-white'}`}>
+                       <button key={tab.id} onClick={() => { setActiveTab(tab.id); onClose(); }} className={`w-full flex items-center justify-between px-3 py-1.5 rounded-lg font-bold text-[13px] transition-all duration-200 ${activeTab === tab.id ? `${T.grad} text-slate-900 shadow-md` : 'text-slate-400 hover:bg-[#12161A] hover:text-white'}`}>
                          <div className="flex items-center gap-2.5">
                            <div className="relative flex items-center">
                              <span className={activeTab === tab.id ? 'text-slate-900' : T.copper}>{tab.icon}</span>
@@ -284,10 +271,6 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
                ))}</div>}
             </div>
             <div className={`p-3 border-t ${T.border} bg-[#12161A] space-y-2`}>
-<<<<<<< HEAD
-             {typeof onVoice === 'function' && <button type="button" data-testid="drawer-86voice-button" onClick={() => { onClose?.(); window.setTimeout(() => onVoice(), 40); }} className="w-full flex items-center justify-center gap-2 py-2.5 text-[#D4A381] text-sm font-bold rounded-xl hover:bg-[#D4A381]/10 transition-colors border border-[#D4A381]/25"><Mic size={16} /> 86Voice</button>}
-=======
->>>>>>> 1fb9648590016d97432aa4c21a1d5758ab3b8992
              <button onClick={() => { setActiveTab('help'); onClose(); window.setTimeout(() => window.dispatchEvent(new CustomEvent('chaosOpenProblemReport')), 150); }} className="w-full flex items-center justify-center gap-2 py-2.5 text-orange-400 text-sm font-bold rounded-xl hover:bg-orange-900/20 transition-colors border border-orange-900/30"><Bug size={16} /> {t('drawer.reportProblem')}</button>
              <button onClick={() => { setAppUser(null); localStorage.removeItem('86chaosUser'); onClose(); }} className="w-full flex items-center justify-center gap-2 py-2.5 text-red-400 text-sm font-bold rounded-xl hover:bg-red-900/20 transition-colors"><LogOut size={16} /> {t('drawer.logOut')}</button>
             </div>
@@ -1479,7 +1462,7 @@ const parseVoiceAvailabilityPayload = (text = '') => {
   return { intent:'submit_availability_change', label:'Submit availability change', weeklyAvailability, maxHoursPerWeek:maxHours ? Number(maxHours) : null, maxShiftsPerWeek:maxShifts ? Number(maxShifts) : null, effectiveStartDate: effective.date && effective.date >= getToday() ? effective.date : getToday(), effectiveEndDate:'', notes:`Created by 86Voice from: ${text}`, summary:`Submit availability change${uniqueDays.length ? ` for ${uniqueDays.join(', ')}` : ''}${range && !unavailable ? ` ${formatShortTime(range.start)}-${formatShortTime(range.end)}` : ''}${unavailable ? ' as unavailable' : ''}${preferred ? ' as preferred' : ''}. Manager approval may be required.`, needsConfirmation:true, safe:true };
 };
 
-const VoiceCommandDockBase = React.forwardRef(({ appUser, inventoryItems = [], recipes = [], users = [], prepItems = [], tasks = [], events = [], maintenanceLogs = [], menuDependencies = [], shifts = [], timePunches = [], timeOffRequests = [], sales = [], invoices = [], wasteLogs = [], clientFeatures = {}, clientData = {}, setActiveTab, setCurrentDate, setScheduleSubTabTarget, setHelpSearchTarget, setRecipeTarget, addToast }, ref) => {
+const VoiceCommandDockBase = ({ appUser, inventoryItems = [], recipes = [], users = [], prepItems = [], tasks = [], events = [], maintenanceLogs = [], menuDependencies = [], shifts = [], timePunches = [], timeOffRequests = [], sales = [], invoices = [], wasteLogs = [], clientFeatures = {}, clientData = {}, setActiveTab, setCurrentDate, setScheduleSubTabTarget, setHelpSearchTarget, setRecipeTarget, addToast }) => {
   const [open, setOpen] = useState(false);
   const [listening, setListening] = useState(false);
   const [heardText, setHeardText] = useState('');
@@ -1487,8 +1470,6 @@ const VoiceCommandDockBase = React.forwardRef(({ appUser, inventoryItems = [], r
   const [pending, setPending] = useState(null);
   const [lastUndo, setLastUndo] = useState(null);
   const [voiceResult, setVoiceResult] = useState(null);
-  const [voiceStatus, setVoiceStatus] = useState('idle');
-  const [voicePanelError, setVoicePanelError] = useState('');
   const SpeechRecognition = typeof window !== 'undefined' ? (window.SpeechRecognition || window.webkitSpeechRecognition) : null;
   const canUseSpeech = Boolean(SpeechRecognition);
   const eightySixContextRef = useRef({ restaurantId: '', loadedAt: 0, inventoryItems: [], menuDependencies: [] });
@@ -1521,7 +1502,6 @@ const VoiceCommandDockBase = React.forwardRef(({ appUser, inventoryItems = [], r
       if (activeRecognitionRef.current === rec) activeRecognitionRef.current = null;
     }
     setListening(false);
-    if (reason !== 'processing') setVoiceStatus('idle');
   };
 
   const closeDock = () => {
@@ -1596,7 +1576,20 @@ const VoiceCommandDockBase = React.forwardRef(({ appUser, inventoryItems = [], r
     return fresh;
   };
 
-
+  const openDock = () => {
+    stopActiveRecognition('reopen');
+    setOpen(true);
+    setPending(null);
+    setHeardText('');
+    setManualText('');
+    setVoiceResult(null);
+    cancelPendingVoiceStart();
+    pendingVoiceStartTimerRef.current = setTimeout(() => {
+      pendingVoiceStartTimerRef.current = null;
+      if (!voiceMountedRef.current) return;
+      startListening({ autoStart: true });
+    }, 80);
+  };
 
   const parseCommand = async (spokenText) => {
     const raw = String(spokenText || '').trim();
@@ -2032,19 +2025,12 @@ const VoiceCommandDockBase = React.forwardRef(({ appUser, inventoryItems = [], r
     }
   };
 
-  // 17.1.10 production voice restoration:
-  // This intentionally restores the microphone lifecycle from production 17.0.29.
-  // The new Concept 1 UI remains unchanged; only the activation/recognition path is restored.
   const startListening = (options = {}) => {
     cancelPendingVoiceStart();
     if (!voiceMountedRef.current) return;
-    setOpen(true);
-    setVoicePanelError('');
     if (!canUseSpeech) {
-      setVoiceStatus('error');
-      const message = 'This browser does not support built-in speech recognition. Type the command instead.';
-      setVoicePanelError(message);
-      addToast?.('Voice Unavailable', message);
+      setOpen(true);
+      addToast?.('Voice Unavailable', 'This browser does not support built-in speech recognition. Type the command instead.');
       return;
     }
     if (activeRecognitionRef.current) {
@@ -2063,13 +2049,9 @@ const VoiceCommandDockBase = React.forwardRef(({ appUser, inventoryItems = [], r
       rec.interimResults = true;
       rec.maxAlternatives = 1;
       setListening(true);
-      setVoiceStatus('listening');
       setOpen(true);
       rec.onstart = () => {
-        if (activeRecognitionRef.current === rec && voiceMountedRef.current) {
-          setListening(true);
-          setVoiceStatus('listening');
-        }
+        if (activeRecognitionRef.current === rec && voiceMountedRef.current) setListening(true);
       };
       rec.onresult = (event) => {
         if (activeRecognitionRef.current !== rec || !voiceMountedRef.current) return;
@@ -2088,13 +2070,9 @@ const VoiceCommandDockBase = React.forwardRef(({ appUser, inventoryItems = [], r
           }
           voiceSessionRef.current.finalFingerprint = fingerprint;
           setListening(false);
-          setVoiceStatus('processing');
           activeRecognitionRef.current = null;
           try { rec.stop(); } catch (e) {}
-          Promise.resolve(processText(text, { fromVoice: true, isFinal: true, voiceSessionId }))
-            .finally(() => {
-              if (voiceMountedRef.current) setVoiceStatus('idle');
-            });
+          processText(text, { fromVoice: true, isFinal: true, voiceSessionId });
           break;
         }
       };
@@ -2103,73 +2081,20 @@ const VoiceCommandDockBase = React.forwardRef(({ appUser, inventoryItems = [], r
         activeRecognitionRef.current = null;
         setListening(false);
         const message = rec._chaosIntentionalStop ? '' : voiceErrorMessage(event);
-        setVoiceStatus(message ? 'error' : 'idle');
-        setVoicePanelError(message || '');
         if (message) addToast?.('Voice Error', message);
       };
       rec.onend = () => {
         if (activeRecognitionRef.current !== rec) return;
         activeRecognitionRef.current = null;
         setListening(false);
-        setVoiceStatus(prev => prev === 'error' || prev === 'processing' ? prev : 'idle');
       };
       rec.start();
     } catch (err) {
       activeRecognitionRef.current = null;
       setListening(false);
-      const message = voiceErrorMessage(err) || 'Browser voice recognition is unavailable. Use the text box instead.';
-      setVoiceStatus('error');
-      setVoicePanelError(message);
-      addToast?.('Voice Unavailable', message);
+      addToast?.('Voice Unavailable', voiceErrorMessage(err) || 'Browser voice recognition is unavailable. Use the text box instead.');
     }
   };
-
-  const openDock = () => {
-    stopActiveRecognition('reopen');
-    const revealPanel = () => setOpen(true);
-    const isMobileVoiceSurface = typeof window !== 'undefined' && window.matchMedia?.('(max-width: 720px)')?.matches;
-    if (isMobileVoiceSurface) {
-      try { flushSync(revealPanel); } catch (_) { revealPanel(); }
-    } else {
-      revealPanel();
-    }
-    setPending(null);
-    setHeardText('');
-    setManualText('');
-    setVoiceResult(null);
-    setVoicePanelError('');
-    setVoiceStatus('idle');
-    cancelPendingVoiceStart();
-    // Production 17.0.29 behavior: opening the mic waits one short paint, then starts Web Speech.
-    pendingVoiceStartTimerRef.current = setTimeout(() => {
-      pendingVoiceStartTimerRef.current = null;
-      if (!voiceMountedRef.current) return;
-      startListening({ autoStart: true });
-    }, 80);
-  };
-
-  // Both imperative entry points intentionally use the same production activation path.
-  // The new bottom toolbar can call openPanel without changing its UI markup.
-  const openDockAndListen = openDock;
-
-  useImperativeHandle(ref, () => ({
-    openAndListen: openDockAndListen,
-    openPanel: openDock,
-    close: closeDock,
-  }));
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return undefined;
-    const launchPanel = () => openDock();
-    const launchAndListen = () => openDock();
-    window.addEventListener('chaos:voice-open-panel', launchPanel);
-    window.addEventListener('chaos:voice-open-and-listen', launchAndListen);
-    return () => {
-      window.removeEventListener('chaos:voice-open-panel', launchPanel);
-      window.removeEventListener('chaos:voice-open-and-listen', launchAndListen);
-    };
-  });
-
 
   const rememberVoiceUndo = (label, operations = []) => {
     const safeOps = (operations || []).filter(op => op && op.collectionName && op.id && ['delete', 'update'].includes(op.kind));
@@ -2349,12 +2274,8 @@ const VoiceCommandDockBase = React.forwardRef(({ appUser, inventoryItems = [], r
         const policyResult = Array.isArray(policyPayload?.results) ? policyPayload.results[0] : null;
         if (!policyResponse.ok || policyPayload?.ok === false) { addToast('Request Off Unavailable', policyPayload?.error || 'Request Off policy could not be verified.'); return; }
         if (policyResult?.allowed === false) { addToast(policyResult.code === 'blackout' ? 'Blackout Date' : 'Request Off Closed', policyResult.reason || 'Normal Request Off submissions are closed for this date.'); return; }
-<<<<<<< HEAD
-        const nowIso = new Date().toISOString();
-=======
         const partialValidation = validatePartialRequestOffTimeRange({ isPartial: !!actionToRun.isPartial, startTime: actionToRun.startTime || '', endTime: actionToRun.endTime || '' });
         if (!partialValidation.valid) { addToast('Invalid Partial Time', partialValidation.message); return; }
->>>>>>> 1fb9648590016d97432aa4c21a1d5758ab3b8992
         const existing = (await getDocs(query(collection(db, 'timeOffRequests'), where('restaurantId', '==', appUser.restaurantId), where('userId', '==', appUser.id || ''), where('date', '==', actionToRun.date)))).docs
           .map(d => ({ id:d.id, ...d.data() }))
           .find(r => !['cancelled','canceled','archived','processed'].includes(String(r.status || '').toLowerCase()));
@@ -3045,7 +2966,8 @@ const VoiceCommandDockBase = React.forwardRef(({ appUser, inventoryItems = [], r
 
   const executePending = () => executeAction(pending, heardText, true, true);
 
-  const voicePanel = open ? <div data-testid="voice-command-panel" className="voice-command-panel-surface cockpit-panel rounded-2xl p-3 w-[min(92vw,360px)] shadow-2xl border border-[#2A353D] bg-[#1A2126]">
+  return <div className="voice-command-dock fixed bottom-5 left-4 z-50 flex flex-col items-start gap-2">
+    {open && <div className="cockpit-panel rounded-2xl p-3 w-[min(92vw,360px)] shadow-2xl border border-[#2A353D] bg-[#1A2126]">
       <div className="flex items-center justify-between gap-2 border-b border-[#2A353D] pb-2 mb-3">
         <div><div className="text-[10px] font-black uppercase tracking-widest text-[#D4A381] flex items-center gap-1"><Sparkles size={13}/> 86 Voice</div><div className="text-[10px] text-slate-500 font-bold">Tap once, speak, and safe commands run. Destructive commands still ask first.</div></div>
         <button type="button" aria-label="Close 86Voice panel" title="Close 86Voice panel" onClick={closeDock} className="p-1.5 rounded-lg hover:bg-[#12161A] text-slate-400"><X size={16}/></button>
@@ -3054,8 +2976,6 @@ const VoiceCommandDockBase = React.forwardRef(({ appUser, inventoryItems = [], r
         <button type="button" aria-label={listening ? 'Stop listening' : 'Start listening'} aria-pressed={listening} onClick={listening ? () => stopActiveRecognition('manual-stop') : () => startListening({ manual: true })} className={`w-full ${listening ? 'bg-red-900/30 text-red-300 border-red-500/40' : 'bg-[#12161A] text-[#D4A381] border-[#2A353D]'} border rounded-xl py-3 font-black uppercase tracking-widest text-xs flex items-center justify-center gap-2`}>
           {listening ? <MicOff size={16}/> : <Mic size={16}/>} {listening ? 'Listening...' : 'Start Listening'}
         </button>
-        <div data-testid="voice-command-status" aria-live="polite" className="text-[10px] font-bold text-slate-400 min-h-[14px]">{voiceStatus === 'requesting-permission' ? 'Requesting microphone permission…' : voiceStatus === 'recording' ? 'Recording… speak your command. Tap Stop when finished.' : voiceStatus === 'transcribing' ? 'Transcribing your command…' : voiceStatus === 'processing' ? 'Processing your command…' : voiceStatus === 'listening' ? 'Listening…' : voiceStatus === 'error' ? 'Voice needs attention. Try again or type your command below.' : 'Tap Start Listening when you are ready.'}</div>
-        {voicePanelError && <div data-testid="voice-command-error" role="alert" className="text-[11px] font-bold text-red-200 bg-red-950/30 border border-red-500/30 rounded-xl p-2">{voicePanelError}</div>}
         <textarea value={manualText} onChange={e=>setManualText(e.target.value)} className={T.input} rows="2" placeholder='Try: "86 salmon", "prep 2 pans tomatoes", "add event Friday at 6pm", "request off next Monday", "set availability Tuesday 10am to 4pm"' />
         <button type="button" onClick={() => processText(manualText)} className={`${T.btnAlt} w-full`}>Check Typed Request</button>
         {heardText && <div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-2 text-xs"><span className="text-slate-500 font-black uppercase tracking-widest">Heard</span><div className="font-bold text-white mt-1">{heardText}</div></div>}
@@ -3110,27 +3030,10 @@ const VoiceCommandDockBase = React.forwardRef(({ appUser, inventoryItems = [], r
         </div>}
         {!canUseSpeech && <div className="text-[10px] text-amber-300 bg-amber-900/10 border border-amber-900/40 rounded-xl p-2 font-bold">This browser does not support built-in speech recognition. Type the command here, or use Chrome/Android for voice.</div>}
       </div>
-    </div> : null;
-
-  // Android installed-web-app rendering can lose a fixed panel when it lives
-  // inside the zero-sized/pointer-disabled mobile dock. Portal only the mobile
-  // panel to the already-mounted shell so it is a top-level fixed surface while
-  // retaining the same app theme and React state/controller. Desktop stays on
-  // the proven in-dock path.
-  const isMobileVoiceSurface = typeof window !== 'undefined' && window.matchMedia?.('(max-width: 720px)')?.matches;
-  const mobileVoicePortalTarget = isMobileVoiceSurface && typeof document !== 'undefined'
-    ? (document.querySelector('.concept17-shell') || document.body)
-    : null;
-  const renderedVoicePanel = voicePanel && mobileVoicePortalTarget
-    ? createPortal(voicePanel, mobileVoicePortalTarget)
-    : voicePanel;
-
-  return <div className="voice-command-dock fixed bottom-5 left-4 z-50 flex flex-col items-start gap-2">
-    {renderedVoicePanel}
-    <button type="button" aria-label={open ? 'Hide 86Voice assistant' : 'Open 86Voice'} aria-expanded={open} onClick={open ? closeDock : openDock} className="voice-command-trigger no-compact w-14 h-14 rounded-full bg-[#0B0E11] border border-[#D4A381]/70 text-[#D4A381] shadow-2xl flex items-center justify-center hover:scale-105 transition-transform" title={open ? 'Hide 86Voice assistant' : 'Open 86Voice'}><Mic size={24}/><span className="voice-command-trigger-label">Voice</span></button>
+    </div>}
+    <button type="button" aria-label={open ? 'Hide 86Voice assistant' : 'Open 86Voice'} aria-expanded={open} onClick={open ? closeDock : openDock} className="no-compact w-14 h-14 rounded-full bg-[#0B0E11] border border-[#D4A381]/70 text-[#D4A381] shadow-2xl flex items-center justify-center hover:scale-105 transition-transform" title={open ? 'Hide 86Voice assistant' : 'Open 86Voice'}><Mic size={24}/></button>
   </div>;
-});
-VoiceCommandDockBase.displayName = 'VoiceCommandDock';
+};
 
 const VoiceCommandDock = VoiceCommandDockBase;
 

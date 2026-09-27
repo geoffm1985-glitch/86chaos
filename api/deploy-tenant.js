@@ -114,6 +114,7 @@ module.exports = async function handler(req, res) {
         integrationsLocked: true,
         subscription,
         createdAt: nowIso,
+        lastActive: nowIso,
         systemSettings: { address: rAddress, geofenceRadius: 300 }
       });
       batch.set(app.firestore().collection('users').doc(userRecord.uid), {

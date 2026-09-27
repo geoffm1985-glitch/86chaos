@@ -79,11 +79,7 @@ async function openSchedule(page, seed = {}) {
 }
 
 async function openWarnings(page) {
-  const warningsControl = page
-    .getByRole('tab', { name: /^Warnings$/i })
-    .or(page.getByRole('button', { name: /^Open Warnings$/i }))
-    .or(page.getByRole('button', { name: /^Warnings$/i }))
-    .first();
+  const warningsControl = page.getByTestId('schedule-copilot-warnings-tab');
   if (!await warningsControl.isVisible().catch(() => false)) {
     const openCopilot = page.getByRole('button', { name: /^Open Copilot Tools$/i }).first();
     await expect(openCopilot, 'Schedule Copilot should already be open or expose Open Copilot Tools').toBeVisible({ timeout: 10000 });
@@ -102,7 +98,7 @@ async function openManagerRequestOff(page, seed = {}) {
   await login(page, account.email, account.password);
   await gotoTab(page, 'published', { settleMs: 1400, maxText: 60000 });
   await dismissBlockingDialogs(page, { maxPasses: 4 }).catch(() => null);
-  const requestOffTab = page.getByRole('button', { name: /^Schedule Request Off$/i }).first();
+  const requestOffTab = page.getByTestId('schedule-request-off-tab');
   await expect(requestOffTab, 'Request Off subtab should be visible inside Time Clock & Schedule').toBeVisible({ timeout: 15000 });
   await requestOffTab.click();
   await expect(page.locator('body'), 'Request-Off Workflow should render before manager Request Off assertions').toContainText(/Request-Off Workflow/i, { timeout: 15000 });

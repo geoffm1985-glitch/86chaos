@@ -60,7 +60,7 @@ test.describe('54 emergency Schedule + Request Off regression coverage', () => {
     await login(page, account.email, account.password);
     await gotoTab(page, 'schedule', { settleMs: 1000, maxText: 50000 });
 
-    const requestOffTab = page.getByRole('button', { name: /^Schedule Request Off$/i }).first();
+    const requestOffTab = page.getByTestId('schedule-request-off-tab');
     await expect(requestOffTab, 'Request Off must be reachable from Time Clock & Schedule').toBeVisible({ timeout: 12000 });
     await requestOffTab.click();
     await page.waitForTimeout(700);

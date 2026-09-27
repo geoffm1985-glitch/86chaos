@@ -9,9 +9,6 @@
 *.rules text eol=lf
 *.yml text eol=lf
 *.yaml text eol=lf
-<<<<<<< HEAD
-=======
 
 *.ts text eol=lf
 *.tsx text eol=lf
->>>>>>> 1fb9648590016d97432aa4c21a1d5758ab3b8992

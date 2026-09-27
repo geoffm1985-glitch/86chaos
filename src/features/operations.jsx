@@ -359,7 +359,7 @@ const TabPrep = ({ currentDate, appUser, addToast, setLabelsToPrint }) => {
   };
 
   return (
-    <div data-concept-subtab={`prep-${subTab}`} className="concept17-surface concept17-prep-surface max-w-4xl mx-auto space-y-4 pb-40">
+    <div className="max-w-4xl mx-auto space-y-4 pb-40">
       
       {/* EDIT LINE CHECK MODAL */}
       <Modal isOpen={!!editLineCheckItem} onClose={() => setEditLineCheckItem(null)} title={t('prep.editLineCheck')}>
@@ -381,23 +381,19 @@ const TabPrep = ({ currentDate, appUser, addToast, setLabelsToPrint }) => {
         )}
       </Modal>
 
-      <div className="concept17-subtab-bar flex flex-wrap gap-2 border-b border-[#2A353D] mb-4 pb-2">
+      <div className="flex flex-wrap gap-2 border-b border-[#2A353D] mb-4 pb-2">
         {['prep', 'line-check', 'daily', 'weekly', 'monthly'].map((tab) => {
           const label = tab === 'prep' ? t('prep.foodPrep') : tab === 'line-check' ? t('prep.lineCheck') : tab === 'daily' ? t('prep.dailyTasks') : tab === 'weekly' ? t('prep.weeklyTasks') : t('prep.monthlyTasks');
           const stateLabel = tab === 'prep' ? 'prep' : tab === 'line-check' ? 'line check' : tab;
           return (
-<<<<<<< HEAD
-          <button key={tab} type="button" data-concept-subtab-button={tab} aria-label={label} title={label} onClick={() => { setSubTab(tab); if(tab !== 'prep' && tab !== 'line-check') setTaskFreq(tab); }} className={`px-3 sm:px-5 py-2.5 text-[10px] sm:text-xs font-black rounded-xl uppercase tracking-widest transition-all flex-1 sm:flex-none ${subTab === tab ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>
-=======
           <button key={tab} type="button" aria-label={label} title={label} onClick={() => { setSubTab(tab); if(tab !== 'prep' && tab !== 'line-check') setTaskFreq(tab); }} className={`px-3 sm:px-5 py-2.5 text-[10px] sm:text-xs font-black rounded-xl uppercase tracking-widest transition-all flex-1 sm:flex-none ${subTab === tab ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>
->>>>>>> 1fb9648590016d97432aa4c21a1d5758ab3b8992
             {label}
           </button>
         );})}
       </div>
 
       {subTab === 'line-check' && (
-        <div data-concept-subtab="prep-line-check" className="concept17-subtab-surface concept17-prep-line-check-surface space-y-4 animate-[slideIn_0.2s_ease-out]">
+        <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
           
           <p className="text-xs text-slate-400">Fast kitchen records with manager review. Configure expectations for your operation; logs do not certify legal compliance. Record time and process details for cooling and reheating.</p>
           {missedSafety.length > 0 && <div role="alert" className="rounded-xl border border-amber-800 p-3 text-amber-300 text-sm">Required checks need attention: {missedSafety.map(item => item.name).join(', ')}</div>}
@@ -471,7 +467,7 @@ const TabPrep = ({ currentDate, appUser, addToast, setLabelsToPrint }) => {
       )}
 
       {subTab === 'prep' && (
-        <div data-concept-subtab="prep-food-prep" className="concept17-subtab-surface concept17-prep-food-surface space-y-4 animate-[slideIn_0.2s_ease-out]">
+        <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
           <LabelPrintSetup/>
           <div className={`${T.card} p-3 flex justify-between items-center bg-[#1A2126]`}>
             <h3 className={`font-black flex items-center gap-2 text-sm text-white uppercase tracking-wider`}><ClipboardList size={18} className={T.copper}/> {t('prep.targetDate')}</h3>
@@ -547,7 +543,7 @@ const TabPrep = ({ currentDate, appUser, addToast, setLabelsToPrint }) => {
       </div>
       )}
 
-      {subTab !== 'prep' && subTab !== 'line-check' && <div data-concept-subtab={`prep-${subTab}`} className="concept17-subtab-surface concept17-prep-task-surface animate-[slideIn_0.2s_ease-out]">{renderTasks(subTab)}</div>}
+      {subTab !== 'prep' && subTab !== 'line-check' && <div className="animate-[slideIn_0.2s_ease-out]">{renderTasks(subTab)}</div>}
     </div>
   );
 };
@@ -841,7 +837,7 @@ const TabRecipes = ({ appUser, addToast, voiceRecipeTarget = null }) => {
   const canModifyRecipe = activeRecipe && (canManageRecipes || appUser?.id === activeRecipe.authorId);
 
   return (
-    <div className="concept17-surface concept17-recipes-surface recipes-desktop max-w-7xl mx-auto space-y-4 pb-12 animate-[slideIn_0.2s_ease-out] recipe-compact">
+    <div className="recipes-desktop max-w-7xl mx-auto space-y-4 pb-12 animate-[slideIn_0.2s_ease-out] recipe-compact">
       
       {/* THE NEW SLEEK CONTROL PANEL */}
       <div className="bg-[#1A2126] border border-[#2A353D] rounded-2xl shadow-lg overflow-hidden mb-4">
@@ -1181,7 +1177,7 @@ const TabMaintenance = ({ appUser, addToast }) => {
   });
 
   return (
-    <div data-concept-subtab={`maintenance-${subTab}`} className="concept17-surface concept17-maintenance-surface maintenance-center-compact desktop-ops-page max-w-7xl mx-auto space-y-3 pb-24 animate-[slideIn_0.2s_ease-out]">
+    <div className="maintenance-center-compact desktop-ops-page max-w-7xl mx-auto space-y-3 pb-24 animate-[slideIn_0.2s_ease-out]">
       <Modal isOpen={isModalOpen} onClose={() => { setIsModalOpen(false); resetForm(); }} title={editingLogId ? "Update Maintenance Record" : "Report Equipment Issue"}>
         <form onSubmit={handleSave} className="space-y-3 max-h-[70vh] overflow-y-auto custom-scrollbar pr-1">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -1230,10 +1226,10 @@ const TabMaintenance = ({ appUser, addToast }) => {
         ].map(([label,value,color]) => <div key={label} className="maintenance-summary-card bg-[#1A2126] border border-[#2A353D]"><div className="text-[9px] uppercase tracking-widest font-black text-slate-500">{label}</div><div className={`text-lg font-black mt-1 ${color}`}>{value}</div></div>)}
       </div>
 
-      <div className="concept17-subtab-bar concept17-maintenance-tabs flex flex-col md:flex-row md:items-center justify-between gap-2 border-b border-[#2A353D] pb-2">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-2 border-b border-[#2A353D] pb-2">
         <div className="flex gap-1.5 overflow-x-auto custom-scrollbar">
-          <button data-concept-subtab-button="issues" onClick={() => setSubTab('issues')} className={`flex-shrink-0 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest ${subTab === 'issues' ? `${T.grad} text-slate-900` : 'bg-[#1A2126] text-slate-400 border border-[#2A353D]'}`}>Repair Board</button>
-          <button data-concept-subtab-button="pm" onClick={() => setSubTab('pm')} className={`relative flex-shrink-0 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest ${subTab === 'pm' ? `${T.grad} text-slate-900` : 'bg-[#1A2126] text-slate-400 border border-[#2A353D]'}`}>Preventative Maintenance{overdueCount > 0 && <span className="ml-2 inline-flex min-w-4 h-4 px-1 rounded-full bg-red-500 text-white items-center justify-center text-[9px]">{overdueCount}</span>}</button>
+          <button onClick={() => setSubTab('issues')} className={`flex-shrink-0 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest ${subTab === 'issues' ? `${T.grad} text-slate-900` : 'bg-[#1A2126] text-slate-400 border border-[#2A353D]'}`}>Repair Board</button>
+          <button onClick={() => setSubTab('pm')} className={`relative flex-shrink-0 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest ${subTab === 'pm' ? `${T.grad} text-slate-900` : 'bg-[#1A2126] text-slate-400 border border-[#2A353D]'}`}>Preventative Maintenance{overdueCount > 0 && <span className="ml-2 inline-flex min-w-4 h-4 px-1 rounded-full bg-red-500 text-white items-center justify-center text-[9px]">{overdueCount}</span>}</button>
         </div>
         {subTab === 'issues' && <div className="flex flex-col sm:flex-row gap-2 w-full md:w-auto">
           <input value={issueSearch} onChange={e=>setIssueSearch(e.target.value)} className={`${T.input} md:w-56`} placeholder="Search equipment, issue, vendor" />
@@ -1241,7 +1237,7 @@ const TabMaintenance = ({ appUser, addToast }) => {
         </div>}
       </div>
 
-      {subTab === 'issues' && <div data-concept-subtab="maintenance-repair-board" className="concept17-subtab-surface concept17-maintenance-repairs-surface animate-[slideIn_0.2s_ease-out]">
+      {subTab === 'issues' && <div className="animate-[slideIn_0.2s_ease-out]">
         <div className="flex items-center justify-between mb-2"><div><h2 className="text-sm font-black text-white">Repair Board</h2><p className="text-[10px] uppercase tracking-widest font-bold text-slate-500">{visibleLogs.length} record{visibleLogs.length === 1 ? '' : 's'} shown</p></div></div>
         {visibleLogs.length === 0 ? <SmartEmptyState icon={<Wrench size={22}/>} title="No maintenance records match" desc="Change the filter or report a new equipment issue." /> : <div className="grid grid-cols-1 xl:grid-cols-2 gap-2">
           {visibleLogs.map(log => {
@@ -1264,7 +1260,7 @@ const TabMaintenance = ({ appUser, addToast }) => {
         </div>}
       </div>}
 
-      {subTab === 'pm' && <div data-concept-subtab="maintenance-preventative" className="concept17-subtab-surface concept17-maintenance-pm-surface animate-[slideIn_0.2s_ease-out]">
+      {subTab === 'pm' && <div className="animate-[slideIn_0.2s_ease-out]">
         <div className="flex items-center justify-between mb-2"><div><h2 className="text-sm font-black text-white">Preventative Maintenance</h2><p className="text-[10px] uppercase tracking-widest font-bold text-slate-500">Recurring equipment care and due dates</p></div></div>
         {sortedPmSchedules.length === 0 ? <SmartEmptyState icon={<Calendar size={22}/>} title="No preventative schedules" desc="Add recurring equipment care to build the maintenance calendar." /> : <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2">
           {sortedPmSchedules.map(pm => {
@@ -1290,7 +1286,6 @@ const TabMaintenance = ({ appUser, addToast }) => {
 };
 
 const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = [], sales = [], timePunches = [], addToast, setActiveTab, clientData = {} }) => {
-  const { formatFullDate } = useI18n();
   const opsPlanAccess = usePlanAccess(appUser, clientData);
   const canUseBasicInventory = opsPlanAccess.canUse(FEATURE_KEYS.BASIC_INVENTORY).allowed || opsPlanAccess.canUse(FEATURE_KEYS.BURN_LOG).allowed;
   const canUseMenuIntelligence = opsPlanAccess.canUse(FEATURE_KEYS.MENU_INTELLIGENCE).allowed || opsPlanAccess.canUse(FEATURE_KEYS.DEPENDENCY_TOOLS).allowed;
@@ -1800,7 +1795,7 @@ const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = 
   ];
 
   return (
-    <div className="concept17-surface concept17-ops-surface kitchen-command-compact desktop-ops-page max-w-7xl mx-auto space-y-4 pb-24 animate-[slideIn_0.2s_ease-out]">
+    <div className="kitchen-command-compact desktop-ops-page max-w-7xl mx-auto space-y-4 pb-24 animate-[slideIn_0.2s_ease-out]">
       <div className={`${T.card} command-hero p-5 bg-gradient-to-br from-[#1A2126] to-[#12161A] overflow-hidden relative`}>
         <div className="absolute -top-8 -right-6 text-[120px] font-black text-[#D4A381]/5 leading-none">86</div>
         <div className="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
@@ -1845,7 +1840,7 @@ const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = 
         <div className={`${T.card} command-card p-4 lg:col-span-2`}>
           <div className="flex items-center justify-between border-b border-[#2A353D] pb-3 mb-3">
             <h2 className="font-black text-white flex items-center gap-2"><ChefHat size={18} className={T.copper}/> Today’s Priorities</h2>
-            <span className="text-[9px] font-black uppercase tracking-widest text-slate-500">{formatFullDate(today)}</span>
+            <span className="text-[9px] font-black uppercase tracking-widest text-slate-500">{formatDisplayFullDate(today)}</span>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {recommendations.map((rec, idx) => (
@@ -1963,10 +1958,10 @@ const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = 
               <h2 id="kitchen-specials-heading" className="text-lg font-black text-white flex items-center gap-2"><Star size={19} className={T.copper}/> Service Specials</h2>
               <p className="text-xs sm:text-sm text-slate-400 font-medium mt-1">The official list for pre-shift, line execution, allergens, and 86 status. Posted directly - no AI.</p>
             </div>
-            <div data-concept-subtab={`ops-specials-${specialView}`} className="concept17-subtab-bar concept17-specials-tabs flex flex-wrap items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               {canManageSpecials && <>
-                <button type="button" onClick={() => setSpecialView('current')} className={`concept17-subtab ${specialView === 'current' ? T.btn : T.btnAlt} px-3`}>Current</button>
-                <button type="button" onClick={() => setSpecialView('all')} className={`concept17-subtab ${specialView === 'all' ? T.btn : T.btnAlt} px-3`}>All & History</button>
+                <button type="button" onClick={() => setSpecialView('current')} className={`${specialView === 'current' ? T.btn : T.btnAlt} px-3`}>Current</button>
+                <button type="button" onClick={() => setSpecialView('all')} className={`${specialView === 'all' ? T.btn : T.btnAlt} px-3`}>All & History</button>
                 <button type="button" onClick={openNewSpecial} className={`${T.btn} flex items-center gap-1.5`}><Plus size={15}/> Add Special</button>
               </>}
             </div>
@@ -2437,39 +2432,8 @@ const TabToday = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequ
   const heroTitle = canUseManagerBrief ? (profile === 'manager' || profile === 'system' ? t('today.managerBrief') : profile === 'kitchen' ? t('today.kitchenBrief') : profile === 'bar' ? t('today.barBrief') : profile === 'service' ? t('today.serviceBrief') : t('today.todayBrief')) : t('today.todayHome');
   const topPriority = attentionProblems[0]?.detail || (myShift ? `You work ${formatShortTime(myShift.startTime)}-${formatShortTime(myShift.endTime)} as ${myShift.role}.` : t('today.nothingUrgent'));
   const managerBriefMathText = `${todaysShifts.length} ${t('today.onSchedule')} ${activePunches.length} ${t('today.clockedIn')} ${attentionProblems.length} ${t('today.needReview')}`;
-<<<<<<< HEAD
-  const todaySalesRecord = useMemo(() => (sales || []).find(row => String(row?.date || '') === String(today)) || null, [sales, today]);
-  const todaySalesAmount = Number(todaySalesRecord?.netSales ?? todaySalesRecord?.grossSales ?? todaySalesRecord?.amount ?? 0) || 0;
-  const todayLaborCost = Number(todaySalesRecord?.laborCost ?? 0) || 0;
-  const todayFoodCost = Number(todaySalesRecord?.foodCost ?? 0) || 0;
-  const todayLaborPct = todaySalesAmount > 0 && todayLaborCost > 0 ? (todayLaborCost / todaySalesAmount) * 100 : null;
-  const todayFoodPct = todaySalesAmount > 0 && todayFoodCost > 0 ? (todayFoodCost / todaySalesAmount) * 100 : null;
-  const todayPrepRows = useMemo(() => (prepItems || []).filter(item => item?.date === today || item?.date === 'MASTER' || item?.isMaster), [prepItems, today]);
-  const todayPrepDone = todayPrepRows.filter(item => item?.isCompleted || item?.completed === true || item?.completedDates?.[today]).length;
-  const todayPrepOpen = Math.max(0, todayPrepRows.length - todayPrepDone);
-  const greetingHour = new Date().getHours();
-  const referenceGreeting = greetingHour < 12 ? 'Good morning' : greetingHour < 17 ? 'Good afternoon' : 'Good evening';
-  const referenceRestaurant = clientData?.name || appUser?.restaurantName || '86 Chaos';
-  const referencePriorityRows = (attentionProblems.length ? attentionProblems.slice(0, 4) : [
-    { title: 'Prep list', detail: todayPrepOpen ? `${todayPrepOpen} prep item${todayPrepOpen === 1 ? '' : 's'} remaining.` : 'Today’s prep list is buttoned up.', tab: 'prep', tone: todayPrepOpen ? 'amber' : 'green' },
-    { title: 'Schedule coverage', detail: todaysShifts.length ? `${todaysShifts.length} published shift${todaysShifts.length === 1 ? '' : 's'} today.` : 'No published shifts are showing for today.', tab: 'published', tone: todaysShifts.length ? 'green' : 'amber' },
-    { title: 'Inventory', detail: lowStock.length ? `${lowStock.length} below-par item${lowStock.length === 1 ? '' : 's'} need review.` : 'No below-par inventory alerts are showing.', tab: 'inventory', tone: lowStock.length ? 'amber' : 'green' },
-    { title: 'Maintenance', detail: urgentMaintenance.length ? `${urgentMaintenance.length} high-priority maintenance item${urgentMaintenance.length === 1 ? '' : 's'} open.` : 'No high-priority equipment fires showing.', tab: 'maintenance', tone: urgentMaintenance.length ? 'red' : 'green' }
-  ]).slice(0, 4);
-  const referenceShortcuts = [
-    { label: 'Time Clock & Schedule', mobile: 'Time Clock', tab: 'published', Icon: Clock, detail: 'Manage shifts, time tracking, and schedules.' },
-    { label: 'Staff Roster', mobile: 'Staff Roster', tab: 'team', Icon: Users, detail: 'View staff, roles, and availability.' },
-    { label: 'Prep & Tasks', mobile: 'Prep & Tasks', tab: 'prep', Icon: ClipboardList, detail: 'Manage prep lists and daily tasks.' },
-    { label: 'Inventory & Orders', mobile: 'Inventory', tab: 'inventory', Icon: Package, detail: 'Track stock levels and manage orders.' },
-    { label: 'Recipes', mobile: 'Recipes', tab: 'recipes', Icon: BookOpen, detail: 'Standardize recipes and food costs.' },
-    { label: 'Financials', mobile: 'Financials', tab: 'financials', Icon: TrendingUp, detail: 'View sales, labor, and key financials.' },
-    { label: 'Message Board', mobile: 'Messages', tab: 'messages', Icon: MessageSquare, detail: 'Send updates to your team.' },
-    { label: 'Maintenance', mobile: 'Maintenance', tab: 'maintenance', Icon: Wrench, detail: 'Track equipment and follow-up.' }
-  ];
-=======
->>>>>>> 1fb9648590016d97432aa4c21a1d5758ab3b8992
 
-  return <div className="concept17-surface concept17-today-surface manager-brief-compact desktop-ops-page max-w-7xl mx-auto space-y-3 pb-24 animate-[slideIn_0.2s_ease-out]">
+  return <div className="manager-brief-compact desktop-ops-page max-w-7xl mx-auto space-y-3 pb-24 animate-[slideIn_0.2s_ease-out]">
     <Modal isOpen={!!attentionExplain} onClose={() => setAttentionExplain(null)} title={attentionExplain?.title || 'Why this matters'}>
       {attentionExplain && <div className="space-y-3">
         <div className="rounded-xl border border-[#2A353D] bg-[#12161A] p-3"><div className="text-[9px] uppercase tracking-widest font-black text-[#D4A381]">What triggered it</div><p className="text-sm font-bold text-white mt-1">{attentionExplain.detail}</p></div>
@@ -2478,19 +2442,6 @@ const TabToday = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequ
         <button type="button" onClick={() => { const tab = attentionExplain.tab || 'today'; setAttentionExplain(null); setActiveTab(tab); }} className={T.btn}>Open Fix Area</button>
       </div>}
     </Modal>
-<<<<<<< HEAD
-    <section className="concept17-reference-desktop" data-testid="concept17-reference-home-desktop">
-      <div className="concept17-home-hero">
-        <div className="concept17-home-hero-copy">
-          <div className="concept17-home-eyebrow">{referenceGreeting}</div>
-          <h1>{referenceRestaurant}</h1>
-          <p>Great food. Better people. A stronger restaurant.</p>
-        </div>
-        <div className="concept17-home-hero-status">
-          <div className="concept17-home-date">{formatFullDate(today)}</div>
-          <div className="concept17-home-time">{new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</div>
-          <div className="concept17-open-pill"><span></span> OPEN <ChevronRight size={13} aria-hidden="true" /></div>
-=======
     <div className="brief-hero cockpit-panel rounded-2xl p-4 sm:p-5 cockpit-grid overflow-hidden relative">
       <div className="absolute -right-8 -top-8 text-[9rem] font-black text-white/5 leading-none">86</div>
       <div className="relative z-10 flex flex-col sm:flex-row sm:items-start justify-between gap-3">
@@ -2504,111 +2455,16 @@ const TabToday = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequ
           <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-2 text-center"><div className="text-lg font-black text-white">{todaysShifts.length}</div><div className="text-[8px] uppercase tracking-widest font-black text-slate-500">{t('today.onSchedule')}</div></div>
           <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-2 text-center"><div className="text-lg font-black text-emerald-400">{activePunches.length}</div><div className="text-[8px] uppercase tracking-widest font-black text-slate-500">{t('today.clockedIn')}</div></div>
           <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-2 text-center"><div className="text-lg font-black text-red-300">{attentionProblems.length}</div><div className="text-[8px] uppercase tracking-widest font-black text-slate-500">{t('today.needReview')}</div></div>
->>>>>>> 1fb9648590016d97432aa4c21a1d5758ab3b8992
         </div>
       </div>
+    </div>
 
-<<<<<<< HEAD
-      <div className="concept17-home-metrics">
-        <button type="button" onClick={() => setActiveTab('financials')} className="concept17-home-metric">
-          <span className="concept17-home-metric-icon"><TrendingUp size={25}/></span>
-          <span><small>Today's Sales</small><strong>{todaySalesAmount > 0 ? `$${Math.round(todaySalesAmount).toLocaleString()}` : 'No sales yet'}</strong><em>{todaySalesAmount > 0 ? 'Daily Close' : 'Enter Daily Close'}</em></span>
-        </button>
-        <button type="button" onClick={() => setActiveTab('prep')} className="concept17-home-metric">
-          <span className="concept17-home-metric-icon"><ClipboardList size={25}/></span>
-          <span><small>Prep Completed</small><strong>{todayPrepDone}</strong><em>{todayPrepOpen ? `${todayPrepOpen} remaining` : 'Prep is clear'}</em></span>
-        </button>
-        <button type="button" onClick={() => setActiveTab('labor')} className="concept17-home-metric">
-          <span className="concept17-home-metric-icon"><Users size={25}/></span>
-          <span><small>Labor Cost</small><strong>{todayLaborPct == null ? '—' : `${todayLaborPct.toFixed(1)}%`}</strong><em>{activePunches.length} clocked in</em></span>
-        </button>
-        <button type="button" onClick={() => setActiveTab('inventory')} className="concept17-home-metric">
-          <span className="concept17-home-metric-icon"><Package size={25}/></span>
-          <span><small>Food Cost</small><strong>{todayFoodPct == null ? '—' : `${todayFoodPct.toFixed(1)}%`}</strong><em>{lowStock.length ? `${lowStock.length} low-stock alert${lowStock.length === 1 ? '' : 's'}` : 'Inventory stable'}</em></span>
-        </button>
-      </div>
-
-      <div className="concept17-home-primary-grid">
-        <section className="concept17-home-panel">
-          <div className="concept17-home-panel-head">
-            <span className="concept17-home-panel-icon"><ClipboardList size={25}/></span>
-            <span><h2>Manager Brief</h2><p>Key updates for today's service.</p></span>
-            <button type="button" onClick={() => setExpanded(e => ({ ...e, problems: true }))}>View All <ChevronRight size={15}/></button>
-          </div>
-          <div className="concept17-home-brief-list">
-            {referencePriorityRows.map((row, idx) => <button key={`${row.title}-${idx}`} type="button" onClick={() => row.onClick ? row.onClick() : setActiveTab(row.tab || 'today')}>
-              <span className={`concept17-home-row-status is-${row.tone || (idx === 0 ? 'green' : 'amber')}`}>{idx === 0 && !attentionProblems.length ? <Check size={15}/> : idx === 3 ? <Star size={15}/> : <span></span>}</span>
-              <span><strong>{row.title}</strong><small>{row.detail}</small></span>
-              <time>{idx === 0 ? 'Now' : idx === 1 ? 'Today' : idx === 2 ? 'Review' : 'Open'}</time>
-            </button>)}
-          </div>
-        </section>
-
-        <section className="concept17-home-panel concept17-home-kitchen-panel">
-          <div className="concept17-home-panel-head">
-            <span className="concept17-home-panel-icon"><ChefHat size={27}/></span>
-            <span><h2>Kitchen Command Center</h2><p>Live view of kitchen operations.</p></span>
-            <button type="button" onClick={() => setActiveTab('ops')}>Open Kitchen <ChevronRight size={15}/></button>
-          </div>
-          <div className="concept17-kitchen-mini-metrics">
-            <button type="button" onClick={() => setActiveTab('prep')}><strong>{todayPrepOpen}</strong><small>Open Prep</small></button>
-            <button type="button" onClick={openInventoryFocus}><strong>{lowStock.length}</strong><small>Low Stock</small></button>
-            <button type="button" onClick={() => setActiveTab('maintenance')}><strong>{urgentMaintenance.length}</strong><small>Maintenance</small></button>
-            <button type="button" onClick={() => setActiveTab('published')}><strong>{todaysShifts.length}</strong><small>Scheduled</small></button>
-          </div>
-          <div className="concept17-kitchen-recent">
-            <div className="concept17-kitchen-recent-title"><strong>Today's priorities</strong><button type="button" onClick={() => setActiveTab('ops')}>View Kitchen <ChevronRight size={14}/></button></div>
-            {referencePriorityRows.slice(0, 4).map((row, idx) => <button key={`k-${row.title}-${idx}`} type="button" onClick={() => row.onClick ? row.onClick() : setActiveTab(row.tab || 'ops')}><span>{idx + 1}</span><strong>{row.title}</strong><small>{row.detail}</small><em>{row.tone === 'red' ? 'Priority' : row.tone === 'amber' ? 'Review' : 'Ready'}</em></button>)}
-          </div>
-        </section>
-      </div>
-
-      <div className="concept17-home-shortcuts">
-        {referenceShortcuts.map(({ label, tab, Icon, detail }) => <button key={tab} type="button" onClick={() => setActiveTab(tab)}>
-          <span className="concept17-home-shortcut-icon"><Icon size={24}/></span>
-          <span><strong>{label}</strong><small>{detail}</small></span>
-          <ChevronRight size={16} className="concept17-home-shortcut-arrow"/>
-        </button>)}
-      </div>
-    </section>
-
-    <section className="concept17-reference-mobile" data-testid="concept17-reference-home-mobile">
-      <button type="button" className="concept17-mobile-manager-card" onClick={() => setExpanded(e => ({ ...e, problems: true }))}>
-        <span className="concept17-home-panel-icon"><ClipboardList size={24}/></span>
-        <span><strong>Manager Brief</strong><small>Your restaurant at a glance.</small></span>
-        <span className="concept17-mobile-chevron"><ChevronRight size={19}/></span>
-      </button>
-
-      <div className="concept17-mobile-metrics">
-        <button type="button" onClick={() => setActiveTab('financials')}><span className="concept17-home-metric-icon"><TrendingUp size={21}/></span><span><small>Sales Today</small><strong>{todaySalesAmount > 0 ? `$${Math.round(todaySalesAmount).toLocaleString()}` : '—'}</strong><em>{todaySalesAmount > 0 ? 'Daily Close' : 'No sales entered'}</em></span></button>
-        <button type="button" onClick={() => setActiveTab('prep')}><span className="concept17-home-metric-icon"><ClipboardList size={21}/></span><span><small>Prep Done</small><strong>{todayPrepDone}</strong><em>{todayPrepOpen} remaining</em></span></button>
-        <button type="button" onClick={() => setActiveTab('labor')}><span className="concept17-home-metric-icon"><Users size={21}/></span><span><small>Labor Cost</small><strong>{todayLaborPct == null ? '—' : `${todayLaborPct.toFixed(1)}%`}</strong><em>{activePunches.length} clocked in</em></span></button>
-        <button type="button" onClick={() => setActiveTab('inventory')}><span className="concept17-home-metric-icon"><Package size={21}/></span><span><small>Food Cost</small><strong>{todayFoodPct == null ? '—' : `${todayFoodPct.toFixed(1)}%`}</strong><em>{lowStock.length} low stock</em></span></button>
-      </div>
-
-      <section className="concept17-mobile-priorities">
-        <div className="concept17-mobile-priorities-head"><span><ClipboardList size={18}/> Today's Priorities</span><button type="button" onClick={() => setActiveTab('ops')}>View All <ChevronRight size={14}/></button></div>
-        <div className="concept17-mobile-priority-list">
-          {referencePriorityRows.slice(0, 4).map((row, idx) => <button key={`m-${row.title}-${idx}`} type="button" onClick={() => row.onClick ? row.onClick() : setActiveTab(row.tab || 'today')}>
-            <span className={`concept17-home-row-status is-${row.tone || 'amber'}`}>{idx === 0 && !attentionProblems.length ? <Check size={13}/> : <span></span>}</span>
-            <span><strong>{row.title}</strong><small>{row.detail}</small></span>
-            <time>{idx === 0 ? 'Now' : idx === 1 ? 'Today' : 'Review'}</time>
-          </button>)}
-        </div>
-      </section>
-
-      <div className="concept17-mobile-shortcuts">
-        {referenceShortcuts.slice(0, 6).map(({ mobile, tab, Icon }) => <button key={`mobile-${tab}`} type="button" onClick={() => setActiveTab(tab)}><span className="concept17-home-shortcut-icon"><Icon size={22}/></span><strong>{mobile}</strong><ChevronRight size={14}/></button>)}
-      </div>
-    </section>
-=======
     <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
       <button onClick={open86Center} className="brief-quick-action bg-red-900/20 border border-red-500/40 text-red-300 rounded-xl p-3 font-black text-xs uppercase tracking-widest">{t('today.open86Alerts')}</button>
       <button onClick={openPrepPlan} className="brief-quick-action bg-[#1A2126] border border-[#2A353D] text-[#D4A381] rounded-xl p-3 font-black text-xs uppercase tracking-widest">{t('today.openPrep')}</button>
       <button onClick={openMessageBoard} className="brief-quick-action bg-[#1A2126] border border-[#2A353D] text-slate-200 rounded-xl p-3 font-black text-xs uppercase tracking-widest">{t('today.openMessages')}</button>
       {canUseCleaningRoutines && <button onClick={openMaintenanceCenter} className="brief-quick-action bg-amber-900/20 border border-amber-500/40 text-amber-300 rounded-xl p-3 font-black text-xs uppercase tracking-widest">{t('today.openFixIt')}</button>}
     </div>
->>>>>>> 1fb9648590016d97432aa4c21a1d5758ab3b8992
 
     {canUseManagerBrief && <section data-testid="restaurant-readiness-command-center" className={`${T.card} brief-card p-4 border-[#D4A381]/30`}>
       <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">

@@ -84,6 +84,8 @@ const TENANT_COLLECTIONS = [
   "crashReports",
   "accountDeletionRequests",
   "workspaceMembers",
+  "presenceSessions",
+  "livePresence",
   "securityAlerts",
 ] as const;
 
@@ -144,6 +146,8 @@ const AUDIT_SECURITY_RULES: PurgeRule[] = [
   { collection: "securityEvents", field: "createdAt", cutoffKind: "timestamp" },
   { collection: "suspiciousActivity", field: "createdAt", cutoffKind: "timestamp" },
   { collection: "crashReports", field: "createdAt", cutoffKind: "iso" },
+  { collection: "presenceSessions", field: "lastSeenAt", cutoffKind: "timestamp" },
+  { collection: "livePresence", field: "lastSeenAt", cutoffKind: "timestamp" },
 ];
 
 const ARCHIVE_RULES: ArchiveRule[] = [

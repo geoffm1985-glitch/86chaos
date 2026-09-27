@@ -105,9 +105,6 @@
   "outputDirectory": "build",
   "github": {
     "autoAlias": true
-<<<<<<< HEAD
-  }
-=======
   },
   "git": {
     "deploymentEnabled": {
@@ -118,5 +115,4 @@
     }
   },
   "$schema": "https://openapi.vercel.sh/vercel.json"
->>>>>>> 1fb9648590016d97432aa4c21a1d5758ab3b8992
 }

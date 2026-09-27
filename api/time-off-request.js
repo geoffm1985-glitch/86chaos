@@ -4,10 +4,7 @@ const { admin, getAdminAppForRequest, readBody, requireAppCheckIfEnforced, readW
 const { decidePlatformAdminAuthority } = require('./_platform-admin-authority.cjs');
 const { enforceRateLimit, sendRateLimited } = require('./_rate-limit');
 const { normalizePolicy, evaluatePolicyDate, callerCanConfigurePolicy } = require('./_time-off-policy.cjs');
-<<<<<<< HEAD
-=======
 const { validatePartialRequestOffTimeRange } = require('../src/core/requestOffValidation.shared.js');
->>>>>>> 1fb9648590016d97432aa4c21a1d5758ab3b8992
 
 const ACTIVE_CONFLICT_STATUSES = new Set(['pending', 'approved']);
 const TERMINAL_CONFLICT_STATUSES = new Set(['denied', 'rejected', 'cancelled', 'canceled', 'archived', 'processed', 'completed']);
@@ -800,13 +797,10 @@ module.exports._test = {
   loadCallerContext,
   buildTargetIdentity,
   buildRequestPayload,
-<<<<<<< HEAD
-=======
   assertRequestOffCreateAllowed,
   handleCreate,
   handleGhostCreate,
   handleGhostCancel,
->>>>>>> 1fb9648590016d97432aa4c21a1d5758ab3b8992
   workspaceToday,
   loadRestaurantPolicyContext,
   handlePolicyCheck,

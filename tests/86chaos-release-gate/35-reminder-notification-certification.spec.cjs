@@ -153,11 +153,11 @@ test.describe('35 reminder notification Play Store certification', () => {
         time: `${pad(date.getHours())}:${pad(date.getMinutes())}`,
       };
     });
-    const form = page.locator('form').filter({ has: page.getByRole('button', { name: /^Add reminder$/i }) }).first();
-    await form.getByPlaceholder('Remind me tomorrow at 9 AM to order buns', { exact: true }).fill(uniqueTitle);
+    const form = page.getByTestId('personal-reminder-form');
+    await form.getByRole('textbox', { name: /^Reminder text$/i }).fill(uniqueTitle);
     await form.locator('input[type="date"]').fill(localInputs.date);
     await form.locator('input[type="time"]').fill(localInputs.time);
-    await form.locator('select').first().selectOption('self');
+    await form.getByLabel('Reminder delivery', { exact: true }).selectOption('cloud');
 
     const saveResponsePromise = page.waitForResponse(response => response.url().includes('/api/personal-reminder-save') && response.request().method() === 'POST', { timeout: 30_000 });
     await form.getByRole('button', { name: /^Add reminder$/i }).click();
@@ -168,7 +168,7 @@ test.describe('35 reminder notification Play Store certification', () => {
     await expect(page.getByText(uniqueTitle, { exact: true })).toBeVisible({ timeout: 20_000 });
 
     const reminderTitle = page.getByText(uniqueTitle, { exact: true });
-    const row = reminderTitle.locator('xpath=ancestor::div[.//select[@aria-label="Snooze reminder"]][1]');
+    const row = page.getByTestId('personal-reminder-row').filter({ has: reminderTitle });
     const cancelButton = row.getByRole('button', { name: 'Cancel reminder', exact: true });
     await expect(row, 'Saved reminder row should remain visible for real cancellation').toBeVisible({ timeout: 20_000 });
     await expect(cancelButton, 'Saved reminder row should expose exactly one real cancel control').toHaveCount(1);
