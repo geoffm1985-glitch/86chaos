@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "release": "17.0.42",
+  "release": "18.0.0",
   "sourceIdentityRequired": true,
   "automaticOverwrite": false,
   "regressionPolicy": "Capture fixed-fixture cold and warm samples; block large regressions only after a reviewed baseline exists.",
@@ -13,7 +13,8 @@
     "Daily Close",
     "Global Search",
     "POS staging",
-    "POS reconciliation"
+    "POS reconciliation",
+    "Native Mobile Lifecycle"
   ],
   "metrics": [
     "queryCount",
@@ -24,7 +25,8 @@
     "coldDurationMs",
     "warmDurationMs",
     "datasetSize",
-    "sourceIdentity"
+    "sourceIdentity",
+    "nativeBackgroundListenerReleaseMs"
   ],
   "status": "CAPTURE_REQUIRED_ON_EXACT_DEPLOYED_CANDIDATE"
 }
