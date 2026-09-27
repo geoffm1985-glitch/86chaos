@@ -143,6 +143,10 @@
       "sha256": "6e79840963a9f4ae247011d2d54a8b3a1c3bcf8ff78e038dbdbe1d6cc7b48fec"
     },
     {
+      "file": "RELEASE_17_0_46.md",
+      "sha256": "3039a234f0d002e9f87662c1470af6bb8301870986fbbc58c785eb9f6077580f"
+    },
+    {
       "file": "RELEASE_17_0_5.md",
       "sha256": "5b70523b930597b5f29524911ae93e7235be86a973a6de04a89f0a37753cafe7"
     },
@@ -1089,6 +1093,10 @@
     {
       "file": "api/release-gate-schedule-runner-17-0-18.test.cjs",
       "sha256": "d976cbbaeab00fc96e3e935cfd592d44bb111bde9808a3db18ece536fb2434af"
+    },
+    {
+      "file": "api/release-gate-surgical-repairs-17-0-46.test.cjs",
+      "sha256": "8e4fc717c267b8b164fda56019a7cc1038b63527c2542f60f1db3630215bc439"
     },
     {
       "file": "api/release-gate-workspace-safety.test.cjs",
@@ -2935,6 +2943,10 @@
       "sha256": "f9257da0d1002f395d431289db55ced12209d70612bebab7070ee3356205715a"
     },
     {
+      "file": "scripts/validate-17-0-46.js",
+      "sha256": "cd6f4599aca6c949ca9a578bdb85750b97e5ca1d3d9b7c937724fd19fb3cd1f4"
+    },
+    {
       "file": "scripts/validate-17-0-5.js",
       "sha256": "b52dc67d3fc01dd79b886116f70ec76313fbd6088722c9c0b385a968ab31952f"
     },
@@ -3991,6 +4003,10 @@
       "sha256": "89273d2cf642ea64ad335f54e71b59ff4d23d2d2a9935baa9f1457c310abe91f"
     },
     {
+      "file": "tests/86chaos-release-gate/61-release-gate-surgical-repairs-17-0-46.spec.cjs",
+      "sha256": "71e24f9592002c142970c03df55e159afb410f66b73db378005ac17d5f0d1a46"
+    },
+    {
       "file": "tests/86chaos-release-gate/exhaustive-surface-matrix.cjs",
       "sha256": "daf945020805fbe56e7d5952538c2d6984ab65994d9b944b821ad5297ae4845c"
     },
@@ -4065,22 +4081,6 @@
     {
       "file": "vercel.json",
       "sha256": "aa0babf47f1c5599dbcdd13768c3434de47e982c560f96c455aad2eee7db2e72"
-    },
-    {
-      "file": "RELEASE_17_0_46.md",
-      "sha256": "3039a234f0d002e9f87662c1470af6bb8301870986fbbc58c785eb9f6077580f"
-    },
-    {
-      "file": "api/release-gate-surgical-repairs-17-0-46.test.cjs",
-      "sha256": "8e4fc717c267b8b164fda56019a7cc1038b63527c2542f60f1db3630215bc439"
-    },
-    {
-      "file": "scripts/validate-17-0-46.js",
-      "sha256": "cd6f4599aca6c949ca9a578bdb85750b97e5ca1d3d9b7c937724fd19fb3cd1f4"
-    },
-    {
-      "file": "tests/86chaos-release-gate/61-release-gate-surgical-repairs-17-0-46.spec.cjs",
-      "sha256": "71e24f9592002c142970c03df55e159afb410f66b73db378005ac17d5f0d1a46"
     }
   ]
 }
