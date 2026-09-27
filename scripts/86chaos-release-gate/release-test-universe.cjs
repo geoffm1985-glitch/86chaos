@@ -40,6 +40,7 @@ const RELEASE_CRITICAL_SPECS = Object.freeze([
   'tests/86chaos-release-gate/56-manager-brief-sticky-day-header.spec.cjs',
   'tests/86chaos-release-gate/57-sticky-header-touch-handoff.spec.cjs',
   'tests/86chaos-release-gate/58-testing-gate-17-0-43.spec.cjs',
+  'tests/86chaos-release-gate/59-customer-help-version-17-0-44.spec.cjs',
 ]);
 
 const PWA_SPEC_PATTERN = /86chaos-release-gate\/(26-pwa-icon-source-deployed-parity|27-pwa-browser-icon-matrix)\.spec\.cjs/;

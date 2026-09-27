@@ -66,12 +66,12 @@ jobs:
             git config user.name "86 Chaos Gate Bot"
             git config user.email "actions@users.noreply.github.com"
             git add release-source-manifest.json
-            git commit -m "ci: refresh 17.0.43 testing source manifest parity"
+            git commit -m "ci: refresh 17.0.44 testing source manifest parity"
             git push origin HEAD:testing
             echo "Manifest repaired; the follow-up testing push will run targeted/delta against the exact repaired commit."
             exit 0
           fi
-      - name: Run 17.0.43 targeted delta only
+      - name: Run 17.0.44 targeted delta only
         run: npm run test:current-release-targeted
       - name: Capture exact targeted-delta identity
         shell: bash
@@ -114,6 +114,7 @@ jobs:
           tests/86chaos-release-gate/56-manager-brief-sticky-day-header.spec.cjs
           tests/86chaos-release-gate/57-sticky-header-touch-handoff.spec.cjs
           tests/86chaos-release-gate/58-testing-gate-17-0-43.spec.cjs
+          tests/86chaos-release-gate/59-customer-help-version-17-0-44.spec.cjs
           tests/86chaos-full-audit/06-request-off-events-integration.spec.cjs
           --config=playwright.play-store-release.config.cjs
           --project=chromium
