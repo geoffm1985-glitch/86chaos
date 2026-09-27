@@ -1897,18 +1897,25 @@ const [eventDate, setEventDate] = useState(getToday());
     if (subTab !== 'schedule' || typeof window === 'undefined') return undefined;
     const updateStickyTop = () => {
       const viewportWidth = Number(window.innerWidth || 0);
-      if (viewportWidth <= 720) {
-        setScheduleBuilderStickyTop(0);
-        return;
-      }
       const shell = document.querySelector('.desktop-pro-shell');
       const shellStyle = shell ? window.getComputedStyle(shell) : null;
       const configuredTopbar = Number.parseFloat(shellStyle?.getPropertyValue('--chaos-compact-topbar-h') || '');
       const topbarHeight = Number.isFinite(configuredTopbar) ? configuredTopbar : 54;
-      const deckHeight = viewportWidth >= 1024
-        ? Math.ceil(scheduleBuilderControlDeckRef.current?.getBoundingClientRect?.().height || 0)
-        : 0;
-      setScheduleBuilderStickyTop(Math.max(0, topbarHeight + deckHeight + (deckHeight ? 4 : 2)));
+      const deckHeight = Math.ceil(scheduleBuilderControlDeckRef.current?.getBoundingClientRect?.().height || 0);
+      // The control deck is sticky on phones too. 17.0.40 treated mobile as zero-height,
+      // so the day/date header pinned behind the deck and disappeared while scrolling.
+      // Keep the header immediately below whichever sticky surfaces are actually present.
+      const mobileContentShell = viewportWidth <= 720
+        ? document.querySelector('.desktop-pro-shell[data-active-tab="schedule"] .app-content-shell')
+        : null;
+      const mobileContentStyle = mobileContentShell ? window.getComputedStyle(mobileContentShell) : null;
+      const mobileScrollShellOwnsTopbar = Boolean(
+        mobileContentShell
+        && /(auto|scroll)/.test(String(mobileContentStyle?.overflowY || ''))
+        && mobileContentShell.scrollHeight > mobileContentShell.clientHeight + 8
+      );
+      const baseTop = mobileScrollShellOwnsTopbar ? 0 : topbarHeight;
+      setScheduleBuilderStickyTop(Math.max(0, baseTop + deckHeight + (deckHeight ? 4 : 2)));
     };
     updateStickyTop();
     window.addEventListener('resize', updateStickyTop);

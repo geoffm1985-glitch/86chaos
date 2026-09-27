@@ -17,11 +17,11 @@ import { prepareScannerUploadFile, isPdfFile } from '../core/fileCompression';
 import { createAiScanIdempotencyKey, resolveClientScanPageCount, normalizeAiUsage, aiPageLimitMessage } from '../core/aiScanUsage';
 import { buildAiOrderAssistant, formatAiOrderDraftText, summarizeAiOrderAssistant } from '../core/aiOrderAssistant';
 import { buildRestaurantAiInsightBundle, buildNeedAttentionExplanation } from '../core/restaurantAiInsights';
-import restaurantReadinessHelpers from '../core/restaurantReadiness.cjs';
-import needsAttentionHelpers from '../core/needsAttention.cjs';
-import knowledgeGraphHelpers from '../core/restaurantKnowledgeGraph.cjs';
-import smartPrepIntelligenceHelpers from '../core/smartPrepIntelligence.cjs';
-import operationalHistoryHelpers from '../core/operationalHistoryIntelligence.cjs';
+import { buildRestaurantReadiness } from '../core/restaurantReadiness.js';
+import { canViewAttentionItem } from '../core/needsAttention.js';
+import { buildRestaurantKnowledgeGraph } from '../core/restaurantKnowledgeGraph.js';
+import { buildSmartPrepRecommendations } from '../core/smartPrepIntelligence.js';
+import { buildOperationalHistory } from '../core/operationalHistoryIntelligence.js';
 import { classifyInvoiceRow, inferInvoiceProductFields, invoiceProductKey, invoiceRowText, isPurchasedInvoiceLine, LEADING_PURCHASE_RE, normalizeInvoiceName as normalizeName, normalizeInvoiceSku as normalizeSku } from '../core/invoiceRowClassification';
 import { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, MapClickListener, SmartEmptyState, MiniProblemCard, getHomeProfile, calculatePunchHours, getWeekStart, getWeekDates, roleMatches, toLocalTimeInput, makeLocalIso, PunchTable, StatusTile, FriendlyEmpty, GlobalSearchModal, QuickActionDock, KitchenTVMode, ChangeLogModal, UndoBar } from '../components/common';
 import { usePlanAccess } from '../hooks/usePlanAccess';
@@ -30,11 +30,6 @@ import { canViewRestaurantOpsIntelligence } from '../lib/featureAccess';
 import { useI18n } from '../core/i18n';
 
 const { FOOD_SAFETY_CATEGORIES, evaluateFoodSafety, missedFoodSafetyChecks } = foodSafetyHelpers;
-const { buildRestaurantReadiness } = restaurantReadinessHelpers;
-const { canViewAttentionItem } = needsAttentionHelpers;
-const { buildRestaurantKnowledgeGraph } = knowledgeGraphHelpers;
-const { buildSmartPrepRecommendations } = smartPrepIntelligenceHelpers;
-const { buildOperationalHistory } = operationalHistoryHelpers;
 
 const readableApiError = (value) => {
   if (!value) return '';

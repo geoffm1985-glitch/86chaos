@@ -1,25 +1,21 @@
 {
-  "version": "17.0.40",
-  "name": "86 Chaos 17.0.40",
-  "build": "17.0.40",
-  "label": "86 Chaos 17.0.40",
-  "releasedAt": "2026-09-27T04:30:00Z",
-  "releaseTitle": "Emergency Schedule and Request-Off Reliability",
+  "version": "17.0.41",
+  "name": "86 Chaos 17.0.41",
+  "build": "17.0.41",
+  "label": "86 Chaos 17.0.41",
+  "releasedAt": "2026-09-27T06:08:45Z",
+  "releaseTitle": "Emergency Manager Brief Runtime + Mobile Sticky Schedule Header Repair",
   "notes": [
-    "Repairs the stale merged-release capability test so patch version bumps cannot invalidate capability-retention evidence.",
-    "Adds fail-closed source, deployment, artifact, Playwright completion, retry, interruption, and timeout certification truth.",
-    "Adds redacted security maturity, backup recovery, and aggregate Firebase listener/read/write diagnostics.",
-    "Adds a shared needs-attention engine, Restaurant Readiness 2.0, connected restaurant graph, Smart Prep, deterministic purchasing reconciliation, and bounded Operational History intelligence.",
-    "Adds targeted and deployed browser coverage for the complete changed surface on desktop and mobile."
+    "Emergency follow-up to 17.0.40 based on production/mobile evidence.",
+    "No Release Gate, Play Store, targeted, or delta suite is automatically started by this build-only push."
   ],
-  "title": "86 Chaos 17.0.40",
-  "summary": "Emergency production repairs for Ghost Mode Request Off, schedule coverage warnings, partial-day validation, sticky Schedule Builder day headers, and full-app Release Gate traceability.",
-  "description": "Repairs Ghost Mode Request Off cancellation stability, makes coverage warnings use true time-window concurrency and chronological ordering, blocks backwards partial-day Request Off ranges at UI/API/rules layers, keeps schedule day/date context visible while scrolling, and audits the complete automated Release Gate surface.",
+  "title": "86 Chaos 17.0.41",
+  "summary": "Repairs the Manager Brief runtime crash and keeps Schedule Builder day/date headers visible beneath the sticky mobile control deck.",
+  "description": "Moves the 17.0.39 restaurant-intelligence helpers onto browser-native ES modules to prevent Manager Brief function interop crashes, and corrects the Schedule Builder sticky offset so day/date headers remain visible below the sticky control deck while vertically scrolling on mobile.",
   "highlights": [
-    "Ghost Mode Request Off cancellation stays on the authoritative server path and verifies clean admin-session recovery without Firestore internal assertion crashes.",
-    "Schedule coverage warnings are chronological and calculate minimum/maximum distinct-person concurrency across the full configured coverage window, including staggered handoffs and overnight shifts.",
-    "Partial-day Request Off ranges reject equal or backwards times in the browser, authoritative API validation, and Firestore write rules.",
-    "Schedule Builder day/date headers remain sticky and horizontally synchronized with schedule columns on mobile and desktop.",
-    "Full-app Release Gate traceability inventories routes, nested states, controls, mutations, APIs, permissions, responsive layouts, accessibility, business math, runtime coverage, recovery, security, PWA behavior, and manual-only boundaries."
+    "Manager Brief restaurant-intelligence helpers now use browser-native ES module imports instead of CommonJS browser interop, eliminating the observed \u201cVe is not a function\u201d recovery crash path.",
+    "Schedule Builder measures the real sticky control-deck height on mobile and desktop, then pins the day/date header immediately below it instead of allowing the header to disappear behind the control deck.",
+    "New Release Gate coverage verifies Manager Brief recovery-free rendering and sticky header behavior on mobile and desktop.",
+    "This build is deployment-only by instruction: automated test execution is suppressed for the push and awaits further direction."
   ]
 }

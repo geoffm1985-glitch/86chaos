@@ -5753,6 +5753,7 @@ span.bg-red-500.text-white,
 
 @media (max-width: 720px) {
   .desktop-pro-shell[data-active-tab="schedule"] .schedule-builder-sticky-day-header {
-    top: 0 !important;
+    top: var(--schedule-builder-sticky-top, 0px) !important;
+    z-index: 37;
   }
 }
