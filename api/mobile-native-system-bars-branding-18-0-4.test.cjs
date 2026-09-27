@@ -8,7 +8,7 @@ const read=file=>fs.readFileSync(path.join(root,file),'utf8');
 const bin=file=>fs.readFileSync(path.join(root,file));
 const json=file=>JSON.parse(read(file));
 
-test('18.0.4 Android WebView respects status navigation and cutout insets',()=>{
+test('18.0.x Android WebView respects status navigation and cutout insets',()=>{
   const activity=read('android/app/src/main/java/com/chiltonappworks/chaos86/MainActivity.java');
   assert.match(activity,/WindowCompat\.setDecorFitsSystemWindows\(getWindow\(\), false\)/);
   assert.match(activity,/WindowInsetsCompat\.Type\.systemBars\(\)/);
@@ -19,7 +19,7 @@ test('18.0.4 Android WebView respects status navigation and cutout insets',()=>{
   assert.match(activity,/setAppearanceLightNavigationBars\(false\)/);
 });
 
-test('18.0.4 Android launcher uses the branded 86 Chaos asset instead of Capacitor defaults',()=>{
+test('18.0.x Android launcher uses the branded 86 Chaos asset instead of Capacitor defaults',()=>{
   const manifest=read('android/app/src/main/AndroidManifest.xml');
   assert.match(manifest,/android:icon="@drawable\/chaos86_app_icon"/);
   assert.match(manifest,/android:roundIcon="@drawable\/chaos86_app_icon"/);

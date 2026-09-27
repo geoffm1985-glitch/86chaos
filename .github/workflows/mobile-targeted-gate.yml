@@ -39,7 +39,7 @@ jobs:
       - name: Run current native targeted source tests
         run: |
           npm run test:mobile-foundation
-          npm run validate:18.0.4
+          npm run validate:18.0.5
 
       - name: Build React assets
         env:
@@ -99,8 +99,8 @@ jobs:
           chmod +x gradlew
           ./gradlew assembleDebug --no-daemon
           cd ..
-          cp android/app/build/outputs/apk/debug/app-debug.apk 86Chaos-18.0.4-android-preview.apk
-          sha256sum 86Chaos-18.0.4-android-preview.apk > 86Chaos-18.0.4-android-preview.apk.sha256
+          cp android/app/build/outputs/apk/debug/app-debug.apk 86Chaos-18.0.5-android-preview.apk
+          sha256sum 86Chaos-18.0.5-android-preview.apk > 86Chaos-18.0.5-android-preview.apk.sha256
 
       - name: Publish Android preview release
         if: ${{ contains(github.event.head_commit.message, '[android-preview]') }}
@@ -108,13 +108,13 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
-          tag="mobile-v18.0.4-preview"
+          tag="mobile-v18.0.5-preview"
           gh release view "$tag" >/dev/null 2>&1 && gh release delete "$tag" --yes --cleanup-tag || true
           gh release create "$tag" \
-            86Chaos-18.0.4-android-preview.apk \
-            86Chaos-18.0.4-android-preview.apk.sha256 \
+            86Chaos-18.0.5-android-preview.apk \
+            86Chaos-18.0.5-android-preview.apk.sha256 \
             --target "$GITHUB_SHA" \
-            --title "86 Chaos 18.0.4 Android Preview" \
+            --title "86 Chaos 18.0.5 Android Preview" \
             --prerelease \
             --notes "Internal Android preview for the 86 Chaos mobile branch. Uses the testing Firebase environment only. Preview signing is not the future Google Play production signing identity."
 

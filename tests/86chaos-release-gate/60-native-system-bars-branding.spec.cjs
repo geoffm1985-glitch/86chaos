@@ -10,7 +10,9 @@ test.describe('60 Native system bars and branding',()=>{
   test('native viewport contract stays safe on Android Chromium and iPhone WebKit',async({page,request},testInfo)=>{
     expect(['native-android','native-ios-webkit']).toContain(testInfo.project.name);
     const version=await (await request.get('/version.json')).json();
-    expect(version.version).toBe('18.0.4');
+    const currentVersion=json('package.json').version;
+    expect(version.version).toBe(currentVersion);
+    expect(currentVersion).toMatch(/^18\.0\.\d+$/);
     const response=await page.goto('/',{waitUntil:'domcontentloaded',timeout:30000});
     expect(response && response.ok()).toBeTruthy();
     const viewport=await page.locator('meta[name="viewport"]').getAttribute('content');
