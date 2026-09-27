@@ -1,20 +1,22 @@
 {
-  "version": "17.0.42",
-  "name": "86 Chaos 17.0.42",
-  "build": "17.0.42",
-  "label": "86 Chaos 17.0.42",
-  "releasedAt": "2026-09-27T06:45:00Z",
-  "releaseTitle": "Emergency Schedule Header Touch-Scroll Stability Repair",
+  "version": "18.0.0",
+  "name": "86 Chaos 18.0.0",
+  "build": "18.0.0",
+  "label": "86 Chaos 18.0.0",
+  "releasedAt": "2026-09-27T07:00:00Z",
+  "releaseTitle": "Native Mobile and Firebase Cost Foundation",
   "notes": [
-    "Emergency follow-up to 17.0.41 based on real-device touch-scroll evidence.",
-    "Build-only deployment; automated Release Gate / Play Store / targeted / delta execution remains suppressed until instructed."
+    "Mobile branch only; testing, experimental, and production are unchanged.",
+    "Android and iPhone/iPad are equal targets.",
+    "No new paid service or separate Firebase project is introduced."
   ],
-  "title": "86 Chaos 17.0.42",
-  "summary": "Keeps the Schedule Builder day/date header pinned when a vertical touch gesture begins directly on the header.",
-  "description": "Adds touch-axis handoff for the horizontally scrollable Schedule Builder day/date header so vertical finger drags scroll the owning schedule content instead of allowing the sticky header to slide behind the control deck on mobile.",
+  "title": "86 Chaos 18.0.0",
+  "summary": "Begins the isolated Android and iPhone/iPad mobile line from the exact deployed 17.0.42 testing baseline.",
+  "description": "Adds the cross-platform mobile contract, mobile-specific Firebase listener cost controls, download/distribution groundwork, and explicit Android/iOS parity requirements without changing the production or testing branches.",
   "highlights": [
-    "Vertical touch drags that begin on the day/date header are handed to the Schedule Builder vertical scroll host while horizontal swipes remain native.",
-    "The header no longer temporarily slides behind the sticky assignment/control card during an active finger drag.",
-    "Release Gate coverage was added for the real-device touch interaction, but is not automatically executed by this build-only push."
+    "Native mobile runtime contract targets both Android and iOS from the same React core.",
+    "Backgrounded native sessions use a shorter Firestore listener release window while retaining local cached data.",
+    "The mobile Vercel preview remains locked to the existing testing Firebase project.",
+    "New targeted and Release Gate coverage verifies mobile parity and cost controls."
   ]
 }
