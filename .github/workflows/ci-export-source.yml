@@ -1,0 +1,28 @@
+name: Export Testing Source 17.0.38
+on:
+  push:
+    branches:
+      - ci-export-testing-17038
+permissions:
+  contents: read
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Remove export helper
+        shell: bash
+        run: rm -f .github/workflows/ci-export-source.yml
+      - name: Upload exact source tree
+        uses: actions/upload-artifact@v4
+        with:
+          name: testing-source-eefa66e8
+          if-no-files-found: error
+          retention-days: 1
+          include-hidden-files: true
+          path: |
+            .
+            !.git/**
