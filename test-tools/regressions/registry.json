@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "release": "17.0.42",
+  "release": "18.0.0",
   "defects": [
     {
       "defectId": "RG-API-WRAPPER-FIDELITY",
@@ -596,6 +596,19 @@
       "fidelity": "ACTUAL SOURCE / DEPLOYED MOBILE PLAYWRIGHT TOUCHSCREEN",
       "fixedVersion": "17.0.42",
       "mandatoryGroup": "deployed"
+    },
+    {
+      "defectId": "RG-NATIVE-MOBILE-FIREBASE-COST-1800",
+      "origin": "18.0.0 native mobile foundation",
+      "affectedInvariant": "Installed Android and iOS sessions must remain on the testing Firebase project during mobile development and release idle Firestore listeners quickly after native backgrounding while preserving local cache.",
+      "reproducer": "mobile-native-foundation-18-0-0.test.cjs / 58-native-mobile-cost-foundation.spec.cjs",
+      "permanentTestIds": [
+        "backgrounded native Android and iOS sessions shed idle Firestore listeners quickly while preserving cache",
+        "deployed 18.0.0 identity and Android/iPhone responsive smoke stay aligned"
+      ],
+      "fidelity": "ACTUAL SOURCE / DEPLOYED ANDROID-IOS RESPONSIVE PLAYWRIGHT / REAL DEVICE BEFORE PUBLIC RELEASE",
+      "fixedVersion": "18.0.0",
+      "mandatoryGroup": "native-mobile-foundation"
     }
   ]
 }
