@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "release": "17.0.38",
+  "release": "17.0.40",
   "defects": [
     {
       "defectId": "RG-API-WRAPPER-FIDELITY",
@@ -526,6 +526,37 @@
       "fidelity": "ACTUAL SOURCE / DEPLOYED MOBILE PLAYWRIGHT",
       "fixedVersion": "17.0.38",
       "mandatoryGroup": "deployed"
+    },
+    {
+      "defectId": "RG-CAPABILITY-VERSION-STALE-17039",
+      "origin": "17.0.38 full Release Gate local readiness failure before Playwright",
+      "affectedInvariant": "Capability-retention tests validate protected capabilities without freezing an obsolete package patch version; exact current version remains enforced by current-release and deployment identity validation.",
+      "reproducer": "release-integrity-17-0-39.test.cjs / merged-release-17-0-30.test.cjs",
+      "permanentTestIds": [
+        "capability-retention test cannot become stale on a future patch version",
+        "nearby merged and carry-forward tests do not freeze package patch identity",
+        "current-version identity passes only when version commit hash and branch agree"
+      ],
+      "fidelity": "ACTUAL CAPABILITY SOURCE / CURRENT RELEASE IDENTITY",
+      "fixedVersion": "17.0.39",
+      "mandatoryGroup": "hostile-contracts"
+    },
+    {
+      "defectId": "RG-CERTIFICATION-TRUTH-17039",
+      "origin": "17.0.39 release integrity hardening",
+      "affectedInvariant": "Stale source, stale deployment, stale artifacts, incomplete Playwright execution, interrupted runs, timeouts, and retry attempts cannot produce a false certification.",
+      "reproducer": "release-integrity-17-0-39.test.cjs",
+      "permanentTestIds": [
+        "stale source is rejected",
+        "stale deployment is rejected",
+        "stale release artifact is rejected",
+        "full gate requires proven Playwright start",
+        "interrupted release run cannot certify",
+        "retry accounting uses final attempt while retaining retry count"
+      ],
+      "fidelity": "ACTUAL RELEASE RUNNER / REPORT COLLECTOR",
+      "fixedVersion": "17.0.39",
+      "mandatoryGroup": "hostile-contracts"
     }
   ]
 }

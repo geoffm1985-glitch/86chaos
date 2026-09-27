@@ -1,0 +1,23 @@
+#!/usr/bin/env node
+'use strict';
+const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict');
+const root=path.resolve(__dirname,'..');
+const read=file=>fs.readFileSync(path.join(root,file),'utf8');
+const json=file=>JSON.parse(read(file));
+const version='17.0.39';
+const p=json('package.json'),l=json('package-lock.json'),v=json('public/version.json');
+assert.equal(p.version,version);assert.equal(l.version,version);assert.equal(l.packages[''].version,version);assert.equal(v.version,version);assert.equal(v.build,version);
+assert.equal(p.scripts['test:source'],'node scripts/validate-17-0-39.js');assert.equal(p.scripts['validate:17.0.39'],'node scripts/validate-17-0-39.js');
+assert.match(read('api/_version.js'),/APP_VERSION = '17\.0\.39'/);assert.match(read('api/_version.js'),/SECURITY_SCHEMA_VERSION = '17\.0\.39'/);assert.match(read('api/_pos-bridge-config.js'),/APP_RELEASE = '17\.0\.39'/);assert.match(read('src/core/appCore.js'),/CURRENT_VERSION = '17\.0\.39'/);
+for(const file of ['test-tools/certification/groups.json','test-tools/regressions/registry.json','test-tools/certification/cost-performance-baselines.json'])assert.equal(json(file).release,version);
+for(const file of ['src/core/needsAttention.cjs','src/core/restaurantKnowledgeGraph.cjs','src/core/smartPrepIntelligence.cjs','src/core/purchaseReconciliation.cjs','src/core/operationalHistoryIntelligence.cjs','src/core/firebaseCostDiagnostics.cjs','api/_security-maturity.cjs','scripts/86chaos-release-gate/certification-truth.cjs'])assert.ok(fs.statSync(path.join(root,file)).isFile(),`${file} exists`);
+for(const file of ['api/release-integrity-17-0-39.test.cjs','api/security-observability-17-0-39.test.cjs','api/firebase-listener-lifecycle-17-0-39.test.cjs','api/restaurant-intelligence-17-0-39.test.cjs','api/purchase-history-17-0-39.test.cjs','api/reminder-voice-lifecycle-17-0-39.test.cjs'])assert.ok(p.scripts['test:current-release-targeted'].includes(file),`${file} is in current targeted gate`);
+const merged=read('api/merged-release-17-0-30.test.cjs');assert.doesNotMatch(merged,/pkg\.version|assert\.equal\([^\n]*17\.0\.33/);for(const capability of ['I18nProvider','useI18n','schedule-shift-assign','schedule-shift-delete','createSchedulePublishGuard','normalizeTimeOffPolicy','_pos-bridge-route.js','schedule-publish.js','i18n.js'])assert.match(merged,new RegExp(capability.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')));
+const universe=read('scripts/86chaos-release-gate/release-test-universe.cjs');for(let n=48;n<=53;n+=1)assert.match(universe,new RegExp(`tests/86chaos-release-gate/${n}-`),`browser regression ${n} is release-critical`);
+const runner=read('RUN_86CHAOS_PLAY_STORE_RELEASE_GATE.ps1');for(const marker of ['playwrightStarted = $false','playwrightCompleted = $false','$RunnerState.playwrightCompleted = $true','$RunnerState.playwrightExitCode = $PlaywrightExit'])assert.ok(runner.includes(marker),`runner contains ${marker}`);
+const operations=read('src/features/operations.jsx');for(const marker of ['shared-needs-attention','restaurant-intelligence-v17-0-39','smart-prep-production','connected-restaurant-graph','purchase-reconciliation-readiness','operational-history-intelligence'])assert.ok(operations.includes(marker),`Manager Brief contains ${marker}`);
+const management=read('src/features/management.jsx');assert.ok(management.includes('security-maturity-diagnostics'));assert.ok(management.includes('firebase-cost-observability'));
+const app=read('src/App.js'),core=read('src/core/appCore.js');assert.ok(app.includes('releaseAbandonedRouteListeners'));assert.ok(core.includes('route-change-zero-subscribers'));assert.ok(core.includes('lastRouteCleanup'));
+const workflow=read('.github/workflows/testing-targeted-delta.yml');assert.ok(workflow.includes('[full-gate]'));assert.ok(workflow.includes('npm run test:play-store'));assert.ok(workflow.includes('Run 17.0.39 targeted delta only'));
+const identity=require('./86chaos-release-gate/source-identity.cjs').captureSourceIdentity(root),manifest=json('release-source-manifest.json');assert.equal(manifest.sourceHash,identity.sourceHash,'tracked release source manifest matches current source');
+console.log('17.0.39 combined certification and restaurant intelligence validation passed.');

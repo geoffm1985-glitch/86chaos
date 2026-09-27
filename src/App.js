@@ -4,7 +4,7 @@ import { addDoc, collection, doc, onSnapshot, updateDoc } from 'firebase/firesto
 import { getToken, onMessage } from 'firebase/messaging';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import 'leaflet/dist/leaflet.css';
-import { T, db, auth, messagingReady, isFirebaseMessagingUnsupportedError, firebaseConfig, CURRENT_VERSION, MASTER_ADMIN_EMAIL, useLiveCollection, useLiveCollectionState, useLiveDocumentState, secureFetch, waitForAuthCurrentUser, getToday, getMonthStr, formatDate, formatDisplayFullDate, formatDisplayMonth, logAudit, setActiveTimeFormat, getOfflineQueue, replayOfflineQueue, startLowCostPresenceSession, useLowCostPresenceSummary, clearTenantListenerCache, recordScheduleOperationDiagnostic } from './core/appCore';
+import { T, db, auth, messagingReady, isFirebaseMessagingUnsupportedError, firebaseConfig, CURRENT_VERSION, MASTER_ADMIN_EMAIL, useLiveCollection, useLiveCollectionState, useLiveDocumentState, secureFetch, waitForAuthCurrentUser, getToday, getMonthStr, formatDate, formatDisplayFullDate, formatDisplayMonth, logAudit, setActiveTimeFormat, getOfflineQueue, replayOfflineQueue, startLowCostPresenceSession, useLowCostPresenceSummary, clearTenantListenerCache, releaseAbandonedRouteListeners, recordScheduleOperationDiagnostic } from './core/appCore';
 import { buildAlertFingerprint, useRememberedAlert } from './core/alertMemory';
 import { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, GlobalSearchModal, KitchenTVMode, UndoBar, VoiceCommandDock } from './components/common';
 import { LockedFeatureScreen } from './components/PlanGate';
@@ -1302,6 +1302,22 @@ const [currentDate, setCurrentDate] = useState(getToday());
       listenerCacheBoundaryRef.current = key;
     }
   }, [firebaseConfig?.projectId, rId, authenticatedUid, ghostTenant?.id]);
+
+  useEffect(() => {
+    if (!rId || !authenticatedUid) return undefined;
+    // Let React unsubscribe the previous route's hooks first. The cleanup then
+    // closes only registrations with no remaining consumers; shared listeners
+    // used by the new route stay alive and cached snapshots remain bounded.
+    const timer = setTimeout(() => {
+      releaseAbandonedRouteListeners({
+        projectId: firebaseConfig?.projectId || 'default',
+        restaurantId: rId,
+        viewerUid: authenticatedUid,
+        route: activeTabState
+      });
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [activeTabState, firebaseConfig?.projectId, rId, authenticatedUid]);
 
   const accountProfileDocId = appUser?.profileDocId || authenticatedUid;
   const directAccountUserState = useLiveDocumentState('users', accountProfileDocId, { enabled: Boolean(accountProfileDocId && appUser?.id !== 'dev-backdoor'), debugLabel: 'app:current-user-security' });

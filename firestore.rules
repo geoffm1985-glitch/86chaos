@@ -945,6 +945,16 @@ function inventoryWriteAllowed(collectionName, restId) {
 return (collectionName in ['inventoryItems', 'vendors', 'orders'] && hasWorkspaceAuthorityFor(restId, 'inventory', 'inventoryEdit', '', '', '', '')) ||
 (collectionName in ['invoices'] && hasWorkspaceAuthorityFor(restId, 'inventory', 'inventoryEdit', 'invoiceScan', 'scans', '', ''));
 }
+function timeOffCreateRangeIsValid(data) {
+return data.get('isPartial', false) != true || (
+data.get('startTime', '') is string &&
+data.get('endTime', '') is string &&
+data.get('startTime', '').matches('^([01][0-9]|2[0-3]):[0-5][0-9]$') &&
+data.get('endTime', '').matches('^([01][0-9]|2[0-3]):[0-5][0-9]$') &&
+data.get('startTime', '') < data.get('endTime', '')
+);
+}
+
 function scheduleCollection(collectionName) {
 return collectionName in ['shifts', 'timeOffRequests', 'scheduleTemplates', 'scheduleCoverageTargets'];
 }
@@ -1054,7 +1064,7 @@ allow delete: if signedIn() && (isSuperAdmin() || (reminderTenant(resource.data)
 }
 match /timeOffRequests/{docId} {
 allow read: if signedIn() && resource.data.restaurantId is string && isTenantMatch(resource.data.restaurantId) && (canManageScheduleData(resource.data.restaurantId) || timeOffParticipant(resource.data));
-allow create: if signedIn() && request.resource.data.restaurantId is string && isTenantMatch(request.resource.data.restaurantId) && (
+allow create: if signedIn() && timeOffCreateRangeIsValid(request.resource.data) && request.resource.data.restaurantId is string && isTenantMatch(request.resource.data.restaurantId) && (
 canManageScheduleData(request.resource.data.restaurantId) ||
 (request.resource.data.userId == request.auth.uid && request.resource.data.employeeId == request.auth.uid && request.resource.data.createdBy == request.auth.uid)
 );

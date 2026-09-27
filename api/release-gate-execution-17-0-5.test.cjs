@@ -7,7 +7,9 @@ test('17.0.5 actual preflight pins immutable identity and executes mandatory sou
  try{
  fs.cpSync(root,repo,{recursive:true,filter:source=>source===root||!excludedFile(path.relative(root,source))});
  const git=args=>{const result=cp.spawnSync('git',args,{cwd:repo,encoding:'utf8'});assert.equal(result.status,0,result.stderr);};
- git(['init','-b','testing']);git(['add','.']);git(['-c','user.name=Fixture','-c','user.email=fixture@example.invalid','commit','-m','17.0.5 source fixture']);
+ git(['init','-b','testing']);
+ const initial=captureSourceIdentity(repo);fs.writeFileSync(path.join(repo,'release-source-manifest.json'),JSON.stringify({schemaVersion:1,sourceHash:initial.sourceHash,files:initial.files},null,2)+'\n');
+ git(['add','.']);git(['-c','user.name=Fixture','-c','user.email=fixture@example.invalid','commit','-m','17.0.5 source fixture']);
  const local=captureSourceIdentity(repo),alias='https://86chaos-git-testing-fixture.vercel.app',pinned='https://86chaos-immutable-fixture.vercel.app';
  const config={};for(const [key,file] of Object.entries({rulesHash:'firestore.rules',firebaseConfigHash:'firebase.json',vercelConfigHash:'vercel.json'}))config[key]=hash(sourceBytes(file,fs.readFileSync(path.join(repo,file))));
  const verified={identityStampStatus:'verified',sourceEvidence:'bundled-manifest',workspaceVerification:'vercel-git-metadata'};

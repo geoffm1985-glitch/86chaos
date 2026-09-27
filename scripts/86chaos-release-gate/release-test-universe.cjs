@@ -29,6 +29,14 @@ const RELEASE_CRITICAL_SPECS = Object.freeze([
   'tests/86chaos-release-gate/45-firebase-admin-url-api.spec.cjs',
   'tests/86chaos-release-gate/46-firebase-admin-runtime-module-load.spec.cjs',
   'tests/86chaos-release-gate/47-reminder-mobile-runtime-recovery.spec.cjs',
+  'tests/86chaos-release-gate/48-needs-attention-readiness-2.spec.cjs',
+  'tests/86chaos-release-gate/49-restaurant-intelligence-review-boundaries.spec.cjs',
+  'tests/86chaos-release-gate/50-purchase-reconciliation-browser.spec.cjs',
+  'tests/86chaos-release-gate/51-security-cost-observability.spec.cjs',
+  'tests/86chaos-release-gate/52-listener-route-cleanup.spec.cjs',
+  'tests/86chaos-release-gate/53-reminder-voice-lifecycle.spec.cjs',
+  'tests/86chaos-release-gate/54-emergency-schedule-requestoff.spec.cjs',
+  'tests/86chaos-release-gate/55-full-surface-traceability.spec.cjs',
 ]);
 
 const PWA_SPEC_PATTERN = /86chaos-release-gate\/(26-pwa-icon-source-deployed-parity|27-pwa-browser-icon-matrix)\.spec\.cjs/;

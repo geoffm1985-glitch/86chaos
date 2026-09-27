@@ -17,7 +17,27 @@ jobs:
   targeted-delta:
     if: ${{ github.ref_name == 'testing' && github.event_name == 'push' && !contains(github.event.head_commit.message, '[full-gate]') }}
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 120
+    env:
+      APP_URL: https://testing.86chaos.com
+      CHAOS_BASE_URL: https://testing.86chaos.com
+      PLAYWRIGHT_BASE_URL: https://testing.86chaos.com
+      CHAOS_EXPECTED_BRANCH: testing
+      CHAOS_EXPECTED_VERCEL_PROJECT_SLUG: 86chaos
+      REACT_APP_TEST_FIREBASE_PROJECT_ID: chaos-test-d1601
+      FIREBASE_TEST_SERVICE_ACCOUNT_KEY: ${{ secrets.FIREBASE_TEST_SERVICE_ACCOUNT_KEY }}
+      FIREBASE_SERVICE_ACCOUNT_KEY: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_KEY }}
+      SYSTEM_ADMIN_EMAIL: ${{ secrets.SYSTEM_ADMIN_EMAIL }}
+      SYSTEM_ADMIN_PASSWORD: ${{ secrets.SYSTEM_ADMIN_PASSWORD }}
+      OWNER_EMAIL: ${{ secrets.OWNER_EMAIL }}
+      OWNER_PASSWORD: ${{ secrets.OWNER_PASSWORD }}
+      MANAGER_EMAIL: ${{ secrets.MANAGER_EMAIL }}
+      MANAGER_PASSWORD: ${{ secrets.MANAGER_PASSWORD }}
+      STAFF_EMAIL: ${{ secrets.STAFF_EMAIL }}
+      STAFF_PASSWORD: ${{ secrets.STAFF_PASSWORD }}
+      MASTER_ADMIN_EMAIL: ${{ secrets.MASTER_ADMIN_EMAIL }}
+      CHAOS_ALLOW_MUTATION: 'true'
+      CHAOS_QA_CREATE_RESTAURANT: 'true'
     steps:
       - name: Check out exact testing commit
         uses: actions/checkout@v5
@@ -46,13 +66,62 @@ jobs:
             git config user.name "86 Chaos Gate Bot"
             git config user.email "actions@users.noreply.github.com"
             git add release-source-manifest.json
-            git commit -m "ci: refresh 17.0.38 testing source manifest parity"
+            git commit -m "ci: refresh 17.0.40 testing source manifest parity"
             git push origin HEAD:testing
             echo "Manifest repaired; the follow-up testing push will run targeted/delta against the exact repaired commit."
             exit 0
           fi
-      - name: Run 17.0.38 targeted delta only
+      - name: Run 17.0.40 targeted delta only
         run: npm run test:current-release-targeted
+      - name: Capture exact targeted-delta identity
+        shell: bash
+        run: |
+          echo "CHAOS_EXPECTED_GIT_COMMIT=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+          echo "CHAOS_EXPECTED_VERSION=$(node -p \"require('./package.json').version\")" >> "$GITHUB_ENV"
+      - name: Wait for exact testing deployment
+        shell: bash
+        run: |
+          matched=false
+          for attempt in $(seq 1 180); do
+            identity="$(curl --fail --silent --show-error "$APP_URL/build-identity.json?ci=$RANDOM" || true)"
+            version="$(curl --fail --silent --show-error "$APP_URL/version.json?ci=$RANDOM" || true)"
+            deployed_commit="$(node -e "try{const v=JSON.parse(process.argv[1]);process.stdout.write(String(v.gitCommit||v.commit||''))}catch{}" "$identity")"
+            deployed_version="$(node -e "try{const v=JSON.parse(process.argv[1]);process.stdout.write(String(v.version||''))}catch{}" "$version")"
+            if [ "$deployed_commit" = "$CHAOS_EXPECTED_GIT_COMMIT" ] && [ "$deployed_version" = "$CHAOS_EXPECTED_VERSION" ]; then
+              matched=true
+              break
+            fi
+            sleep 10
+          done
+          if [ "$matched" != true ]; then
+            echo "Timed out waiting for exact targeted-delta deployment." >&2
+            exit 1
+          fi
+      - name: Install targeted-delta browser
+        run: npx playwright install --with-deps chromium
+      - name: Run new 17.0.40 browser delta on desktop and mobile
+        run: >-
+          npx playwright test
+          tests/86chaos-release-gate/48-needs-attention-readiness-2.spec.cjs
+          tests/86chaos-release-gate/49-restaurant-intelligence-review-boundaries.spec.cjs
+          tests/86chaos-release-gate/50-purchase-reconciliation-browser.spec.cjs
+          tests/86chaos-release-gate/51-security-cost-observability.spec.cjs
+          tests/86chaos-release-gate/52-listener-route-cleanup.spec.cjs
+          tests/86chaos-release-gate/53-reminder-voice-lifecycle.spec.cjs
+          tests/86chaos-release-gate/54-emergency-schedule-requestoff.spec.cjs
+          tests/86chaos-release-gate/55-full-surface-traceability.spec.cjs
+          tests/86chaos-full-audit/06-request-off-events-integration.spec.cjs
+          --config=playwright.play-store-release.config.cjs
+          --project=chromium
+          --project=mobile-chromium
+      - name: Upload targeted-delta evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: 86chaos-testing-targeted-delta
+          if-no-files-found: warn
+          retention-days: 30
+          path: test-results/**
 
   full-release-gate:
     if: ${{ github.ref_name == 'testing' && (github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[full-gate]')) }}

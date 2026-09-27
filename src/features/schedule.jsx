@@ -15,6 +15,7 @@ import {
   warningShiftContext,
   buildCoverageVarianceRows,
   buildScheduleConflictWarningRows,
+  sortScheduleWarningsChronologically,
   isRequestOffBulkEligible,
 } from '../core/scheduleWarningControls';
 import { getCanonicalScheduleUserId, collectScheduleDurableIdentityAliases, collectScheduleShiftDurableIdentityAliases, collectScheduleEmailAliases, collectScheduleFullNameAliases, collectScheduleFirstNameAliases, collectScheduleIdentityAliases, collectScheduleShiftIdentityAliases, resolveSchedulePersonForAccount, resolveSchedulePersonForShift, buildCanonicalScheduleIdentityBlock, scheduleIdentityBlockMatchesPerson } from '../core/scheduleQueryPlanner';
@@ -27,6 +28,7 @@ import { createSchedulePublishGuard, makeSchedulePublishProgress } from '../core
 import { activeRosterRoles, resolveShiftRosterRole, copyRosterRoleFields } from '../core/rosterRoleIdentity';
 import { buildSchedulePublicationPlan, buildConfirmedShiftEvidence, digestSchedulePublicationPlan, isIntentionalOpenScheduleShift } from '../core/schedulePublicationPlan';
 import { requestOffDateKey, normalizeRequestOffRuntimeRow, safeRequestOffRows } from '../core/requestOffRuntimeSafety';
+import { validatePartialRequestOffTimeRange } from '../core/requestOffValidation';
 import { normalizeTimeOffPolicy, evaluateTimeOffPolicyDate, timeOffPolicyReleaseDateForRequestDate, timeOffPolicyCutoffDateForRequestDate, canConfigureTimeOffPolicy } from '../core/timeOffPolicy';
 import { useI18n } from '../core/i18n';
 import { normalizeScheduleBuilderEvents, safeScheduleBuilderRecords } from '../core/scheduleBuilderRuntime';
@@ -1813,6 +1815,11 @@ const TabSchedule = ({ currentDate, users: rawUsers, shifts: rawShifts, events: 
   const [presetShift, setPresetShift] = useState('Custom'); 
   const [startTime, setStartTime] = useState('16:00'); 
   const [endTime, setEndTime] = useState('21:00');
+  const scheduleBuilderControlDeckRef = useRef(null);
+  const scheduleBuilderHeaderScrollRef = useRef(null);
+  const scheduleBuilderBodyScrollRef = useRef(null);
+  const scheduleBuilderScrollSyncRef = useRef(false);
+  const [scheduleBuilderStickyTop, setScheduleBuilderStickyTop] = useState(0);
   
   const [isEventModalOpen, setIsEventModalOpen] = useState(false); 
 const [eventDate, setEventDate] = useState(getToday()); 
@@ -1875,6 +1882,46 @@ const [eventDate, setEventDate] = useState(getToday());
     setPublishProgress(makeSchedulePublishProgress({ phase, label, detail, current, total, ...extra }));
   }, []);
   
+  const syncScheduleBuilderHorizontalScroll = useCallback((source, targetRef) => {
+    if (scheduleBuilderScrollSyncRef.current || !source || !targetRef?.current) return;
+    const nextScrollLeft = Number(source.scrollLeft || 0);
+    if (Math.abs(Number(targetRef.current.scrollLeft || 0) - nextScrollLeft) < 1) return;
+    scheduleBuilderScrollSyncRef.current = true;
+    targetRef.current.scrollLeft = nextScrollLeft;
+    const release = () => { scheduleBuilderScrollSyncRef.current = false; };
+    if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') window.requestAnimationFrame(release);
+    else setTimeout(release, 0);
+  }, []);
+
+  useEffect(() => {
+    if (subTab !== 'schedule' || typeof window === 'undefined') return undefined;
+    const updateStickyTop = () => {
+      const viewportWidth = Number(window.innerWidth || 0);
+      if (viewportWidth <= 720) {
+        setScheduleBuilderStickyTop(0);
+        return;
+      }
+      const shell = document.querySelector('.desktop-pro-shell');
+      const shellStyle = shell ? window.getComputedStyle(shell) : null;
+      const configuredTopbar = Number.parseFloat(shellStyle?.getPropertyValue('--chaos-compact-topbar-h') || '');
+      const topbarHeight = Number.isFinite(configuredTopbar) ? configuredTopbar : 54;
+      const deckHeight = viewportWidth >= 1024
+        ? Math.ceil(scheduleBuilderControlDeckRef.current?.getBoundingClientRect?.().height || 0)
+        : 0;
+      setScheduleBuilderStickyTop(Math.max(0, topbarHeight + deckHeight + (deckHeight ? 4 : 2)));
+    };
+    updateStickyTop();
+    window.addEventListener('resize', updateStickyTop);
+    const observer = typeof ResizeObserver !== 'undefined' && scheduleBuilderControlDeckRef.current
+      ? new ResizeObserver(updateStickyTop)
+      : null;
+    observer?.observe(scheduleBuilderControlDeckRef.current);
+    return () => {
+      window.removeEventListener('resize', updateStickyTop);
+      observer?.disconnect();
+    };
+  }, [subTab]);
+
   const monthStr = getMonthStr(currentDate); 
   const monthDays = Array.from({length: getDaysInMonth(monthStr)}).map((_, i) => `${monthStr}-${String(i+1).padStart(2, '0')}`);
   const shiftBelongsToScheduleMonth = (shift = {}, targetMonth = monthStr) => {
@@ -3906,6 +3953,44 @@ const handleExportTimesheets = () => {
     )
   });
 
+  const renderScheduleBuilderHeaderRow = () => (
+    <tr className="bg-[#12161A] border-b border-[#2A353D]">
+      <th className={`p-1 sm:p-2 font-bold bg-[#12161A] sticky left-0 z-20 w-16 sm:w-24 border-r border-[#2A353D] ${T.copper} truncate`}>Staff</th>
+      {schedulePeriodDays.map(d => {
+        const holiday = getHoliday(d);
+        const dayEvents = schedulePeriodEvents.filter(e => e.date === d);
+        const hasAlert = holiday || dayEvents.length > 0;
+        return (
+          <th key={d} data-testid="schedule-builder-day-header-cell" data-date={d} className={`p-0.5 sm:p-1 text-center border-r border-[#2A353D] align-top relative group cursor-help ${new Date(d+'T12:00').getDay()%6===0?'bg-[#1A2126]':''}`}>
+            <div className={`font-bold uppercase text-[8px] sm:text-[9px] tracking-tight ${T.muted}`}>{new Date(d+'T12:00').toLocaleDateString('en-US',{weekday:'short'}).toUpperCase()}</div>
+            <div className={`text-xs sm:text-sm font-black mt-0.5 ${hasAlert ? (holiday ? 'text-amber-400' : 'text-red-400') : 'text-white'}`}>
+              {parseInt(d.split('-')[2])}
+            </div>
+            {hasAlert && (
+              <div className="absolute top-full left-1/2 -translate-x-1/2 mt-1 w-32 bg-[#1A2126] border border-[#D4A381] text-white text-[10px] p-2 rounded shadow-2xl opacity-0 invisible group-hover:opacity-100 group-hover:visible z-50 pointer-events-none transition-all">
+                {holiday && <div className="text-amber-400 font-black mb-1 leading-tight">{holiday}</div>}
+                {dayEvents.map(ev => (
+                  <div key={ev.id} className="text-red-400 font-bold leading-tight mt-1 border-t border-[#2A353D] pt-1">
+                    {ev.title} {ev.time && <span className="block text-white opacity-80">{formatShortTime(ev.time)}</span>}
+                    {ev.notes && <span className="block text-slate-300 font-normal mt-0.5">{ev.notes}</span>}
+                  </div>
+                ))}
+              </div>
+            )}
+          </th>
+        );
+      })}
+    </tr>
+  );
+
+  const scheduleBuilderTableStyle = { '--schedule-builder-min-width': `${82 + (schedulePeriodDays.length * 56)}px` };
+  const renderScheduleBuilderColgroup = () => (
+    <colgroup>
+      <col className="schedule-builder-staff-column" />
+      {schedulePeriodDays.map(d => <col key={`schedule-col-${d}`} />)}
+    </colgroup>
+  );
+
   return (
     <div className="space-y-4 pb-12 w-full">
 
@@ -4269,7 +4354,7 @@ const handleExportTimesheets = () => {
             <div className="text-[10px] font-black uppercase tracking-widest text-slate-400 bg-[#12161A] border border-[#2A353D] rounded-xl px-2 py-1.5">{schedulePeriodShifts.filter(s => !isScheduleShiftPublished(s)).length} draft • {schedulePeriodShifts.filter(s => isScheduleShiftPublished(s)).length} live • {schedulePeriodEvents.length} event{schedulePeriodEvents.length === 1 ? '' : 's'} shown</div>
           </div>
 
-          <div className={`schedule-builder-control-deck ${T.card} p-1.5 sm:p-2 flex flex-col lg:flex-row gap-1.5 items-stretch lg:items-center justify-between`}>
+          <div ref={scheduleBuilderControlDeckRef} data-testid="schedule-builder-control-deck" className={`schedule-builder-control-deck ${T.card} p-1.5 sm:p-2 flex flex-col lg:flex-row gap-1.5 items-stretch lg:items-center justify-between`}>
             <div className="schedule-builder-assignment-row flex flex-wrap xl:flex-nowrap gap-1.5 w-full lg:w-auto items-center">
               
               {/* Staff Selector */}
@@ -4345,40 +4430,34 @@ const handleExportTimesheets = () => {
             </div>
           </div>
 
-          <div className={`schedule-builder-grid-card ${T.card} w-full overflow-hidden`}>
-            <div className="overflow-x-auto w-full no-scrollbar">
-              <table className="schedule-builder-desktop-table w-full text-left text-[10px] border-collapse table-fixed min-w-[1200px] xl:min-w-full" style={{ '--schedule-builder-min-width': `${82 + (schedulePeriodDays.length * 56)}px` }}>
-                <thead>
-                  <tr className="bg-[#12161A] border-b border-[#2A353D]">
-                    <th className={`p-1 sm:p-2 font-bold bg-[#12161A] sticky left-0 z-20 w-16 sm:w-24 border-r border-[#2A353D] ${T.copper} truncate`}>Staff</th>
-                    {schedulePeriodDays.map(d => {
-                      const holiday = getHoliday(d);
-                      const dayEvents = schedulePeriodEvents.filter(e => e.date === d);
-                      const hasAlert = holiday || dayEvents.length > 0;
-                      
-                      return (
-                      <th key={d} className={`p-0.5 sm:p-1 text-center border-r border-[#2A353D] align-top relative group cursor-help ${new Date(d+'T12:00').getDay()%6===0?'bg-[#1A2126]':''}`}>
-                        <div className={`font-bold uppercase text-[8px] sm:text-[9px] tracking-tight ${T.muted}`}>{new Date(d+'T12:00').toLocaleDateString('en-US',{weekday:'short'}).toUpperCase()}</div>
-                        <div className={`text-xs sm:text-sm font-black mt-0.5 ${hasAlert ? (holiday ? 'text-amber-400' : 'text-red-400') : 'text-white'}`}>
-                          {parseInt(d.split('-')[2])}
-                        </div>
-                        
-                        {hasAlert && (
-                          <div className="absolute top-full left-1/2 -translate-x-1/2 mt-1 w-32 bg-[#1A2126] border border-[#D4A381] text-white text-[10px] p-2 rounded shadow-2xl opacity-0 invisible group-hover:opacity-100 group-hover:visible z-50 pointer-events-none transition-all">
-                            {holiday && <div className="text-amber-400 font-black mb-1 leading-tight">{holiday}</div>}
-                            {dayEvents.map(ev => (
-                              <div key={ev.id} className="text-red-400 font-bold leading-tight mt-1 border-t border-[#2A353D] pt-1">
-                                {ev.title} {ev.time && <span className="block text-white opacity-80">{formatShortTime(ev.time)}</span>}
-                                {ev.notes && <span className="block text-slate-300 font-normal mt-0.5">{ev.notes}</span>}
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </th>
-                    )})}
-                  </tr>
-                </thead>
-              <tbody className="divide-y divide-[#2A353D]">
+          <div className="schedule-builder-grid-shell">
+            <div
+              data-testid="schedule-builder-sticky-day-header"
+              className={`schedule-builder-sticky-day-header ${T.card} w-full`}
+              style={{ '--schedule-builder-sticky-top': `${scheduleBuilderStickyTop}px` }}
+            >
+              <div
+                ref={scheduleBuilderHeaderScrollRef}
+                data-testid="schedule-builder-header-scroll"
+                className="schedule-builder-header-scroll overflow-x-auto w-full no-scrollbar"
+                onScroll={event => syncScheduleBuilderHorizontalScroll(event.currentTarget, scheduleBuilderBodyScrollRef)}
+              >
+                <table className="schedule-builder-desktop-table w-full text-left text-[10px] border-collapse table-fixed min-w-[1200px] xl:min-w-full" style={scheduleBuilderTableStyle}>
+                  {renderScheduleBuilderColgroup()}
+                  <thead>{renderScheduleBuilderHeaderRow()}</thead>
+                </table>
+              </div>
+            </div>
+            <div className={`schedule-builder-grid-card ${T.card} w-full overflow-hidden`}>
+              <div
+                ref={scheduleBuilderBodyScrollRef}
+                data-testid="schedule-builder-body-scroll"
+                className="overflow-x-auto w-full no-scrollbar"
+                onScroll={event => syncScheduleBuilderHorizontalScroll(event.currentTarget, scheduleBuilderHeaderScrollRef)}
+              >
+                <table className="schedule-builder-desktop-table w-full text-left text-[10px] border-collapse table-fixed min-w-[1200px] xl:min-w-full" style={scheduleBuilderTableStyle}>
+                  {renderScheduleBuilderColgroup()}
+                  <tbody className="divide-y divide-[#2A353D]">
                   {schedulePeriodEvents.length > 0 && (
                     <tr className="schedule-builder-events-row bg-amber-950/10">
                       <td className="schedule-builder-events-label px-2 py-1 text-[8px] font-black uppercase tracking-widest text-amber-200 sticky left-0 z-10 border-r border-[#2A353D] bg-[#141920] shadow-md">
@@ -4476,6 +4555,8 @@ const handleExportTimesheets = () => {
             </div>
           </div>
           
+          </div>
+
           <div className={`${T.card} overflow-hidden mt-6`}>
             <div className={`bg-[#12161A] p-4 border-b ${T.border} flex justify-between items-center`}>
               <h3 className={`font-black text-sm flex items-center gap-2 ${T.copper}`}><Clock className={T.copper} size={16}/> Scheduled Hours Tracker</h3>
@@ -5545,7 +5626,8 @@ const TabTimeOff = ({ timeOffRequests, appUser, users, addToast, events = [], sh
     e.preventDefault();
     if (isSubmittingTimeOff) return;
     if (selectedDates.length === 0) return addToast('Choose Request-Off Dates', 'Select one or more days on the calendar first.');
-    if (isPartial && (!startTime || !endTime)) return addToast('Add Start and End Times', 'Enter the part of the day you need off.');
+    const partialTimeValidation = validatePartialRequestOffTimeRange({ isPartial, startTime, endTime });
+    if (!partialTimeValidation.valid) return addToast('Invalid Partial Time', partialTimeValidation.message);
     const blockedAfterPublish = selectedDates.filter(d => !postPublishedTimeOffAllowed && !canConfigureRequestOffPolicy && isDateInsidePublishedSchedule(d, shifts));
     if (blockedAfterPublish.length) return addToast('Schedule Published', 'One or more selected dates are already published. Ask an account owner or admin to adjust the schedule.');
     setIsSubmittingTimeOff(true);
@@ -5571,37 +5653,7 @@ const TabTimeOff = ({ timeOffRequests, appUser, users, addToast, events = [], sh
         await requestOffApi('ghost-create', { dates: selectedDates, isPartial, startTime, endTime });
         await refreshGhostRequests();
       } else {
-        const nowIso = new Date().toISOString();
-        await Promise.all(selectedDates.map(d => addDoc(collection(db, 'timeOffRequests'), {
-          restaurantId: appUser.restaurantId,
-          workspaceId: appUser.restaurantId,
-          userId: authUserId,
-          employeeId: authUserId,
-          rosterUserId: schedulePerson.rosterUserId || schedulePerson.id || '',
-          scheduleUserId: getCanonicalScheduleUserId(schedulePerson || appUser),
-          authUid: authUserId,
-          userEmail: appUser.email || '',
-          employeeEmail: schedulePerson.employeeEmail || schedulePerson.email || appUser.email || '',
-          userName: appUser.name || appUser.email || 'Employee',
-          employeeName: schedulePerson.employeeName || schedulePerson.name || appUser.name || appUser.email || 'Employee',
-          date: d,
-          isPartial,
-          startTime: isPartial ? startTime : '',
-          endTime: isPartial ? endTime : '',
-          status: 'pending',
-          archived: false,
-          processed: false,
-          requestedAt: nowIso,
-          requestedAtMs: Date.now(),
-          requestTimestamp: nowIso,
-          submittedAt: nowIso,
-          createdAt: nowIso,
-          updatedAt: nowIso,
-          createdBy: authUserId,
-          requestedBy: authUserId,
-          requestedByName: appUser.name || appUser.email || 'Employee',
-          source: 'time_off_request'
-        })));
+        await requestOffApi('create', { dates: selectedDates, isPartial, startTime, endTime });
         await logAudit(appUser, 'TIME_OFF_SUBMITTED', appUser.name || appUser.email || 'Request off', selectedDates.join(', '));
       }
       setSelectedDates([]);
@@ -5689,7 +5741,7 @@ const TabTimeOff = ({ timeOffRequests, appUser, users, addToast, events = [], sh
             const cutoffDate = timeOffPolicyCutoffDateForRequestDate(sampleDate, timeOffPolicy, workspaceScheduleSettings);
             return <div className="mb-4 bg-blue-900/10 border border-blue-900/40 rounded-xl p-2 text-[10px] font-bold text-blue-200 leading-snug">Normal requests for this schedule close after {cutoffDate ? formatDisplayDate(cutoffDate) : 'the configured cutoff'}{releaseDate ? ` • planned release ${formatDisplayDate(releaseDate)}` : ''}. Blackout dates close immediately.</div>;
           })()}
-          <form onSubmit={handleSubmit} className="space-y-4"><label className={`flex items-center gap-2 text-xs font-bold text-slate-300 cursor-pointer p-2.5 bg-[#12161A] rounded-xl border ${T.border}`}><input type="checkbox" checked={isPartial} onChange={e=>setIsPartial(e.target.checked)} className="w-4 h-4 rounded bg-[#1A2126] border-[#2A353D] accent-[#8F6040]" />Only part of each day</label>{isPartial && <div className="grid grid-cols-2 gap-3"><div><label className={T.label}>Start Time</label><input type="time" value={startTime} onChange={e=>setStartTime(e.target.value)} className={T.input} required /></div><div><label className={T.label}>End Time</label><input type="time" value={endTime} onChange={e=>setEndTime(e.target.value)} className={T.input} required /></div></div>}<button type="submit" disabled={selectedDates.length === 0 || isSubmittingTimeOff || !!checkingDate} className={`w-full ${T.btn} disabled:opacity-50 disabled:cursor-not-allowed`}>{isSubmittingTimeOff ? 'Sending Request…' : `Send ${selectedDates.length > 0 ? `${selectedDates.length}-Day ` : ''}Request for Review`}</button></form>
+          <form onSubmit={handleSubmit} className="space-y-4"><label className={`flex items-center gap-2 text-xs font-bold text-slate-300 cursor-pointer p-2.5 bg-[#12161A] rounded-xl border ${T.border}`}><input type="checkbox" checked={isPartial} onChange={e=>setIsPartial(e.target.checked)} className="w-4 h-4 rounded bg-[#1A2126] border-[#2A353D] accent-[#8F6040]" />Only part of each day</label>{isPartial && <div className="grid grid-cols-2 gap-3"><div><label className={T.label}>Start Time</label><input data-testid="request-off-partial-start" type="time" value={startTime} onChange={e=>setStartTime(e.target.value)} className={T.input} required /></div><div><label className={T.label}>End Time</label><input data-testid="request-off-partial-end" type="time" value={endTime} min={startTime || undefined} onChange={e=>setEndTime(e.target.value)} className={T.input} required /></div></div>}<button type="submit" disabled={selectedDates.length === 0 || isSubmittingTimeOff || !!checkingDate} className={`w-full ${T.btn} disabled:opacity-50 disabled:cursor-not-allowed`}>{isSubmittingTimeOff ? 'Sending Request…' : `Send ${selectedDates.length > 0 ? `${selectedDates.length}-Day ` : ''}Request for Review`}</button></form>
         </div>
       </div>
       {canConfigureRequestOffPolicy && <div className={`${T.card} p-4 space-y-4`} data-testid="time-off-policy-admin">
@@ -5822,7 +5874,7 @@ const ScheduleCopilot = ({ period, periodLabel = '', users = [], shifts = [], ti
   const draftCount = activePeriodShifts.filter(s => !isScheduleShiftPublished(s)).length;
   const coverageVarianceRows = buildCoverageVarianceRows({ coverageTargets, periodDates: activePeriodDates, periodShifts: activePeriodShifts, roleMatcher: roleMatches, canonicalRole: canonicalScheduleRole });
   const missingTargets = coverageVarianceRows.filter(row => row.type === 'under');
-  const coverageWarnings = coverageVarianceRows.map(row => ({
+  const coverageWarnings = sortScheduleWarningsChronologically(coverageVarianceRows.map(row => ({
     ...row,
     type: row.type === 'under' ? 'coverage-under' : 'coverage-over',
     alertId: `schedule-${activePeriodStart}-coverage-${row.type}-${row.id}-${row.date}-${row.role}`,
@@ -5831,7 +5883,7 @@ const ScheduleCopilot = ({ period, periodLabel = '', users = [], shifts = [], ti
       ? `${formatDisplayDate(row.date)} needs ${row.needed} more ${row.role}`
       : `${formatDisplayDate(row.date)} has ${row.over} more ${row.role} than the coverage target.`,
     detail: `Existing: ${row.existing} • Target: ${row.count}`,
-  }));
+  })));
   const conflictList = buildScheduleConflictWarningRows({
     weekStart: activePeriodStart,
     periodWeeks: activePeriod.weekSegments,
@@ -5846,7 +5898,7 @@ const ScheduleCopilot = ({ period, periodLabel = '', users = [], shifts = [], ti
     fingerprintBuilder: buildAlertFingerprint,
     formatDate: formatDisplayDate,
   });
-  const allScheduleWarnings = [...coverageWarnings, ...conflictList];
+  const allScheduleWarnings = sortScheduleWarningsChronologically([...coverageWarnings, ...conflictList]);
   const fallbackResolvedState = { resolved: true, error: null, count: 0, limit: 0, workspaceId: appUser?.restaurantId || '' };
   const shiftSourceState = scheduleDataState?.shifts || { ...fallbackResolvedState, count: safeShifts.length };
   const timeOffSourceState = scheduleDataState?.timeOff || { ...fallbackResolvedState, count: safeTimeOffRequests.length };

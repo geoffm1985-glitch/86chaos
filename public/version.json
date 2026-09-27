@@ -1,17 +1,25 @@
 {
-  "version": "17.0.38",
-  "name": "86 Chaos 17.0.38",
-  "build": "17.0.38",
-  "label": "86 Chaos 17.0.38",
-  "releasedAt": "2026-09-26T20:00:00Z",
-  "releaseTitle": "Mobile Reminder Render Recovery",
+  "version": "17.0.40",
+  "name": "86 Chaos 17.0.40",
+  "build": "17.0.40",
+  "label": "86 Chaos 17.0.40",
+  "releasedAt": "2026-09-27T04:30:00Z",
+  "releaseTitle": "Emergency Schedule and Request-Off Reliability",
   "notes": [
-    "Normalizes device-local and cloud reminder display rows before React render so malformed legacy values cannot collapse My Reminders.",
-    "Repairs corrupted local reminder values without changing cloud persistence, tenant isolation, or reminder ownership.",
-    "Adds a mobile Release Gate regression that injects malformed persisted reminder data and requires My Reminders to render without App Recovery.",
-    "Preserves the 17.0.37 Firebase Admin serverless compatibility repair."
+    "Repairs the stale merged-release capability test so patch version bumps cannot invalidate capability-retention evidence.",
+    "Adds fail-closed source, deployment, artifact, Playwright completion, retry, interruption, and timeout certification truth.",
+    "Adds redacted security maturity, backup recovery, and aggregate Firebase listener/read/write diagnostics.",
+    "Adds a shared needs-attention engine, Restaurant Readiness 2.0, connected restaurant graph, Smart Prep, deterministic purchasing reconciliation, and bounded Operational History intelligence.",
+    "Adds targeted and deployed browser coverage for the complete changed surface on desktop and mobile."
   ],
-  "title": "86 Chaos 17.0.38",
-  "summary": "Emergency real-device repair for My Reminders render crashes caused by malformed persisted device-local reminder values.",
-  "description": "Adds strict reminder display normalization, storage self-healing, and mobile browser regression coverage while preserving cloud reminder behavior."
+  "title": "86 Chaos 17.0.40",
+  "summary": "Emergency production repairs for Ghost Mode Request Off, schedule coverage warnings, partial-day validation, sticky Schedule Builder day headers, and full-app Release Gate traceability.",
+  "description": "Repairs Ghost Mode Request Off cancellation stability, makes coverage warnings use true time-window concurrency and chronological ordering, blocks backwards partial-day Request Off ranges at UI/API/rules layers, keeps schedule day/date context visible while scrolling, and audits the complete automated Release Gate surface.",
+  "highlights": [
+    "Ghost Mode Request Off cancellation stays on the authoritative server path and verifies clean admin-session recovery without Firestore internal assertion crashes.",
+    "Schedule coverage warnings are chronological and calculate minimum/maximum distinct-person concurrency across the full configured coverage window, including staggered handoffs and overnight shifts.",
+    "Partial-day Request Off ranges reject equal or backwards times in the browser, authoritative API validation, and Firestore write rules.",
+    "Schedule Builder day/date headers remain sticky and horizontally synchronized with schedule columns on mobile and desktop.",
+    "Full-app Release Gate traceability inventories routes, nested states, controls, mutations, APIs, permissions, responsive layouts, accessibility, business math, runtime coverage, recovery, security, PWA behavior, and manual-only boundaries."
+  ]
 }

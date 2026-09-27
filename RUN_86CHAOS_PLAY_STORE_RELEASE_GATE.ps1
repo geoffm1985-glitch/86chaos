@@ -190,6 +190,9 @@ $RunnerState = [ordered]@{
   rolePreflightStarted = $false
   rolePreflightPassed = $false
   playwrightStarted = $false
+  playwrightCompleted = $false
+  playwrightExitCode = $null
+  playwrightFinishedAt = ''
   globalSetupStarted = $false
   qaSeedProcessStarted = $false
   qaDataWritesStarted = $false
@@ -553,7 +556,11 @@ if ($PreflightExit -ne 0) {
                         $PlaywrightConfig = ".\playwright.play-store-release.config.cjs"
                         $RunnerState.playwrightStarted = $true
                         Save-RunnerState
-                        Run-LiveStep "Playwright release gate" "& '$PlaywrightExe' test --config '$PlaywrightConfig'"
+                        $PlaywrightExit = Run-LiveStep "Playwright release gate" "& '$PlaywrightExe' test --config '$PlaywrightConfig'"
+                        $RunnerState.playwrightCompleted = $true
+                        $RunnerState.playwrightExitCode = $PlaywrightExit
+                        $RunnerState.playwrightFinishedAt = (Get-Date -Format o)
+                        Save-RunnerState
                       }
                     }
                   }

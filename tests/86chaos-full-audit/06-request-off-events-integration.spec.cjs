@@ -344,7 +344,19 @@ test.describe('06 request-off, availability, and scheduled events integration', 
     expect(cancelResponse.response.ok(), 'Ghost Mode Request Off cancellation response should be successful').toBe(true);
     expect(cancelResponse.body?.ok, 'Ghost Mode Request Off cancellation response should be ok').toBe(true);
     expect(cancelResponse.body?.action, 'Ghost Mode Request Off cancellation response should be specifically ghost-cancel').toBe('ghost-cancel');
+    text = await bodyText(page, 70000);
+    expect(text, 'Ghost cancellation must not surface the Firestore SDK internal assertion crash').not.toMatch(/FIRESTORE.*INTERNAL ASSERTION FAILED|INTERNAL ASSERTION FAILED.*Unexpected state|Unexpected state/i);
     expect(summarizeProblems(problems), 'Ghost Mode Request Off flow should not generate unhandled browser/runtime problems').toEqual([]);
+
+    const exitGhostMode = page.getByRole('button', { name: /^EXIT GHOST MODE$/i }).first();
+    await expect(exitGhostMode, 'Ghost Mode must remain healthy enough to exit after Request Off cancellation').toBeVisible({ timeout: 10000 });
+    await exitGhostMode.click();
+    await page.waitForTimeout(1000);
+    const restoredText = await bodyText(page, 70000);
+    await attachState('06-ghost-request-off-after-exit.json', { restoredText: restoredText.slice(0, 8000) });
+    expect(restoredText, 'Exiting Ghost Mode after cancellation should restore the System Administrator session').toMatch(/System Administrator|People Directory|Open People|Workspaces/i);
+    expect(restoredText, 'The manager/admin session should not inherit a Firestore internal assertion after Ghost Mode exit').not.toMatch(/FIRESTORE.*INTERNAL ASSERTION FAILED|INTERNAL ASSERTION FAILED.*Unexpected state|Unexpected state/i);
+    await expect(page.getByRole('button', { name: /^EXIT GHOST MODE$/i })).toHaveCount(0);
   });
 
 });

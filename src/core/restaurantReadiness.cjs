@@ -1,5 +1,7 @@
 'use strict';
 
+const { buildNeedsAttention } = require('./needsAttention.cjs');
+
 const clamp = (value, min = 0, max = 100) => Math.max(min, Math.min(max, Number(value) || 0));
 const rows = value => Array.isArray(value) ? value : [];
 const lower = value => String(value || '').trim().toLowerCase();
@@ -118,17 +120,25 @@ function buildRestaurantReadiness(input = {}) {
 
   const openAdminAlerts = restaurantAdminAlerts.filter(alert => active(alert?.status));
   const criticalAdminAlerts = openAdminAlerts.filter(alert => ['critical','high'].includes(lower(alert?.severity)));
+  const backupEvidenceKnown = Boolean(input.backupStatus && Object.keys(input.backupStatus).length);
   const system = input.systemDataVisible === false
     ? category({ key:'system', label:'System', status:'needs-data', reason:'System/admin health evidence is not available to this role.', action:{ label:'Open back office', tab:'back-office' } })
-    : category({ key:'system', label:'System', score:100 - criticalAdminAlerts.length * 28 - Math.max(0, openAdminAlerts.length - criticalAdminAlerts.length) * 7, status:criticalAdminAlerts.length ? 'critical' : openAdminAlerts.length ? 'attention' : 'ready', reason:criticalAdminAlerts.length ? `${criticalAdminAlerts.length} high/critical owner-admin alert${criticalAdminAlerts.length===1?' needs':'s need'} review.` : openAdminAlerts.length ? `${openAdminAlerts.length} owner/admin alert${openAdminAlerts.length===1?' is':'s are'} still open.` : 'No open owner/admin system alerts are visible.', evidence:openAdminAlerts.slice(0,4).map(alert => alert.title || alert.detail || 'Open system alert'), action:{ label:'Open back office', tab:'back-office' } });
+    : !backupEvidenceKnown
+      ? category({ key:'system', label:'System', status:'needs-data', reason:'Backup/recovery evidence is not loaded. Unknown system protection is not counted as healthy.', action:{ label:'Open Backup Center', tab:'godmode', focus:'forensics' } })
+      : category({ key:'system', label:'System', score:100 - criticalAdminAlerts.length * 28 - Math.max(0, openAdminAlerts.length - criticalAdminAlerts.length) * 7, status:criticalAdminAlerts.length ? 'critical' : openAdminAlerts.length ? 'attention' : 'ready', reason:criticalAdminAlerts.length ? `${criticalAdminAlerts.length} high/critical owner-admin alert${criticalAdminAlerts.length===1?' needs':'s need'} review.` : openAdminAlerts.length ? `${openAdminAlerts.length} owner/admin alert${openAdminAlerts.length===1?' is':'s are'} still open.` : 'No open owner/admin system alerts are visible and backup evidence is loaded.', evidence:openAdminAlerts.slice(0,4).map(alert => alert.title || alert.detail || 'Open system alert'), action:{ label:'Open back office', tab:'back-office' } });
 
   const categories=[inventory,prep,staffing,maintenance,foodSafety,financial,operations,system];
   const scored=categories.filter(row => Number.isFinite(row.score));
   const overallScore=scored.length ? Math.round(scored.reduce((sum,row)=>sum+row.score,0)/scored.length) : null;
   const coveragePct=Math.round(scored.length/categories.length*100);
+  const attentionItems=buildNeedsAttention({ ...input, workspaceId:input.workspaceId || input.restaurantId, currentDate });
+  const byCategory=new Map();
+  for(const item of attentionItems){ if(!byCategory.has(item.category)) byCategory.set(item.category,[]); byCategory.get(item.category).push(item); }
+  const categoryAliases={ 'food-safety':'food-safety', system:'system', financial:'financial', operations:'operations', staffing:'staffing', prep:'prep', inventory:'inventory', maintenance:'maintenance' };
+  for(const row of categories) row.attentionItems=(byCategory.get(categoryAliases[row.key] || row.key) || []).slice(0,8);
   const needsAttention=[...categories].filter(row => row.status !== 'ready').sort((a,b)=>(severityRank[b.status]||0)-(severityRank[a.status]||0) || a.label.localeCompare(b.label));
   const status=categories.some(row => row.status === 'critical') ? 'critical' : categories.some(row => row.status === 'attention') ? 'attention' : categories.some(row => row.status === 'needs-data') ? 'partial' : 'ready';
-  return { schemaVersion:1, currentDate, overallScore, coveragePct, groundedCategoryCount:scored.length, totalCategoryCount:categories.length, status, categories, needsAttention, reviewOnly:true };
+  return { schemaVersion:2, currentDate, overallScore, coveragePct, groundedCategoryCount:scored.length, totalCategoryCount:categories.length, status, categories, needsAttention, attentionItems, reviewOnly:true };
 }
 
 module.exports={ buildRestaurantReadiness };

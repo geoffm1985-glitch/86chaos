@@ -18,6 +18,10 @@ import { createAiScanIdempotencyKey, resolveClientScanPageCount, normalizeAiUsag
 import { buildAiOrderAssistant, formatAiOrderDraftText, summarizeAiOrderAssistant } from '../core/aiOrderAssistant';
 import { buildRestaurantAiInsightBundle, buildNeedAttentionExplanation } from '../core/restaurantAiInsights';
 import restaurantReadinessHelpers from '../core/restaurantReadiness.cjs';
+import needsAttentionHelpers from '../core/needsAttention.cjs';
+import knowledgeGraphHelpers from '../core/restaurantKnowledgeGraph.cjs';
+import smartPrepIntelligenceHelpers from '../core/smartPrepIntelligence.cjs';
+import operationalHistoryHelpers from '../core/operationalHistoryIntelligence.cjs';
 import { classifyInvoiceRow, inferInvoiceProductFields, invoiceProductKey, invoiceRowText, isPurchasedInvoiceLine, LEADING_PURCHASE_RE, normalizeInvoiceName as normalizeName, normalizeInvoiceSku as normalizeSku } from '../core/invoiceRowClassification';
 import { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, MapClickListener, SmartEmptyState, MiniProblemCard, getHomeProfile, calculatePunchHours, getWeekStart, getWeekDates, roleMatches, toLocalTimeInput, makeLocalIso, PunchTable, StatusTile, FriendlyEmpty, GlobalSearchModal, QuickActionDock, KitchenTVMode, ChangeLogModal, UndoBar } from '../components/common';
 import { usePlanAccess } from '../hooks/usePlanAccess';
@@ -27,6 +31,10 @@ import { useI18n } from '../core/i18n';
 
 const { FOOD_SAFETY_CATEGORIES, evaluateFoodSafety, missedFoodSafetyChecks } = foodSafetyHelpers;
 const { buildRestaurantReadiness } = restaurantReadinessHelpers;
+const { canViewAttentionItem } = needsAttentionHelpers;
+const { buildRestaurantKnowledgeGraph } = knowledgeGraphHelpers;
+const { buildSmartPrepRecommendations } = smartPrepIntelligenceHelpers;
+const { buildOperationalHistory } = operationalHistoryHelpers;
 
 const readableApiError = (value) => {
   if (!value) return '';
@@ -1837,7 +1845,7 @@ const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = 
         <div className={`${T.card} command-card p-4 lg:col-span-2`}>
           <div className="flex items-center justify-between border-b border-[#2A353D] pb-3 mb-3">
             <h2 className="font-black text-white flex items-center gap-2"><ChefHat size={18} className={T.copper}/> Today’s Priorities</h2>
-            <span className="text-[9px] font-black uppercase tracking-widest text-slate-500">{formatFullDate(today)}</span>
+            <span className="text-[9px] font-black uppercase tracking-widest text-slate-500">{formatDisplayFullDate(today)}</span>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {recommendations.map((rec, idx) => (
@@ -2165,13 +2173,14 @@ const TabToday = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequ
   useEffect(() => {
     if (currentOpsIntel && !briefOpsLoading) setBriefOpsIntel(currentOpsIntel);
   }, [currentOpsIntel?.id, currentOpsIntel?.generatedAt, briefOpsLoading]);
-  const briefVendors = [];
-  const briefWasteLogs = [];
-  const briefInvoices = [];
+  const briefVendors = useLiveCollection('vendors', appUser?.restaurantId, { enabled:Boolean(appUser?.restaurantId && canUseManagerBrief && canUseBasicInventory), limitCount:80, fallbackLimitCount:30, debugLabel:'today:intelligence:vendors' });
+  const briefWasteLogs = useLiveCollection('wasteLogs', appUser?.restaurantId, { enabled:Boolean(appUser?.restaurantId && canUseManagerBrief && canUseBasicInventory), limitCount:90, fallbackLimitCount:30, debugLabel:'today:intelligence:waste' });
+  const briefInvoices = useLiveCollection('invoices', appUser?.restaurantId, { enabled:Boolean(appUser?.restaurantId && canUseManagerBrief && canReviewRestaurantAdminAlerts), limitCount:80, fallbackLimitCount:25, debugLabel:'today:intelligence:invoices' });
+  const briefVendorProducts = useMemo(() => (briefInvoices || []).flatMap(invoice => (invoice.lines || invoice.items || invoice.rows || []).map((line,index) => ({ id:line.vendorProductId || line.productCode || line.sku || `${invoice.id || invoice.invoiceNumber || 'invoice'}:${index}`, name:line.itemName || line.description || line.productName || line.sku || 'Vendor product', vendorId:line.vendorId || invoice.vendorId, inventoryItemId:line.inventoryItemId || line.matchedInventoryItemId, aliases:[line.productCode,line.sku,line.originalDescription].filter(Boolean), packSize:line.packSize || line.packageSize, splitCase:line.splitCase === true, unit:line.invoiceUnit || line.uom, restaurantId:invoice.restaurantId || appUser?.restaurantId }))), [briefInvoices, appUser?.restaurantId]);
   const briefAvailabilityRecords = [];
   const briefReminders = [];
   const briefAuditLogs = [];
-  const aiBrief = useMemo(() => canUseAiOrdering ? buildAiOrderAssistant({ inventoryItems, vendors: [], wasteLogs: [], invoices: [], events, prepItems, menuDependencies, currentDate: today, daysAhead: 7, eventDaysAhead: 14 }) : { managerBrief: [], recommendations: [], eventNeeds: [], priceWarnings: [] }, [canUseAiOrdering, inventoryItems, events, prepItems, menuDependencies, today]);
+  const aiBrief = useMemo(() => canUseAiOrdering ? buildAiOrderAssistant({ inventoryItems, vendors:briefVendors, wasteLogs:briefWasteLogs, invoices:briefInvoices, events, prepItems, menuDependencies, currentDate:today, daysAhead:7, eventDaysAhead:14 }) : { managerBrief: [], recommendations: [], eventNeeds: [], priceWarnings: [] }, [canUseAiOrdering, inventoryItems, briefVendors, briefWasteLogs, briefInvoices, events, prepItems, menuDependencies, today]);
   const aiBriefTop = useMemo(() => aiBrief.recommendations?.filter(row => row.suggestedQty > 0).slice(0, 3) || [], [aiBrief]);
   const localAiBundle = useMemo(() => buildRestaurantAiInsightBundle({
     currentDate: today,
@@ -2192,11 +2201,20 @@ const TabToday = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequ
     recipes,
     menuDependencies,
     maintenanceLogs
-  }), [today, appUser, clientData, sales, events, prepItems, tasks, shifts, timePunches, timeOffRequests, users, inventoryItems, recipes, menuDependencies, maintenanceLogs]);
+  }), [today, appUser, clientData, sales, events, briefWasteLogs, briefInvoices, prepItems, tasks, shifts, timePunches, timeOffRequests, users, inventoryItems, recipes, menuDependencies, maintenanceLogs]);
   const restaurantReadiness = useMemo(() => buildRestaurantReadiness({
-    currentDate: today, inventoryItems, prepItems, tasks, users, shifts, timePunches, timeOffRequests, maintenanceLogs, sales, events, restaurantAdminAlerts,
+    currentDate:today, workspaceId:appUser?.restaurantId, inventoryItems, prepItems, tasks, users, shifts, shiftTrades:shiftSwaps, timePunches, timeOffRequests, maintenanceLogs, sales, events, invoices:briefInvoices, wasteLogs:briefWasteLogs, integrations:Object.entries(clientData?.integrations || {}).map(([provider,value]) => ({ provider, ...(typeof value === 'object' ? value : { status:value }) })), restaurantAdminAlerts,
     systemDataVisible: canReviewRestaurantAdminAlerts
-  }), [today, inventoryItems, prepItems, tasks, users, shifts, timePunches, timeOffRequests, maintenanceLogs, sales, events, restaurantAdminAlerts, canReviewRestaurantAdminAlerts]);
+  }), [today, appUser?.restaurantId, inventoryItems, prepItems, tasks, users, shifts, shiftSwaps, timePunches, timeOffRequests, maintenanceLogs, sales, events, briefInvoices, briefWasteLogs, clientData?.integrations, restaurantAdminAlerts, canReviewRestaurantAdminAlerts]);
+  const visibleAttentionItems = useMemo(() => (restaurantReadiness.attentionItems || []).filter(item => canViewAttentionItem(item, appUser)).slice(0, 10), [restaurantReadiness.attentionItems, appUser]);
+  const menuRowsForGraph = useMemo(() => (menuDependencies || []).map(link => ({ id:link.menuItemId || link.menuItemName, name:link.menuItemName || link.menuItemId, restaurantId:link.restaurantId || appUser?.restaurantId, recipeIds:link.recipeIds || link.recipeId || [] })), [menuDependencies, appUser?.restaurantId]);
+  const knowledgeGraph = useMemo(() => buildRestaurantKnowledgeGraph({ workspaceId:appUser?.restaurantId, menuItems:menuRowsForGraph, recipes, inventoryItems, menuDependencies, vendors:briefVendors, vendorProducts:briefVendorProducts, invoices:briefInvoices }), [appUser?.restaurantId, menuRowsForGraph, recipes, inventoryItems, menuDependencies, briefVendors, briefVendorProducts, briefInvoices]);
+  const smartPrepSales = useMemo(() => (sales || []).flatMap(sale => {
+    const lineItems = sale.lineItems || sale.items || sale.menuItems || [];
+    return Array.isArray(lineItems) ? lineItems.map(item => ({ ...item, restaurantId:sale.restaurantId || appUser?.restaurantId, businessDate:sale.businessDate || sale.date || sale.createdAt })) : [];
+  }), [sales, appUser?.restaurantId]);
+  const smartPrepReport = useMemo(() => buildSmartPrepRecommendations({ workspaceId:appUser?.restaurantId, targetDate:today, salesHistory:smartPrepSales, recipes, inventoryItems, prepItems, wasteLogs:briefWasteLogs, outageEvents:(events || []).filter(event => event.commandCenterAlert || /86/.test(String(event.type || event.title || ''))) }), [appUser?.restaurantId, today, smartPrepSales, recipes, inventoryItems, prepItems, briefWasteLogs, events]);
+  const operationalHistory = useMemo(() => buildOperationalHistory({ workspaceId:appUser?.restaurantId, actor:appUser, now:`${today}T23:59:59Z`, readinessSnapshots:[], outageEvents:(events || []).filter(event => event.commandCenterAlert || /86/.test(String(event.type || event.title || ''))), prepHistory:prepItems, invoiceHistory:briefInvoices, wasteLogs:briefWasteLogs, maintenanceLogs, incidents:restaurantAdminAlerts, errors:[], retentionDays:180 }), [appUser, today, events, prepItems, briefInvoices, briefWasteLogs, maintenanceLogs, restaurantAdminAlerts]);
   const openReadinessCategory = (row = {}) => {
     const action = row.action || {};
     try {
@@ -2260,9 +2278,9 @@ const TabToday = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequ
           currentDate: today,
           daysAhead: 7,
           inventoryItems,
-          vendors: [],
-          wasteLogs: [],
-          invoices: [],
+          vendors: briefVendors,
+          wasteLogs: briefWasteLogs,
+          invoices: briefInvoices,
           events,
           prepItems,
           menuDependencies,
@@ -2469,6 +2487,40 @@ const TabToday = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequ
         </button>)}
       </div>
       {restaurantReadiness.coveragePct < 100 && <p className="mt-3 text-[10px] font-bold text-slate-500">Coverage: {restaurantReadiness.coveragePct}%. Categories without enough loaded evidence stay marked Needs data instead of being counted as healthy.</p>}
+    </section>}
+
+    {canUseManagerBrief && <section data-testid="shared-needs-attention" className={`${T.card} brief-card p-4 border-amber-500/30`}>
+      <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+        <div><div className="text-[9px] font-black uppercase tracking-[0.2em] text-amber-300">Shared Needs-Attention Engine</div><h2 className="font-black text-white text-xl mt-1">What needs attention today</h2><p className="text-xs text-slate-400 font-bold mt-1">One deterministic list powers Manager Brief and Restaurant Readiness. Every item shows why it matters and where to review it.</p></div>
+        <span className="rounded-full border border-amber-500/30 bg-amber-950/20 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-amber-200">{visibleAttentionItems.length} visible</span>
+      </div>
+      <div className="grid md:grid-cols-2 gap-2 mt-3">
+        {visibleAttentionItems.length ? visibleAttentionItems.map(item => <button type="button" key={item.stableId} data-attention-id={item.stableId} data-attention-category={item.category} onClick={() => openReadinessCategory(item)} className="rounded-xl border border-[#2A353D] bg-[#12161A] p-3 text-left hover:border-amber-500/50 transition-colors">
+          <div className="flex items-start justify-between gap-2"><div className="font-black text-white text-sm">{item.title}</div><span className={`text-[8px] font-black uppercase tracking-widest ${item.severity === 'critical' || item.severity === 'high' ? 'text-red-300' : item.severity === 'needs-data' ? 'text-slate-400' : 'text-amber-300'}`}>{item.severity}</span></div>
+          <p className="text-xs text-slate-300 font-bold leading-snug mt-1">{item.reason}</p>
+          <div className="flex flex-wrap gap-x-3 gap-y-1 mt-2 text-[9px] font-black uppercase tracking-widest"><span className="text-slate-500">{item.completeness} data</span><span className="text-slate-500">{Math.round(item.confidence * 100)}% confidence</span><span className="text-[#D4A381]">{item.action?.label || 'Review'} →</span></div>
+        </button>) : <SmartEmptyState icon={<Check size={24}/>} title="No visible attention items" desc="Loaded evidence has no actionable finding for this role." />}
+      </div>
+    </section>}
+
+    {canUseManagerBrief && <section data-testid="restaurant-intelligence-v17-0-39" className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+      <div data-testid="smart-prep-production" className={`${T.card} brief-card p-4 border-emerald-500/25`}>
+        <div className="text-[9px] font-black uppercase tracking-widest text-emerald-300">Smart Prep • Review Only</div><h2 className="font-black text-white text-lg mt-1">Demand-backed prep recommendation</h2>
+        {smartPrepReport.recommendations.length ? <div className="mt-3 space-y-2">{smartPrepReport.recommendations.slice(0,3).map(row => <button type="button" key={row.id} onClick={openPrepPlan} className="w-full rounded-xl border border-[#2A353D] bg-[#12161A] p-3 text-left"><div className="font-black text-white text-sm">{row.itemName}</div><div className="text-xs text-slate-300 mt-1 font-bold">{row.state === 'insufficient-data' ? 'Not enough data to predict' : row.state === 'predicted-zero' ? 'Predicted zero additional prep' : `Review ${row.recommendedQuantity}${row.recommendedRange ? ` (${row.recommendedRange[0]}–${row.recommendedRange[1]})` : ''}`}</div><div className="text-[10px] text-slate-500 mt-1">{row.reason}</div></button>)}</div> : <p className="text-xs text-slate-400 font-bold mt-3">No menu-item sales history is loaded. This is “not enough data,” never a predicted zero.</p>}
+        <p className="text-[9px] text-slate-500 font-black uppercase tracking-widest mt-3">No automatic ordering, inventory changes, or recipe/menu edits.</p>
+      </div>
+      <div data-testid="connected-restaurant-graph" className={`${T.card} brief-card p-4 border-blue-500/25`}>
+        <div className="text-[9px] font-black uppercase tracking-widest text-blue-300">Connected Restaurant Graph</div><h2 className="font-black text-white text-lg mt-1">Menu → recipe → inventory → vendor cost</h2>
+        <div className="grid grid-cols-3 gap-2 mt-3"><div className="rounded-xl bg-[#0B0E11] border border-[#2A353D] p-2 text-center"><div className="text-xl font-black text-white">{knowledgeGraph.coverage.nodes}</div><div className="text-[8px] text-slate-500 uppercase font-black">Nodes</div></div><div className="rounded-xl bg-[#0B0E11] border border-[#2A353D] p-2 text-center"><div className="text-xl font-black text-white">{knowledgeGraph.coverage.edges}</div><div className="text-[8px] text-slate-500 uppercase font-black">Links</div></div><div className="rounded-xl bg-[#0B0E11] border border-[#2A353D] p-2 text-center"><div className="text-xl font-black text-amber-300">{knowledgeGraph.coverage.missing}</div><div className="text-[8px] text-slate-500 uppercase font-black">Missing</div></div></div>
+        <button type="button" onClick={() => setActiveTab('menu-intelligence')} className={`${T.btnAlt} mt-3 w-full`}>Review missing relationships</button>
+        <p className="text-[10px] text-slate-500 font-bold mt-2">Includes auditable allergens, substitutions, units, yield, case packs, split cases, and vendor aliases when those records exist.</p>
+      </div>
+      <div data-testid="purchase-reconciliation-readiness" className={`${T.card} brief-card p-4 border-purple-500/25`}>
+        <div className="text-[9px] font-black uppercase tracking-widest text-purple-300">PO ↔ Receiving ↔ Invoice</div><h2 className="font-black text-white text-lg mt-1">Deterministic reconciliation</h2><p className="text-xs text-slate-300 font-bold mt-2">Invoice review now classifies quantity, pack, price, substitution, backorder, missing receiving, duplicate suspicion, catch weight, split case, and low-confidence matches.</p><button type="button" onClick={() => { sessionStorage.setItem('inventoryFocus','invoices'); setActiveTab('inventory'); }} className={`${T.btnAlt} mt-3 w-full`}>Open invoice review</button><p className="text-[9px] text-slate-500 font-black uppercase tracking-widest mt-2">Never pays bills, posts accounting, orders product, or changes ambiguous inventory.</p>
+      </div>
+      <div data-testid="operational-history-intelligence" className={`${T.card} brief-card p-4 border-orange-500/25`}>
+        <div className="text-[9px] font-black uppercase tracking-widest text-orange-300">Operational History Intelligence</div><h2 className="font-black text-white text-lg mt-1">Repeated causes and training signals</h2>{operationalHistory.allowed ? <><div className="mt-3 text-sm font-black text-white">{operationalHistory.events.length} bounded events • {operationalHistory.trends.length} repeated patterns</div>{operationalHistory.trainingOpportunities.slice(0,2).map(row => <div key={row.id} className="mt-2 rounded-xl border border-[#2A353D] bg-[#12161A] p-3"><div className="text-sm font-black text-white">{row.title}</div><div className="text-xs text-slate-400 mt-1">{row.reason}</div></div>)}</> : <p className="text-xs text-slate-400 font-bold mt-3">Manager, admin, or owner permission is required.</p>}<p className="text-[9px] text-slate-500 font-black uppercase tracking-widest mt-3">180-day bounded, tenant-filtered analysis. No automatic training assignment.</p>
+      </div>
     </section>}
 
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">

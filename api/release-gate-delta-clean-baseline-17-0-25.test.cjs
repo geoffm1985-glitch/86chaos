@@ -92,15 +92,21 @@ test('17.0.25 summary-only delta recovery preserves timed-out identities instead
 });
 
 
-test('17.0.25 delta command runs current-release regressions first and safely no-ops when no browser identities are selected', () => {
+test('delta command runs current-release regressions first and safely no-ops when no browser identities are selected', () => {
   const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8'));
   const runner = fs.readFileSync(path.join(__dirname, '..', 'RUN_86CHAOS_FAILED_AND_NEW_RELEASE_GATE.ps1'), 'utf8');
   const collector = fs.readFileSync(path.join(__dirname, '..', 'scripts/86chaos-release-gate/collect-release-gate-report.cjs'), 'utf8');
   const prepare = fs.readFileSync(path.join(__dirname, '..', 'scripts/86chaos-release-gate/prepare-failed-only-manifest.cjs'), 'utf8');
 
   assert.match(pkg.scripts['test:play-store:delta'] || '', /^npm run test:current-release-targeted && powershell /);
-  assert.match(pkg.scripts['test:current-release-targeted'] || '', /schedule-shift-delete-17-0-25\.test\.cjs/);
-  assert.match(pkg.scripts['test:current-release-targeted'] || '', /release-gate-delta-clean-baseline-17-0-25\.test\.cjs/);
+  for (const currentTest of [
+    'release-integrity-17-0-39.test.cjs',
+    'security-observability-17-0-39.test.cjs',
+    'firebase-listener-lifecycle-17-0-39.test.cjs',
+    'restaurant-intelligence-17-0-39.test.cjs',
+    'purchase-history-17-0-39.test.cjs',
+    'reminder-voice-lifecycle-17-0-39.test.cjs',
+  ]) assert.match(pkg.scripts['test:current-release-targeted'] || '', new RegExp(currentTest.replaceAll('.', '\\.')));
   assert.match(runner, /noScopedPlaywrightTestsRemain/);
   assert.match(runner, /no-scoped-playwright-tests-remain/);
   assert.match(prepare, /noFailedOrNewPlaywrightTestsRemain/);

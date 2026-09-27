@@ -5715,3 +5715,44 @@ span.bg-red-500.text-white,
     scroll-padding-bottom: 16px;
   }
 }
+
+/* 17.0.40 emergency: keep Schedule Builder day/date context visible while scrolling. */
+.schedule-builder-grid-shell {
+  position: relative;
+  isolation: isolate;
+}
+
+.schedule-builder-sticky-day-header {
+  position: sticky;
+  top: var(--schedule-builder-sticky-top, 0px);
+  z-index: 34;
+  overflow: hidden;
+  margin-bottom: 2px;
+  background: #12161A;
+  box-shadow: 0 8px 18px rgba(0, 0, 0, .28);
+}
+
+.schedule-builder-header-scroll {
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+}
+
+.schedule-builder-header-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+.schedule-builder-staff-column {
+  width: 64px;
+}
+
+@media (min-width: 640px) {
+  .schedule-builder-staff-column {
+    width: 96px;
+  }
+}
+
+@media (max-width: 720px) {
+  .desktop-pro-shell[data-active-tab="schedule"] .schedule-builder-sticky-day-header {
+    top: 0 !important;
+  }
+}

@@ -132,6 +132,57 @@ async function runFirestoreTests(env) {
   const superAdmin = env.authenticatedContext('superAdmin', { email: 'super@example.com', superAdmin: true }).firestore();
   const anon = env.unauthenticatedContext().firestore();
 
+  setRuleCase('Request Off partial-day time-order validation');
+  const ownTimeOffBase = {
+    restaurantId: tenantA,
+    workspaceId: tenantA,
+    userId: 'staffA',
+    employeeId: 'staffA',
+    createdBy: 'staffA',
+    date: '2026-10-01',
+    status: 'pending'
+  };
+  await assertSucceeds(setDoc(doc(staffA, 'timeOffRequests', 'partial_forward_valid'), {
+    ...ownTimeOffBase,
+    isPartial: true,
+    startTime: '14:00',
+    endTime: '16:00'
+  }));
+  await assertFails(setDoc(doc(staffA, 'timeOffRequests', 'partial_backward_blocked'), {
+    ...ownTimeOffBase,
+    isPartial: true,
+    startTime: '16:00',
+    endTime: '14:00'
+  }));
+  await assertFails(setDoc(doc(staffA, 'timeOffRequests', 'partial_equal_blocked'), {
+    ...ownTimeOffBase,
+    isPartial: true,
+    startTime: '16:00',
+    endTime: '16:00'
+  }));
+  await assertFails(setDoc(doc(staffA, 'timeOffRequests', 'partial_malformed_blocked'), {
+    ...ownTimeOffBase,
+    isPartial: true,
+    startTime: '4:00 PM',
+    endTime: '2:00 PM'
+  }));
+  await assertSucceeds(setDoc(doc(staffA, 'timeOffRequests', 'full_day_no_partial_times'), {
+    ...ownTimeOffBase,
+    isPartial: false
+  }));
+  await assertFails(setDoc(doc(managerA, 'timeOffRequests', 'manager_cannot_bypass_partial_order'), {
+    restaurantId: tenantA,
+    workspaceId: tenantA,
+    userId: 'staffA',
+    employeeId: 'staffA',
+    createdBy: 'managerA',
+    date: '2026-10-02',
+    status: 'pending',
+    isPartial: true,
+    startTime: '18:00',
+    endTime: '09:00'
+  }));
+
   setRuleCase('Publication fencing and role lifecycle roots are server-owned');
   for (const client of [staffA, managerA, ownerA, restaurantAdminA, superAdmin, anon]) {
     await assertFails(setDoc(doc(client, 'schedulePublishOperations', 'forged'), { restaurantId:tenantA,status:'complete',generation:99 }));

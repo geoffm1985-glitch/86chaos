@@ -6,6 +6,7 @@ const path = require('node:path');
 const root = path.resolve(__dirname, '..');
 const read = rel => fs.readFileSync(path.join(root, rel), 'utf8');
 const json = rel => JSON.parse(read(rel));
+const { assertCurrentReleaseIdentity } = require('./_current-release-identity.cjs');
 
 test('16.0.209 Request Off Warnings helper targets the current tab semantics before stale button fallback', () => {
   const spec = read('tests/e2e/schedule-request-off-management.spec.cjs');
@@ -22,19 +23,6 @@ test('16.0.209 bulk Request Off eligibility accepts visible legacy rows without 
   assert.match(coverage, /req-other-workspace/);
 });
 
-test('16.0.209 historical maturity assertions coexist with current 17.0.33 version metadata', () => {
-  const pkg = json('package.json');
-  const lock = json('package-lock.json');
-  const version = json('public/version.json');
-  const appCore = read('src/core/appCore.js');
-  const apiVersion = read('api/_version.js');
-  assert.equal(pkg.version, '17.0.33');
-  assert.equal(lock.version, '17.0.33');
-  assert.equal(lock.packages[''].version, '17.0.33');
-  assert.equal(pkg.scripts['test:source'], 'node scripts/validate-17-0-33.js');
-  assert.equal(version.version, '17.0.33');
-  assert.equal(version.build, '17.0.33');
-  assert.equal(version.releaseTitle, 'Customer Help Release Identity Parity Repair');
-  assert.match(appCore, /CURRENT_VERSION = '17.0.33'/);
-  assert.match(apiVersion, /APP_VERSION = '17.0.33'/);
+test('16.0.209 historical maturity assertions coexist with advancing current release identity', () => {
+  assert.equal(assertCurrentReleaseIdentity(root), require('../package.json').version);
 });
