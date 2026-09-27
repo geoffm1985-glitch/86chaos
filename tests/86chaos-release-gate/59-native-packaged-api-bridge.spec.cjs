@@ -10,7 +10,7 @@ test.describe('59 Native packaged API bridge',()=>{
     expect(['native-android','native-ios-webkit']).toContain(testInfo.project.name);
     const versionResponse=await request.get('/version.json');
     expect(versionResponse.ok()).toBeTruthy();
-    expect((await versionResponse.json()).version).toBe('18.0.2');
+    expect((await versionResponse.json()).version).toBe('18.0.3');
     const response=await page.goto('/',{waitUntil:'domcontentloaded',timeout:30000});
     expect(response && response.ok()).toBeTruthy();
     await expect(page.locator('body')).toBeVisible();
