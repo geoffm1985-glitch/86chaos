@@ -37,10 +37,18 @@ test('native Android and iPhone runtime paths are explicitly marked for safe-are
   assert.match(css,/env\(safe-area-inset-bottom, 0px\)/);
 });
 
-test('18.0.4 native identities remain aligned',()=>{
+test('current 18.0.x native identities remain aligned',()=>{
   const pkg=json('package.json');
+  const contract=json('mobile/native-platform-contract.json');
   const android=read('android/app/build.gradle');
-  assert.equal(pkg.version,'18.0.4');
-  assert.match(android,/versionCode 180004/);
-  assert.match(android,/versionName "18\.0\.4"/);
+  const ios=read('ios/App/App.xcodeproj/project.pbxproj');
+  const escaped=String(pkg.version).split('.').join('\\.');
+  assert.match(pkg.version,/^18\.0\.\d+$/);
+  assert.equal(contract.release,pkg.version);
+  assert.equal(contract.capacitor.android.versionName,pkg.version);
+  assert.equal(contract.capacitor.ios.marketingVersion,pkg.version);
+  assert.match(android,new RegExp('versionCode '+contract.capacitor.android.versionCode+'\\b'));
+  assert.match(android,new RegExp('versionName "'+escaped+'"'));
+  assert.match(ios,new RegExp('CURRENT_PROJECT_VERSION = '+contract.capacitor.ios.currentProjectVersion+';'));
+  assert.match(ios,new RegExp('MARKETING_VERSION = '+escaped+';'));
 });
