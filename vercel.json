@@ -111,7 +111,8 @@
       "*": false,
       "main": true,
       "testing": true,
-      "experimental": true
+      "experimental": true,
+      "mobile": true
     }
   },
   "$schema": "https://openapi.vercel.sh/vercel.json"
