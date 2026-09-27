@@ -55,6 +55,7 @@ test('mobile branch remains locked to testing Firebase and introduces no paid se
 });
 
 test('backgrounded native Android and iOS sessions shed idle Firestore listeners quickly while preserving cache',()=>{
+  const pkg=json('package.json');
   const core=read('src/core/appCore.js');
   const contract=json('mobile/native-platform-contract.json');
   assert.equal(contract.costControls.nativeBackgroundReleaseGraceMs,15000);

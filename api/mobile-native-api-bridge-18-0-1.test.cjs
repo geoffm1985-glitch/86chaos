@@ -7,7 +7,7 @@ const root=path.resolve(__dirname,'..');
 const read=file=>fs.readFileSync(path.join(root,file),'utf8');
 const json=file=>JSON.parse(read(file));
 
-test('18.0.1 native API bridge intercepts only local /api traffic and targets testing backend',()=>{
+test('18.0.2 native API bridge intercepts only local /api traffic and targets testing backend',()=>{
   const core=read('src/core/appCore.js');
   const cap=json('capacitor.config.json');
   const contract=json('mobile/native-platform-contract.json');
@@ -23,14 +23,14 @@ test('18.0.1 native API bridge intercepts only local /api traffic and targets te
   assert.equal(contract.nativeApiBridge.firebaseTransport,'browser Firebase SDK unchanged');
 });
 
-test('18.0.1 native release identities align on Android and iOS',()=>{
+test('18.0.2 native release identities align on Android and iOS',()=>{
   const pkg=json('package.json');
   const android=read('android/app/build.gradle');
   const ios=read('ios/App/App.xcodeproj/project.pbxproj');
-  assert.equal(pkg.version,'18.0.1');
-  assert.match(android,/versionCode 180001/);
+  assert.equal(pkg.version,'18.0.2');
+  assert.match(android,/versionCode 180002/);
   assert.match(android,/versionName "18\.0\.1"/);
-  assert.match(ios,/CURRENT_PROJECT_VERSION = 180001;/);
+  assert.match(ios,/CURRENT_PROJECT_VERSION = 180002;/);
   assert.match(ios,/MARKETING_VERSION = 18\.0\.1;/);
 });
 
@@ -39,6 +39,6 @@ test('Android preview publishing stays isolated to explicit mobile preview commi
   assert.match(workflow,/\[android-preview\]/);
   assert.match(workflow,/assembleDebug/);
   assert.match(workflow,/86chaos-mobile-preview-debug-keystore-v1/);
-  assert.match(workflow,/mobile-v18\.0\.1-preview/);
+  assert.match(workflow,/mobile-v18\.0\.2-preview/);
   assert.match(workflow,/--prerelease/);
 });
