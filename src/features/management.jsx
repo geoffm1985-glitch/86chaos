@@ -9,7 +9,7 @@ import { getAuth, signInWithEmailAndPassword, sendPasswordResetEmail, createUser
 import { getToken, onMessage } from 'firebase/messaging';
 import { ref, uploadBytes, getBlob, getDownloadURL, deleteObject } from 'firebase/storage';
 import { MapContainer, TileLayer, Marker, Circle, useMap } from 'react-leaflet';
-import { T, db, storage, auth, messaging, firebaseConfig, secureFetch, MASTER_ADMIN_EMAIL, EVENT_TAGS, CURRENT_VERSION, useLiveCollection, formatDate, getToday, getMonthStr, formatDisplayDate, formatDisplayFullDate, formatDisplayMonth, getDaysInMonth, formatShortTime, formatClockTime, formatClockDateTime, getAvatar, generateTempPass, getExpDate, getHoliday, logAudit, customMapIcon, getRestaurantExportPrefix, safeFilenamePart, downloadCsvRows, downloadTextFile, openPrintableReport, buildPermissionPreview, buildImportBridgeTemplates, buildV14ClientGuardrailReport, recordScheduleOperationDiagnostic } from '../core/appCore';
+import { T, db, storage, auth, messaging, firebaseConfig, secureFetch, MASTER_ADMIN_EMAIL, EVENT_TAGS, CURRENT_VERSION, useLiveCollection, getFirebaseUsageDiagnostics, formatDate, getToday, getMonthStr, formatDisplayDate, formatDisplayFullDate, formatDisplayMonth, getDaysInMonth, formatShortTime, formatClockTime, formatClockDateTime, getAvatar, generateTempPass, getExpDate, getHoliday, logAudit, customMapIcon, getRestaurantExportPrefix, safeFilenamePart, downloadCsvRows, downloadTextFile, openPrintableReport, buildPermissionPreview, buildImportBridgeTemplates, buildV14ClientGuardrailReport, recordScheduleOperationDiagnostic } from '../core/appCore';
 import { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, MapClickListener, SmartEmptyState, MiniProblemCard, getHomeProfile, calculatePunchHours, getWeekStart, getWeekDates, roleMatches, toLocalTimeInput, makeLocalIso, PunchTable, StatusTile, FriendlyEmpty, GlobalSearchModal, QuickActionDock, KitchenTVMode, ChangeLogModal, UndoBar } from '../components/common';
 import { SYSTEM_TRAINING_MANUAL_CHAPTERS } from './trainingManual';
 import { usePlanAccess } from '../hooks/usePlanAccess';
@@ -20,6 +20,10 @@ import { HELP_SUBJECTS, HELP_SUBTOPICS, HELP_DEEP_LINKS, CUSTOMER_HELP_ARTICLES,
 import * as adminSafetyModule from '../core/systemAdminDataSafety.cjs';
 import { roleNameKey } from '../core/rosterRoleIdentity';
 import { useI18n, normalizeAppLanguage, LANGUAGE_STORAGE_KEY } from '../core/i18n';
+<<<<<<< HEAD
+=======
+import firebaseCostDiagnosticsHelpers from '../core/firebaseCostDiagnostics.cjs';
+>>>>>>> 1fb9648590016d97432aa4c21a1d5758ab3b8992
 
 
 const resolveAdminSafetyModule = (moduleValue) => {
@@ -75,6 +79,7 @@ const normalizeCrashReport = typeof adminSafety.normalizeCrashReport === 'functi
 const normalizeRestaurantRecord = typeof adminSafety.normalizeRestaurantRecord === 'function' ? adminSafety.normalizeRestaurantRecord : fallbackNormalizeRecord('restaurants');
 const normalizeTierPriceMap = typeof adminSafety.normalizeTierPriceMap === 'function' ? adminSafety.normalizeTierPriceMap : ((value = {}, fallback = { shift: 49, operations: 99, smart_kitchen: 179, owner_pro: 299 }) => Object.fromEntries(Object.entries(fallback).map(([key, defaultValue]) => [key, adminFiniteNumber(value?.[key], defaultValue)])));
 const safeDiagnostic = typeof adminSafety.safeDiagnostic === 'function' ? adminSafety.safeDiagnostic : ((collection, id, field, reason) => ({ collection: adminSafeText(collection, 'unknown').slice(0, 80), id: adminSafeText(id, 'unknown').slice(0, 160), field: adminSafeText(field, '*').slice(0, 120), reason: adminSafeText(reason, 'Malformed live data skipped.').slice(0, 240) }));
+const { buildFirebaseCostDiagnostics } = firebaseCostDiagnosticsHelpers;
 
 
 const PROTECTED_ROOT_ADMIN_EMAIL = 'geoffm1985@gmail.com';
@@ -993,7 +998,11 @@ const prepareRestaurantLogoUpload = async (file) => {
   }
 };
 
+<<<<<<< HEAD
 const TabSettings = ({ appUser, addToast, users = [], clientData = {} }) => {
+=======
+const TabSettings = ({ appUser, addToast, users = [], clientData = {}, presenceSelf = null }) => {
+>>>>>>> 1fb9648590016d97432aa4c21a1d5758ab3b8992
   const { t } = useI18n();
   const [subTab, setSubTab] = useState('profile');
   const [newOwnerId, setNewOwnerId] = useState('');
@@ -4098,6 +4107,7 @@ firebase deploy --only functions --project YOUR_PRODUCTION_PROJECT_ID
   const [userCounts, setUserCounts] = useState({});
   const [totalInstalls, setTotalInstalls] = useState(0);
   const [securityReport, setSecurityReport] = useState(null);
+  const firebaseCostReport = useMemo(() => buildFirebaseCostDiagnostics(getFirebaseUsageDiagnostics?.() || {}, { rtdbKnown:false }), [securityReport, subTab]);
   const [isSecurityLoading, setIsSecurityLoading] = useState(false);
   const [securityError, setSecurityError] = useState(''); 
   const [restoreDrillStatus, setRestoreDrillStatus] = useState(null);
@@ -4270,6 +4280,16 @@ const [editingRest, setEditingRest] = useState(null);
     } finally {
       setIsSecurityLoading(false);
     }
+  };
+
+  const downloadSecurityDiagnostics = () => {
+    if (!securityReport) return addToast('Security Diagnostics', 'Refresh Security Center before exporting evidence.');
+    const blob=new Blob([JSON.stringify(securityReport,null,2)],{type:'application/json'});
+    const url=URL.createObjectURL(blob);
+    const anchor=document.createElement('a');
+    anchor.href=url;anchor.download=`86chaos-security-diagnostics-${CURRENT_VERSION}.json`;anchor.click();
+    setTimeout(()=>URL.revokeObjectURL(url),5000);
+    addToast('Sanitized Export Ready','The download contains redacted diagnostic evidence and no secret values.');
   };
 
 
@@ -8909,7 +8929,7 @@ Type RESTORE to continue.`);
                 <h2 className="text-3xl font-black text-white mt-1 flex items-center gap-2"><Shield size={28} className="text-blue-300"/> Security Center</h2>
                 <p className="text-xs text-slate-400 font-bold mt-1">One-button security snapshot for rules, App Check, MFA risk, env vars, cron, rate limits, and suspicious activity.</p>
               </div>
-              <button onClick={() => loadSecurityCenter()} disabled={isSecurityLoading} className={`${T.btn} flex items-center gap-2 justify-center`}>{isSecurityLoading ? <Loader2 className="animate-spin" size={16}/> : <Shield size={16}/>} Refresh Security Center</button>
+              <div className="flex flex-col sm:flex-row gap-2"><button onClick={() => loadSecurityCenter()} disabled={isSecurityLoading} className={`${T.btn} flex items-center gap-2 justify-center`}>{isSecurityLoading ? <Loader2 className="animate-spin" size={16}/> : <Shield size={16}/>} Refresh Security Center</button><button type="button" onClick={downloadSecurityDiagnostics} disabled={!securityReport} className={T.btnAlt}>Download sanitized diagnostics</button></div>
             </div>
           </div>
 
@@ -8923,6 +8943,22 @@ Type RESTORE to continue.`);
             <StatusTile label="Restore Drill" value={restoreDrillStatus?.lastDrillAt ? formatBackupTimestamp(restoreDrillStatus.lastDrillAt) : 'Not recorded'} />
             <StatusTile label="Deletion Requests" value={activeAccountDeletionRequests.length} />
             <StatusTile label="Version" value={securityReport?.app?.version || CURRENT_VERSION || 'Unknown'} />
+          </div>
+
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+            <div data-testid="security-maturity-diagnostics" className={`${T.card} overflow-hidden`}>
+              <div className={T.th}>Actionable Security Maturity</div>
+              {(securityReport?.maturity?.checks || []).length === 0 ? <SmartEmptyState title="Not checked yet" desc="Refresh Security Center to verify MFA, App Check, rules, environment, credentials, OAuth state, and deployment identity." /> : securityReport.maturity.checks.map(check => <div key={check.id} className={`${T.row}`}><div className="flex items-center justify-between gap-3"><div className="font-black text-white text-sm">{check.id.replace(/-/g,' ')}</div><SignalPip tone={['healthy','verified','configured','clean'].includes(check.status) ? 'emerald' : check.status === 'unknown' ? 'amber' : 'red'} label={check.status} /></div><div className="text-[10px] text-slate-400 font-bold mt-1">{check.action}</div></div>)}
+              {securityReport?.maturity?.secrets && <div className={`${T.row} text-xs font-bold text-emerald-200`}>Secret values exposed: No • Server-only: Yes • Redaction applied: Yes</div>}
+              <div data-testid="backup-recovery-maturity" className={`${T.row} text-xs font-bold text-slate-300`}><div className="font-black text-white">Backup / Recovery: {securityReport?.maturity?.backupRecovery?.state || 'unknown'}</div><div className="mt-1">Last successful: {securityReport?.maturity?.backupRecovery?.lastSuccessfulBackupAt || 'unknown'} • Age: {securityReport?.maturity?.backupRecovery?.backupAgeHours ?? 'unknown'} hours • Verification: {securityReport?.maturity?.backupRecovery?.verification || 'unknown'} • Restore readiness: {securityReport?.maturity?.backupRecovery?.restoreReadiness || 'not-proven'}</div>{securityReport?.maturity?.backupRecovery?.failureExplanation && <div className="text-red-200 mt-1">Last failure: {securityReport.maturity.backupRecovery.failureExplanation}</div>}<div className="text-slate-500 mt-1">Destructive restore is never automatic.</div></div>
+              <div data-testid="deployment-environment-identity" className={`${T.row} text-[10px] font-bold text-slate-400`}>Environment: {securityReport?.deploymentIdentity?.environment || 'unknown'} • Firebase: {securityReport?.deploymentIdentity?.firebaseProject || 'unknown'} • Version: {securityReport?.deploymentIdentity?.version || CURRENT_VERSION} • Commit: {securityReport?.deploymentIdentity?.commit ? String(securityReport.deploymentIdentity.commit).slice(0,12) : 'unknown'} • Deployment: {securityReport?.deploymentIdentity?.deploymentId || 'unknown'}</div>
+            </div>
+            <div data-testid="firebase-cost-observability" className={`${T.card} overflow-hidden`}>
+              <div className={T.th}>Firebase / RTDB Cost Observability</div>
+              <div className={`${T.row} grid grid-cols-2 gap-2 text-xs`}><div><div className="text-slate-500 uppercase tracking-widest text-[8px] font-black">Active listeners</div><div className="font-black text-white text-lg">{firebaseCostReport.firestore.activeListeners}</div></div><div><div className="text-slate-500 uppercase tracking-widest text-[8px] font-black">Documents observed</div><div className="font-black text-white text-lg">{firebaseCostReport.firestore.documentsObserved}</div></div><div><div className="text-slate-500 uppercase tracking-widest text-[8px] font-black">Writes</div><div className="font-black text-white">{firebaseCostReport.firestore.writesCompleted}/{firebaseCostReport.firestore.writesInitiated}</div></div><div><div className="text-slate-500 uppercase tracking-widest text-[8px] font-black">No-op writes avoided</div><div className="font-black text-emerald-300">{firebaseCostReport.firestore.skippedNoOpWrites}</div></div></div>
+              <div className={`${T.row} text-xs font-bold text-slate-300`}>Duplicate listeners: {firebaseCostReport.findings.duplicateListeners.length} • Abandoned: {firebaseCostReport.findings.abandonedListeners.length} • High-read queries: {firebaseCostReport.findings.highReadQueries.length} • Repeated fallbacks: {firebaseCostReport.findings.repeatedFallbackReads.length}</div>
+              <div className={`${T.row} text-[10px] font-bold text-slate-500`}>This is aggregate browser-session evidence only. It never logs complete customer records. RTDB counters remain Unknown until a bounded presence snapshot is measured.</div>
+            </div>
           </div>
 
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">

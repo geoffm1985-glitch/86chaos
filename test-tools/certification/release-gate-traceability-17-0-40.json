@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "release": "17.0.40",
+  "principle": "Every reasonably automatable production behavior is inventoried and must map to an automated Release Gate / Play Store layer. Anything not automatable is explicitly listed as manual-only evidence.",
+  "coverageLayers": [
+    {"area":"production source files/functions/event handlers/JSX controls/API handlers","tests":["tests/86chaos-release-gate/29-source-exhaustiveness-ledger.spec.cjs"]},
+    {"area":"all top-level routes and declared nested states plus safe interactive controls","tests":["tests/86chaos-release-gate/28-exhaustive-route-state-control-graph.spec.cjs"]},
+    {"area":"all mutating workflows and destructive controls","tests":["tests/86chaos-release-gate/15-interactive-control-census.spec.cjs","tests/86chaos-release-gate/mutation-workflow-manifest.cjs"]},
+    {"area":"roles, permission boundaries, owner/manager/staff/system-admin route access","tests":["tests/86chaos-release-gate/23-required-role-end-to-end.spec.cjs","tests/86chaos-release-gate/30-exhaustive-role-route-permission-matrix.spec.cjs"]},
+    {"area":"responsive/mobile/tablet/desktop nested layouts","tests":["tests/86chaos-release-gate/31-exhaustive-responsive-nested-layout.spec.cjs"]},
+    {"area":"accessibility and nested-state accessibility","tests":["tests/86chaos-release-gate/16-accessibility-release-gate.spec.cjs","tests/86chaos-release-gate/32-exhaustive-nested-accessibility.spec.cjs"]},
+    {"area":"business arithmetic and calculation expressions","tests":["tests/86chaos-release-gate/33-business-math-exhaustiveness.spec.cjs"]},
+    {"area":"API contracts, authorization, input fuzz/security headers","tests":["tests/86chaos-release-gate/18-api-contract-release-gate.spec.cjs","tests/86chaos-release-gate/22-security-headers-input-fuzz.spec.cjs"]},
+    {"area":"runtime JS execution coverage and route-loaded code","tests":["tests/86chaos-release-gate/21-runtime-code-coverage.spec.cjs"]},
+    {"area":"crash, recovery, chunk failure, offline/error pipeline","tests":["tests/86chaos-release-gate/17-resilience-chunk-offline.spec.cjs","tests/86chaos-release-gate/19-crash-notification-contract.spec.cjs","tests/86chaos-release-gate/24-live-client-crash-pipeline.spec.cjs"]},
+    {"area":"Firestore/storage rules and mutation safety","tests":["scripts/run-rules-tests.js","tests/86chaos-release-gate/39-testing-alias-mutation-safety.spec.cjs"]},
+    {"area":"PWA/installability/icons/browser matrix","tests":["tests/86chaos-release-gate/25-pwa-android-installability.spec.cjs","tests/86chaos-release-gate/26-pwa-icon-source-deployed-parity.spec.cjs","tests/86chaos-release-gate/27-pwa-browser-icon-matrix.spec.cjs"]},
+    {"area":"test-universe cannot silently shrink/drop specs/routes/workflows","tests":["tests/86chaos-release-gate/34-ultimate-test-universe-integrity.spec.cjs","tests/86chaos-release-gate/55-full-surface-traceability.spec.cjs"]},
+    {"area":"Ghost Mode Request Off creation/cancellation/listener recovery/admin restoration","tests":["tests/86chaos-full-audit/06-request-off-events-integration.spec.cjs","api/emergency-schedule-requestoff-17-0-40.test.cjs"]},
+    {"area":"coverage warning chronology and staggered-shift coverage engine","tests":["api/emergency-schedule-requestoff-17-0-40.test.cjs"]},
+    {"area":"partial Request Off backwards-time validation in browser, server API, and rules","tests":["api/emergency-schedule-requestoff-17-0-40.test.cjs","tests/86chaos-release-gate/54-emergency-schedule-requestoff.spec.cjs","scripts/run-rules-tests.js"]},
+    {"area":"Schedule Builder sticky day/date header and horizontal column alignment","tests":["api/emergency-schedule-requestoff-17-0-40.test.cjs","tests/86chaos-release-gate/54-emergency-schedule-requestoff.spec.cjs"]}
+  ],
+  "manualOnly": [
+    {"behavior":"Google Play production-store install/update/signing propagation on a physical Android device","reason":"Requires the external Play distribution channel and a physical/managed device; browser automation can verify PWA/installability artifacts but not Play rollout propagation."},
+    {"behavior":"OS-level push notification delivery/display while the physical device is killed, dozing, or vendor battery-optimized","reason":"Requires a real mobile OS/device and external FCM delivery; automated tests verify payload, registration, dispatch, service-worker, and notification contracts."},
+    {"behavior":"Physical POS/KDS/printer/cash-drawer/tablet hardware behavior against customer hardware","reason":"Requires hardware and external vendor systems; automated tests cover adapters, schemas, security boundaries, idempotency, and simulated provider behavior."}
+  ]
+}

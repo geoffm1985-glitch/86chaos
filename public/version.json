@@ -1,4 +1,5 @@
 {
+<<<<<<< HEAD
   "version": "17.1.15",
   "name": "86 Chaos 17.1.15",
   "build": "17.1.15",
@@ -19,5 +20,24 @@
     "86Voice remains available from the shared More/drawer path.",
     "Approved desktop/mobile visual redesign remains intact.",
     "No business workflow or route removal."
+=======
+  "version": "17.0.45",
+  "name": "86 Chaos 17.0.42",
+  "build": "17.0.45",
+  "label": "86 Chaos 17.0.42",
+  "releasedAt": "2026-09-27T06:45:00Z",
+  "releaseTitle": "Emergency Schedule Header Touch-Scroll Stability Repair",
+  "notes": [
+    "Emergency follow-up to 17.0.41 based on real-device touch-scroll evidence.",
+    "Build-only deployment; automated Release Gate / Play Store / targeted / delta execution remains suppressed until instructed."
+  ],
+  "title": "86 Chaos 17.0.42",
+  "summary": "Keeps the Schedule Builder day/date header pinned when a vertical touch gesture begins directly on the header.",
+  "description": "Adds touch-axis handoff for the horizontally scrollable Schedule Builder day/date header so vertical finger drags scroll the owning schedule content instead of allowing the sticky header to slide behind the control deck on mobile.",
+  "highlights": [
+    "Vertical touch drags that begin on the day/date header are handed to the Schedule Builder vertical scroll host while horizontal swipes remain native.",
+    "The header no longer temporarily slides behind the sticky assignment/control card during an active finger drag.",
+    "Release Gate coverage was added for the real-device touch interaction, but is not automatically executed by this build-only push."
+>>>>>>> 1fb9648590016d97432aa4c21a1d5758ab3b8992
   ]
 }

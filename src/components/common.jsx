@@ -18,6 +18,10 @@ import { PLATFORM_ADMIN_ACCESS_STATES, resolvePlatformAdminAccessState } from '.
 import { requestPersonalReminderRefresh, usePersonalReminderRows } from '../core/personalReminderQueries';
 import { FEATURE_KEYS } from '../config/plans';
 import { useI18n } from '../core/i18n';
+<<<<<<< HEAD
+=======
+import { validatePartialRequestOffTimeRange } from '../core/requestOffValidation';
+>>>>>>> 1fb9648590016d97432aa4c21a1d5758ab3b8992
 
 
 const buildReminderQueueFields = (scheduledAt, status = 'scheduled') => ({
@@ -113,7 +117,11 @@ const reminderNeedsAttention = (reminder = {}, appUser = {}) => {
   return Number.isFinite(dueAt) && dueAt <= Date.now();
 };
 
+<<<<<<< HEAD
 const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppUser, hasUnreadMessages, hasMyShiftAlert, hasScheduleBuilderAlert, hasHelpUpdate = false, clientFeatures = {}, clientData = {}, addToast, availableWorkspaces = [], activeWorkspaceName = '', onOpenWorkspaceSwitcher, platformAdminAccessState = null, onVoice }) => {
+=======
+const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppUser, hasUnreadMessages, hasMyShiftAlert, hasScheduleBuilderAlert, hasHelpUpdate = false, clientFeatures = {}, clientData = {}, addToast, availableWorkspaces = [], activeWorkspaceName = '', onOpenWorkspaceSwitcher, platformAdminAccessState = null }) => {
+>>>>>>> 1fb9648590016d97432aa4c21a1d5758ab3b8992
   const { t } = useI18n();
   const [menuSearch, setMenuSearch] = useState('');
 
@@ -148,8 +156,13 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
   const pushTab = (tab) => { if (planAllowsTab(tab.id)) tabs.push(tab); };
 
   const managerBriefAccess = resolveFeatureAccess({ workspace: clientData || {}, user: appUser || {}, featureKey: FEATURE_KEYS.MANAGER_BRIEF });
+<<<<<<< HEAD
   if (isEnabled('schedule')) pushTab({ id: 'published', label: t('drawer.timeClockSchedule'), icon: <Clock size={18}/>, dot: hasMyShiftAlert });
   pushTab({ id: 'today', label: managerBriefAccess.allowed ? t('drawer.managerBrief') : t('drawer.todayHome'), icon: <Star size={18}/>, dot: hasUnreadMessages || hasScheduleBuilderAlert });
+=======
+  pushTab({ id: 'today', label: managerBriefAccess.allowed ? t('drawer.managerBrief') : t('drawer.todayHome'), icon: <Star size={18}/>, dot: hasUnreadMessages || hasMyShiftAlert || hasScheduleBuilderAlert });
+  if (isEnabled('schedule')) pushTab({ id: 'published', label: t('drawer.timeClockSchedule'), icon: <Clock size={18}/>, dot: hasMyShiftAlert }); 
+>>>>>>> 1fb9648590016d97432aa4c21a1d5758ab3b8992
   if (planAllowsTab('financials')) pushTab({ id: 'financials', label: t('drawer.financials'), icon: <Scale size={18}/> });
   if (planAllowsTab('back-office')) pushTab({ id: 'back-office', label: t('drawer.backOffice'), icon: <ClipboardList size={18}/> });
   if (planAllowsTab('ops')) pushTab({ id: 'ops', label: t('drawer.kitchenCommandCenter'), icon: <ChefHat size={18}/> }); 
@@ -271,7 +284,10 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
                ))}</div>}
             </div>
             <div className={`p-3 border-t ${T.border} bg-[#12161A] space-y-2`}>
+<<<<<<< HEAD
              {typeof onVoice === 'function' && <button type="button" data-testid="drawer-86voice-button" onClick={() => { onClose?.(); window.setTimeout(() => onVoice(), 40); }} className="w-full flex items-center justify-center gap-2 py-2.5 text-[#D4A381] text-sm font-bold rounded-xl hover:bg-[#D4A381]/10 transition-colors border border-[#D4A381]/25"><Mic size={16} /> 86Voice</button>}
+=======
+>>>>>>> 1fb9648590016d97432aa4c21a1d5758ab3b8992
              <button onClick={() => { setActiveTab('help'); onClose(); window.setTimeout(() => window.dispatchEvent(new CustomEvent('chaosOpenProblemReport')), 150); }} className="w-full flex items-center justify-center gap-2 py-2.5 text-orange-400 text-sm font-bold rounded-xl hover:bg-orange-900/20 transition-colors border border-orange-900/30"><Bug size={16} /> {t('drawer.reportProblem')}</button>
              <button onClick={() => { setAppUser(null); localStorage.removeItem('86chaosUser'); onClose(); }} className="w-full flex items-center justify-center gap-2 py-2.5 text-red-400 text-sm font-bold rounded-xl hover:bg-red-900/20 transition-colors"><LogOut size={16} /> {t('drawer.logOut')}</button>
             </div>
@@ -2333,33 +2349,19 @@ const VoiceCommandDockBase = React.forwardRef(({ appUser, inventoryItems = [], r
         const policyResult = Array.isArray(policyPayload?.results) ? policyPayload.results[0] : null;
         if (!policyResponse.ok || policyPayload?.ok === false) { addToast('Request Off Unavailable', policyPayload?.error || 'Request Off policy could not be verified.'); return; }
         if (policyResult?.allowed === false) { addToast(policyResult.code === 'blackout' ? 'Blackout Date' : 'Request Off Closed', policyResult.reason || 'Normal Request Off submissions are closed for this date.'); return; }
+<<<<<<< HEAD
         const nowIso = new Date().toISOString();
+=======
+        const partialValidation = validatePartialRequestOffTimeRange({ isPartial: !!actionToRun.isPartial, startTime: actionToRun.startTime || '', endTime: actionToRun.endTime || '' });
+        if (!partialValidation.valid) { addToast('Invalid Partial Time', partialValidation.message); return; }
+>>>>>>> 1fb9648590016d97432aa4c21a1d5758ab3b8992
         const existing = (await getDocs(query(collection(db, 'timeOffRequests'), where('restaurantId', '==', appUser.restaurantId), where('userId', '==', appUser.id || ''), where('date', '==', actionToRun.date)))).docs
           .map(d => ({ id:d.id, ...d.data() }))
           .find(r => !['cancelled','canceled','archived','processed'].includes(String(r.status || '').toLowerCase()));
         if (existing) { addToast('Already Requested', 'You already have an active request for that date.'); setActiveTab('published'); if (setScheduleSubTabTarget) setScheduleSubTabTarget({ subTab:'time-off', id:Date.now() }); if (closeWhenDone) setOpen(false); return; }
-        const requestRef = await addDoc(collection(db, 'timeOffRequests'), {
-          restaurantId:appUser.restaurantId,
-          workspaceId:appUser.restaurantId,
-          userId:appUser.id || '',
-          employeeId:appUser.id || '',
-          userName:appUser.name || appUser.email || 'Employee',
-          employeeName:appUser.name || appUser.email || 'Employee',
-          date:actionToRun.date,
-          isPartial:!!actionToRun.isPartial,
-          startTime:actionToRun.startTime || '',
-          endTime:actionToRun.endTime || '',
-          status:'pending',
-          archived:false,
-          processed:false,
-          submittedAt:nowIso,
-          createdAt:nowIso,
-          updatedAt:nowIso,
-          createdBy:appUser.id || '',
-          source:'86_voice_request_off',
-          voiceCommand:sourceText
-        });
-        rememberVoiceUndo(`request off: ${actionToRun.date}`, [{ kind:'delete', collectionName:'timeOffRequests', id:requestRef.id }]);
+        const createResponse = await secureFetch('/api/time-off-request', { method:'POST', headers:{ 'Content-Type':'application/json' }, body:JSON.stringify({ action:'create', restaurantId:appUser.restaurantId, dates:[actionToRun.date], isPartial:!!actionToRun.isPartial, startTime:actionToRun.startTime || '', endTime:actionToRun.endTime || '', source:'86_voice_request_off' }) });
+        const createPayload = await createResponse.json().catch(() => ({}));
+        if (!createResponse.ok || createPayload?.ok === false) { addToast('Request Off Unavailable', createPayload?.error || 'The Request Off request could not be saved.'); return; }
         await logAudit(appUser, 'VOICE_REQUEST_OFF', appUser.name || appUser.email || 'Employee', actionToRun.date);
         addToast('Request Off Submitted', `Request submitted for ${formatDisplayDate(actionToRun.date)}.`);
         if (setCurrentDate) setCurrentDate(actionToRun.date);

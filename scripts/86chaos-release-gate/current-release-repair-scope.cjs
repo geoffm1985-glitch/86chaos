@@ -1,5 +1,6 @@
 'use strict';
 
+<<<<<<< HEAD
 const CURRENT_RELEASE_VERSION = '17.1.15';
 const CURRENT_RELEASE_CARRY_FORWARD_NOTE = '17.1.15 preserves the complete approved-reference redesign, the Vercel-safe image repair, every existing workflow, and prior mobile 86Voice protections while repairing only the authenticated App-shell React hook-order regression and restoring the real shared drawer Voice entry.';
 const CURRENT_RELEASE_REPAIR_SCOPE = [
@@ -129,6 +130,12 @@ const CURRENT_RELEASE_REPAIR_SCOPE = [
     exactTestTitle: 'System Administrator and Staff Roster do not expose online or last-seen status',
   },
   {
+=======
+const CURRENT_RELEASE_VERSION = require('../../package.json').version;
+const CURRENT_RELEASE_CARRY_FORWARD_NOTE = `${CURRENT_RELEASE_VERSION} preserves the complete protected feature line while advancing the current release-gate scope.`;
+const CURRENT_RELEASE_REPAIR_SCOPE = [
+  {
+>>>>>>> 1fb9648590016d97432aa4c21a1d5758ab3b8992
     specPath: '86chaos-new-implementations/08-phase1-spanish-interface.spec.cjs',
     fullSuitePath: '17.0.26 Phase 1 Spanish interface',
     exactTestTitle: 'a user can switch their own interface to Spanish and core Phase 1 navigation follows it',

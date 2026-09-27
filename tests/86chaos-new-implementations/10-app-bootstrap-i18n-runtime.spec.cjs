@@ -1,7 +1,10 @@
 'use strict';
 const { test, expect } = require('@playwright/test');
 const { ownerLikeCreds, requireCreds, login } = require('../86chaos-full-audit/utils/audit-helpers.cjs');
+<<<<<<< HEAD
 const { version: expectedVersion } = require('../../package.json');
+=======
+>>>>>>> 1fb9648590016d97432aa4c21a1d5758ab3b8992
 
 test.describe('17.0.28 browser-safe i18n bootstrap repair', () => {
   test('application boots through the i18n provider without a translation runtime crash', async ({ page }) => {
@@ -16,8 +19,12 @@ test.describe('17.0.28 browser-safe i18n bootstrap repair', () => {
     await login(page, account.email, account.password, { chooseWorkspace: true });
 
     await expect(page.locator('html')).toHaveAttribute('lang', /^(en|es)$/i, { timeout: 20000 });
+<<<<<<< HEAD
     const escapedVersion = expectedVersion.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     await expect(page.getByText(new RegExp(`Version ${escapedVersion}`, 'i'))).toBeAttached({ timeout: 20000 });
+=======
+    await expect(page.getByText(/Version 17\.0\.31/i)).toBeAttached({ timeout: 20000 });
+>>>>>>> 1fb9648590016d97432aa4c21a1d5758ab3b8992
     expect(bootstrapErrors, `translation/bootstrap page errors: ${bootstrapErrors.join(' | ')}`).toEqual([]);
   });
 });

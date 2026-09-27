@@ -1,7 +1,7 @@
 'use strict';
 
 const crypto = require('crypto');
-const admin = require('firebase-admin');
+const admin = require('./_firebase-admin-compat');
 const { encryptTokenBundle, decryptTokenBundle } = require('./_shift4-crypto');
 
 const MAX_PAGE_SIZE = 500;

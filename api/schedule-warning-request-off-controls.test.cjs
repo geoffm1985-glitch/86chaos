@@ -63,7 +63,7 @@ test('coverage variance rows report under, exact, and over target math from one 
   const under = buildCoverageVarianceRows({
     coverageTargets: [target('Kitchen')],
     weekDates,
-    weekShifts: [{ date: '2026-08-02', role: 'Kitchen', startTime: '09:00' }],
+    weekShifts: [{ date: '2026-08-02', role: 'Kitchen', startTime: '09:00', endTime: '17:00' }],
     roleMatcher,
   });
   assert.equal(under.length, 1);
@@ -76,8 +76,8 @@ test('coverage variance rows report under, exact, and over target math from one 
     coverageTargets: [target('Kitchen')],
     weekDates,
     weekShifts: [
-      { date: '2026-08-02', role: 'Kitchen', startTime: '09:00' },
-      { date: '2026-08-02', role: 'Kitchen', startTime: '09:00' },
+      { date: '2026-08-02', role: 'Kitchen', startTime: '09:00', endTime: '17:00' },
+      { date: '2026-08-02', role: 'Kitchen', startTime: '09:00', endTime: '17:00' },
     ],
     roleMatcher,
   });
@@ -86,7 +86,7 @@ test('coverage variance rows report under, exact, and over target math from one 
   const over = buildCoverageVarianceRows({
     coverageTargets: [target('Bar')],
     weekDates,
-    weekShifts: Array.from({ length: 5 }, () => ({ date: '2026-08-02', role: 'Bar', startTime: '09:00' })),
+    weekShifts: Array.from({ length: 5 }, (_, index) => ({ id: `bar-${index}`, date: '2026-08-02', role: 'Bar', startTime: '09:00', endTime: '17:00' })),
     roleMatcher,
   });
   assert.equal(over.length, 1);
@@ -124,7 +124,7 @@ test('schedule conflict warnings tolerate resolver failures and keep valid warni
   assert.notEqual(warnings[0].message.includes('Someone'), true);
 });
 
-test('current QA seed deterministically produces an over-coverage bartender row', () => {
+test('current QA seed deduplicates duplicate bartender shifts for coverage', () => {
   const { buildFakeRestaurantProfile } = require('../tests/86chaos-full-audit/utils/fake-restaurant-profile.cjs');
   const profile = buildFakeRestaurantProfile({
     restaurantId: 'qa_release_gate_fixture',
@@ -140,11 +140,7 @@ test('current QA seed deterministically produces an over-coverage bartender row'
     weekShifts: profile.collections.shifts,
     roleMatcher: (left, right) => String(left || '').toLowerCase() === String(right || '').toLowerCase(),
   });
-  assert.equal(rows.length, 1);
-  assert.equal(rows[0].type, 'over');
-  assert.equal(rows[0].existing, 2);
-  assert.equal(rows[0].target, 1);
-  assert.equal(rows[0].over, 1);
+  assert.equal(rows.length, 0);
 });
 
 test('schedule warning model survives malformed legacy records without taking down the route', () => {

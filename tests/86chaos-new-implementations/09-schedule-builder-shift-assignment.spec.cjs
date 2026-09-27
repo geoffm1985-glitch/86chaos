@@ -4,7 +4,10 @@ const { ownerLikeCreds, requireCreds, login, gotoTab } = require('../86chaos-ful
 
 test.describe('17.0.27 Schedule Builder shift assignment emergency repair', () => {
   test('manager can assign one future shift through Schedule Builder and remove the QA shift afterward', async ({ page }) => {
+<<<<<<< HEAD
     test.setTimeout(180000);
+=======
+>>>>>>> 1fb9648590016d97432aa4c21a1d5758ab3b8992
     const account = ownerLikeCreds();
     requireCreds(account, 'owner/admin-like');
     await login(page, account.email, account.password, { chooseWorkspace: true });
@@ -21,6 +24,7 @@ test.describe('17.0.27 Schedule Builder shift assignment emergency repair', () =
     });
 
     const today = new Date().toISOString().slice(0, 10);
+<<<<<<< HEAD
     const candidate = await cells.evaluateAll((nodes, minDate) => {
       const cell = nodes.find(el => {
         const date = el.getAttribute('data-date') || '';
@@ -38,6 +42,23 @@ test.describe('17.0.27 Schedule Builder shift assignment emergency repair', () =
     await target.click({ timeout: 15000 });
     await expect(assignButton).toBeEnabled({ timeout: 5000 });
     await assignButton.scrollIntoViewIfNeeded();
+=======
+    let target = null;
+    const count = Math.min(await cells.count(), 400);
+    for (let i = 0; i < count; i += 1) {
+      const cell = cells.nth(i);
+      const date = await cell.getAttribute('data-date');
+      if (!date || date < today) continue;
+      if (await cell.locator('[data-chaos-workflow-id="schedule-delete-shift"]').count()) continue;
+      if (await cell.locator('[title="Requested Off"], .schedule-builder-partial-off-chip').count()) continue;
+      target = cell;
+      break;
+    }
+    expect(target, 'QA Schedule Builder should expose at least one empty editable future cell').not.toBeNull();
+
+    await target.click();
+    await expect(assignButton).toBeEnabled({ timeout: 5000 });
+>>>>>>> 1fb9648590016d97432aa4c21a1d5758ab3b8992
     await assignButton.click();
 
     const createdShift = target.locator('[data-chaos-workflow-id="schedule-delete-shift"]');

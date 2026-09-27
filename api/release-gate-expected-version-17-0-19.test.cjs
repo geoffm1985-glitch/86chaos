@@ -24,7 +24,11 @@ test('full Play Store runner pins expected version to package.json after loading
   const preflight = runner.indexOf('preflight-and-start.cjs');
   assert.ok(imports >= 0 && pin > imports, 'version pin happens after local env import');
   assert.ok(preflight > pin, 'version pin happens before release preflight');
+<<<<<<< HEAD
   assert.equal(packageVersion, '17.1.11');
+=======
+  assert.match(packageVersion, /^\d+\.\d+\.\d+$/);
+>>>>>>> 1fb9648590016d97432aa4c21a1d5758ab3b8992
 });
 
 test('certification preflight ignores persisted expected-version conflicts but non-certification checks remain strict', () => {
@@ -37,7 +41,11 @@ test('certification preflight ignores persisted expected-version conflicts but n
   const temp = fs.mkdtempSync(path.join(os.tmpdir(), '86chaos-version-conflict-'));
   try {
     fs.writeFileSync(path.join(temp, '.env.test.local'), 'CHAOS_EXPECTED_VERSION=17.0.8\n', 'utf8');
+<<<<<<< HEAD
     const env = { CHAOS_EXPECTED_VERSION: '17.1.11' };
+=======
+    const env = { CHAOS_EXPECTED_VERSION: JSON.parse(read('package.json')).version };
+>>>>>>> 1fb9648590016d97432aa4c21a1d5758ab3b8992
     const strict = inspectReleaseTargetEnvConflicts(temp, env);
     assert.equal(strict.ok, false, 'generic/non-certification conflict detection remains strict');
     assert.match(strict.errors.join('\n'), /Conflicting CHAOS_EXPECTED_VERSION values detected/);

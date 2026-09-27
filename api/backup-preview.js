@@ -83,7 +83,11 @@ module.exports = async function handler(req, res) {
           if (!d?.path || !d?.data) continue;
           if (shouldExcludeFromOrdinaryBackup(d.path)) { skippedDocuments += 1; continue; }
           if (d.path === 'system/backupStatus' || d.path.startsWith('system/backupStatus/')) { skippedDocuments += 1; continue; }
+<<<<<<< HEAD
           batch.set(db.doc(d.path), deserialize(d.data, require('firebase-admin'), db), { merge: false });
+=======
+          batch.set(db.doc(d.path), deserialize(d.data, require('./_firebase-admin-compat'), db), { merge: false });
+>>>>>>> 1fb9648590016d97432aa4c21a1d5758ab3b8992
           restoredDocuments += 1; batchCount += 1;
           if (batchCount >= 400) await commit();
         }

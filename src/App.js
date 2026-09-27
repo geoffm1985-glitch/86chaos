@@ -4,7 +4,11 @@ import { addDoc, collection, doc, onSnapshot, updateDoc } from 'firebase/firesto
 import { getToken, onMessage } from 'firebase/messaging';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import 'leaflet/dist/leaflet.css';
+<<<<<<< HEAD
 import { T, db, auth, messagingReady, isFirebaseMessagingUnsupportedError, firebaseConfig, CURRENT_VERSION, MASTER_ADMIN_EMAIL, useLiveCollection, useLiveCollectionState, useLiveDocumentState, secureFetch, getToday, getMonthStr, formatDate, formatDisplayFullDate, formatDisplayMonth, logAudit, setActiveTimeFormat, getOfflineQueue, replayOfflineQueue, clearTenantListenerCache, recordScheduleOperationDiagnostic } from './core/appCore';
+=======
+import { T, db, auth, messagingReady, isFirebaseMessagingUnsupportedError, firebaseConfig, CURRENT_VERSION, MASTER_ADMIN_EMAIL, useLiveCollection, useLiveCollectionState, useLiveDocumentState, secureFetch, waitForAuthCurrentUser, getToday, getMonthStr, formatDate, formatDisplayFullDate, formatDisplayMonth, logAudit, setActiveTimeFormat, getOfflineQueue, replayOfflineQueue, startLowCostPresenceSession, useLowCostPresenceSummary, clearTenantListenerCache, releaseAbandonedRouteListeners, recordScheduleOperationDiagnostic } from './core/appCore';
+>>>>>>> 1fb9648590016d97432aa4c21a1d5758ab3b8992
 import { buildAlertFingerprint, useRememberedAlert } from './core/alertMemory';
 import { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, GlobalSearchModal, KitchenTVMode, UndoBar, VoiceCommandDock } from './components/common';
 import { Concept17Sidebar, Concept17MobileNav, Concept17RouteFrame, Concept17Wordmark } from './components/concept17';
@@ -17,7 +21,11 @@ import { FEATURE_KEYS } from './config/plans';
 import { LoginScreen } from './features/auth';
 import * as runtimeReportStateModule from './core/runtimeReportState.cjs';
 import { initChaosPostHog, identifyChaosPostHogUser, resetChaosPostHogIdentity, trackChaosPageView, trackChaosPostHogEvent, trackChaosRuntimeError } from './core/posthogClient';
+<<<<<<< HEAD
 import { I18nProvider, LANGUAGE_STORAGE_KEY, normalizeAppLanguage, translate } from './core/i18n';
+=======
+import { I18nProvider, LANGUAGE_STORAGE_KEY, normalizeAppLanguage } from './core/i18n';
+>>>>>>> 1fb9648590016d97432aa4c21a1d5758ab3b8992
 
 const resolveCommonJsModule = (moduleValue) => {
   const candidate = moduleValue?.default && typeof moduleValue.default === 'object' ? moduleValue.default : moduleValue;
@@ -1290,6 +1298,22 @@ const [currentDate, setCurrentDate] = useState(getToday());
       listenerCacheBoundaryRef.current = key;
     }
   }, [firebaseConfig?.projectId, rId, authenticatedUid, ghostTenant?.id]);
+
+  useEffect(() => {
+    if (!rId || !authenticatedUid) return undefined;
+    // Let React unsubscribe the previous route's hooks first. The cleanup then
+    // closes only registrations with no remaining consumers; shared listeners
+    // used by the new route stay alive and cached snapshots remain bounded.
+    const timer = setTimeout(() => {
+      releaseAbandonedRouteListeners({
+        projectId: firebaseConfig?.projectId || 'default',
+        restaurantId: rId,
+        viewerUid: authenticatedUid,
+        route: activeTabState
+      });
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [activeTabState, firebaseConfig?.projectId, rId, authenticatedUid]);
 
   const accountProfileDocId = appUser?.profileDocId || authenticatedUid;
   const directAccountUserState = useLiveDocumentState('users', accountProfileDocId, { enabled: Boolean(accountProfileDocId && appUser?.id !== 'dev-backdoor'), debugLabel: 'app:current-user-security' });
@@ -3369,7 +3393,11 @@ What I clicked / expected:
 
 return (
     <I18nProvider language={appLanguage}>
+<<<<<<< HEAD
     <div data-active-tab={activeTabState} style={appThemeStyle} onClickCapture={blockDemoMutation} onSubmitCapture={blockDemoMutation} className={`concept17-shell desktop-pro-shell ui-v13-polished ui-v12-compact cockpit-shell ${activeTabState === 'godmode' ? '' : 'non-admin-controls-compact'} kitchen-simple-shell ui-density-${liveAppUser?.preferences?.uiDensity || displayClientData?.systemSettings?.uiDensity || 'compact'} recipe-density-${liveAppUser?.preferences?.recipeDensity || displayClientData?.systemSettings?.recipeCardDensity || 'tight'} motion-${liveAppUser?.preferences?.motionMode || displayClientData?.systemSettings?.cockpitLights || 'normal'} min-h-screen font-sans flex flex-col w-full max-w-[100vw] ${T.bg}`}>
+=======
+    <div data-active-tab={activeTabState} style={appThemeStyle} onClickCapture={blockDemoMutation} onSubmitCapture={blockDemoMutation} className={`desktop-pro-shell ui-v13-polished ui-v12-compact cockpit-shell ${activeTabState === 'godmode' ? '' : 'non-admin-controls-compact'} kitchen-simple-shell ui-density-${liveAppUser?.preferences?.uiDensity || displayClientData?.systemSettings?.uiDensity || 'compact'} recipe-density-${liveAppUser?.preferences?.recipeDensity || displayClientData?.systemSettings?.recipeCardDensity || 'tight'} motion-${liveAppUser?.preferences?.motionMode || displayClientData?.systemSettings?.cockpitLights || 'normal'} min-h-screen font-sans flex flex-col w-full max-w-[100vw] ${T.bg}`}>
+>>>>>>> 1fb9648590016d97432aa4c21a1d5758ab3b8992
       
       {/* GHOST / DEMO MODE BANNER */}
       {ghostTenant && (

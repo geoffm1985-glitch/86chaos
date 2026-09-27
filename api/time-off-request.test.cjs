@@ -52,7 +52,7 @@ test('active conflict statuses include only pending and approved active requests
 test('ghost payload belongs to target employee and keeps administrator in audit metadata only', () => {
   const ctx = { restaurantId: 'cheers-test', uid: 'admin-uid', email: 'admin@example.test', user: { name: 'Admin' }, workspaceProfile: { name: 'System Admin' } };
   const target = { authUid: 'target-auth', userId: 'target-auth', accountUserId: 'target-account', employeeId: 'target-employee', rosterUserId: 'target-roster', scheduleUserId: 'target-schedule', email: 'target@example.test', name: 'Target Employee' };
-  const payload = api.buildRequestPayload(ctx, target, '2026-09-04', { isPartial: true, startTime: '12:00', endTime: '16:00' });
+  const payload = api.buildRequestPayload(ctx, target, '2026-09-04', { isPartial: true, startTime: '12:00', endTime: '16:00' }, { ghostMode: true });
   assert.equal(payload.userId, 'target-auth');
   assert.equal(payload.employeeId, 'target-auth');
   assert.equal(payload.authUid, 'target-auth');

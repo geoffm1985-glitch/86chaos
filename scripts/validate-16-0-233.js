@@ -9,7 +9,7 @@ const childProcess = require('child_process');
 const root = path.resolve(__dirname, '..');
 const read = file => fs.readFileSync(path.join(root, file), 'utf8');
 const json = file => JSON.parse(read(file));
-const sha = file => crypto.createHash('sha256').update(read(file)).digest('hex');
+const sha = file => crypto.createHash('sha256').update(read(file).replace(/\r\n?/g, '\n')).digest('hex');
 const validationVersion = process.env.CHAOS_VALIDATION_VERSION || '16.0.233';
 const validationReleaseTitle = process.env.CHAOS_VALIDATION_RELEASE_TITLE || 'Schedule Tools Period Awareness';
 const validationScript = process.env.CHAOS_VALIDATION_SCRIPT || 'scripts/validate-16-0-233.js';

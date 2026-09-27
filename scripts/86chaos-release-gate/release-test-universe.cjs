@@ -18,6 +18,32 @@ const RELEASE_CRITICAL_SPECS = Object.freeze([
   'tests/86chaos-release-gate/36-restaurant-brain.spec.cjs',
   'tests/86chaos-new-implementations/06-pos-bridge-contract.spec.cjs',
   'tests/86chaos-new-implementations/07-pos-bridge-security.spec.cjs',
+<<<<<<< HEAD
+=======
+  'tests/86chaos-release-gate/37-native-backup-watchdog-hardening.spec.cjs',
+  'tests/86chaos-release-gate/38-release-identity-deployment-parity.spec.cjs',
+  'tests/86chaos-release-gate/39-testing-alias-mutation-safety.spec.cjs',
+  'tests/86chaos-release-gate/40-validator-line-ending-safety.spec.cjs',
+  'tests/86chaos-release-gate/41-auto-provision-role-env.spec.cjs',
+  'tests/86chaos-release-gate/42-merged-17-0-30-parity.spec.cjs',
+  'tests/86chaos-release-gate/43-restaurant-readiness-command-center.spec.cjs',
+  'tests/86chaos-release-gate/44-device-local-reminders.spec.cjs',
+  'tests/86chaos-release-gate/45-firebase-admin-url-api.spec.cjs',
+  'tests/86chaos-release-gate/46-firebase-admin-runtime-module-load.spec.cjs',
+  'tests/86chaos-release-gate/47-reminder-mobile-runtime-recovery.spec.cjs',
+  'tests/86chaos-release-gate/48-needs-attention-readiness-2.spec.cjs',
+  'tests/86chaos-release-gate/49-restaurant-intelligence-review-boundaries.spec.cjs',
+  'tests/86chaos-release-gate/50-purchase-reconciliation-browser.spec.cjs',
+  'tests/86chaos-release-gate/51-security-cost-observability.spec.cjs',
+  'tests/86chaos-release-gate/52-listener-route-cleanup.spec.cjs',
+  'tests/86chaos-release-gate/53-reminder-voice-lifecycle.spec.cjs',
+  'tests/86chaos-release-gate/54-emergency-schedule-requestoff.spec.cjs',
+  'tests/86chaos-release-gate/55-full-surface-traceability.spec.cjs',
+  'tests/86chaos-release-gate/56-manager-brief-sticky-day-header.spec.cjs',
+  'tests/86chaos-release-gate/57-sticky-header-touch-handoff.spec.cjs',
+  'tests/86chaos-release-gate/58-testing-gate-17-0-43.spec.cjs',
+  'tests/86chaos-release-gate/60-customer-help-version-17-0-45.spec.cjs',
+>>>>>>> 1fb9648590016d97432aa4c21a1d5758ab3b8992
 ]);
 
 const PWA_SPEC_PATTERN = /86chaos-release-gate\/(26-pwa-icon-source-deployed-parity|27-pwa-browser-icon-matrix)\.spec\.cjs/;

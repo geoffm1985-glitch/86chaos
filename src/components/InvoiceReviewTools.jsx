@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
 import { T, secureFetch } from '../core/appCore';
 import restaurantPackHelpers from '../core/restaurantPack.js';
+import purchaseReconciliationHelpers from '../core/purchaseReconciliation.cjs';
 
 const { resolveInvoiceQuantity } = restaurantPackHelpers;
+const { reconcilePurchaseLine } = purchaseReconciliationHelpers;
 
 export async function invoiceReviewRequest(user, payload) {
   if (user?.demoMode || user?.isDemo) throw new Error('Demo mode cannot access live invoice approvals or product memory.');
@@ -15,9 +17,25 @@ export async function invoiceReviewRequest(user, payload) {
 export function InvoiceRowReview({ row, inventoryItem, onChange, onResearch }) {
   const quantity = resolveInvoiceQuantity(row, inventoryItem || {});
   const review = row.matchNeedsReview || quantity.needsReview;
+  const hasReconciliationEvidence = ['orderedQuantity','poQuantity','shippedQuantity','receivedQuantity','invoicedQuantity','backorderQuantity','catchWeight','invoiceNumber'].some(key => row?.[key] !== undefined && row?.[key] !== null && row?.[key] !== '');
+  const reconciliation = hasReconciliationEvidence ? reconcilePurchaseLine({
+    workspaceId:row.restaurantId,
+    lineId:row.id,
+    invoiceNumber:row.invoiceNumber,
+    vendorId:row.vendorId,
+    productId:row.inventoryItemId || inventoryItem?.id,
+    sku:row.productCode || row.sku,
+    packSize:row.packSize || inventoryItem?.packSize,
+    splitCase:row.splitCase,
+    ordered:{ quantity:row.orderedQuantity ?? row.poQuantity, unit:row.orderedUnit || row.purchaseUnit || row.uom, unitPriceCents:row.orderedUnitPriceCents ?? row.poUnitPriceCents, productId:row.orderedProductId || row.inventoryItemId },
+    shipped:{ quantity:row.shippedQuantity, unit:row.shippedUnit || row.uom, backorderQuantity:row.backorderQuantity },
+    received:{ quantity:row.receivedQuantity, unit:row.receivedUnit || row.stockUnit || inventoryItem?.stockUnit, packSize:row.receivedPackSize, catchWeight:row.catchWeight, substitution:row.substitution, productId:row.receivedProductId },
+    invoiced:{ quantity:row.invoicedQuantity ?? row.quantity, unit:row.invoiceUnit || row.uom, packSize:row.packSize, unitPriceCents:row.unitPriceCents ?? row.unitPrice, catchWeight:row.invoiceCatchWeight, substitution:row.substitution, productId:row.invoicedProductId }
+  }) : null;
   const canConfirm = row.reviewedStockQuantity !== '' && row.reviewedStockQuantity != null && row.reviewedStockUnitCost !== '' && row.reviewedStockUnitCost != null && String(row.reviewNote || '').trim().length >= 4;
   return <div className="space-y-2 text-xs">
     <p className={review ? 'text-amber-200' : 'text-emerald-200'}>{row.matchExplanation || quantity.reasons.join(' ') || 'Review the selected product and received quantity before approval.'}</p>
+    {reconciliation && <div data-testid="purchase-reconciliation-result" data-reconciliation-classification={reconciliation.classification} className={`rounded-lg border p-2 ${reconciliation.reviewRequired ? 'border-amber-800 bg-amber-950/10 text-amber-100' : 'border-emerald-800 bg-emerald-950/10 text-emerald-100'}`}><div className="font-black uppercase tracking-widest text-[9px]">{reconciliation.classification}</div><div className="mt-1">{reconciliation.reasons.join(' ') || 'Ordered, shipped, received, and invoiced evidence matches.'}</div><div className="mt-1 text-[10px] opacity-80">Confidence {Math.round(reconciliation.confidence * 100)}% • Human review {reconciliation.reviewRequired ? 'required' : 'complete'}</div></div>}
     {review && <div className="rounded-lg border border-amber-800 p-2 space-y-2">
       <div className="font-bold">Confirm actual delivery in inventory units ({quantity.stockUnit || 'case'})</div>
       <div className="grid grid-cols-2 gap-2">

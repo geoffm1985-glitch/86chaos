@@ -51,7 +51,12 @@ export function buildMonthSchedulePrintModel({ monthStr, roleFilter = 'All', res
       employeeName, role,
       startTime: clean(shift.startTime), endTime: clean(shift.endTime),
       timeLabel,
+<<<<<<< HEAD
       label: [employeeName, timeLabel].filter(Boolean).join(' · ')
+=======
+      label: [employeeName, timeLabel].filter(Boolean).join(' · '),
+      detailLabel: [employeeName, timeLabel, role].filter(Boolean).join(' · ')
+>>>>>>> 1fb9648590016d97432aa4c21a1d5758ab3b8992
     });
   });
   const totalCells = firstDay + daysInMonth;

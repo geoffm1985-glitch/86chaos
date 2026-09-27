@@ -2,7 +2,11 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
+<<<<<<< HEAD
 const admin = require('firebase-admin');
+=======
+const admin = require('./_firebase-admin-compat');
+>>>>>>> 1fb9648590016d97432aa4c21a1d5758ab3b8992
 const { stageEvent, refsFor } = require('./_pos-bridge-storage');
 const { summary } = require('./_pos-bridge-reconciliation');
 const { changeMapping } = require('./_pos-bridge-mappings');

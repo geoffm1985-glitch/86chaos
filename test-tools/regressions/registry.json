@@ -1,6 +1,10 @@
 {
   "schemaVersion": 1,
+<<<<<<< HEAD
   "release": "17.1.15",
+=======
+  "release": "17.0.45",
+>>>>>>> 1fb9648590016d97432aa4c21a1d5758ab3b8992
   "defects": [
     {
       "defectId": "RG-API-WRAPPER-FIDELITY",
@@ -487,6 +491,118 @@
       "fidelity": "ACTUAL PREFLIGHT EXECUTION / STRUCTURED SOURCE-VALIDATOR CONTRACT",
       "fixedVersion": "17.0.20",
       "mandatoryGroup": "hostile-contracts"
+<<<<<<< HEAD
+=======
+    },
+    {
+      "defectId": "RG-FIREBASE-ADMIN-URL-PARSE-17036",
+      "origin": "Node 24 DEP0169 Firebase Admin runtime warning",
+      "affectedInvariant": "Server-side Firebase Admin traffic uses the WHATWG URL API and no 86 Chaos server module depends on the removed legacy Admin namespace.",
+      "reproducer": "firebase-admin-url-api-17-0-36.test.cjs",
+      "permanentTestIds": [
+        "firebase-admin 14.5 installed request and validator paths contain no url.parse calls",
+        "server modules use the 86 Chaos modular Firebase Admin compatibility facade"
+      ],
+      "fidelity": "ACTUAL DEPENDENCY / SOURCE ASSERTION",
+      "fixedVersion": "17.0.36",
+      "mandatoryGroup": "hostile-contracts"
+    },
+    {
+      "defectId": "RG-FIREBASE-ADMIN-JOSE-CJS-17037",
+      "origin": "17.0.36 Vercel Personal Reminder runtime 500 after Firebase Admin 14.5.0 upgrade",
+      "affectedInvariant": "Firebase Admin server routes must load in the Vercel CommonJS/serverless runtime; My Reminders must reach handler-level auth/method checks instead of crashing during module initialization.",
+      "reproducer": "firebase-admin-runtime-17-0-37.test.cjs",
+      "permanentTestIds": [
+        "jwks-rsa resolves the JOSE 4.15.9 compatibility override",
+        "deployed Personal Reminder APIs return handler-level 405 responses instead of runtime 500"
+      ],
+      "fidelity": "ACTUAL DEPENDENCY LOCK / DEPLOYED SERVERLESS RUNTIME PROBE",
+      "fixedVersion": "17.0.37",
+      "mandatoryGroup": "hostile-contracts"
+    },
+    {
+      "defectId": "RG-MOBILE-REMINDER-RENDER-17038",
+      "origin": "17.0.37 real-device My Reminders recovery report qwifs3AdG2dJ8kqwmp40",
+      "affectedInvariant": "Malformed or legacy device-local reminder values must be normalized before React render and must never collapse the My Reminders surface.",
+      "reproducer": "reminder-mobile-runtime-17-0-38.test.cjs / 47-reminder-mobile-runtime-recovery.spec.cjs",
+      "permanentTestIds": [
+        "17.0.38 normalizes persisted device-local reminder values before React render",
+        "mobile reminder surface survives malformed persisted rows and live cloud loading"
+      ],
+      "fidelity": "ACTUAL SOURCE / DEPLOYED MOBILE PLAYWRIGHT",
+      "fixedVersion": "17.0.38",
+      "mandatoryGroup": "deployed"
+    },
+    {
+      "defectId": "RG-CAPABILITY-VERSION-STALE-17039",
+      "origin": "17.0.38 full Release Gate local readiness failure before Playwright",
+      "affectedInvariant": "Capability-retention tests validate protected capabilities without freezing an obsolete package patch version; exact current version remains enforced by current-release and deployment identity validation.",
+      "reproducer": "release-integrity-17-0-39.test.cjs / merged-release-17-0-30.test.cjs",
+      "permanentTestIds": [
+        "capability-retention test cannot become stale on a future patch version",
+        "nearby merged and carry-forward tests do not freeze package patch identity",
+        "current-version identity passes only when version commit hash and branch agree"
+      ],
+      "fidelity": "ACTUAL CAPABILITY SOURCE / CURRENT RELEASE IDENTITY",
+      "fixedVersion": "17.0.39",
+      "mandatoryGroup": "hostile-contracts"
+    },
+    {
+      "defectId": "RG-CERTIFICATION-TRUTH-17039",
+      "origin": "17.0.39 release integrity hardening",
+      "affectedInvariant": "Stale source, stale deployment, stale artifacts, incomplete Playwright execution, interrupted runs, timeouts, and retry attempts cannot produce a false certification.",
+      "reproducer": "release-integrity-17-0-39.test.cjs",
+      "permanentTestIds": [
+        "stale source is rejected",
+        "stale deployment is rejected",
+        "stale release artifact is rejected",
+        "full gate requires proven Playwright start",
+        "interrupted release run cannot certify",
+        "retry accounting uses final attempt while retaining retry count"
+      ],
+      "fidelity": "ACTUAL RELEASE RUNNER / REPORT COLLECTOR",
+      "fixedVersion": "17.0.39",
+      "mandatoryGroup": "hostile-contracts"
+    },
+    {
+      "defectId": "RG-MANAGER-BRIEF-BROWSER-CJS-17041",
+      "origin": "17.0.40 real-device Manager Brief recovery report YWgwrZtELbi9wnmOzeCO",
+      "affectedInvariant": "Manager Brief browser intelligence helpers must resolve as callable browser-native modules and must not collapse the section into recovery UI.",
+      "reproducer": "emergency-runtime-sticky-17-0-41.test.cjs / 56-manager-brief-sticky-day-header.spec.cjs",
+      "permanentTestIds": [
+        "17.0.41 Manager Brief uses browser-native intelligence modules instead of CommonJS browser interop",
+        "Manager Brief opens without the 17.0.40 runtime recovery crash"
+      ],
+      "fidelity": "ACTUAL SOURCE / DEPLOYED PLAYWRIGHT",
+      "fixedVersion": "17.0.41",
+      "mandatoryGroup": "deployed"
+    },
+    {
+      "defectId": "RG-SCHEDULE-STICKY-DECK-OFFSET-17041",
+      "origin": "17.0.40 real-device Schedule Builder scroll evidence",
+      "affectedInvariant": "Schedule Builder day/date headers remain visible below the sticky control deck while vertically scrolling on mobile and desktop.",
+      "reproducer": "emergency-runtime-sticky-17-0-41.test.cjs / 56-manager-brief-sticky-day-header.spec.cjs",
+      "permanentTestIds": [
+        "17.0.41 Schedule Builder sticky day header reserves the live control-deck height on mobile too",
+        "Schedule Builder day/date header stays below the sticky control deck during vertical scroll"
+      ],
+      "fidelity": "ACTUAL SOURCE / DEPLOYED MOBILE PLAYWRIGHT",
+      "fixedVersion": "17.0.41",
+      "mandatoryGroup": "deployed"
+    },
+    {
+      "defectId": "RG-SCHEDULE-STICKY-TOUCH-HANDOFF-17042",
+      "origin": "17.0.41 real-device Schedule Builder touch-scroll video evidence",
+      "affectedInvariant": "A vertical finger drag that begins directly on the Schedule Builder day/date strip must scroll the schedule content while the day/date strip stays pinned below the sticky control deck.",
+      "reproducer": "emergency-sticky-touch-17-0-42.test.cjs / 57-sticky-header-touch-handoff.spec.cjs",
+      "permanentTestIds": [
+        "17.0.42 day header hands vertical touch drags to the schedule content scroller",
+        "mobile direct-touch drag keeps day header below sticky control deck"
+      ],
+      "fidelity": "ACTUAL SOURCE / DEPLOYED MOBILE PLAYWRIGHT TOUCHSCREEN",
+      "fixedVersion": "17.0.42",
+      "mandatoryGroup": "deployed"
+>>>>>>> 1fb9648590016d97432aa4c21a1d5758ab3b8992
     }
   ]
 }

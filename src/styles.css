@@ -5716,6 +5716,7 @@ span.bg-red-500.text-white,
   }
 }
 
+<<<<<<< HEAD
 /* 17.0.33 System Administrator Concept 1 exact-home rebuild */
 .admin46-shell .admin-concept1-exact-home {
   max-width: 1180px;
@@ -7240,4 +7241,58 @@ span.bg-red-500.text-white,
 .admin46-shell .admin37-featured-test-frame > button.admin37-featured-card {
   width: 100% !important;
   height: 100% !important;
+=======
+/* 17.0.40 emergency: keep Schedule Builder day/date context visible while scrolling. */
+.schedule-builder-grid-shell {
+  position: relative;
+  isolation: isolate;
+}
+
+.schedule-builder-sticky-day-header {
+  position: sticky;
+  top: var(--schedule-builder-sticky-top, 0px);
+  z-index: 34;
+  overflow: hidden;
+  margin-bottom: 2px;
+  background: #12161A;
+  box-shadow: 0 8px 18px rgba(0, 0, 0, .28);
+}
+
+.schedule-builder-header-scroll {
+  overscroll-behavior-x: contain;
+  overscroll-behavior-y: auto;
+  overflow-x: auto !important;
+  overflow-y: hidden !important;
+  touch-action: pan-x;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+
+.schedule-builder-header-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+.schedule-builder-staff-column {
+  width: 64px;
+}
+
+@media (min-width: 640px) {
+  .schedule-builder-staff-column {
+    width: 96px;
+  }
+}
+
+@media (max-width: 720px) {
+  .desktop-pro-shell[data-active-tab="schedule"] .schedule-builder-sticky-day-header {
+    top: var(--schedule-builder-sticky-top, 0px) !important;
+    z-index: 37;
+  }
+}
+
+/* 17.0.42 emergency: keep the sticky day/date strip compositor-stable during direct touch drags. */
+.schedule-builder-sticky-day-header {
+  -webkit-transform: translateZ(0);
+  transform: translateZ(0);
+  backface-visibility: hidden;
+>>>>>>> 1fb9648590016d97432aa4c21a1d5758ab3b8992
 }

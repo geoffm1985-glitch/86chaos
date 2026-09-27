@@ -15,6 +15,7 @@ import {
   warningShiftContext,
   buildCoverageVarianceRows,
   buildScheduleConflictWarningRows,
+  sortScheduleWarningsChronologically,
   isRequestOffBulkEligible,
 } from '../core/scheduleWarningControls';
 import { getCanonicalScheduleUserId, collectScheduleDurableIdentityAliases, collectScheduleShiftDurableIdentityAliases, collectScheduleEmailAliases, collectScheduleFullNameAliases, collectScheduleFirstNameAliases, collectScheduleIdentityAliases, collectScheduleShiftIdentityAliases, resolveSchedulePersonForAccount, resolveSchedulePersonForShift, buildCanonicalScheduleIdentityBlock, scheduleIdentityBlockMatchesPerson } from '../core/scheduleQueryPlanner';
@@ -27,6 +28,10 @@ import { createSchedulePublishGuard, makeSchedulePublishProgress } from '../core
 import { activeRosterRoles, resolveShiftRosterRole, copyRosterRoleFields } from '../core/rosterRoleIdentity';
 import { buildSchedulePublicationPlan, buildConfirmedShiftEvidence, digestSchedulePublicationPlan, isIntentionalOpenScheduleShift } from '../core/schedulePublicationPlan';
 import { requestOffDateKey, normalizeRequestOffRuntimeRow, safeRequestOffRows } from '../core/requestOffRuntimeSafety';
+<<<<<<< HEAD
+=======
+import { validatePartialRequestOffTimeRange } from '../core/requestOffValidation';
+>>>>>>> 1fb9648590016d97432aa4c21a1d5758ab3b8992
 import { normalizeTimeOffPolicy, evaluateTimeOffPolicyDate, timeOffPolicyReleaseDateForRequestDate, timeOffPolicyCutoffDateForRequestDate, canConfigureTimeOffPolicy } from '../core/timeOffPolicy';
 import { useI18n } from '../core/i18n';
 import { normalizeScheduleBuilderEvents, safeScheduleBuilderRecords } from '../core/scheduleBuilderRuntime';
@@ -1558,7 +1563,11 @@ const handleOfferSwap = async (shift) => {
         {['my-schedule', 'full-schedule', 'month-view', 'trade-board', 'time-off', 'availability', ...((appUser?.isAdmin || appUser?.permissions?.schedule) && scheduleBuilderProps ? ['schedule-builder'] : [])].map((tab) => {
           const label = tab === 'my-schedule' ? t('schedule.mySchedule') : tab === 'full-schedule' ? t('schedule.fullSchedule') : tab === 'month-view' ? t('schedule.monthView') : tab === 'time-off' ? t('schedule.requestOff') : tab === 'availability' ? t('schedule.availability') : tab === 'trade-board' ? t('schedule.tradeBoard') : tab === 'schedule-builder' ? t('schedule.builder') : tab.replace('-', ' ');
           return (
+<<<<<<< HEAD
           <button key={tab} type="button" data-concept-subtab-button={tab} aria-label={label} title={label} onClick={() => setSubTab(tab)} className={`concept17-subtab px-2 sm:px-4 py-2 text-[10px] sm:text-xs font-black rounded-xl uppercase tracking-widest transition-all sm:flex-1 ${subTab === tab ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>
+=======
+          <button key={tab} type="button" aria-label={label} title={label} onClick={() => setSubTab(tab)} className={`px-2 sm:px-4 py-2 text-[10px] sm:text-xs font-black rounded-xl uppercase tracking-widest transition-all sm:flex-1 ${subTab === tab ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>
+>>>>>>> 1fb9648590016d97432aa4c21a1d5758ab3b8992
             {label}
           </button>
         );})}
@@ -1813,6 +1822,12 @@ const TabSchedule = ({ currentDate, users: rawUsers, shifts: rawShifts, events: 
   const [presetShift, setPresetShift] = useState('Custom'); 
   const [startTime, setStartTime] = useState('16:00'); 
   const [endTime, setEndTime] = useState('21:00');
+  const scheduleBuilderControlDeckRef = useRef(null);
+  const scheduleBuilderHeaderScrollRef = useRef(null);
+  const scheduleBuilderBodyScrollRef = useRef(null);
+  const scheduleBuilderScrollSyncRef = useRef(false);
+  const scheduleBuilderHeaderTouchRef = useRef({ axis: null, lastX: 0, lastY: 0 });
+  const [scheduleBuilderStickyTop, setScheduleBuilderStickyTop] = useState(0);
   
   const [isEventModalOpen, setIsEventModalOpen] = useState(false); 
 const [eventDate, setEventDate] = useState(getToday()); 
@@ -1875,6 +1890,99 @@ const [eventDate, setEventDate] = useState(getToday());
     setPublishProgress(makeSchedulePublishProgress({ phase, label, detail, current, total, ...extra }));
   }, []);
   
+  const syncScheduleBuilderHorizontalScroll = useCallback((source, targetRef) => {
+    if (scheduleBuilderScrollSyncRef.current || !source || !targetRef?.current) return;
+    const nextScrollLeft = Number(source.scrollLeft || 0);
+    if (Math.abs(Number(targetRef.current.scrollLeft || 0) - nextScrollLeft) < 1) return;
+    scheduleBuilderScrollSyncRef.current = true;
+    targetRef.current.scrollLeft = nextScrollLeft;
+    const release = () => { scheduleBuilderScrollSyncRef.current = false; };
+    if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') window.requestAnimationFrame(release);
+    else setTimeout(release, 0);
+  }, []);
+
+
+  useEffect(() => {
+    if (subTab !== 'schedule' || typeof document === 'undefined') return undefined;
+    const header = scheduleBuilderHeaderScrollRef.current;
+    if (!header) return undefined;
+    const touchState = scheduleBuilderHeaderTouchRef.current;
+    const getScrollHost = () => header.closest('.desktop-pro-shell[data-active-tab="schedule"]')?.querySelector('.app-content-shell');
+    const reset = () => { touchState.axis = null; touchState.lastX = 0; touchState.lastY = 0; };
+    const onTouchStart = event => {
+      if (event.touches?.length !== 1) { reset(); return; }
+      const touch = event.touches[0];
+      touchState.axis = null;
+      touchState.lastX = touch.clientX;
+      touchState.lastY = touch.clientY;
+    };
+    const onTouchMove = event => {
+      if (event.touches?.length !== 1) return;
+      const touch = event.touches[0];
+      const dx = touch.clientX - touchState.lastX;
+      const dy = touch.clientY - touchState.lastY;
+      if (!touchState.axis && Math.max(Math.abs(dx), Math.abs(dy)) >= 6) {
+        touchState.axis = Math.abs(dy) > Math.abs(dx) ? 'vertical' : 'horizontal';
+      }
+      if (touchState.axis === 'vertical') {
+        if (event.cancelable) event.preventDefault();
+        const scrollHost = getScrollHost();
+        const deltaY = touchState.lastY - touch.clientY;
+        if (scrollHost && Number.isFinite(deltaY)) scrollHost.scrollTop += deltaY;
+        else if (typeof window !== 'undefined' && Number.isFinite(deltaY)) window.scrollBy(0, deltaY);
+      }
+      touchState.lastX = touch.clientX;
+      touchState.lastY = touch.clientY;
+    };
+    header.addEventListener('touchstart', onTouchStart, { passive: true });
+    header.addEventListener('touchmove', onTouchMove, { passive: false });
+    header.addEventListener('touchend', reset, { passive: true });
+    header.addEventListener('touchcancel', reset, { passive: true });
+    return () => {
+      header.removeEventListener('touchstart', onTouchStart);
+      header.removeEventListener('touchmove', onTouchMove);
+      header.removeEventListener('touchend', reset);
+      header.removeEventListener('touchcancel', reset);
+      reset();
+    };
+  }, [subTab]);
+
+  useEffect(() => {
+    if (subTab !== 'schedule' || typeof window === 'undefined') return undefined;
+    const updateStickyTop = () => {
+      const viewportWidth = Number(window.innerWidth || 0);
+      const shell = document.querySelector('.desktop-pro-shell');
+      const shellStyle = shell ? window.getComputedStyle(shell) : null;
+      const configuredTopbar = Number.parseFloat(shellStyle?.getPropertyValue('--chaos-compact-topbar-h') || '');
+      const topbarHeight = Number.isFinite(configuredTopbar) ? configuredTopbar : 54;
+      const deckHeight = Math.ceil(scheduleBuilderControlDeckRef.current?.getBoundingClientRect?.().height || 0);
+      // The control deck is sticky on phones too. 17.0.40 treated mobile as zero-height,
+      // so the day/date header pinned behind the deck and disappeared while scrolling.
+      // Keep the header immediately below whichever sticky surfaces are actually present.
+      const mobileContentShell = viewportWidth <= 720
+        ? document.querySelector('.desktop-pro-shell[data-active-tab="schedule"] .app-content-shell')
+        : null;
+      const mobileContentStyle = mobileContentShell ? window.getComputedStyle(mobileContentShell) : null;
+      const mobileScrollShellOwnsTopbar = Boolean(
+        mobileContentShell
+        && /(auto|scroll)/.test(String(mobileContentStyle?.overflowY || ''))
+        && mobileContentShell.scrollHeight > mobileContentShell.clientHeight + 8
+      );
+      const baseTop = mobileScrollShellOwnsTopbar ? 0 : topbarHeight;
+      setScheduleBuilderStickyTop(Math.max(0, baseTop + deckHeight + (deckHeight ? 4 : 2)));
+    };
+    updateStickyTop();
+    window.addEventListener('resize', updateStickyTop);
+    const observer = typeof ResizeObserver !== 'undefined' && scheduleBuilderControlDeckRef.current
+      ? new ResizeObserver(updateStickyTop)
+      : null;
+    observer?.observe(scheduleBuilderControlDeckRef.current);
+    return () => {
+      window.removeEventListener('resize', updateStickyTop);
+      observer?.disconnect();
+    };
+  }, [subTab]);
+
   const monthStr = getMonthStr(currentDate); 
   const monthDays = Array.from({length: getDaysInMonth(monthStr)}).map((_, i) => `${monthStr}-${String(i+1).padStart(2, '0')}`);
   const shiftBelongsToScheduleMonth = (shift = {}, targetMonth = monthStr) => {
@@ -3906,6 +4014,44 @@ const handleExportTimesheets = () => {
     )
   });
 
+  const renderScheduleBuilderHeaderRow = () => (
+    <tr className="bg-[#12161A] border-b border-[#2A353D]">
+      <th className={`p-1 sm:p-2 font-bold bg-[#12161A] sticky left-0 z-20 w-16 sm:w-24 border-r border-[#2A353D] ${T.copper} truncate`}>Staff</th>
+      {schedulePeriodDays.map(d => {
+        const holiday = getHoliday(d);
+        const dayEvents = schedulePeriodEvents.filter(e => e.date === d);
+        const hasAlert = holiday || dayEvents.length > 0;
+        return (
+          <th key={d} data-testid="schedule-builder-day-header-cell" data-date={d} className={`p-0.5 sm:p-1 text-center border-r border-[#2A353D] align-top relative group cursor-help ${new Date(d+'T12:00').getDay()%6===0?'bg-[#1A2126]':''}`}>
+            <div className={`font-bold uppercase text-[8px] sm:text-[9px] tracking-tight ${T.muted}`}>{new Date(d+'T12:00').toLocaleDateString('en-US',{weekday:'short'}).toUpperCase()}</div>
+            <div className={`text-xs sm:text-sm font-black mt-0.5 ${hasAlert ? (holiday ? 'text-amber-400' : 'text-red-400') : 'text-white'}`}>
+              {parseInt(d.split('-')[2])}
+            </div>
+            {hasAlert && (
+              <div className="absolute top-full left-1/2 -translate-x-1/2 mt-1 w-32 bg-[#1A2126] border border-[#D4A381] text-white text-[10px] p-2 rounded shadow-2xl opacity-0 invisible group-hover:opacity-100 group-hover:visible z-50 pointer-events-none transition-all">
+                {holiday && <div className="text-amber-400 font-black mb-1 leading-tight">{holiday}</div>}
+                {dayEvents.map(ev => (
+                  <div key={ev.id} className="text-red-400 font-bold leading-tight mt-1 border-t border-[#2A353D] pt-1">
+                    {ev.title} {ev.time && <span className="block text-white opacity-80">{formatShortTime(ev.time)}</span>}
+                    {ev.notes && <span className="block text-slate-300 font-normal mt-0.5">{ev.notes}</span>}
+                  </div>
+                ))}
+              </div>
+            )}
+          </th>
+        );
+      })}
+    </tr>
+  );
+
+  const scheduleBuilderTableStyle = { '--schedule-builder-min-width': `${82 + (schedulePeriodDays.length * 56)}px` };
+  const renderScheduleBuilderColgroup = () => (
+    <colgroup>
+      <col className="schedule-builder-staff-column" />
+      {schedulePeriodDays.map(d => <col key={`schedule-col-${d}`} />)}
+    </colgroup>
+  );
+
   return (
     <div data-concept-subtab={`schedule-${subTab}`} className="concept17-surface concept17-subtab-surface concept17-schedule-admin-surface space-y-4 pb-12 w-full">
 
@@ -4269,7 +4415,7 @@ const handleExportTimesheets = () => {
             <div className="text-[10px] font-black uppercase tracking-widest text-slate-400 bg-[#12161A] border border-[#2A353D] rounded-xl px-2 py-1.5">{schedulePeriodShifts.filter(s => !isScheduleShiftPublished(s)).length} draft • {schedulePeriodShifts.filter(s => isScheduleShiftPublished(s)).length} live • {schedulePeriodEvents.length} event{schedulePeriodEvents.length === 1 ? '' : 's'} shown</div>
           </div>
 
-          <div className={`schedule-builder-control-deck ${T.card} p-1.5 sm:p-2 flex flex-col lg:flex-row gap-1.5 items-stretch lg:items-center justify-between`}>
+          <div ref={scheduleBuilderControlDeckRef} data-testid="schedule-builder-control-deck" className={`schedule-builder-control-deck ${T.card} p-1.5 sm:p-2 flex flex-col lg:flex-row gap-1.5 items-stretch lg:items-center justify-between`}>
             <div className="schedule-builder-assignment-row flex flex-wrap xl:flex-nowrap gap-1.5 w-full lg:w-auto items-center">
               
               {/* Staff Selector */}
@@ -4345,6 +4491,7 @@ const handleExportTimesheets = () => {
             </div>
           </div>
 
+<<<<<<< HEAD
           <div className={`schedule-builder-grid-card ${T.card} w-full overflow-hidden`}>
             <div className="schedule-builder-grid-scroll overflow-x-auto w-full no-scrollbar">
               <table className="schedule-builder-desktop-table w-full text-left text-[10px] border-collapse table-fixed min-w-[1200px] xl:min-w-full" style={{ '--schedule-builder-min-width': `${82 + (schedulePeriodDays.length * 56)}px` }}>
@@ -4379,6 +4526,36 @@ const handleExportTimesheets = () => {
                   </tr>
                 </thead>
               <tbody className="divide-y divide-[#2A353D]">
+=======
+          <div className="schedule-builder-grid-shell">
+            <div
+              data-testid="schedule-builder-sticky-day-header"
+              className={`schedule-builder-sticky-day-header ${T.card} w-full`}
+              style={{ '--schedule-builder-sticky-top': `${scheduleBuilderStickyTop}px` }}
+            >
+              <div
+                ref={scheduleBuilderHeaderScrollRef}
+                data-testid="schedule-builder-header-scroll"
+                className="schedule-builder-header-scroll overflow-x-auto w-full no-scrollbar"
+                onScroll={event => syncScheduleBuilderHorizontalScroll(event.currentTarget, scheduleBuilderBodyScrollRef)}
+              >
+                <table className="schedule-builder-desktop-table w-full text-left text-[10px] border-collapse table-fixed min-w-[1200px] xl:min-w-full" style={scheduleBuilderTableStyle}>
+                  {renderScheduleBuilderColgroup()}
+                  <thead>{renderScheduleBuilderHeaderRow()}</thead>
+                </table>
+              </div>
+            </div>
+            <div className={`schedule-builder-grid-card ${T.card} w-full overflow-hidden`}>
+              <div
+                ref={scheduleBuilderBodyScrollRef}
+                data-testid="schedule-builder-body-scroll"
+                className="overflow-x-auto w-full no-scrollbar"
+                onScroll={event => syncScheduleBuilderHorizontalScroll(event.currentTarget, scheduleBuilderHeaderScrollRef)}
+              >
+                <table className="schedule-builder-desktop-table w-full text-left text-[10px] border-collapse table-fixed min-w-[1200px] xl:min-w-full" style={scheduleBuilderTableStyle}>
+                  {renderScheduleBuilderColgroup()}
+                  <tbody className="divide-y divide-[#2A353D]">
+>>>>>>> 1fb9648590016d97432aa4c21a1d5758ab3b8992
                   {schedulePeriodEvents.length > 0 && (
                     <tr className="schedule-builder-events-row bg-amber-950/10">
                       <td className="schedule-builder-events-label px-2 py-1 text-[8px] font-black uppercase tracking-widest text-amber-200 sticky left-0 z-10 border-r border-[#2A353D] bg-[#141920] shadow-md">
@@ -4476,6 +4653,8 @@ const handleExportTimesheets = () => {
             </div>
           </div>
           
+          </div>
+
           <div className={`${T.card} overflow-hidden mt-6`}>
             <div className={`bg-[#12161A] p-4 border-b ${T.border} flex justify-between items-center`}>
               <h3 className={`font-black text-sm flex items-center gap-2 ${T.copper}`}><Clock className={T.copper} size={16}/> Scheduled Hours Tracker</h3>
@@ -5545,7 +5724,12 @@ const TabTimeOff = ({ timeOffRequests, appUser, users, addToast, events = [], sh
     e.preventDefault();
     if (isSubmittingTimeOff) return;
     if (selectedDates.length === 0) return addToast('Choose Request-Off Dates', 'Select one or more days on the calendar first.');
+<<<<<<< HEAD
     if (isPartial && (!startTime || !endTime)) return addToast('Add Start and End Times', 'Enter the part of the day you need off.');
+=======
+    const partialTimeValidation = validatePartialRequestOffTimeRange({ isPartial, startTime, endTime });
+    if (!partialTimeValidation.valid) return addToast('Invalid Partial Time', partialTimeValidation.message);
+>>>>>>> 1fb9648590016d97432aa4c21a1d5758ab3b8992
     const blockedAfterPublish = selectedDates.filter(d => !postPublishedTimeOffAllowed && !canConfigureRequestOffPolicy && isDateInsidePublishedSchedule(d, shifts));
     if (blockedAfterPublish.length) return addToast('Schedule Published', 'One or more selected dates are already published. Ask an account owner or admin to adjust the schedule.');
     setIsSubmittingTimeOff(true);
@@ -5571,37 +5755,7 @@ const TabTimeOff = ({ timeOffRequests, appUser, users, addToast, events = [], sh
         await requestOffApi('ghost-create', { dates: selectedDates, isPartial, startTime, endTime });
         await refreshGhostRequests();
       } else {
-        const nowIso = new Date().toISOString();
-        await Promise.all(selectedDates.map(d => addDoc(collection(db, 'timeOffRequests'), {
-          restaurantId: appUser.restaurantId,
-          workspaceId: appUser.restaurantId,
-          userId: authUserId,
-          employeeId: authUserId,
-          rosterUserId: schedulePerson.rosterUserId || schedulePerson.id || '',
-          scheduleUserId: getCanonicalScheduleUserId(schedulePerson || appUser),
-          authUid: authUserId,
-          userEmail: appUser.email || '',
-          employeeEmail: schedulePerson.employeeEmail || schedulePerson.email || appUser.email || '',
-          userName: appUser.name || appUser.email || 'Employee',
-          employeeName: schedulePerson.employeeName || schedulePerson.name || appUser.name || appUser.email || 'Employee',
-          date: d,
-          isPartial,
-          startTime: isPartial ? startTime : '',
-          endTime: isPartial ? endTime : '',
-          status: 'pending',
-          archived: false,
-          processed: false,
-          requestedAt: nowIso,
-          requestedAtMs: Date.now(),
-          requestTimestamp: nowIso,
-          submittedAt: nowIso,
-          createdAt: nowIso,
-          updatedAt: nowIso,
-          createdBy: authUserId,
-          requestedBy: authUserId,
-          requestedByName: appUser.name || appUser.email || 'Employee',
-          source: 'time_off_request'
-        })));
+        await requestOffApi('create', { dates: selectedDates, isPartial, startTime, endTime });
         await logAudit(appUser, 'TIME_OFF_SUBMITTED', appUser.name || appUser.email || 'Request off', selectedDates.join(', '));
       }
       setSelectedDates([]);
@@ -5689,7 +5843,11 @@ const TabTimeOff = ({ timeOffRequests, appUser, users, addToast, events = [], sh
             const cutoffDate = timeOffPolicyCutoffDateForRequestDate(sampleDate, timeOffPolicy, workspaceScheduleSettings);
             return <div className="mb-4 bg-blue-900/10 border border-blue-900/40 rounded-xl p-2 text-[10px] font-bold text-blue-200 leading-snug">Normal requests for this schedule close after {cutoffDate ? formatDisplayDate(cutoffDate) : 'the configured cutoff'}{releaseDate ? ` • planned release ${formatDisplayDate(releaseDate)}` : ''}. Blackout dates close immediately.</div>;
           })()}
+<<<<<<< HEAD
           <form onSubmit={handleSubmit} className="space-y-4"><label className={`flex items-center gap-2 text-xs font-bold text-slate-300 cursor-pointer p-2.5 bg-[#12161A] rounded-xl border ${T.border}`}><input type="checkbox" checked={isPartial} onChange={e=>setIsPartial(e.target.checked)} className="w-4 h-4 rounded bg-[#1A2126] border-[#2A353D] accent-[#8F6040]" />Only part of each day</label>{isPartial && <div className="grid grid-cols-2 gap-3"><div><label className={T.label}>Start Time</label><input type="time" value={startTime} onChange={e=>setStartTime(e.target.value)} className={T.input} required /></div><div><label className={T.label}>End Time</label><input type="time" value={endTime} onChange={e=>setEndTime(e.target.value)} className={T.input} required /></div></div>}<button type="submit" disabled={selectedDates.length === 0 || isSubmittingTimeOff || !!checkingDate} className={`w-full ${T.btn} disabled:opacity-50 disabled:cursor-not-allowed`}>{isSubmittingTimeOff ? 'Sending Request…' : `Send ${selectedDates.length > 0 ? `${selectedDates.length}-Day ` : ''}Request for Review`}</button></form>
+=======
+          <form onSubmit={handleSubmit} className="space-y-4"><label className={`flex items-center gap-2 text-xs font-bold text-slate-300 cursor-pointer p-2.5 bg-[#12161A] rounded-xl border ${T.border}`}><input type="checkbox" checked={isPartial} onChange={e=>setIsPartial(e.target.checked)} className="w-4 h-4 rounded bg-[#1A2126] border-[#2A353D] accent-[#8F6040]" />Only part of each day</label>{isPartial && <div className="grid grid-cols-2 gap-3"><div><label className={T.label}>Start Time</label><input data-testid="request-off-partial-start" type="time" value={startTime} onChange={e=>setStartTime(e.target.value)} className={T.input} required /></div><div><label className={T.label}>End Time</label><input data-testid="request-off-partial-end" type="time" value={endTime} min={startTime || undefined} onChange={e=>setEndTime(e.target.value)} className={T.input} required /></div></div>}<button type="submit" disabled={selectedDates.length === 0 || isSubmittingTimeOff || !!checkingDate} className={`w-full ${T.btn} disabled:opacity-50 disabled:cursor-not-allowed`}>{isSubmittingTimeOff ? 'Sending Request…' : `Send ${selectedDates.length > 0 ? `${selectedDates.length}-Day ` : ''}Request for Review`}</button></form>
+>>>>>>> 1fb9648590016d97432aa4c21a1d5758ab3b8992
         </div>
       </div>
       {canConfigureRequestOffPolicy && <div className={`${T.card} p-4 space-y-4`} data-testid="time-off-policy-admin">
@@ -5822,7 +5980,7 @@ const ScheduleCopilot = ({ period, periodLabel = '', users = [], shifts = [], ti
   const draftCount = activePeriodShifts.filter(s => !isScheduleShiftPublished(s)).length;
   const coverageVarianceRows = buildCoverageVarianceRows({ coverageTargets, periodDates: activePeriodDates, periodShifts: activePeriodShifts, roleMatcher: roleMatches, canonicalRole: canonicalScheduleRole });
   const missingTargets = coverageVarianceRows.filter(row => row.type === 'under');
-  const coverageWarnings = coverageVarianceRows.map(row => ({
+  const coverageWarnings = sortScheduleWarningsChronologically(coverageVarianceRows.map(row => ({
     ...row,
     type: row.type === 'under' ? 'coverage-under' : 'coverage-over',
     alertId: `schedule-${activePeriodStart}-coverage-${row.type}-${row.id}-${row.date}-${row.role}`,
@@ -5831,7 +5989,7 @@ const ScheduleCopilot = ({ period, periodLabel = '', users = [], shifts = [], ti
       ? `${formatDisplayDate(row.date)} needs ${row.needed} more ${row.role}`
       : `${formatDisplayDate(row.date)} has ${row.over} more ${row.role} than the coverage target.`,
     detail: `Existing: ${row.existing} • Target: ${row.count}`,
-  }));
+  })));
   const conflictList = buildScheduleConflictWarningRows({
     weekStart: activePeriodStart,
     periodWeeks: activePeriod.weekSegments,
@@ -5846,7 +6004,7 @@ const ScheduleCopilot = ({ period, periodLabel = '', users = [], shifts = [], ti
     fingerprintBuilder: buildAlertFingerprint,
     formatDate: formatDisplayDate,
   });
-  const allScheduleWarnings = [...coverageWarnings, ...conflictList];
+  const allScheduleWarnings = sortScheduleWarningsChronologically([...coverageWarnings, ...conflictList]);
   const fallbackResolvedState = { resolved: true, error: null, count: 0, limit: 0, workspaceId: appUser?.restaurantId || '' };
   const shiftSourceState = scheduleDataState?.shifts || { ...fallbackResolvedState, count: safeShifts.length };
   const timeOffSourceState = scheduleDataState?.timeOff || { ...fallbackResolvedState, count: safeTimeOffRequests.length };
@@ -6089,7 +6247,11 @@ const ScheduleCopilot = ({ period, periodLabel = '', users = [], shifts = [], ti
       <div className="grid grid-cols-4 gap-1.5">
         {[['Drafts',draftCount],['Missing',missingTargets.length],['Warnings',allScheduleWarnings.length],['Templates',safeTemplates.length]].map(([label,value]) => <div key={label} className="schedule-copilot-metric bg-[#12161A] border border-[#2A353D]"><span className="text-[8px] uppercase tracking-widest font-black text-slate-500">{label}</span><strong className="text-white">{value}</strong></div>)}
       </div>
+<<<<<<< HEAD
       <div data-concept-subtab={`schedule-builder-tool-${activeTool}`} className="concept17-subtab-bar concept17-schedule-tools-tabs flex gap-1.5 overflow-x-auto custom-scrollbar border-b border-[#2A353D] pb-2" role="tablist" aria-label="Schedule Builder tools" aria-orientation="horizontal">{[['targets',t('builder.coverage')],['templates',t('builder.templates')],['template-editor', editingTemplateId ? t('builder.editTemplate') : t('builder.createTemplate')],['drag',t('builder.dragBoard')],['warnings',t('builder.warnings')]].map(([id,label]) => <button key={id} type="button" role="tab" aria-label={label} title={label} onClick={() => setActiveTool(id)} aria-selected={activeTool===id} data-chaos-current-state={activeTool===id ? 'true' : undefined} className={`flex-shrink-0 px-2.5 py-1.5 rounded-lg text-[9px] uppercase tracking-widest font-black ${activeTool===id ? `${T.grad} text-slate-900` : 'bg-[#12161A] text-slate-400 hover:text-white'}`}>{label}</button>)}</div>
+=======
+      <div className="flex gap-1.5 overflow-x-auto custom-scrollbar border-b border-[#2A353D] pb-2" role="tablist" aria-label="Schedule Builder tools" aria-orientation="horizontal">{[['targets',t('builder.coverage')],['templates',t('builder.templates')],['template-editor', editingTemplateId ? t('builder.editTemplate') : t('builder.createTemplate')],['drag',t('builder.dragBoard')],['warnings',t('builder.warnings')]].map(([id,label]) => <button key={id} type="button" role="tab" aria-label={label} title={label} onClick={() => setActiveTool(id)} aria-selected={activeTool===id} data-chaos-current-state={activeTool===id ? 'true' : undefined} className={`flex-shrink-0 px-2.5 py-1.5 rounded-lg text-[9px] uppercase tracking-widest font-black ${activeTool===id ? `${T.grad} text-slate-900` : 'bg-[#12161A] text-slate-400 hover:text-white'}`}>{label}</button>)}</div>
+>>>>>>> 1fb9648590016d97432aa4c21a1d5758ab3b8992
       <div className="schedule-copilot-body custom-scrollbar space-y-3">
       {activeTool === 'targets' && <div className="grid lg:grid-cols-2 gap-4"><form onSubmit={addCoverageTarget} className="bg-[#12161A] border border-[#2A353D] rounded-xl p-3 space-y-2"><h4 className="font-black text-white">Add Coverage Target</h4><p className="text-[10px] font-bold text-slate-400">Choose how many people you need for a role and time. Roles match the Staff Roster and Schedule Builder.</p><div className="grid grid-cols-2 gap-2"><select value={targetForm.dayIndex} onChange={e=>setTargetForm({...targetForm, dayIndex:e.target.value})} className={T.input}>{dayNames.map((d,i)=><option key={d} value={i}>{d}</option>)}</select><select value={targetForm.role} onChange={e=>setTargetForm({...targetForm, role:e.target.value})} className={T.input}>{scheduleRoleOptions.map(r => <option key={r} value={r}>{r}</option>)}</select><input type="time" value={targetForm.startTime} onChange={e=>setTargetForm({...targetForm, startTime:e.target.value})} className={T.input}/><input type="time" value={targetForm.endTime} onChange={e=>setTargetForm({...targetForm, endTime:e.target.value})} className={T.input}/><input type="number" min="1" value={targetForm.count} onChange={e=>setTargetForm({...targetForm, count:e.target.value})} className={T.input}/><button className={`${T.btn} py-2`}>Save Coverage Target</button></div></form><div className="space-y-2">{coverageTargets.length === 0 ? <FriendlyEmpty title="No coverage targets yet" text="Add the staffing level you want for each role and time. Fill Coverage Gaps can then create draft shifts for review."/> : coverageTargets.map(t => <div key={t.id} className="bg-[#12161A] border border-[#2A353D] rounded-xl p-3 flex justify-between items-center"><div><div className="font-black text-white">{dayNames[t.dayIndex]} • {t.role} x{t.count}</div><div className="text-xs text-slate-400 font-bold">{formatShortTime(t.startTime)} - {formatShortTime(t.endTime)}</div></div><button onClick={() => deleteDoc(doc(db,'scheduleCoverageTargets',t.id))} className="p-2 text-slate-400 hover:text-red-400"><Trash2 size={14}/></button></div>)}</div></div>}
       {activeTool === 'templates' && <div className="space-y-3"><div className="flex flex-col md:flex-row gap-2"><select value={templateId} onChange={e => setTemplateId(e.target.value)} className={`${T.input} flex-1`}><option value="">Select template to apply</option>{templateOptions.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}</select><button onClick={applyTemplate} disabled={periodActionBlocked} className={`${T.btn} py-2 disabled:opacity-50`}>{activePeriod.mode === 'weekly' ? 'Apply to Current Week' : 'Apply to Current Period'}</button><button onClick={saveCurrentWeekAsTemplate} className={T.btnAlt}>Save Current Week</button></div>{templateOptions.length === 0 ? <FriendlyEmpty title="No templates yet" text="Create a Normal Week, Packers Sunday, Fish Fry Friday, or Live Music template. Each restaurant gets its own library."/> : templateOptions.map(t => <div key={t.id} className="bg-[#12161A] border border-[#2A353D] rounded-xl p-3 flex justify-between items-center"><div><div className="font-black text-white">{t.name}</div><div className="text-xs text-slate-400 font-bold">{t.description || 'No description'} • {(t.rows || []).length} rules</div></div><div className="flex gap-2"><button onClick={() => editTemplate(t)} className={T.btnAlt}>Edit</button><button onClick={() => deleteTemplate(t)} className="px-3 py-2 rounded-xl bg-red-900/20 text-red-300 border border-red-900/50 text-xs font-black">Delete</button></div></div>)}</div>}

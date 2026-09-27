@@ -5,6 +5,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const root = path.resolve(__dirname, '..');
 const read = file => fs.readFileSync(path.join(root, file), 'utf8');
+const { assertCurrentReleaseIdentity } = require('./_current-release-identity.cjs');
 
 test('16.0.208 mobile login readiness retries and fails explicitly instead of misreporting seed visibility', () => {
   const helpers = read('tests/86chaos-full-audit/utils/audit-helpers.cjs');
@@ -40,6 +41,7 @@ test('16.0.208 accessibility fixes preserve real surfaces with focusable scroll 
   assert.match(operations, /text-red-200 font-black animate-pulse/);
 });
 
+<<<<<<< HEAD
 test('16.0.208 historical maturity assertions coexist with current 17.1.11 version metadata', () => {
   const pkg = JSON.parse(read('package.json'));
   const lock = JSON.parse(read('package-lock.json'));
@@ -55,4 +57,8 @@ test('16.0.208 historical maturity assertions coexist with current 17.1.11 versi
   assert.match(apiVersion, /APP_VERSION = '17.1.11'/);
   assert.match(apiVersion, /SECURITY_SCHEMA_VERSION = '17.1.11'/);
   assert.match(appCore, /CURRENT_VERSION = '17.1.11'/);
+=======
+test('16.0.208 historical maturity assertions coexist with advancing current release identity', () => {
+  assert.equal(assertCurrentReleaseIdentity(root), require('../package.json').version);
+>>>>>>> 1fb9648590016d97432aa4c21a1d5758ab3b8992
 });

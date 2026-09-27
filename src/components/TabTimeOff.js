@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { collection, addDoc, deleteDoc, doc } from 'firebase/firestore';
 import { Shield, Trash2, ChevronLeft, ChevronRight, Check } from 'lucide-react';
+import { validatePartialRequestOffTimeRange } from '../core/requestOffValidation';
 
 const TabTimeOff = ({ timeOffRequests, appUser, users, addToast, events = [], db, T, getToday, getDaysInMonth, formatDisplayDate, formatShortTime, getHoliday, formatDisplayMonth }) => {
   const [calMonth, setCalMonth] = useState(getToday().substring(0, 7)); 
@@ -43,7 +44,9 @@ const TabTimeOff = ({ timeOffRequests, appUser, users, addToast, events = [], db
   const handleSubmit = async (e) => { 
     e.preventDefault(); 
     if (selectedDates.length === 0) return addToast('Error', 'Select days on the calendar first.'); 
-    if (isPartial && (!startTime || !endTime)) return addToast('Error', 'Please set partial times.'); 
+    if (isPartial && (!startTime || !endTime)) return addToast('Error', 'Please set partial times.');
+    const partialTimeValidation = validatePartialRequestOffTimeRange({ isPartial, startTime, endTime });
+    if (!partialTimeValidation.valid) return addToast('Invalid Partial Time', partialTimeValidation.message); 
     
     for (const d of selectedDates) { 
       await addDoc(collection(db, "timeOffRequests"), { 
@@ -126,7 +129,7 @@ const TabTimeOff = ({ timeOffRequests, appUser, users, addToast, events = [], db
               {isPartial && (
                 <div className={`grid grid-cols-2 gap-2 p-3 bg-[#12161A] rounded-xl border ${T.border}`}>
                   <div><label className={T.label}>Start Time</label><input type="time" value={startTime} onChange={e=>setStartTime(e.target.value)} className={T.input} required/></div>
-                  <div><label className={T.label}>End Time</label><input type="time" value={endTime} onChange={e=>setEndTime(e.target.value)} className={T.input} required/></div>
+                  <div><label className={T.label}>End Time</label><input type="time" value={endTime} min={startTime || undefined} onChange={e=>setEndTime(e.target.value)} className={T.input} required/></div>
                 </div>
               )}
               <button type="submit" disabled={selectedDates.length === 0} className={`w-full ${T.btn} disabled:opacity-50 disabled:cursor-not-allowed`}>Submit {selectedDates.length > 0 ? `(${selectedDates.length})` : ''}</button>

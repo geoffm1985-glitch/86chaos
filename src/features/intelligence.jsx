@@ -6,6 +6,7 @@ import { collection, addDoc, updateDoc, deleteDoc, doc, getDocs, query, where, w
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { T, db, storage, auth, secureFetch, useLiveCollection, formatClockDateTime, getToday, logAudit } from '../core/appCore';
 import { requestPersonalReminderRefresh, usePersonalReminderRows } from '../core/personalReminderQueries';
+import { hasNativeLocalReminderBridge, readDeviceLocalReminders, upsertDeviceLocalReminder, removeDeviceLocalReminder, scheduleDeviceLocalReminder, cancelDeviceLocalReminder, shareReminderWithoutServer } from '../core/localReminderBridge';
 import { Modal, SmartEmptyState } from '../components/common';
 import { canUseMenuIntelligence, getZeroStockMenuImpacts } from '../core/menuIntelligence';
 import { buildMenuCostBreakdowns, summarizeMenuCostBreakdowns } from '../core/menuCosting';
@@ -37,6 +38,41 @@ const formatUploadBytes = (bytes = 0) => `${(Math.max(0, bytes) / (1024 * 1024))
 
 
 const REMINDER_SNOOZE_OPTIONS = [30, 60, 90, 120, 180, 240];
+
+const reminderDisplayText=(value,fallback='',max=1200)=>{
+  if(value==null)return fallback;
+  if(typeof value==='string')return value.trim().slice(0,max);
+  if(typeof value==='number'||typeof value==='boolean')return String(value).slice(0,max);
+  return fallback;
+};
+const reminderDisplayDate=(value)=>{
+  try{
+    if(!value)return'';
+    if(value instanceof Date)return Number.isNaN(value.getTime())?'':value.toISOString();
+    if(typeof value?.toDate==='function'){const d=value.toDate();return d instanceof Date&&!Number.isNaN(d.getTime())?d.toISOString():''}
+    if(typeof value?.seconds==='number'){const d=new Date(Number(value.seconds)*1000);return Number.isNaN(d.getTime())?'':d.toISOString()}
+    if(typeof value==='string'||typeof value==='number'){const d=new Date(value);return Number.isNaN(d.getTime())?'':d.toISOString()}
+  }catch(_){}
+  return'';
+};
+const normalizeReminderUiRow=(row,index=0,deviceLocal=false)=>{
+  if(!row||typeof row!=='object'||Array.isArray(row))return null;
+  const id=reminderDisplayText(row.id??row.docId,'',180)||`${deviceLocal?'local':'cloud'}-recovered-${index+1}`;
+  return{
+    ...row,
+    id,
+    title:reminderDisplayText(row.title??row.message,'Reminder',300)||'Reminder',
+    notes:reminderDisplayText(row.notes,'',1200),
+    status:reminderDisplayText(row.status,'scheduled',60)||'scheduled',
+    recurrence:reminderDisplayText(row.recurrence,'none',40)||'none',
+    scheduledAt:reminderDisplayDate(row.scheduledAt),
+    nextDispatchAt:reminderDisplayDate(row.nextDispatchAt),
+    nextReminderAt:reminderDisplayDate(row.nextReminderAt),
+    snoozedUntil:reminderDisplayDate(row.snoozedUntil),
+    completedAt:reminderDisplayDate(row.completedAt),
+    deviceLocal:deviceLocal||row.deviceLocal===true
+  };
+};
 
 const getReminderWakeAt = (reminder = {}) => reminder.snoozedUntil || reminder.nextReminderAt || reminder.scheduledAt || '';
 
@@ -88,34 +124,27 @@ const WorkProgressBar = ({ label, detail, percent = 0, elapsedSeconds = 0 }) => 
 };
 
 const TabPersonalReminders = ({ appUser, addToast, onEnableNotifications }) => {
-  const initial = getInitialReminderDate();
-  const currentUserId = auth?.currentUser?.uid || appUser?.id || '';
-  const [title, setTitle] = useState('');
-  const [notes, setNotes] = useState('');
-  const [dateInput, setDateInput] = useState(initial.date);
-  const [timeInput, setTimeInput] = useState(initial.time);
-  const [shareMode, setShareMode] = useState('self');
-  const [assignedToUserId, setAssignedToUserId] = useState(currentUserId);
-  const [editing, setEditing] = useState(null);
-  const [listening, setListening] = useState(false);
-  const [showCompleted, setShowCompleted] = useState(false);
-  const [teamMembers, setTeamMembers] = useState([]);
-  const [teamLoadError, setTeamLoadError] = useState('');
-  const [notificationPermission, setNotificationPermission] = useState(() => typeof Notification === 'undefined' ? 'unsupported' : Notification.permission);
-  const [notificationConnecting, setNotificationConnecting] = useState(false);
-  const reminderRecognitionRef = useRef(null);
-  const hasActiveReminderDevice = Boolean(appUser?.fcmToken || Object.values(appUser?.pushDevices || {}).some(device => device && typeof device === 'object' && device.active !== false && device.disabled !== true && String(device.permission || device.notificationPermission || '').toLowerCase() === 'granted' && (device.token || device.fcmToken)));
-  const reminderNotificationsReady = notificationPermission === 'granted' && hasActiveReminderDevice;
-
-  const enableReminderNotifications = async () => {
-    if (typeof onEnableNotifications !== 'function') return;
-    setNotificationConnecting(true);
-    try { await onEnableNotifications(); }
-    finally {
-      setNotificationPermission(typeof Notification === 'undefined' ? 'unsupported' : Notification.permission);
-      setNotificationConnecting(false);
-    }
+  const initial=getInitialReminderDate(), currentUserId=auth?.currentUser?.uid||appUser?.id||'';
+  const [title,setTitle]=useState(''),[notes,setNotes]=useState(''),[dateInput,setDateInput]=useState(initial.date),[timeInput,setTimeInput]=useState(initial.time);
+  const [deliveryMode,setDeliveryMode]=useState(()=>hasNativeLocalReminderBridge()?'device':'cloud'),[editing,setEditing]=useState(null),[localRows,setLocalRows]=useState(()=>readDeviceLocalReminders()),[showCompleted,setShowCompleted]=useState(false);
+  const [listening,setListening]=useState(false);
+  const reminderRecognitionRef=useRef(null),reminderVoiceMountedRef=useRef(false);
+  const stopReminderRecognition=()=>{const active=reminderRecognitionRef.current;if(!active){setListening(false);return}reminderRecognitionRef.current=null;active._chaosIntentionalStop=true;try{active.stop()}catch(_){try{active.abort()}catch(__){}}setListening(false)};
+  useEffect(()=>{reminderVoiceMountedRef.current=true;return()=>{reminderVoiceMountedRef.current=false;const active=reminderRecognitionRef.current;reminderRecognitionRef.current=null;if(active){active._chaosIntentionalStop=true;try{active.abort()}catch(_){try{active.stop()}catch(__){}}}}},[]);
+  const startReminderVoiceEntry=()=>{
+    if(reminderRecognitionRef.current||listening){addToast('Already Listening','Stop the current reminder voice entry before starting another.');return}
+    const Recognition=typeof window!=='undefined'?(window.SpeechRecognition||window.webkitSpeechRecognition):null;
+    if(!Recognition){addToast('Voice Unavailable','This browser does not support built-in speech recognition. Type the reminder instead.');return}
+    try{
+      const recognition=new Recognition();reminderRecognitionRef.current=recognition;recognition.continuous=false;recognition.interimResults=false;recognition.lang=navigator.language||'en-US';
+      recognition.onstart=()=>{if(reminderVoiceMountedRef.current&&reminderRecognitionRef.current===recognition)setListening(true)};
+      recognition.onresult=event=>{if(!reminderVoiceMountedRef.current||reminderRecognitionRef.current!==recognition)return;const transcript=Array.from(event.results||[]).map(result=>result?.[0]?.transcript||'').join(' ').trim();if(transcript)setTitle(current=>current.trim()?`${current.trim()} ${transcript}`:transcript)};
+      recognition.onerror=event=>{if(!recognition._chaosIntentionalStop)addToast('Reminder Voice',event?.error==='not-allowed'?'Microphone permission was denied.':'Voice entry stopped before a reminder was captured.')};
+      recognition.onend=()=>{if(reminderRecognitionRef.current===recognition)reminderRecognitionRef.current=null;if(reminderVoiceMountedRef.current)setListening(false)};
+      recognition.start();
+    }catch(err){reminderRecognitionRef.current=null;setListening(false);addToast('Reminder Voice',err?.message||'Could not start reminder voice entry.')}
   };
+<<<<<<< HEAD
 
 
   const stopReminderRecognition = () => {
@@ -376,6 +405,29 @@ const TabPersonalReminders = ({ appUser, addToast, onEnableNotifications }) => {
       </div>
     </div>
   );
+=======
+  const cloudRows=usePersonalReminderRows(appUser,{enabled:!!appUser?.restaurantId&&!!appUser?.id,limitCount:120,fallbackLimitCount:60,debugLabel:'personal-reminders'});
+  const rows=useMemo(()=>[
+    ...(Array.isArray(cloudRows)?cloudRows:[]).map((r,i)=>normalizeReminderUiRow(r,i,false)),
+    ...(Array.isArray(localRows)?localRows:[]).map((r,i)=>normalizeReminderUiRow(r,i,true))
+  ].filter(Boolean),[cloudRows,localRows]);
+  const pending=rows.filter(r=>!['done','completed','cancelled','canceled','dismissed','archived','sent'].includes(String(r.status||'').toLowerCase())).sort((x,y)=>String(getReminderWakeAt(x)).localeCompare(String(getReminderWakeAt(y))));
+  const closed=showCompleted?rows.filter(r=>['sent','done','completed','dismissed','archived','cancelled','canceled'].includes(String(r.status||'').toLowerCase())):[];
+  const reset=()=>{const n=getInitialReminderDate();setTitle('');setNotes('');setDateInput(n.date);setTimeInput(n.time);setEditing(null)};
+  const save=async e=>{e.preventDefault();const when=makeReminderDate(dateInput,timeInput);if(!title.trim()||!when)return addToast('Reminder','Enter reminder text, date, and time.');
+    if(deliveryMode==='device'){const r={id:editing?.deviceLocal?editing.id:`local-${Date.now()}-${Math.random().toString(36).slice(2,8)}`,title:title.trim(),notes:notes.trim(),scheduledAt:when.toISOString(),status:'scheduled',deviceLocal:true,createdBy:currentUserId,updatedAt:new Date().toISOString()};try{const d=await scheduleDeviceLocalReminder(r);setLocalRows(upsertDeviceLocalReminder({...r,deliveryMode:d.mode,closedAppCapable:d.closedApp}));addToast(d.closedApp?'Device Reminder Scheduled':'Local Reminder Saved',d.closedApp?'This phone can alert you while 86 Chaos is closed.':'Saved locally. Closed-app delivery needs the native Android/iPhone wrapper.');reset()}catch(err){addToast('Reminder Permission',err.message||'Could not schedule device reminder.')}return}
+    const response=await secureFetch('/api/personal-reminder-save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({reminderId:editing?.deviceLocal?'':editing?.id||'',restaurantId:appUser.restaurantId,assignedToUserId:currentUserId,title:title.trim(),notes:notes.trim(),scheduledAt:when.toISOString(),recurrence:editing?.recurrence||'none',timezone:Intl.DateTimeFormat().resolvedOptions().timeZone||'UTC'})});const result=await response.json().catch(()=>({}));if(!response.ok||result.ok===false)throw new Error(result.error||'Reminder could not be saved.');requestPersonalReminderRefresh({restaurantId:appUser.restaurantId,uid:currentUserId});addToast('Reminder Saved',title.trim());reset()};
+  const cloudAction=async(r,action)=>{const q=await secureFetch('/api/personal-reminder-action',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({reminderId:r.id,action})});const j=await q.json().catch(()=>({}));if(!q.ok||!j.ok)throw new Error(j.error||'Reminder action failed.');requestPersonalReminderRefresh({restaurantId:appUser.restaurantId,uid:currentUserId})};
+  const done=async r=>{if(r.deviceLocal){await cancelDeviceLocalReminder(r.id);setLocalRows(upsertDeviceLocalReminder({...r,status:'done',completedAt:new Date().toISOString(),updatedAt:new Date().toISOString()}))}else await cloudAction(r,'complete')};
+  const remove=async r=>{if(r.deviceLocal){await cancelDeviceLocalReminder(r.id);setLocalRows(removeDeviceLocalReminder(r.id))}else await cloudAction(r,'cancel')};
+  const share=async r=>{try{await shareReminderWithoutServer(r);addToast('Reminder Shared','Used this device only. Nothing was saved to Firebase.')}catch(err){addToast('Share Unavailable',err.message||'Could not share reminder.')}};
+  const edit=r=>{const d=new Date(r.scheduledAt||Date.now());setEditing(r);setTitle(r.title||'');setNotes(r.notes||'');setDateInput(toDateInputValue(d));setTimeInput(toTimeInputValue(d));setDeliveryMode(r.deviceLocal?'device':'cloud')};
+  return <div className="space-y-4" data-testid="personal-reminders-v17-0-35" data-reminder-runtime-safety="17.0.38"><div className={`${T.card} p-4`}><h2 className="text-xl font-black text-white">Personal Reminders</h2><p className="text-xs text-slate-400 font-bold">Cloud self-reminders or device-local reminders. Sharing uses the OS/Web Share API with zero Firebase persistence.</p></div>
+  <div className={`${T.card} p-4`} data-testid="device-local-reminder-status"><div className="text-xs font-black text-white">Device-local reminders</div><div className="text-[10px] text-slate-400 mt-1">{hasNativeLocalReminderBridge()?'Native bridge connected: closed-app reminders are available.':'Web fallback active. Closed-app delivery requires the native Android/iPhone wrapper.'}</div></div>
+  <form onSubmit={save} className={`${T.card} p-4 grid lg:grid-cols-[1.35fr_.62fr_.52fr_.72fr_auto] gap-3 items-end`}><div><label className={T.label}>Reminder</label><div className="flex gap-2"><input value={title} onChange={e=>setTitle(e.target.value)} className={T.input}/><button type="button" aria-label={listening ? 'Stop reminder voice entry' : 'Speak Reminder'} onClick={listening?stopReminderRecognition:startReminderVoiceEntry} className={`${T.btnAlt} min-h-11 min-w-11 flex items-center justify-center ${listening?'border-red-500 text-red-200':''}`}><Mic size={17}/></button></div></div><div><label className={T.label}>Date</label><input type="date" value={dateInput} onChange={e=>setDateInput(e.target.value)} className={T.input}/></div><div><label className={T.label}>Time</label><input type="time" value={timeInput} onChange={e=>setTimeInput(e.target.value)} className={T.input}/></div><div><label className={T.label}>Delivery</label><select aria-label="Reminder delivery" value={deliveryMode} onChange={e=>setDeliveryMode(e.target.value)} className={T.input}><option value="device">This device only</option><option value="cloud">86 Chaos cloud</option></select></div><button className={`${T.btn} h-11`}>{editing?'Save':'Add'}</button><div className="lg:col-span-5"><label className={T.label}>Notes</label><input value={notes} onChange={e=>setNotes(e.target.value)} className={T.input}/></div></form>
+  <div className={`${T.card} overflow-hidden`}><div className={T.th}>Upcoming</div>{pending.length===0?<SmartEmptyState title="No reminders yet" desc="Add a cloud or device-local reminder."/>:pending.map(r=><div key={(r.deviceLocal?'local:':'cloud:')+r.id} className={`${T.row} flex items-center justify-between gap-3`}><div><div className="font-black text-white text-sm">{r.title}</div><div className="text-[10px] text-[#D4A381] font-black uppercase mt-1">{formatClockDateTime(getReminderWakeAt(r))} • {r.deviceLocal?'Device local':'Cloud'}</div></div><div className="flex gap-1"><button type="button" aria-label="Share reminder" onClick={()=>share(r)} className={T.btnAlt}><Share2 size={15}/></button><button type="button" aria-label="Complete reminder" onClick={()=>done(r)} className={T.btnAlt}><Check size={15}/></button><button type="button" aria-label="Edit reminder" onClick={()=>edit(r)} className={T.btnAlt}><Edit3 size={15}/></button><button type="button" aria-label="Cancel reminder" onClick={()=>remove(r)} className={T.btnAlt}><Trash2 size={15}/></button></div></div>)}</div>
+  <div className={`${T.card} overflow-hidden`}><div className={`${T.th} flex justify-between`}><span>Recently Closed</span><button type="button" onClick={()=>setShowCompleted(v=>!v)}>{showCompleted?'Hide':'Load History'}</button></div>{closed.map(r=><div key={'closed:'+r.id} className={T.row}>{r.title}</div>)}</div></div>;
+>>>>>>> 1fb9648590016d97432aa4c21a1d5758ab3b8992
 };
 
 const TabMenuIntelligence = ({ appUser, clientData, inventoryItems = [], menuDependencies = [], recipes = [], addToast }) => {

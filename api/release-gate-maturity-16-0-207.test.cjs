@@ -5,6 +5,10 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 const { captureSourceIdentity } = require('../scripts/86chaos-release-gate/source-identity.cjs');
+<<<<<<< HEAD
+=======
+const { assertCurrentReleaseIdentity } = require('./_current-release-identity.cjs');
+>>>>>>> 1fb9648590016d97432aa4c21a1d5758ab3b8992
 const root = path.resolve(__dirname, '..');
 const read = file => fs.readFileSync(path.join(root, file), 'utf8');
 const writeJson = (file, data) => {
@@ -148,6 +152,7 @@ test('16.0.207 Schedule Builder tools have valid tablist semantics and the seed 
   assert.match(oracle, /test\.setTimeout\(4 \* 60 \* 1000\)/);
 });
 
+<<<<<<< HEAD
 test('16.0.208 historical maturity assertions coexist with current 17.1.11 version metadata', () => {
   const pkg = JSON.parse(read('package.json'));
   const lock = JSON.parse(read('package-lock.json'));
@@ -163,4 +168,8 @@ test('16.0.208 historical maturity assertions coexist with current 17.1.11 versi
   assert.match(apiVersion, /APP_VERSION = '17.1.11'/);
   assert.match(apiVersion, /SECURITY_SCHEMA_VERSION = '17.1.11'/);
   assert.match(appCore, /CURRENT_VERSION = '17.1.11'/);
+=======
+test('16.0.208 historical maturity assertions coexist with advancing current release identity', () => {
+  assert.equal(assertCurrentReleaseIdentity(root), require('../package.json').version);
+>>>>>>> 1fb9648590016d97432aa4c21a1d5758ab3b8992
 });

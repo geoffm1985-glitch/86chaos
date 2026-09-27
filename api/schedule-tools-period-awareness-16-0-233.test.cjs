@@ -72,10 +72,10 @@ test('weekly coverage targets recur independently on every matching date in long
   const mondays = recurringDatesForWeekday(period, 1);
   assert.deepEqual(mondays, ['2026-09-07','2026-09-14','2026-09-21','2026-09-28']);
   const shifts = mondays.slice(0, 3).flatMap(date => [
-    { date, role: 'Cook', startTime: '16:00' },
-    { date, role: 'Cook', startTime: '16:00' },
+    { date, role: 'Cook', startTime: '16:00', endTime: '20:00' },
+    { date, role: 'Cook', startTime: '16:00', endTime: '20:00' },
   ]);
-  shifts.push({ date: '2026-09-28', role: 'Cook', startTime: '16:00' });
+  shifts.push({ date: '2026-09-28', role: 'Cook', startTime: '16:00', endTime: '20:00' });
   const rows = buildCoverageVarianceRows({
     coverageTargets: [{ id: 'monday-cooks', dayIndex: 1, role: 'Cook', startTime: '16:00', endTime: '20:00', count: 2 }],
     periodDates: period.dates,
@@ -199,7 +199,7 @@ test('Schedule Tools review delegates to the mature publisher and clips its full
 test('Copy Previous Week stays weekly and explains the exact source and destination range', () => {
   const schedule = read('src/features/schedule.jsx');
   assert.match(schedule, /const copyWeekPeriod = deriveScheduleToolsCopyWeek\(activePeriod\)/);
-  assert.match(schedule, /Copy Previous Week/);
+  assert.match(schedule, /t\('builder\.copyPreviousWeek'\)/);
   assert.match(schedule, /Copy \$\{prevShifts\.length\} shifts from \$\{formatDisplayDate\(prevDates\[0\]\)\} through/);
   assert.match(schedule, /source: 'schedule_copy_week'/);
 });

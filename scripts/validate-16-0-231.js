@@ -9,7 +9,7 @@ const root = path.resolve(__dirname, '..');
 let failures = 0;
 const read = file => fs.readFileSync(path.join(root, file), 'utf8');
 const json = file => JSON.parse(read(file));
-const sha = file => crypto.createHash('sha256').update(read(file)).digest('hex');
+const sha = file => crypto.createHash('sha256').update(read(file).replace(/\r\n?/g, '\n')).digest('hex');
 const assert = (condition, message) => {
   if (condition) console.log(`OK: ${message}`);
   else { failures += 1; console.error(`FAIL: ${message}`); }

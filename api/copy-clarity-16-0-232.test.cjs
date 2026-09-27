@@ -33,11 +33,11 @@ test('schedule actions state their outcome while stable accessibility hooks rema
   const source = read('src/features/schedule.jsx');
   assert.match(source, /Open Schedule Tools/);
   assert.match(source, /Fill Coverage Gaps/);
-  assert.match(source, /Review & Publish/);
-  assert.match(source, /Copy Month/);
+  assert.match(source, /t\('builder\.reviewPublish'\)/);
+  assert.match(source, /t\('builder\.copyMonth'\)/);
   assert.match(source, /aria-label="Open Copilot Tools"/);
   assert.match(source, /aria-label="Smart Fill"/);
-  assert.match(source, /aria-label="Auto-Fill"/);
+  assert.ok(source.includes("aria-label={t('builder.copyMonth')}"));
 });
 
 test('manager and kitchen screens lead with restaurant language', () => {

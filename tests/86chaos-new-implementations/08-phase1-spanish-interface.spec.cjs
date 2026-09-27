@@ -1,5 +1,6 @@
 'use strict';
 const { test, expect } = require('@playwright/test');
+<<<<<<< HEAD
 const { ownerLikeCreds, creds, requireCreds, login, gotoTab, appUrl } = require('../86chaos-full-audit/utils/audit-helpers.cjs');
 
 test.describe('17.0.26 Phase 1 Spanish interface', () => {
@@ -7,6 +8,13 @@ test.describe('17.0.26 Phase 1 Spanish interface', () => {
     const projectName = test.info().project.name;
     const manager = creds('MANAGER');
     const account = projectName === 'mobile-chromium' && manager.email ? manager : ownerLikeCreds();
+=======
+const { ownerLikeCreds, requireCreds, login, gotoTab, appUrl } = require('../86chaos-full-audit/utils/audit-helpers.cjs');
+
+test.describe('17.0.26 Phase 1 Spanish interface', () => {
+  test('a user can switch their own interface to Spanish and core Phase 1 navigation follows it', async ({ page }) => {
+    const account = ownerLikeCreds();
+>>>>>>> 1fb9648590016d97432aa4c21a1d5758ab3b8992
     requireCreds(account, 'owner/admin-like');
     await login(page, account.email, account.password, { chooseWorkspace: true });
     await gotoTab(page, 'settings');
@@ -26,11 +34,17 @@ test.describe('17.0.26 Phase 1 Spanish interface', () => {
       await expect(page.locator('button.settings-tab-button').filter({ hasText: /^Preferencias$/i }).first()).toBeVisible();
 
       await page.getByRole('button', { name: /open navigation menu/i }).click();
+<<<<<<< HEAD
       const drawer = page.getByRole('dialog', { name: /menú principal|main menu/i });
       await expect(drawer).toBeVisible();
       await expect(drawer.locator('[data-shell-route="published"]')).toContainText('Reloj y horario');
       await expect(drawer.locator('[data-shell-route="prep"]')).toContainText('Preparación y tareas');
       await expect(drawer.locator('[data-shell-route="settings"]')).toContainText('Configuración');
+=======
+      await expect(page.getByText('Reloj y horario', { exact: true })).toBeVisible();
+      await expect(page.getByText('Preparación y tareas', { exact: true })).toBeVisible();
+      await expect(page.getByText('Configuración', { exact: true })).toBeVisible();
+>>>>>>> 1fb9648590016d97432aa4c21a1d5758ab3b8992
       await page.keyboard.press('Escape');
 
       await page.goto(appUrl('published'), { waitUntil: 'domcontentloaded' });
@@ -43,6 +57,7 @@ test.describe('17.0.26 Phase 1 Spanish interface', () => {
       await expect(page.getByRole('button', { name: /Control de línea/i }).first()).toBeVisible();
 
       await page.goto(appUrl('today'), { waitUntil: 'domcontentloaded' });
+<<<<<<< HEAD
       const todayFrame = page.locator('[data-route-frame="today"]:visible').first();
       await expect(todayFrame).toBeVisible({ timeout: 20000 });
       await expect(todayFrame).toHaveAttribute('lang', 'es');
@@ -50,6 +65,9 @@ test.describe('17.0.26 Phase 1 Spanish interface', () => {
       const visibleTodayNav = page.locator('[data-shell-route="today"]:visible').first();
       await expect(visibleTodayNav).toBeVisible({ timeout: 20000 });
       await expect(visibleTodayNav).toContainText(/Inicio/i);
+=======
+      await expect(page.getByText(/Resumen del gerente|Resumen de cocina|Resumen del bar|Resumen de servicio|Resumen de hoy|Inicio de hoy/i).first()).toBeVisible({ timeout: 20000 });
+>>>>>>> 1fb9648590016d97432aa4c21a1d5758ab3b8992
     } finally {
       await page.goto(appUrl('settings'), { waitUntil: 'domcontentloaded' });
       const prefs = page.getByRole('button', { name: /preferences|preferencias/i }).first();
@@ -58,11 +76,15 @@ test.describe('17.0.26 Phase 1 Spanish interface', () => {
       if (await restore.isVisible().catch(() => false)) {
         await restore.selectOption(originalLanguage || 'en');
         const save = page.getByRole('button', { name: /save preferences|guardar preferencias/i }).first();
+<<<<<<< HEAD
         if (await save.isVisible().catch(() => false)) {
           await save.click();
           await expect(page.locator('html')).toHaveAttribute('lang', /^(en|es)$/i, { timeout: 15000 });
           await expect(page.locator('html')).toHaveAttribute('lang', (originalLanguage || 'en').toLowerCase(), { timeout: 15000 });
         }
+=======
+        if (await save.isVisible().catch(() => false)) await save.click();
+>>>>>>> 1fb9648590016d97432aa4c21a1d5758ab3b8992
       }
     }
   });

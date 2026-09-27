@@ -65,6 +65,47 @@ function Assert-NoReleaseTargetConflicts {
   }
 }
 
+
+function New-ReleaseGateQaPassword {
+  $bytes = New-Object byte[] 32
+  $rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+  try { $rng.GetBytes($bytes) } finally { $rng.Dispose() }
+  $token = [Convert]::ToBase64String($bytes).Replace('+','A').Replace('/','b').TrimEnd('=')
+  return "$token-Aa1!"
+}
+
+function Initialize-AutoProvisionRoleAccounts {
+  if ($env:CHAOS_QA_AUTO_PROVISION_TEST_USERS -notmatch '^(1|true|yes)$') { return }
+
+  # Stable testing-only account identities prevent Auth-user buildup. Testing and
+  # experimental use different stamps so simultaneous branch gates cannot reset
+  # each other's passwords.
+  $stamp = if ($env:CHAOS_EXPECTED_BRANCH -eq 'experimental') { '20260925-0620' } else { '20260925-0619' }
+  $roles = @(
+    @{ Slug = 'system-admin'; Email = 'SYSTEM_ADMIN_EMAIL'; Password = 'SYSTEM_ADMIN_PASSWORD' },
+    @{ Slug = 'owner'; Email = 'OWNER_EMAIL'; Password = 'OWNER_PASSWORD' },
+    @{ Slug = 'manager'; Email = 'MANAGER_EMAIL'; Password = 'MANAGER_PASSWORD' },
+    @{ Slug = 'staff'; Email = 'STAFF_EMAIL'; Password = 'STAFF_PASSWORD' }
+  )
+
+  foreach ($role in $roles) {
+    $email = [Environment]::GetEnvironmentVariable($role.Email, 'Process')
+    $password = [Environment]::GetEnvironmentVariable($role.Password, 'Process')
+    $emailPresent = -not [string]::IsNullOrWhiteSpace($email)
+    $passwordPresent = -not [string]::IsNullOrWhiteSpace($password)
+
+    if ($emailPresent -ne $passwordPresent) {
+      throw "Auto-provision refuses a partial QA role credential pair for $($role.Email)/$($role.Password). Configure both values or neither."
+    }
+
+    if (-not $emailPresent) {
+      $generatedEmail = "86chaos.qa.$($role.Slug).$stamp@example.test"
+      [Environment]::SetEnvironmentVariable($role.Email, $generatedEmail, 'Process')
+      [Environment]::SetEnvironmentVariable($role.Password, (New-ReleaseGateQaPassword), 'Process')
+    }
+  }
+}
+
 function Import-EnvFile {
   param([hashtable]$Map)
   foreach ($name in $Map.Keys) {
@@ -81,6 +122,7 @@ Assert-NoReleaseTargetConflicts $EnvTestLocal $EnvLocal
 Import-EnvFile $EnvTestLocal
 Import-EnvFile $EnvLocal
 
+<<<<<<< HEAD
 # Full certification always targets the permanent branch-bound testing domain.
 foreach ($key in @('APP_URL', 'CHAOS_BASE_URL')) {
   $existing = [string][Environment]::GetEnvironmentVariable($key, 'Process')
@@ -92,6 +134,8 @@ foreach ($key in @('APP_URL', 'CHAOS_BASE_URL')) {
 $env:APP_URL = $CanonicalTestingUrl
 $env:CHAOS_BASE_URL = $CanonicalTestingUrl
 
+=======
+>>>>>>> 1fb9648590016d97432aa4c21a1d5758ab3b8992
 # Full certification always targets the version that is actually present in package.json.
 # CHAOS_EXPECTED_VERSION is transient release evidence, not persistent local configuration;
 # a stale value in the shell or .env.test.local must never block the next sequential release.
@@ -120,6 +164,7 @@ $env:CHAOS_FULL_AUDIT_RUN_ID = $RunId
 $env:CHAOS_RELEASE_GATE_STEP_FAILURES = "0"
 [Environment]::SetEnvironmentVariable('CHAOS_FAILED_ONLY_RELEASE_GATE', $null, 'Process')
 if (-not $env:CHAOS_QA_DISABLE_AUTO_PROVISION_TEST_USERS) { $env:CHAOS_QA_AUTO_PROVISION_TEST_USERS = "true" }
+Initialize-AutoProvisionRoleAccounts
 if (-not $env:CHAOS_RELEASE_GATE_NO_MUTATION) {
   $env:CHAOS_ALLOW_MUTATION = "true"
   $env:CHAOS_QA_CREATE_RESTAURANT = "true"
@@ -160,6 +205,9 @@ $RunnerState = [ordered]@{
   rolePreflightStarted = $false
   rolePreflightPassed = $false
   playwrightStarted = $false
+  playwrightCompleted = $false
+  playwrightExitCode = $null
+  playwrightFinishedAt = ''
   globalSetupStarted = $false
   qaSeedProcessStarted = $false
   qaDataWritesStarted = $false
@@ -218,6 +266,12 @@ function Add-StepResult {
   }
 }
 
+function Ensure-RunnerLogPath {
+  param([string]$LogPath)
+  $parent = Split-Path -Parent $LogPath
+  if (-not (Test-Path $parent)) { New-Item -ItemType Directory -Force $parent | Out-Null }
+}
+
 function Run-Step {
   param([string]$Name, [string]$Command)
   Write-Host ""
@@ -225,9 +279,11 @@ function Run-Step {
   $safeName = ($Name -replace '[^A-Za-z0-9_-]', '_').Trim('_')
   if ([string]::IsNullOrWhiteSpace($safeName)) { $safeName = "step" }
   $LogPath = Join-Path $RunnerLogDir ("{0}-{1}.log" -f $RunId, $safeName)
+  Ensure-RunnerLogPath $LogPath
   "=== $Name ===`nCommand: $Command`nStarted: $(Get-Date -Format o)`n" | Set-Content $LogPath
   powershell -NoProfile -ExecutionPolicy Bypass -Command $Command 2>&1 | Tee-Object -FilePath $LogPath -Append | Out-Host
   $exitCode = if ($null -eq $LASTEXITCODE) { 0 } else { [int]$LASTEXITCODE }
+  Ensure-RunnerLogPath $LogPath
   "`nFinished: $(Get-Date -Format o)`nExitCode: $exitCode" | Add-Content $LogPath
   Add-StepResult -Name $Name -ExitCode $exitCode -LogPath $LogPath
   if ($exitCode -eq 0) { Write-Host "PASSED: $Name" -ForegroundColor Green } else { Write-Host "FAILED: $Name" -ForegroundColor Red }
@@ -242,9 +298,11 @@ function Run-LiveStep {
   $safeName = ($Name -replace '[^A-Za-z0-9_-]', '_').Trim('_')
   if ([string]::IsNullOrWhiteSpace($safeName)) { $safeName = "step" }
   $LogPath = Join-Path $RunnerLogDir ("{0}-{1}.log" -f $RunId, $safeName)
+  Ensure-RunnerLogPath $LogPath
   "=== $Name ===`nCommand: $Command`nStarted: $(Get-Date -Format o)`nLive console output is printed to the terminal while the step exit code remains scalar for the runner.`n" | Set-Content $LogPath
-  powershell -NoProfile -ExecutionPolicy Bypass -Command $Command 2>&1 | ForEach-Object { Add-Content -Path $LogPath -Value $_; Write-Host $_ }
+  powershell -NoProfile -ExecutionPolicy Bypass -Command $Command 2>&1 | ForEach-Object { Ensure-RunnerLogPath $LogPath; Add-Content -Path $LogPath -Value $_; Write-Host $_ }
   $exitCode = if ($null -eq $LASTEXITCODE) { 0 } else { [int]$LASTEXITCODE }
+  Ensure-RunnerLogPath $LogPath
   "`nFinished: $(Get-Date -Format o)`nExitCode: $exitCode" | Add-Content $LogPath
   Add-StepResult -Name $Name -ExitCode $exitCode -LogPath $LogPath
   if ($exitCode -eq 0) { Write-Host "PASSED: $Name" -ForegroundColor Green } else { Write-Host "FAILED: $Name" -ForegroundColor Red }
@@ -258,9 +316,11 @@ function Run-CollectorStep {
   $safeName = ($Name -replace '[^A-Za-z0-9_-]', '_').Trim('_')
   if ([string]::IsNullOrWhiteSpace($safeName)) { $safeName = "step" }
   $LogPath = Join-Path $RunnerLogDir ("{0}-{1}.log" -f $RunId, $safeName)
+  Ensure-RunnerLogPath $LogPath
   "=== $Name ===`nCommand: $Command`nStarted: $(Get-Date -Format o)`n" | Set-Content $LogPath
   powershell -NoProfile -ExecutionPolicy Bypass -Command $Command 2>&1 | Tee-Object -FilePath $LogPath -Append | Out-Host
   $exitCode = if ($null -eq $LASTEXITCODE) { 0 } else { [int]$LASTEXITCODE }
+  Ensure-RunnerLogPath $LogPath
   "`nFinished: $(Get-Date -Format o)`nExitCode: $exitCode" | Add-Content $LogPath
   $existingFailures = 0
   [int]::TryParse($env:CHAOS_RELEASE_GATE_STEP_FAILURES, [ref]$existingFailures) | Out-Null
@@ -511,7 +571,15 @@ if ($PreflightExit -ne 0) {
                         $PlaywrightConfig = ".\playwright.play-store-release.config.cjs"
                         $RunnerState.playwrightStarted = $true
                         Save-RunnerState
+<<<<<<< HEAD
                         Run-LiveStep "Playwright release gate" "& '$PlaywrightExe' test --config '$PlaywrightConfig'"
+=======
+                        $PlaywrightExit = Run-LiveStep "Playwright release gate" "& '$PlaywrightExe' test --config '$PlaywrightConfig'"
+                        $RunnerState.playwrightCompleted = $true
+                        $RunnerState.playwrightExitCode = $PlaywrightExit
+                        $RunnerState.playwrightFinishedAt = (Get-Date -Format o)
+                        Save-RunnerState
+>>>>>>> 1fb9648590016d97432aa4c21a1d5758ab3b8992
                       }
                     }
                   }

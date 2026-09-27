@@ -6,6 +6,7 @@ const path = require('node:path');
 const root = path.resolve(__dirname, '..');
 const read = rel => fs.readFileSync(path.join(root, rel), 'utf8');
 const json = rel => JSON.parse(read(rel));
+const { assertCurrentReleaseIdentity } = require('./_current-release-identity.cjs');
 
 test('16.0.210 archive-only Request Off check uses the seeded date and an actual workflow row', () => {
   const spec = read('tests/e2e/schedule-request-off-management.spec.cjs');
@@ -18,6 +19,7 @@ test('16.0.210 archive-only Request Off check uses the seeded date and an actual
   assert.match(archiveOnlyBlock, /Bulk archive should show one final summary toast/);
 });
 
+<<<<<<< HEAD
 test('16.0.210 historical maturity assertions coexist with current 17.1.11 version metadata', () => {
   const pkg = json('package.json');
   const lock = json('package-lock.json');
@@ -34,4 +36,8 @@ test('16.0.210 historical maturity assertions coexist with current 17.1.11 versi
   assert.match(appCore, /CURRENT_VERSION = '17\.1\.1'/);
   assert.match(apiVersion, /APP_VERSION = '17\.1\.1'/);
   assert.match(apiVersion, /SECURITY_SCHEMA_VERSION = '17\.1\.1'/);
+=======
+test('16.0.210 historical maturity assertions coexist with advancing current release identity', () => {
+  assert.equal(assertCurrentReleaseIdentity(root), require('../package.json').version);
+>>>>>>> 1fb9648590016d97432aa4c21a1d5758ab3b8992
 });

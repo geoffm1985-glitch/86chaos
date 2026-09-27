@@ -51,8 +51,14 @@ test('coverage matrix has no customer-facing primary route with zero coverage', 
   assert.deepEqual(coverage.filter(row => row.mappedArticleIds.length === 0), []);
 });
 
+<<<<<<< HEAD
 test('customer Help version and Custom Shift questions are current for 17.1.11', () => {
   assert.equal(help.CUSTOMER_HELP_VERSION, '17.1.11');
+=======
+test('customer Help version matches the active package release and Custom Shift questions stay current', () => {
+  const packageVersion = require('../package.json').version;
+  assert.equal(help.CUSTOMER_HELP_VERSION, packageVersion);
+>>>>>>> 1fb9648590016d97432aa4c21a1d5758ab3b8992
   const result = help.validateCustomerHelpCorpus();
   assert.equal(result.ok, true, result.errors.join('\n'));
   const [top] = help.searchCustomerHelp("why aren't my saved shifts on my phone", { limit: 3 });

@@ -56,7 +56,7 @@ test('Request Off employee filter is an accessible role-grouped durable select',
   const schedule = read('src/features/schedule.jsx');
   assert.match(schedule, /requestOffEmployeeOptions/);
   assert.match(schedule, /<select id="request-off-employee-filter"/);
-  assert.match(schedule, /<option value="">All Employees<\/option>/);
+  assert.match(schedule, /<option value="">\{t\('requestOff\.allEmployees'\)\}<\/option>/);
   assert.match(schedule, /<optgroup key=\{group\.role\} label=\{group\.role\}>/);
   assert.match(schedule, /requestOffSubjectMatchesPerson\(r, selectedRequestOffEmployee\.person\)/);
   assert.doesNotMatch(schedule, /placeholder="Filter by employee\.\.\."/);

@@ -21,6 +21,7 @@ const STRINGS = Object.freeze({
     'common.all': 'All',
     'common.today': 'Today',
     'common.staff': 'Staff',
+<<<<<<< HEAD
     'shell.home': 'Home',
     'shell.kitchen': 'Kitchen',
     'shell.prep': 'Prep',
@@ -32,6 +33,8 @@ const STRINGS = Object.freeze({
     'shell.searchPlaceholder': 'Search staff, inventory, recipes, schedules...',
     'shell.switchWorkspace': 'Switch workspace',
     'shell.openProfileMenu': 'Open profile menu',
+=======
+>>>>>>> 1fb9648590016d97432aa4c21a1d5758ab3b8992
     'common.events': 'Events',
     'common.unassigned': 'Unassigned',
     'drawer.mainMenu': 'Main menu',
@@ -207,6 +210,7 @@ const STRINGS = Object.freeze({
     'prep.editLineCheck': 'Edit Line Check',
     'prep.itemCoolerName': 'Item / Cooler Name',
     'prep.foodSafetyExpectation': 'Food-safety expectation',
+<<<<<<< HEAD
     'prep.saveChanges': 'Save Changes',
     'admin.eyebrow': 'Internal controls',
     'admin.title': 'System Administrator',
@@ -295,6 +299,9 @@ const STRINGS = Object.freeze({
     'admin.section.retention.desc': 'Legal data-retention setup marker, official schedule, and production checklist.',
     'admin.section.access': 'Access',
     'admin.section.access.desc': 'Grant or revoke internal System Administrator access.'
+=======
+    'prep.saveChanges': 'Save Changes'
+>>>>>>> 1fb9648590016d97432aa4c21a1d5758ab3b8992
   }),
   es: Object.freeze({
     'language.english': 'Inglés',
@@ -314,6 +321,7 @@ const STRINGS = Object.freeze({
     'common.all': 'Todos',
     'common.today': 'Hoy',
     'common.staff': 'Personal',
+<<<<<<< HEAD
     'shell.home': 'Inicio',
     'shell.kitchen': 'Cocina',
     'shell.prep': 'Preparación',
@@ -325,6 +333,8 @@ const STRINGS = Object.freeze({
     'shell.searchPlaceholder': 'Buscar personal, inventario, recetas, horarios...',
     'shell.switchWorkspace': 'Cambiar espacio de trabajo',
     'shell.openProfileMenu': 'Abrir menú de perfil',
+=======
+>>>>>>> 1fb9648590016d97432aa4c21a1d5758ab3b8992
     'common.events': 'Eventos',
     'common.unassigned': 'Sin asignar',
     'drawer.mainMenu': 'Menú principal',
@@ -500,6 +510,7 @@ const STRINGS = Object.freeze({
     'prep.editLineCheck': 'Editar control de línea',
     'prep.itemCoolerName': 'Artículo / nombre del refrigerador',
     'prep.foodSafetyExpectation': 'Requisito de seguridad alimentaria',
+<<<<<<< HEAD
     'prep.saveChanges': 'Guardar cambios',
     'admin.eyebrow': 'Controles internos',
     'admin.title': 'Administrador del sistema',
@@ -588,6 +599,9 @@ const STRINGS = Object.freeze({
     'admin.section.retention.desc': 'Marcador de configuración legal de retención, cronograma oficial y lista de verificación de producción.',
     'admin.section.access': 'Acceso',
     'admin.section.access.desc': 'Otorga o revoca acceso interno de Administrador del sistema.'
+=======
+    'prep.saveChanges': 'Guardar cambios'
+>>>>>>> 1fb9648590016d97432aa4c21a1d5758ab3b8992
   })
 });
 

@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+<<<<<<< HEAD
 'use strict';
 
 const fs = require('fs');
@@ -160,3 +161,6 @@ if (fs.existsSync(manifestPath)) {
 }
 
 console.log('17.0.35 System Administrator Subpage Polish and QA Seed Host Repair validation passed; this does not certify the release.');
+=======
+'use strict';const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict'),root=path.resolve(__dirname,'..'),read=f=>fs.readFileSync(path.join(root,f),'utf8'),json=f=>JSON.parse(read(f));const p=json('package.json'),l=json('package-lock.json'),v=json('public/version.json');assert.equal(p.version,'17.0.35');assert.equal(l.version,'17.0.35');assert.equal(l.packages[''].version,'17.0.35');assert.equal(v.version,'17.0.35');assert(read('src/core/localReminderBridge.js').includes('LocalNotifications'));assert(!/firebase|firestore|secureFetch|\/api\//i.test(read('src/core/localReminderBridge.js')));assert(read('src/features/intelligence.jsx').includes('This device only'));assert(!read('src/features/intelligence.jsx').includes('Share with teammate'));assert(read('scripts/86chaos-release-gate/release-test-universe.cjs').includes('44-device-local-reminders.spec.cjs'));assert(read('.github/workflows/testing-targeted-delta.yml').includes('npm run test:play-store'));assert(!read('.github/workflows/testing-targeted-delta.yml').includes('git push origin'));console.log('17.0.35 reminder validation passed.');
+>>>>>>> 1fb9648590016d97432aa4c21a1d5758ab3b8992

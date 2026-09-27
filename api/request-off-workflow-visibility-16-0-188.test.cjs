@@ -19,5 +19,5 @@ test('Request Off workflow defaults to All Dates so pending requests outside thi
   const schedule = read('src/features/schedule.jsx');
   assert.match(schedule, /const \[dateFilter, setDateFilter\] = useState\('all'\)/);
   assert.match(schedule, /\['all','All Dates'\]/);
-  assert.match(schedule, /Default view only shows items that need attention/);
+  assert.match(schedule, /const dateFilteredRequests = visibleRequests\.filter/);
 });

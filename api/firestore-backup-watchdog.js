@@ -4,8 +4,42 @@ const { durationToSeconds, secondsToDays, exactDatabaseResource, databaseResourc
 const { projectCredentialStatus } = require('./_firebase-project-admin');
 
 const DEFAULT_STALE_HOURS = 26;
+const DEFAULT_ADMIN_API_TIMEOUT_MS = 8000;
+const DEFAULT_ADMIN_API_MAX_PAGES = 10;
 const REQUIRED_NATIVE_BACKUP_PERMISSIONS = ['datastore.backupSchedules.list', 'datastore.backups.list'];
 const RECOMMENDED_NATIVE_BACKUP_ROLES = ['roles/datastore.backupSchedulesViewer', 'roles/datastore.backupsViewer'];
+
+function boundedInt(value, fallback, min, max) {
+  const parsed = Number.parseInt(String(value ?? ''), 10);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(max, Math.max(min, parsed));
+}
+function adminApiTimeoutMs() {
+  return boundedInt(process.env.BACKUP_WATCHDOG_ADMIN_API_TIMEOUT_MS, DEFAULT_ADMIN_API_TIMEOUT_MS, 1000, 20000);
+}
+function adminApiMaxPages() {
+  return boundedInt(process.env.BACKUP_WATCHDOG_ADMIN_API_MAX_PAGES, DEFAULT_ADMIN_API_MAX_PAGES, 1, 25);
+}
+function timeoutError(label, timeoutMs) {
+  const err = new Error(`${label} timed out after ${timeoutMs}ms.`);
+  err.statusCode = 503;
+  err.safeCategory = 'admin_api_timeout';
+  err.code = 'backup-diagnostic-timeout';
+  return err;
+}
+async function withTimeout(promise, timeoutMs, label) {
+  let timer;
+  try {
+    return await Promise.race([
+      Promise.resolve(promise),
+      new Promise((_, reject) => {
+        timer = setTimeout(() => reject(timeoutError(label, timeoutMs)), timeoutMs);
+      })
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
 
 async function authorizeWatchdog(req, app) {
   const cronSecret = process.env.CRON_SECRET;
@@ -20,31 +54,49 @@ async function authorizeWatchdog(req, app) {
 async function accessTokenForApp(app) {
   const credential = app.options?.credential;
   if (credential && typeof credential.getAccessToken === 'function') {
-    const token = await credential.getAccessToken();
+    const timeoutMs = adminApiTimeoutMs();
+    const token = await withTimeout(credential.getAccessToken(), timeoutMs, 'Firebase Admin credential token request');
     return token.access_token || token.accessToken;
   }
   throw Object.assign(new Error('Firebase Admin credential cannot mint a Google API access token for backup verification.'), { statusCode: 503 });
 }
 async function googleGet(app, url) {
+  const timeoutMs = adminApiTimeoutMs();
   const token = await accessTokenForApp(app);
-  const response = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
-  const body = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    const raw = body?.error?.message || response.statusText || 'Firestore Admin API request failed';
-    const safe = String(raw).replace(/Bearer\s+[^\s]+/gi, 'Bearer [redacted]').replace(/[A-Za-z0-9_\-]{80,}/g, '[redacted]').slice(0, 220);
-    const err = new Error(`Firestore Admin API ${response.status}: ${safe}`);
-    err.statusCode = response.status === 401 ? 401 : response.status === 403 ? 403 : 503;
-    err.safeCategory = response.status === 401 ? 'auth_required' : response.status === 403 ? 'permission_denied' : 'admin_api_unavailable';
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, { headers: { Authorization: `Bearer ${token}` }, signal: controller.signal });
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const raw = body?.error?.message || response.statusText || 'Firestore Admin API request failed';
+      const safe = String(raw).replace(/Bearer\s+[^\s]+/gi, 'Bearer [redacted]').replace(/[A-Za-z0-9_\-]{80,}/g, '[redacted]').slice(0, 220);
+      const err = new Error(`Firestore Admin API ${response.status}: ${safe}`);
+      err.statusCode = response.status === 401 ? 401 : response.status === 403 ? 403 : 503;
+      err.safeCategory = response.status === 401 ? 'auth_required' : response.status === 403 ? 'permission_denied' : 'admin_api_unavailable';
+      throw err;
+    }
+    return body;
+  } catch (err) {
+    if (err?.name === 'AbortError') throw timeoutError('Firestore Admin API request', timeoutMs);
     throw err;
+  } finally {
+    clearTimeout(timer);
   }
-  return body;
 }
 async function googleGetPaged(app, url, arrayKey) {
   const rows = [];
   const unreachableLocations = [];
   let pageToken = '';
   let pageCount = 0;
+  const maxPages = adminApiMaxPages();
   do {
+    if (pageCount >= maxPages) {
+      const err = new Error(`Firestore Admin API pagination exceeded the safe limit of ${maxPages} pages.`);
+      err.statusCode = 503;
+      err.safeCategory = 'admin_api_pagination_limit';
+      throw err;
+    }
     const sep = url.includes('?') ? '&' : '?';
     const body = await googleGet(app, pageToken ? `${url}${sep}pageToken=${encodeURIComponent(pageToken)}` : url);
     pageCount += 1;
@@ -148,9 +200,12 @@ module.exports = async function handler(req, res) {
       backupWatchdogStale: !fresh,
       backupWatchdogStaleHours: staleHours,
       lastWatchdogCheckAt: startedAt.toISOString(),
+      lastWatchdogDurationMs: Date.now() - startedAt.getTime(),
       lastWatchdogSource: ctx.source,
       lastWatchdogVersion: APP_VERSION,
       lastWatchdogResult: verified ? 'verified' : 'attention',
+      nativeBackupAdminApiTimeoutMs: adminApiTimeoutMs(),
+      nativeBackupAdminApiMaxPages: adminApiMaxPages(),
       nativeBackupPermissionState: 'ok',
       nativeBackupVerificationState: verified ? 'verified' : 'attention',
       manualJsonBackupEndpointPreserved: true,
@@ -164,7 +219,10 @@ module.exports = async function handler(req, res) {
     return res.status(statusCodeForHealth({ setupComplete: verified, apiError: unreachableLocations.length > 0 })).json({ ok: verified, version: APP_VERSION, mode: 'native-admin-api-watchdog', projectId, databaseId, scheduleCount: schedules.length, backupCount: backups.length, unreachableLocations, schedulePages: schedulePage.pageCount, backupPages: backupPage.pageCount, ...next });
   } catch (err) {
     const code = err.statusCode || (/permission|forbidden/i.test(err.message) ? 403 : 503);
-    const isPermissionDenied = code === 403 || err.safeCategory === 'permission_denied';
+    const errorCategory = err.safeCategory || (code === 403 ? 'permission_denied' : 'backup_watchdog_error');
+    const isPermissionDenied = code === 403 || errorCategory === 'permission_denied';
+    const isTimeout = errorCategory === 'admin_api_timeout';
+    const isPaginationLimit = errorCategory === 'admin_api_pagination_limit';
     const iam = isPermissionDenied ? nativeBackupIamDiagnostic(projectId, databaseId) : {};
     const preciseMessage = isPermissionDenied
       ? nativeBackupPermissionMessage(projectId, iam.serviceAccountEmail)
@@ -173,10 +231,13 @@ module.exports = async function handler(req, res) {
       status: 'attention',
       lastStatus: 'attention',
       nativeBackupVerified: false,
-      nativeBackupSetupIncompleteReason: isPermissionDenied ? 'Native backup check blocked by IAM permission.' : 'Native backup setup incomplete',
+      nativeBackupSetupIncompleteReason: isPermissionDenied ? 'Native backup check blocked by IAM permission.' : isTimeout ? 'Native backup verification timed out safely.' : isPaginationLimit ? 'Native backup verification stopped at the pagination safety limit.' : 'Native backup setup incomplete',
       nativeBackupPermissionState: isPermissionDenied ? 'permission_required' : 'unknown',
-      nativeBackupVerificationState: isPermissionDenied ? 'blocked_by_iam' : 'configuration_error',
-      lastWatchdogResult: isPermissionDenied ? 'iam_permission_required' : 'configuration_error',
+      nativeBackupVerificationState: isPermissionDenied ? 'blocked_by_iam' : isTimeout ? 'timed_out' : isPaginationLimit ? 'pagination_limited' : 'configuration_error',
+      lastWatchdogResult: isPermissionDenied ? 'iam_permission_required' : isTimeout ? 'timeout' : isPaginationLimit ? 'pagination_limit' : 'configuration_error',
+      lastWatchdogDurationMs: Date.now() - startedAt.getTime(),
+      nativeBackupAdminApiTimeoutMs: adminApiTimeoutMs(),
+      nativeBackupAdminApiMaxPages: adminApiMaxPages(),
       lastError: sanitizeBackupError(preciseMessage),
       lastErrorAt: new Date().toISOString(),
       lastWatchdogVersion: APP_VERSION,
@@ -184,7 +245,7 @@ module.exports = async function handler(req, res) {
       ...iam
     };
     if (statusRef && shouldWriteStatus(previous, next, req.method === 'POST')) await statusRef.set(next, { merge: true }).catch(() => null);
-    return res.status(code).json({ ok: false, version: APP_VERSION, error: next.lastError || 'Native backup verification failed', errorCategory: isPermissionDenied ? 'permission_denied' : (err.safeCategory || 'backup_watchdog_error'), ...next });
+    return res.status(code).json({ ok: false, version: APP_VERSION, error: next.lastError || 'Native backup verification failed', errorCategory, ...next });
   }
 };
 module.exports.config = { maxDuration: 60 };
@@ -193,3 +254,6 @@ module.exports.REQUIRED_NATIVE_BACKUP_PERMISSIONS = REQUIRED_NATIVE_BACKUP_PERMI
 module.exports.RECOMMENDED_NATIVE_BACKUP_ROLES = RECOMMENDED_NATIVE_BACKUP_ROLES;
 module.exports.nativeBackupIamDiagnostic = nativeBackupIamDiagnostic;
 module.exports.nativeBackupPermissionMessage = nativeBackupPermissionMessage;
+module.exports.adminApiTimeoutMs = adminApiTimeoutMs;
+module.exports.adminApiMaxPages = adminApiMaxPages;
+module.exports.withTimeout = withTimeout;

@@ -70,7 +70,7 @@ const explicitFirebaseProject = normalizeDeployMode(env('REACT_APP_FIREBASE_ACTI
 const explicitDeployMode = normalizeDeployMode(env('REACT_APP_FIREBASE_DEPLOYMENT_MODE', ''));
 const genericFirebaseProjectId = env('REACT_APP_FIREBASE_PROJECT_ID', '').trim();
 const currentHostname = typeof window !== 'undefined' ? String(window.location.hostname || '').toLowerCase() : '';
-const isVercelPreviewHost = currentHostname === 'testing.86chaos.com' || currentHostname === 'localhost' || currentHostname === '127.0.0.1' || currentHostname.endsWith('.vercel.app');
+const isVercelPreviewHost = currentHostname === 'testing.86chaos.com' || currentHostname === 'experimental.86chaos.com' || currentHostname === 'localhost' || currentHostname === '127.0.0.1' || currentHostname.endsWith('.vercel.app');
 const isProductionFirebaseHost = isProdFirebaseHost(currentHostname);
 const trustedBrowserProjects = ['chaos-test-d1601', 'cheers-34b8d'];
 const exactGenericBrowserProject = trustedBrowserProjects.includes(genericFirebaseProjectId) ? genericFirebaseProjectId : '';
@@ -278,7 +278,11 @@ export const MASTER_ADMIN_EMAIL = (process.env.REACT_APP_MASTER_ADMIN_EMAIL || '
 export const EVENT_TAGS = ['Standard Day', 'Packers Game', 'Brewers Game', 'Live Music', 'Severe Weather', 'Private Catering', 'Holiday'];
 
 // --- VERSION TRACKING ---
+<<<<<<< HEAD
 export const CURRENT_VERSION = '17.1.15';
+=======
+export const CURRENT_VERSION = '17.0.45';
+>>>>>>> 1fb9648590016d97432aa4c21a1d5758ab3b8992
 
 // --- Helpers ---
 const usePageVisible = () => {
@@ -480,6 +484,67 @@ export const clearTenantListenerCache = (boundary = {}) => {
     diag.activeDocuments = liveDocumentRegistry.size;
     diag.listenerReleaseCount = (diag.listenerReleaseCount || 0) + releasedCollections + releasedDocuments;
     diag.lastCacheClear = { projectId, restaurantId, viewerUid, clearAll, releasedCollections, releasedDocuments, at: new Date().toISOString() };
+  }
+  return { releasedCollections, releasedDocuments };
+};
+
+// Route transitions can leave zero-subscriber listeners inside their adaptive
+// grace period. Release only those abandoned registrations immediately while
+// retaining their bounded snapshot cache, so a fast return to the route does
+// not trigger an avoidable fallback read. Active/shared listeners are never
+// touched.
+export const releaseAbandonedRouteListeners = (boundary = {}) => {
+  const projectId = boundary.projectId || firebaseConfig?.projectId || 'default';
+  const restaurantId = boundary.restaurantId || boundary.restId || '';
+  const viewerUid = boundary.viewerUid || boundary.userId || currentViewerUid();
+  const matches = (entry = {}) => (
+    String(entry.projectId || '') === String(projectId)
+    && (!restaurantId || String(entry.restaurantId || entry.restId || '') === String(restaurantId))
+    && (!viewerUid || String(entry.viewerUid || '') === String(viewerUid))
+    && Number(entry.subscribers?.size || 0) === 0
+  );
+  let releasedCollections = 0;
+  let releasedDocuments = 0;
+  for (const [key, entry] of liveCollectionRegistry.entries()) {
+    if (!matches(entry)) continue;
+    setLiveCacheEntry(liveCollectionSessionCache, key, {
+      data: entry.data || [],
+      coll: entry.coll,
+      restId: entry.restaurantId || entry.restId || '',
+      restaurantId: entry.restaurantId || entry.restId || '',
+      viewerUid: entry.viewerUid || viewerUid,
+      userSensitive: true
+    });
+    releaseLiveCollectionEntry(key, entry, { reason: 'route-change-zero-subscribers', cache: true });
+    releasedCollections += 1;
+  }
+  for (const [key, entry] of liveDocumentRegistry.entries()) {
+    if (!matches(entry)) continue;
+    setLiveCacheEntry(liveDocumentSessionCache, key, {
+      data: entry.data,
+      coll: entry.coll,
+      docId: entry.docId,
+      restaurantId: entry.restaurantId || '',
+      viewerUid: entry.viewerUid || viewerUid,
+      userSensitive: true
+    });
+    releaseLiveDocumentEntry(key, entry, { reason: 'route-change-zero-subscribers', cache: true });
+    releasedDocuments += 1;
+  }
+  const diag = getFirestoreDiagnostics();
+  if (diag) {
+    diag.activeListeners = liveCollectionRegistry.size;
+    diag.activeDocuments = liveDocumentRegistry.size;
+    diag.listenerReleaseCount = (diag.listenerReleaseCount || 0) + releasedCollections + releasedDocuments;
+    diag.lastRouteCleanup = {
+      route: String(boundary.route || ''),
+      projectId,
+      restaurantId,
+      viewerUid,
+      releasedCollections,
+      releasedDocuments,
+      at: new Date().toISOString()
+    };
   }
   return { releasedCollections, releasedDocuments };
 };
@@ -1851,4 +1916,4 @@ export const buildV14ClientGuardrailReport = ({ currentVersion = CURRENT_VERSION
 // BRANDING & LOGOS
 // ============================================================================
 
-export const __listenerRegistryTestHooks = { makeLiveCollectionKey, clearTenantListenerCache, resetFirebaseUsageDiagnostics };
+export const __listenerRegistryTestHooks = { makeLiveCollectionKey, clearTenantListenerCache, releaseAbandonedRouteListeners, resetFirebaseUsageDiagnostics };
