@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "release": "17.0.42",
+  "release": "18.0.0",
   "groups": {
     "hostile-contracts": {
       "mandatory": true,
@@ -84,6 +84,22 @@
       ],
       "automated": false,
       "artifact": "real-device-evidence.json"
+    },
+    "native-mobile-foundation": {
+      "mandatory": true,
+      "fidelity": [
+        "ACTUAL MODULE",
+        "DEPLOYED HTTP",
+        "PLAYWRIGHT UI",
+        "REAL DEVICE REQUIRED"
+      ],
+      "command": "npm run test:mobile-foundation && npm run test:mobile-release-gate",
+      "runnerGroups": [
+        "native mobile Android/iOS parity",
+        "Firebase cost lifecycle"
+      ],
+      "automated": "partial",
+      "artifact": "native-mobile-evidence.json"
     }
   }
 }
