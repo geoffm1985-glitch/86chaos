@@ -49,5 +49,39 @@
     "native-lifecycle",
     "release-gate",
     "real-device-before-public-release"
-  ]
+  ],
+  "capacitor": {
+    "version": "8.5.2",
+    "node": "24.x",
+    "localPackagedAssets": true,
+    "android": {
+      "applicationId": "com.chiltonappworks.chaos86",
+      "minSdk": 24,
+      "compileSdk": 36,
+      "targetSdk": 36,
+      "versionCode": 180000,
+      "versionName": "18.0.0"
+    },
+    "ios": {
+      "bundleIdentifier": "com.chiltonappworks.chaos86",
+      "minimumVersion": "15.0",
+      "currentProjectVersion": 180000,
+      "marketingVersion": "18.0.0",
+      "packageManager": "SPM"
+    }
+  },
+  "permissions": {
+    "android": [
+      "INTERNET",
+      "ACCESS_NETWORK_STATE",
+      "CAMERA",
+      "RECORD_AUDIO",
+      "POST_NOTIFICATIONS"
+    ],
+    "ios": [
+      "NSCameraUsageDescription",
+      "NSMicrophoneUsageDescription",
+      "NSPhotoLibraryUsageDescription"
+    ]
+  }
 }
