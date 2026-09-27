@@ -425,7 +425,7 @@ export const MASTER_ADMIN_EMAIL = (process.env.REACT_APP_MASTER_ADMIN_EMAIL || '
 export const EVENT_TAGS = ['Standard Day', 'Packers Game', 'Brewers Game', 'Live Music', 'Severe Weather', 'Private Catering', 'Holiday'];
 
 // --- VERSION TRACKING ---
-export const CURRENT_VERSION = '17.0.42';
+export const CURRENT_VERSION = '18.0.0';
 
 // --- Helpers ---
 const usePageVisible = () => {
@@ -444,6 +444,27 @@ const usePageVisible = () => {
     };
   }, []);
   return visible;
+};
+
+export const getNativeMobilePlatform = () => {
+  if (typeof window === 'undefined') return 'web';
+  const capacitor = window.Capacitor;
+  if (!capacitor) return 'web';
+  try {
+    const platform = String(capacitor.getPlatform?.() || '').toLowerCase();
+    return platform === 'android' || platform === 'ios' ? platform : 'web';
+  } catch (_) {
+    return 'web';
+  }
+};
+
+export const isNativeMobileRuntime = () => getNativeMobilePlatform() !== 'web';
+export const MOBILE_NATIVE_BACKGROUND_RELEASE_GRACE_MS = 15 * 1000;
+
+const nativeRuntimeIsBackgrounded = () => {
+  if (!isNativeMobileRuntime()) return false;
+  if (typeof window !== 'undefined' && window.__chaosNativeAppActive === false) return true;
+  return typeof document !== 'undefined' && document.visibilityState === 'hidden';
 };
 
 const LIVE_COLLECTION_RELEASE_GRACE_MS = 6 * 60 * 1000;
@@ -478,6 +499,12 @@ const adaptiveReleaseGraceMs = (entry = {}, kind = 'collection') => {
   else if (initialDocs <= 5 && changesPerMinute < 1) next = Math.min(next, 2 * 60 * 1000);
   if (entry.listenerReuseCount >= 2 && changesPerMinute < 3) next = Math.max(next, 6 * 60 * 1000);
   return clampReleaseGraceMs(next);
+};
+
+const listenerReleaseGraceMs = (entry = {}, kind = 'collection') => {
+  const adaptive = adaptiveReleaseGraceMs(entry, kind);
+  if (!nativeRuntimeIsBackgrounded()) return adaptive;
+  return Math.min(adaptive, MOBILE_NATIVE_BACKGROUND_RELEASE_GRACE_MS);
 };
 const liveCollectionRegistry = new Map();
 const liveDocumentRegistry = new Map();
@@ -921,7 +948,7 @@ const acquireSharedLiveCollection = ({ coll, restId, constraints, key, setData, 
     current.subscribers.delete(subscriber);
     annotateListenerDiagnostics(key, { subscriberCount: current.subscribers.size, consumerLabels: entryConsumerLabels(current) });
     if (current.subscribers.size === 0 && !current.releaseTimer) {
-      const releaseGraceMs = adaptiveReleaseGraceMs(current, 'collection');
+      const releaseGraceMs = listenerReleaseGraceMs(current, 'collection');
       annotateListenerDiagnostics(key, { releaseGraceMs, releaseReason: 'no-subscribers-adaptive-grace-started' });
       current.releaseTimer = setTimeout(() => {
         const latest = liveCollectionRegistry.get(key);
@@ -1160,7 +1187,7 @@ const acquireSharedLiveDocument = ({ coll, docId, key, setValue, debugLabel = ''
     current.subscribers.delete(subscriber);
     if (diagnostics) diagnostics.documents[key] = { ...(diagnostics.documents[key] || {}), consumerLabels: entryConsumerLabels(current), subscriberCount: current.subscribers.size };
     if (current.subscribers.size === 0 && !current.releaseTimer) {
-      const releaseGraceMs = adaptiveReleaseGraceMs(current, 'document');
+      const releaseGraceMs = listenerReleaseGraceMs(current, 'document');
       if (diagnostics) diagnostics.documents[key] = { ...(diagnostics.documents[key] || {}), releaseGraceMs, releaseReason: 'no-subscribers-adaptive-grace-started' };
       current.releaseTimer = setTimeout(() => {
         const latest = liveDocumentRegistry.get(key);
