@@ -1,17 +1,18 @@
 {
-  "version": "17.0.47",
-  "name": "86 Chaos 17.0.47",
-  "build": "17.0.47",
-  "label": "86 Chaos 17.0.47",
-  "releasedAt": "2026-09-28T20:00:00Z",
+  "version": "17.0.48",
+  "name": "86 Chaos 17.0.48",
+  "build": "17.0.48",
+  "label": "86 Chaos 17.0.48",
+  "releasedAt": "2026-09-28T20:10:00Z",
   "releaseTitle": "Emergency Schedule Publish Permission Repair",
   "notes": [
-    "Built from the current production 17.0.33 source, not from the newer testing feature line.",
-    "Removes workspaceId-only Schedule Publish candidate reads that fail Firestore tenant authorization for non-superadmin users.",
-    "Preserves the canonical restaurantId + date and restaurantId + scheduleDateKey authoritative reads and the fail-closed no-write error path.",
-    "Adds narrowly scoped source, Firestore-emulator, and Release Gate coverage for this permission repair only."
+    "Built from the production 17.0.33 source, not from the newer testing feature line.",
+    "Removes workspaceId-only Schedule Publish candidate reads that Firestore denies for normal tenant users.",
+    "Preserves the canonical restaurantId + date and restaurantId + scheduleDateKey authoritative reads and the fail-closed no-write path.",
+    "Adds narrowly scoped source, Firestore-emulator, and Release Gate coverage for this permission repair only.",
+    "17.0.48 supersedes the failed 17.0.47 candidate by provisioning Java 21 for the targeted Firestore emulator; application behavior is otherwise unchanged from the hotfix."
   ],
-  "title": "86 Chaos 17.0.47",
-  "summary": "Repairs Schedule Builder publishing for normal tenant users by removing legacy workspaceId-only candidate queries that Firestore rules reject.",
-  "description": "Production-baseline emergency hotfix built from the 17.0.33 production source. Schedule publishing now performs only restaurantId-scoped authoritative candidate reads that satisfy the existing tenant security rule. No production branch changes are included."
+  "title": "86 Chaos 17.0.48",
+  "summary": "Repairs Schedule Builder publishing for normal tenant users and supplies the Java 21 runtime required by the targeted Firestore-emulator verification.",
+  "description": "Production-baseline emergency hotfix built from the 17.0.33 production source. Schedule publishing now performs only restaurantId-scoped authoritative candidate reads that satisfy the existing tenant security rule. The testing-only targeted workflow now provisions Java 21 so the Firestore emulator can run."
 }
