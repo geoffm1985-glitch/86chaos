@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "release": "17.0.47",
+  "release": "17.0.48",
   "defects": [
     {
       "defectId": "RG-API-WRAPPER-FIDELITY",
@@ -498,7 +498,7 @@
         "emergency schedule publish candidate reads remain Firestore-authorized"
       ],
       "fidelity": "SOURCE ASSERTION + FIREBASE EMULATOR + RELEASE GATE",
-      "fixedVersion": "17.0.47",
+      "fixedVersion": "17.0.48",
       "mutationId": "SCHEDULE-PUBLISH-WORKSPACE-QUERY-PERMISSION",
       "mandatoryGroup": "schedule-publish"
     }
