@@ -2139,10 +2139,10 @@ const [eventDate, setEventDate] = useState(getToday());
     const days = Array.from(daySet).filter(Boolean).sort();
     for (const day of days) {
       try {
+        // Firestore shift reads are tenant-scoped by restaurantId in firestore.rules.
+        // workspaceId-only legacy queries cannot prove that rule predicate and are denied for normal tenant users.
         await fetchAuthoritativeCandidates(query(collection(db, 'shifts'), where('restaurantId', '==', appUser.restaurantId), where('date', '==', day)));
         await fetchAuthoritativeCandidates(query(collection(db, 'shifts'), where('restaurantId', '==', appUser.restaurantId), where('scheduleDateKey', '==', day)));
-        await fetchAuthoritativeCandidates(query(collection(db, 'shifts'), where('workspaceId', '==', appUser.restaurantId), where('date', '==', day)));
-        await fetchAuthoritativeCandidates(query(collection(db, 'shifts'), where('workspaceId', '==', appUser.restaurantId), where('scheduleDateKey', '==', day)));
       } catch (err) {
         throw new Error(`Publish candidate query failed for ${day}. No shifts were changed. ${err?.message || ''}`.trim());
       }
