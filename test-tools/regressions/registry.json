@@ -487,6 +487,20 @@
       "fidelity": "ACTUAL PREFLIGHT EXECUTION / STRUCTURED SOURCE-VALIDATOR CONTRACT",
       "fixedVersion": "17.0.20",
       "mandatoryGroup": "hostile-contracts"
+    },
+    {
+      "defectId": "PROD-SCHEDULE-PUBLISH-PERMISSION-20260928",
+      "origin": "production screenshot 2026-09-28",
+      "affectedInvariant": "Schedule Publish candidate verification must use Firestore queries authorized by the shifts tenant rule for normal owner/manager users",
+      "reproducer": "test:emergency-schedule-publish-permissions",
+      "permanentTestIds": [
+        "schedule publish candidate reads stay inside the Firestore-authorized restaurantId tenant scope",
+        "emergency schedule publish candidate reads remain Firestore-authorized"
+      ],
+      "fidelity": "SOURCE ASSERTION + FIREBASE EMULATOR + RELEASE GATE",
+      "fixedVersion": "17.0.47",
+      "mutationId": "SCHEDULE-PUBLISH-WORKSPACE-QUERY-PERMISSION",
+      "mandatoryGroup": "schedule-publish"
     }
   ]
 }
