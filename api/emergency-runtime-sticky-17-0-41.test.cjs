@@ -41,10 +41,10 @@ test('17.0.41 browser intelligence modules expose the exact Manager Brief functi
 test('17.0.41 Schedule Builder sticky day header reserves the live control-deck height on mobile too', () => {
   const schedule = read('src/features/schedule.jsx');
   const styles = read('src/styles.css');
-  assert.match(schedule, /const deckHeight = Math\.ceil\(scheduleBuilderControlDeckRef\.current\?\.getBoundingClientRect/);
+  assert.match(schedule, /const deck = scheduleBuilderControlDeckRef\.current;[\s\S]{0,120}const deckHeight = Math\.ceil\(deck\?\.getBoundingClientRect\?\.\(\)\.height \|\| 0\)/);
   assert.doesNotMatch(schedule, /viewportWidth\s*>=\s*1024[\s\S]{0,120}deckHeight/);
   assert.doesNotMatch(schedule, /viewportWidth\s*<=\s*720[\s\S]{0,80}setScheduleBuilderStickyTop\(0\)/);
-  assert.match(schedule, /baseTop \+ deckHeight \+ \(deckHeight \? 4 : 2\)/);
+  assert.match(schedule, /deckTop \+ deckHeight \+ \(deckHeight \? 4 : 2\)/);
   assert.match(styles, /@media \(max-width: 720px\)[\s\S]*schedule-builder-sticky-day-header[\s\S]*top:\s*var\(--schedule-builder-sticky-top/);
   assert.doesNotMatch(styles, /schedule-builder-sticky-day-header\s*\{[\s\S]{0,120}top:\s*0\s*!important/);
 });
