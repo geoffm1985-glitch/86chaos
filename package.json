@@ -168,7 +168,7 @@
     "validate:17.0.47": "node scripts/validate-17-0-47.js",
     "test:emergency-schedule-publish-permissions": "node --test api/emergency-schedule-publish-permissions-17-0-47.test.cjs",
     "test:emergency-schedule-publish-permissions:rules": "firebase emulators:exec --only firestore \"node scripts/run-schedule-publish-permission-targeted.cjs\"",
-    "test:emergency-schedule-publish-permissions:play-store": "playwright test --config=playwright.play-store-release.config.cjs tests/86chaos-release-gate/62-emergency-schedule-publish-permissions.spec.cjs --project=chromium --project=mobile-chromium"
+    "test:emergency-schedule-publish-permissions:play-store": "playwright test --config=playwright.inventory.config.cjs tests/86chaos-release-gate/62-emergency-schedule-publish-permissions.spec.cjs --project=chromium --project=mobile-chromium"
   },
   "browserslist": {
     "production": [
