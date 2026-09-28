@@ -1,7 +1,7 @@
 'use strict';
 
-const CURRENT_RELEASE_VERSION = '17.0.47';
-const CURRENT_RELEASE_CARRY_FORWARD_NOTE = '17.0.47 is an emergency production-baseline hotfix built from 17.0.33 that repairs Schedule Publish Firestore candidate-read authorization without carrying forward newer testing-branch feature work.';
+const CURRENT_RELEASE_VERSION = '17.0.48';
+const CURRENT_RELEASE_CARRY_FORWARD_NOTE = '17.0.48 is an emergency production-baseline hotfix built from 17.0.33 that repairs Schedule Publish Firestore candidate-read authorization without carrying forward newer testing-branch feature work.';
 const CURRENT_RELEASE_REPAIR_SCOPE = [
   {
     specPath: '86chaos-new-implementations/08-phase1-spanish-interface.spec.cjs',
