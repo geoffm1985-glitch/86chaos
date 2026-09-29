@@ -1,0 +1,20 @@
+#!/usr/bin/env node
+'use strict';
+const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict');
+const root=path.resolve(__dirname,'..'),read=f=>fs.readFileSync(path.join(root,f),'utf8'),json=f=>JSON.parse(read(f)),version='17.0.49';
+const p=json('package.json'),l=json('package-lock.json'),v=json('public/version.json');
+assert.equal(p.version,version);assert.equal(l.version,version);assert.equal(l.packages[''].version,version);assert.equal(v.version,version);assert.equal(v.build,version);
+assert.equal(p.scripts['test:source'],'node scripts/validate-17-0-49.js');assert.equal(p.scripts['validate:17.0.49'],'node scripts/validate-17-0-49.js');assert.equal(p.scripts['test:repair:17.0.49'],'npm run test:current-release-targeted');
+assert.ok(p.scripts['test:current-release-targeted'].includes('api/release-gate-surgical-repairs-17-0-46.test.cjs'));assert.ok(p.scripts['test:current-release-targeted'].endsWith('node scripts/validate-17-0-49.js'));
+assert.match(read('api/_version.js'),/APP_VERSION = '17\\.0\\.49'/);assert.match(read('api/_version.js'),/SECURITY_SCHEMA_VERSION = '17\\.0\\.49'/);assert.match(read('api/_pos-bridge-config.js'),/APP_RELEASE = '17\\.0\\.49'/);assert.match(read('src/core/appCore.js'),/CURRENT_VERSION = '17\\.0\\.49'/);
+for(const f of ['src/core/customerHelpKnowledge.js','src/core/customerHelpKnowledge.cjs'])assert.match(read(f),/CUSTOMER_HELP_VERSION = '17\\.0\\.49'/);
+for(const f of ['test-tools/certification/groups.json','test-tools/regressions/registry.json','test-tools/certification/cost-performance-baselines.json'])assert.equal(json(f).release,version);
+assert.match(read('src/core/schedulePdf.js'),/document\\.setProducer\\('86 Chaos 17\\.0\\.49'\\)/);
+const emulator=read('scripts/run-pos-bridge-emulator-tests.cjs');
+assert.match(emulator,/GCLOUD_PROJECT:'demo-pos-bridge',FIREBASE_ACTIVE_PROJECT_ID:'demo-pos-bridge',FIREBASE_PROJECT_ID:'demo-pos-bridge'/);
+assert.match(read('api/release-browser-reliability.test.cjs'),/getByTestId\\\\\\('schedule-request-off-tab'\\\\\\)/);
+assert.match(read('api/release-gate-maturity-16-0-207.test.cjs'),/role="tab"\\[\\\\s\\\\S\\]\\{0,180\\}aria-label/);
+assert.match(read('api/release-gate-maturity-16-0-209.test.cjs'),/schedule-copilot-warnings-tab/);
+assert.match(read('tests/86chaos-release-gate/61-release-gate-surgical-repairs-17-0-46.spec.cjs'),/17\\.0\\.49 release-gate readiness repairs/);
+assert.ok(read('.github/workflows/testing-targeted-delta.yml').includes('Run 17.0.49 targeted delta only'));
+console.log('17.0.49 release-gate readiness repair validation passed.');
