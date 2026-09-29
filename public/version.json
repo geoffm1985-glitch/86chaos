@@ -1,21 +1,21 @@
 {
-  "version": "17.0.49",
-  "name": "86 Chaos 17.0.49",
-  "build": "17.0.49",
-  "label": "86 Chaos 17.0.49",
-  "releasedAt": "2026-09-29T03:00:00Z",
-  "releaseTitle": "Release Gate Readiness Repair",
+  "version": "17.0.50",
+  "name": "86 Chaos 17.0.50",
+  "build": "17.0.50",
+  "label": "86 Chaos 17.0.50",
+  "releasedAt": "2026-09-29T03:15:00Z",
+  "releaseTitle": "Release Validator Literal-Match Repair",
   "notes": [
-    "Isolates POS Bridge Firestore emulator project variables from the parent release-gate environment.",
-    "Updates stale source-level selector contracts to the current stable Request Off and Warnings test IDs.",
-    "Preserves the restored testing application behavior while allowing the full Play Store gate to reach browser execution."
+    "Repairs the 17.0.49 source validator that over-escaped version regex literals and rejected valid release identity.",
+    "Uses direct literal identity checks for version-bearing source files instead of fragile regular expressions.",
+    "Keeps the 17.0.49 release-gate readiness repairs unchanged."
   ],
-  "title": "86 Chaos 17.0.49",
-  "summary": "Release-gate readiness repair for emulator isolation and current Schedule/Request Off selector contracts.",
-  "description": "Repairs the pre-Playwright blockers found after restoring the 17.0.46 testing line, without changing restaurant workflow behavior.",
+  "title": "86 Chaos 17.0.50",
+  "summary": "Surgical source-validator repair so the full release gate can proceed past valid 17.0.50 identity.",
+  "description": "Fixes only the release validation harness defect observed in the 17.0.49 full-gate handoff; restaurant workflow behavior is unchanged.",
   "highlights": [
-    "POS Bridge emulator tests pin all recognized Firebase project identifiers to the safe demo project.",
-    "Schedule Builder maturity checks validate tab semantics without depending on JSX attribute ordering.",
-    "Request Off and Warnings gate checks use the stable data-testid contracts already used by the current Playwright flows."
+    "Version validation now uses exact string inclusion for server, client, POS Bridge, Help, and PDF identities.",
+    "Targeted regression coverage verifies the validator does not reintroduce over-escaped release regexes.",
+    "POS Bridge emulator isolation and stable Schedule/Request Off test IDs remain intact."
   ]
 }
