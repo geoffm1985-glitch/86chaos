@@ -12,8 +12,8 @@ for(const f of ['test-tools/certification/groups.json','test-tools/regressions/r
 assert.match(read('src/core/schedulePdf.js'),/document\\.setProducer\\('86 Chaos 17\\.0\\.49'\\)/);
 const emulator=read('scripts/run-pos-bridge-emulator-tests.cjs');
 assert.match(emulator,/GCLOUD_PROJECT:'demo-pos-bridge',FIREBASE_ACTIVE_PROJECT_ID:'demo-pos-bridge',FIREBASE_PROJECT_ID:'demo-pos-bridge'/);
-assert.match(read('api/release-browser-reliability.test.cjs'),/getByTestId\\\\\\('schedule-request-off-tab'\\\\\\)/);
-assert.match(read('api/release-gate-maturity-16-0-207.test.cjs'),/role="tab"\\[\\\\s\\\\S\\]\\{0,180\\}aria-label/);
+assert.ok(read('api/release-browser-reliability.test.cjs').includes("getByTestId\\('schedule-request-off-tab'\\)"));
+assert.ok(read('api/release-gate-maturity-16-0-207.test.cjs').includes('role="tab"[\\s\\S]{0,180}aria-label'));
 assert.match(read('api/release-gate-maturity-16-0-209.test.cjs'),/schedule-copilot-warnings-tab/);
 assert.match(read('tests/86chaos-release-gate/61-release-gate-surgical-repairs-17-0-46.spec.cjs'),/17\\.0\\.49 release-gate readiness repairs/);
 assert.ok(read('.github/workflows/testing-targeted-delta.yml').includes('Run 17.0.49 targeted delta only'));
