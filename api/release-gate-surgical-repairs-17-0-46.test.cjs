@@ -52,3 +52,12 @@ test('17.0.49 pre-Playwright gate repairs isolate emulator identity and preserve
   assert.doesNotMatch(maturity209, /getByRole\\\('tab'.*Warnings/);
 });
 
+test('17.0.50 source validator uses literal release identity checks instead of over-escaped regexes', () => {
+  const validator = read('scripts/validate-17-0-50.js');
+  assert.ok(validator.includes("includes(\"const APP_VERSION = '17.0.50';\")"));
+  assert.ok(validator.includes("includes(\"const SECURITY_SCHEMA_VERSION = '17.0.50';\")"));
+  assert.ok(validator.includes("includes(\"const APP_RELEASE = '17.0.50';\")"));
+  assert.ok(validator.includes("includes(\"export const CURRENT_VERSION = '17.0.50';\")"));
+  assert.doesNotMatch(validator, /APP_VERSION = '17\\\\\\\\\.0/);
+});
+
