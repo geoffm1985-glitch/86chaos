@@ -1,20 +1,21 @@
 {
-  "version": "17.0.46",
-  "name": "86 Chaos 17.0.46",
-  "build": "17.0.46",
-  "label": "86 Chaos 17.0.46",
-  "releasedAt": "2026-09-27T16:00:00Z",
-  "releaseTitle": "Release Gate Surgical Repair",
+  "version": "17.0.49",
+  "name": "86 Chaos 17.0.49",
+  "build": "17.0.49",
+  "label": "86 Chaos 17.0.49",
+  "releasedAt": "2026-09-29T03:00:00Z",
+  "releaseTitle": "Release Gate Readiness Repair",
   "notes": [
-    "Repairs only the failures observed in the completed 17.0.45 full release gate.",
-    "Playwright retries are disabled so each failing identity executes once."
+    "Isolates POS Bridge Firestore emulator project variables from the parent release-gate environment.",
+    "Updates stale source-level selector contracts to the current stable Request Off and Warnings test IDs.",
+    "Preserves the restored testing application behavior while allowing the full Play Store gate to reach browser execution."
   ],
-  "title": "86 Chaos 17.0.46",
-  "summary": "Surgical release-gate repairs for current selectors, PDF font loading, reminder controls, and mobile sticky positioning.",
-  "description": "Aligns release coverage with the current UI contract, removes failed-test retries, and fixes the real browser performance and mobile layout defects exposed by the 17.0.45 full gate.",
+  "title": "86 Chaos 17.0.49",
+  "summary": "Release-gate readiness repair for emulator isolation and current Schedule/Request Off selector contracts.",
+  "description": "Repairs the pre-Playwright blockers found after restoring the 17.0.46 testing line, without changing restaurant workflow behavior.",
   "highlights": [
-    "Schedule PDFs load only the Unicode font subsets used by the current month model.",
-    "Schedule Builder sticky headers use the control deck's resolved CSS top on phones.",
-    "Release-gate controls use stable test IDs and current version identity instead of stale labels or historical patch numbers."
+    "POS Bridge emulator tests pin all recognized Firebase project identifiers to the safe demo project.",
+    "Schedule Builder maturity checks validate tab semantics without depending on JSX attribute ordering.",
+    "Request Off and Warnings gate checks use the stable data-testid contracts already used by the current Playwright flows."
   ]
 }
