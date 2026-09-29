@@ -8,9 +8,9 @@ const read = rel => fs.readFileSync(path.join(root, rel), 'utf8');
 const json = rel => JSON.parse(read(rel));
 const { assertCurrentReleaseIdentity } = require('./_current-release-identity.cjs');
 
-test('16.0.209 Request Off Warnings helper targets the current tab semantics before stale button fallback', () => {
+test('16.0.209 Request Off Warnings helper targets the stable current warnings control', () => {
   const spec = read('tests/e2e/schedule-request-off-management.spec.cjs');
-  assert.match(spec, /getByRole\('tab', \{ name: \/\^Warnings\$\/i \}\)/);
+  assert.match(spec, /getByTestId\('schedule-copilot-warnings-tab'\)/);
   assert.match(spec, /Warnings tool control should use the current accessible tab\/button name/);
   assert.match(spec, /Warnings panel should open after activating the current Warnings control/);
 });
