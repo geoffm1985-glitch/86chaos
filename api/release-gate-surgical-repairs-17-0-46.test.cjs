@@ -38,3 +38,17 @@ test('historical browser checks compare deployments with the active release iden
     'tests/86chaos-new-implementations/10-app-bootstrap-i18n-runtime.spec.cjs',
   ]) assert.match(read(file), /pkg\.version/);
 });
+
+test('17.0.49 pre-Playwright gate repairs isolate emulator identity and preserve current stable controls', () => {
+  const emulatorRunner = read('scripts/run-pos-bridge-emulator-tests.cjs');
+  const reliability = read('api/release-browser-reliability.test.cjs');
+  const maturity207 = read('api/release-gate-maturity-16-0-207.test.cjs');
+  const maturity209 = read('api/release-gate-maturity-16-0-209.test.cjs');
+  assert.match(emulatorRunner, /GCLOUD_PROJECT:'demo-pos-bridge',FIREBASE_ACTIVE_PROJECT_ID:'demo-pos-bridge',FIREBASE_PROJECT_ID:'demo-pos-bridge'/);
+  assert.match(reliability, /schedule-request-off-tab/);
+  assert.match(maturity207, /schedule-copilot-warnings-tab/);
+  assert.match(maturity207, /role="tab"\[\\s\\S\]\{0,180\}aria-label/);
+  assert.match(maturity209, /schedule-copilot-warnings-tab/);
+  assert.doesNotMatch(maturity209, /getByRole\\\('tab'.*Warnings/);
+});
+
