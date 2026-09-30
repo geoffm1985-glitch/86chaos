@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "sourceHash": "d00f907f2bf2d8a6d146ca8b86afccd4ffb4fcf6bde3ad8682491455a3570702",
+  "sourceHash": "ffbf6f006c856bfbd3f2267dc0b37da0c4c81dbe59eed2d7a1497d3bd985555e",
   "files": [
     {
       "file": ".gitattributes",
@@ -8,7 +8,7 @@
     },
     {
       "file": ".github/workflows/testing-targeted-delta.yml",
-      "sha256": "baf014f7128b206d04c641e44d6f794fc5f365eb58326d5ee7052e61fdb85139"
+      "sha256": "366bd06735bee1d9bcdf9f28245a6c2822b733bdf14fb9f183bab1e1fa2fa17c"
     },
     {
       "file": ".gitignore",
@@ -155,6 +155,10 @@
       "sha256": "5b70523b930597b5f29524911ae93e7235be86a973a6de04a89f0a37753cafe7"
     },
     {
+      "file": "RELEASE_17_0_52.md",
+      "sha256": "f9fe1fefdc2e6b55407a6b2bdd6eed5a5c3f184d3aa6b13cdce6278c468cafad"
+    },
+    {
       "file": "RELEASE_17_0_8.md",
       "sha256": "2545cbaba81622c63b4129729ea0eb8076746129d0425d66dfc1a154ac78cf00"
     },
@@ -280,7 +284,7 @@
     },
     {
       "file": "api/_pos-bridge-config.js",
-      "sha256": "757a3f25b5902c9bf9ad6133cc06b332ed44a24e4c3b6fa14fb22bf97329aedd"
+      "sha256": "07b5bfeef71c8ea43c703215907b81b54b85764a8e9c8efbf57f3d670729031f"
     },
     {
       "file": "api/_pos-bridge-events.js",
@@ -416,7 +420,7 @@
     },
     {
       "file": "api/_version.js",
-      "sha256": "70dbab5f50fb156db9f6d95d6ebe918a5ecaf38ae6b1d9ad0a5a67b686670656"
+      "sha256": "865ce8a79334efc774b9e04de7068179ad6aea233314748d6ed6e1bc683297ee"
     },
     {
       "file": "api/account-deletion-request.js",
@@ -1100,7 +1104,7 @@
     },
     {
       "file": "api/release-gate-surgical-repairs-17-0-46.test.cjs",
-      "sha256": "68caa6c3efb7c4d35380e3469d90c85ac2770e50f6c108a39961e4c33bbea04d"
+      "sha256": "88fb31fe23caf4885e2c4788fdc1dc63b7e7467b9ee7e0c8fe77e106037936a3"
     },
     {
       "file": "api/release-gate-workspace-safety.test.cjs",
@@ -1455,6 +1459,10 @@
       "sha256": "4c06b0c718e4dcb2fd70d3fda6abb3895a234fc16fdc587f48f99675221de9aa"
     },
     {
+      "file": "api/system-admin-firebase-cost-runtime-17-0-52.test.cjs",
+      "sha256": "6aee4062e946f56015c526942ee498c1b7d5bf264511dd22a67f301718799b06"
+    },
+    {
       "file": "api/system-admin-global-user-roster-source.test.cjs",
       "sha256": "6ed667f56d3160f79412d42b4c6b9af6d48bda154c40440c63ae513b1c6a8ce3"
     },
@@ -1620,11 +1628,11 @@
     },
     {
       "file": "package-lock.json",
-      "sha256": "89bf95da8d497ae691a7878355b61367cbe85af8506d3238477f8cb4fea9b326"
+      "sha256": "41f12ff59362365575e650da4a7ae5c67bd6583b7f780839cff8f9e8d5f58cba"
     },
     {
       "file": "package.json",
-      "sha256": "726dfa5299c9c6946f526a503b85b891d37baaa8d1f04c20d5e69f96375e8d22"
+      "sha256": "6181ba406337c97fc0b3f85ce82816642b3db6d59e31b2b62dd5729406313f25"
     },
     {
       "file": "playwright.config.js",
@@ -1840,7 +1848,7 @@
     },
     {
       "file": "public/version.json",
-      "sha256": "abf3eb1ecbd944375e87e73dafc8c8641c44471e912a3f6dba71671950fb3d31"
+      "sha256": "64823419c080931eda22fe1460d2b83a556070ddc9c417bb484d95ede5918b1d"
     },
     {
       "file": "public/wisco.png",
@@ -1960,7 +1968,7 @@
     },
     {
       "file": "scripts/86chaos-release-gate/release-test-universe.cjs",
-      "sha256": "6b7818959a003fc2ee006583aaa94d6aadf0688305920be4c272793919c7d56a"
+      "sha256": "8fa797cbbd62e8aead58af8d4fe780e3fdc38188d5dc2676b20ce95e30fd8025"
     },
     {
       "file": "scripts/86chaos-release-gate/reported-current-blockers-20260814-064437.json",
@@ -2975,6 +2983,10 @@
       "sha256": "c01c39a81e182f31a40673159661818c8a0db729d7fdff0ed1aa3769be3ba06d"
     },
     {
+      "file": "scripts/validate-17-0-52.js",
+      "sha256": "1924e9879800ac3fbae985fccfa19e9524698cdc01ed11b77af5c8e43c2a57b2"
+    },
+    {
       "file": "scripts/validate-17-0-6.js",
       "sha256": "cd9e194913174744a48d6413fac4cf4ee4d0888f5f960de7d959748cc1eaee5d"
     },
@@ -3152,7 +3164,7 @@
     },
     {
       "file": "src/core/appCore.js",
-      "sha256": "19ac3f299f9d70abb9ac5575d1856b476fbcb462d23e3a1c4d03e28c6c275309"
+      "sha256": "372a7b1909eff17f037263349aff7b818d86fd6bcce96d0b28c7f1001f114930"
     },
     {
       "file": "src/core/csvSafety.test.js",
@@ -3160,11 +3172,11 @@
     },
     {
       "file": "src/core/customerHelpKnowledge.cjs",
-      "sha256": "2654ed9e26cf41310058073df920a6684c64048584ee9efcda07f9955424666f"
+      "sha256": "82a6c0ca1ef1b8d884af34854011e6b1f5965f0a32c0b5458d3a88e0ce98b9c6"
     },
     {
       "file": "src/core/customerHelpKnowledge.js",
-      "sha256": "94c70dec6166cca93a478b9fbebdf05fff114e04fc9873d9de01c5479717687c"
+      "sha256": "8043a78e73cb98847fa5ff45a9b11e58d71fc80976c2eaa212a6d077833ca4e5"
     },
     {
       "file": "src/core/fileCompression.js",
@@ -3173,6 +3185,10 @@
     {
       "file": "src/core/firebaseCostDiagnostics.cjs",
       "sha256": "93cc4e5f274a95073c347dc293efc8a7a2c89e3012d83aea074afd278b7757fc"
+    },
+    {
+      "file": "src/core/firebaseCostDiagnostics.js",
+      "sha256": "a59fd73e43527cc3b12312da494f9cfddfd385c84374a4781ea1ed113a00664d"
     },
     {
       "file": "src/core/foodSafety.cjs",
@@ -3404,7 +3420,7 @@
     },
     {
       "file": "src/core/schedulePdf.js",
-      "sha256": "4b7ea3b5aa1a8be7f3bef7cd11e3b40f89bd3212067bd46e808611e8a039e32c"
+      "sha256": "fcc6efe31ea00a4afbe25d7860dd1c5b6ea0f91aee9ed27830f438351260f1b0"
     },
     {
       "file": "src/core/schedulePdf.test.js",
@@ -3544,7 +3560,7 @@
     },
     {
       "file": "src/features/management.jsx",
-      "sha256": "d09b7a730ef1d14844a573609a2b0523357ebcb257023c479ce138666a2814e0"
+      "sha256": "9719bbe0b7a1e115c8d5982e95e32552033368ef745d0e09dbb1d68d30e9673e"
     },
     {
       "file": "src/features/operations.jsx",
@@ -3608,11 +3624,11 @@
     },
     {
       "file": "test-tools/certification/cost-performance-baselines.json",
-      "sha256": "e6ccd1f86f96b92ef8e9e67b8413db9960cd4b236211b9986d1b7dbcadd56135"
+      "sha256": "34ca5fcaec3b376184229ca7c4345efbc0b5def78aed5df0c676815aa791c11b"
     },
     {
       "file": "test-tools/certification/groups.json",
-      "sha256": "bec7a73ffb36bb05f215f5b534ada7d7cb950334473038b43e86fdf09cb0eb8d"
+      "sha256": "9835dfe19d9e95eb89dc28fae3415e6376657764bf7e4c887a55b9ab53b83795"
     },
     {
       "file": "test-tools/certification/permission-matrix.json",
@@ -3664,7 +3680,7 @@
     },
     {
       "file": "test-tools/regressions/registry.json",
-      "sha256": "5b5eb3d68d9d32c490ab64560baa3908287d113de5f35a7ec9c0db06b6444bc7"
+      "sha256": "05591af493d151bf1e4b5a4a097de87c03ee31171746b37a73171bbc1db04846"
     },
     {
       "file": "test-tools/reporters/chaos-release-gate-reporter.cjs",
@@ -4028,7 +4044,7 @@
     },
     {
       "file": "tests/86chaos-release-gate/61-release-gate-surgical-repairs-17-0-46.spec.cjs",
-      "sha256": "5630396a08bdf30f25f15bdcc0bb5779261efdb3aa2e94f629a4fd973eef53cb"
+      "sha256": "40ef7933b43637007c60d16cc00b00d3200025b538386d24d253634edcfa93b5"
     },
     {
       "file": "tests/86chaos-release-gate/63-testing-deployment-identity-file-reader-17-0-49.spec.cjs",
@@ -4037,6 +4053,10 @@
     {
       "file": "tests/86chaos-release-gate/64-system-admin-recovery-boundary-17-0-51.spec.cjs",
       "sha256": "232edfe2e4afca0083820c27d1d2ebead7c5f8c4d5d52910756e15c07e0c68fc"
+    },
+    {
+      "file": "tests/86chaos-release-gate/65-system-admin-firebase-cost-runtime-17-0-52.spec.cjs",
+      "sha256": "7efcf25271ac75eab2d06388f0f3844d0e964ce3bf044dda15908ce7fcfd9e17"
     },
     {
       "file": "tests/86chaos-release-gate/exhaustive-surface-matrix.cjs",

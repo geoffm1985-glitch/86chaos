@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "release": "17.0.51",
+  "release": "17.0.52",
   "defects": [
     {
       "defectId": "RG-API-WRAPPER-FIDELITY",
@@ -609,6 +609,19 @@
       "fidelity": "ACTUAL CI WORKFLOW / RELEASE-GATE CONTRACT",
       "fixedVersion": "17.0.51",
       "mandatoryGroup": "hostile-contracts"
+    },
+    {
+      "defectId": "RG-SYSTEM-ADMIN-FIREBASE-COST-CJS-17052",
+      "origin": "17.0.51 failed+new release gate System Administrator App Recovery trace",
+      "affectedInvariant": "System Administrator must resolve Firebase cost diagnostics as a callable browser-native function and must not enter App Recovery while rendering aggregate Firebase/RTDB cost observability.",
+      "reproducer": "api/system-admin-firebase-cost-runtime-17-0-52.test.cjs / 65-system-admin-firebase-cost-runtime-17-0-52.spec.cjs",
+      "permanentTestIds": [
+        "17.0.52 System Administrator uses browser-native Firebase cost diagnostics instead of CommonJS browser interop",
+        "17.0.52 System Administrator renders Firebase cost observability without the not-a-function recovery crash"
+      ],
+      "fidelity": "ACTUAL SOURCE / DEPLOYED PLAYWRIGHT DESKTOP+MOBILE",
+      "fixedVersion": "17.0.52",
+      "mandatoryGroup": "deployed"
     }
   ]
 }

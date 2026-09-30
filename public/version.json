@@ -1,21 +1,21 @@
 {
-  "version": "17.0.51",
-  "name": "86 Chaos 17.0.51",
-  "build": "17.0.51",
-  "label": "86 Chaos 17.0.51",
-  "releasedAt": "2026-09-30T00:55:00Z",
-  "releaseTitle": "System Administrator Live-Data Boundary Repair",
+  "version": "17.0.52",
+  "name": "86 Chaos 17.0.52",
+  "build": "17.0.52",
+  "label": "86 Chaos 17.0.52",
+  "releasedAt": "2026-09-30T22:00:00Z",
+  "releaseTitle": "System Administrator Firebase Cost Diagnostics Runtime Repair",
   "notes": [
-    "Normalizes remaining System Administrator live Firestore records before they can reach React rendering.",
-    "Accepts both client and Admin SDK Firestore timestamp JSON shapes at the System Administrator safety boundary.",
-    "Adds targeted Node and Play Store/release-gate coverage for the exact System Administrator recovery-boundary failure."
+    "Replaces the System Administrator browser import of the CommonJS Firebase cost-diagnostics helper with a browser-native ES module.",
+    "Preserves the existing diagnostics calculations while guaranteeing buildFirebaseCostDiagnostics is callable during System Administrator render.",
+    "Adds targeted release-gate and Playwright regression coverage for the exact 17.0.51 ut is not a function recovery crash."
   ],
-  "title": "86 Chaos 17.0.51",
-  "summary": "Surgical System Administrator live-data safety repair for the 17.0.50 release-gate recovery crash.",
-  "description": "Repairs only the unsafe live-record boundary exercised by the System Administrator overview; restaurant workflows and production remain unchanged.",
+  "title": "86 Chaos 17.0.52",
+  "summary": "Surgical browser-module repair for the System Administrator Firebase cost-observability render crash.",
+  "description": "Repairs only the callable-module boundary that sent the System Administrator surface into App Recovery; diagnostics behavior and restaurant workflows are unchanged.",
   "highlights": [
-    "Restore-drill, operations-review, super-admin, and restaurant-admin-alert records are normalized before state update.",
-    "Directly rendered System Administrator status and alert fields are converted to safe scalar text.",
-    "Regression coverage rejects App Recovery on the System Administrator overview and exercises malformed Firestore-shaped values."
+    "System Administrator now imports Firebase cost diagnostics from a browser-native ESM module instead of CommonJS default interop.",
+    "The Firebase / RTDB Cost Observability panel remains backed by the same bounded aggregate calculations.",
+    "Regression coverage requires the System Administrator and its cost-observability panel to render without the 17.0.51 not-a-function page error."
   ]
 }

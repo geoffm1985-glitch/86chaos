@@ -20,7 +20,7 @@ import { HELP_SUBJECTS, HELP_SUBTOPICS, HELP_DEEP_LINKS, CUSTOMER_HELP_ARTICLES,
 import * as adminSafetyModule from '../core/systemAdminDataSafety.cjs';
 import { roleNameKey } from '../core/rosterRoleIdentity';
 import { useI18n, normalizeAppLanguage, LANGUAGE_STORAGE_KEY } from '../core/i18n';
-import firebaseCostDiagnosticsHelpers from '../core/firebaseCostDiagnostics.cjs';
+import { buildFirebaseCostDiagnostics } from '../core/firebaseCostDiagnostics.js';
 
 
 const resolveAdminSafetyModule = (moduleValue) => {
@@ -81,7 +81,6 @@ const normalizeSystemAdminAlert = typeof adminSafety.normalizeSystemAdminAlert =
 const normalizeSystemAdminUser = typeof adminSafety.normalizeSystemAdminUser === 'function' ? adminSafety.normalizeSystemAdminUser : fallbackNormalizeRecord('superAdmins');
 const normalizeTierPriceMap = typeof adminSafety.normalizeTierPriceMap === 'function' ? adminSafety.normalizeTierPriceMap : ((value = {}, fallback = { shift: 49, operations: 99, smart_kitchen: 179, owner_pro: 299 }) => Object.fromEntries(Object.entries(fallback).map(([key, defaultValue]) => [key, adminFiniteNumber(value?.[key], defaultValue)])));
 const safeDiagnostic = typeof adminSafety.safeDiagnostic === 'function' ? adminSafety.safeDiagnostic : ((collection, id, field, reason) => ({ collection: adminSafeText(collection, 'unknown').slice(0, 80), id: adminSafeText(id, 'unknown').slice(0, 160), field: adminSafeText(field, '*').slice(0, 120), reason: adminSafeText(reason, 'Malformed live data skipped.').slice(0, 240) }));
-const { buildFirebaseCostDiagnostics } = firebaseCostDiagnosticsHelpers;
 
 
 const PROTECTED_ROOT_ADMIN_EMAIL = 'geoffm1985@gmail.com';
