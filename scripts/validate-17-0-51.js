@@ -1,0 +1,28 @@
+#!/usr/bin/env node
+'use strict';
+const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict');
+const root=path.resolve(__dirname,'..'),read=f=>fs.readFileSync(path.join(root,f),'utf8'),json=f=>JSON.parse(read(f)),version='17.0.51';
+const p=json('package.json'),l=json('package-lock.json'),v=json('public/version.json');
+assert.equal(p.version,version); assert.equal(l.version,version); assert.equal(l.packages[''].version,version); assert.equal(v.version,version); assert.equal(v.build,version);
+assert.equal(p.scripts['test:source'],'node scripts/validate-17-0-51.js');
+assert.equal(p.scripts['validate:17.0.51'],'node scripts/validate-17-0-51.js');
+assert.equal(p.scripts['test:repair:17.0.51'],'npm run test:current-release-targeted');
+assert.ok(p.scripts['test:current-release-targeted'].includes('api/system-admin-runtime-boundary-17-0-51.test.cjs'));
+assert.ok(p.scripts['test:current-release-targeted'].endsWith('node scripts/validate-17-0-51.js'));
+assert.ok(read('api/_version.js').includes("const APP_VERSION = '17.0.51';"));
+assert.ok(read('api/_version.js').includes("const SECURITY_SCHEMA_VERSION = '17.0.51';"));
+assert.ok(read('api/_pos-bridge-config.js').includes("const APP_RELEASE = '17.0.51';"));
+assert.ok(read('src/core/appCore.js').includes("export const CURRENT_VERSION = '17.0.51';"));
+for(const f of ['src/core/customerHelpKnowledge.js','src/core/customerHelpKnowledge.cjs']) assert.ok(read(f).includes("const CUSTOMER_HELP_VERSION = '17.0.51';"));
+for(const f of ['test-tools/certification/groups.json','test-tools/regressions/registry.json','test-tools/certification/cost-performance-baselines.json']) assert.equal(json(f).release,version);
+assert.ok(read('src/core/schedulePdf.js').includes("document.setProducer('86 Chaos 17.0.51')"));
+const safety=read('src/core/systemAdminDataSafety.cjs'),management=read('src/features/management.jsx'),browser=read('tests/86chaos-release-gate/64-system-admin-recovery-boundary-17-0-51.spec.cjs');
+assert.ok(safety.includes("typeof value._seconds === 'number'"));
+assert.ok(safety.includes('function normalizeSystemAdminAlert'));
+assert.ok(management.includes("mapDocs('restaurantAdminAlerts', normalizeSystemAdminAlert)"));
+assert.ok(management.includes("normalizeSystemAdminStatusRecord('restoreDrillStatus'"));
+assert.ok(browser.includes('APP RECOVERY'));
+assert.ok(browser.includes('This section hit a snag'));
+assert.ok(read('scripts/86chaos-release-gate/release-test-universe.cjs').includes('64-system-admin-recovery-boundary-17-0-51.spec.cjs'));
+assert.ok(read('.github/workflows/testing-targeted-delta.yml').includes('Run 17.0.51 targeted delta only'));
+console.log('17.0.51 System Administrator live-data boundary validation passed.');

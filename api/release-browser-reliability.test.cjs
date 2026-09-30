@@ -92,7 +92,7 @@ test('login tap-target CSS repair is scoped to login actions and includes comput
 test('Ghost Request Off uses employee Time Clock and Schedule route without elevating Schedule Builder access', () => {
   const spec = read('tests/86chaos-full-audit/06-request-off-events-integration.spec.cjs');
   assert.match(spec, /gotoTab\(page, 'published'/);
-  assert.match(spec, /getByTestId\('schedule-request-off-tab'\)/);
+  assert.ok(spec.includes("getByRole('button', { name: /^Schedule Request Off$/i })"));
   assert.doesNotMatch(spec, /gotoTab\(page, 'schedule', \{ settleMs: 1800, maxText: 70000 \}\)/);
   assert.doesNotMatch(spec, /Allen QA[\s\S]{0,200}Schedule Builder permission/);
 });

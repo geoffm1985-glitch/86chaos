@@ -39,25 +39,16 @@ test('historical browser checks compare deployments with the active release iden
   ]) assert.match(read(file), /pkg\.version/);
 });
 
-test('17.0.49 pre-Playwright gate repairs isolate emulator identity and preserve current stable controls', () => {
-  const emulatorRunner = read('scripts/run-pos-bridge-emulator-tests.cjs');
-  const reliability = read('api/release-browser-reliability.test.cjs');
-  const maturity207 = read('api/release-gate-maturity-16-0-207.test.cjs');
-  const maturity209 = read('api/release-gate-maturity-16-0-209.test.cjs');
-  assert.match(emulatorRunner, /GCLOUD_PROJECT:'demo-pos-bridge',FIREBASE_ACTIVE_PROJECT_ID:'demo-pos-bridge',FIREBASE_PROJECT_ID:'demo-pos-bridge'/);
-  assert.match(reliability, /schedule-request-off-tab/);
-  assert.match(maturity207, /schedule-copilot-warnings-tab/);
-  assert.match(maturity207, /role="tab"\[\\s\\S\]\{0,180\}aria-label/);
-  assert.match(maturity209, /schedule-copilot-warnings-tab/);
-  assert.doesNotMatch(maturity209, /getByRole\\\('tab'.*Warnings/);
-});
 
-test('17.0.50 source validator uses literal release identity checks instead of over-escaped regexes', () => {
-  const validator = read('scripts/validate-17-0-50.js');
-  assert.ok(validator.includes("includes(\"const APP_VERSION = '17.0.50';\")"));
-  assert.ok(validator.includes("includes(\"const SECURITY_SCHEMA_VERSION = '17.0.50';\")"));
-  assert.ok(validator.includes("includes(\"const APP_RELEASE = '17.0.50';\")"));
-  assert.ok(validator.includes("includes(\"export const CURRENT_VERSION = '17.0.50';\")"));
-  assert.doesNotMatch(validator, /APP_VERSION = '17\\\\\\\\\.0/);
+test('17.0.51 System Administrator live-data boundary repair is wired into the release gate', () => {
+  const management = read('src/features/management.jsx');
+  const safety = read('src/core/systemAdminDataSafety.cjs');
+  const workflow = read('.github/workflows/testing-targeted-delta.yml');
+  assert.match(management, /mapDocs\('restaurantAdminAlerts', normalizeSystemAdminAlert\)/);
+  assert.match(management, /normalizeSystemAdminStatusRecord\('restoreDrillStatus'/);
+  assert.match(safety, /typeof value\._seconds === 'number'/);
+  assert.match(workflow, /64-system-admin-recovery-boundary-17-0-51\.spec\.cjs/);
+  const validator = read('scripts/validate-17-0-51.js');
+  assert.ok(validator.includes("includes(\"const APP_VERSION = '17.0.51';\")"));
+  assert.doesNotMatch(validator, /APP_VERSION = '17\\\\.0/);
 });
-

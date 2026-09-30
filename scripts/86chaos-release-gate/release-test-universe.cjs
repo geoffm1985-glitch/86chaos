@@ -42,6 +42,8 @@ const RELEASE_CRITICAL_SPECS = Object.freeze([
   'tests/86chaos-release-gate/58-testing-gate-17-0-43.spec.cjs',
   'tests/86chaos-release-gate/60-customer-help-version-17-0-45.spec.cjs',
   'tests/86chaos-release-gate/61-release-gate-surgical-repairs-17-0-46.spec.cjs',
+  'tests/86chaos-release-gate/63-testing-deployment-identity-file-reader-17-0-49.spec.cjs',
+  'tests/86chaos-release-gate/64-system-admin-recovery-boundary-17-0-51.spec.cjs',
 ]);
 
 const PWA_SPEC_PATTERN = /86chaos-release-gate\/(26-pwa-icon-source-deployed-parity|27-pwa-browser-icon-matrix)\.spec\.cjs/;

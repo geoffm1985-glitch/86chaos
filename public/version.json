@@ -1,21 +1,21 @@
 {
-  "version": "17.0.50",
-  "name": "86 Chaos 17.0.50",
-  "build": "17.0.50",
-  "label": "86 Chaos 17.0.50",
-  "releasedAt": "2026-09-29T03:15:00Z",
-  "releaseTitle": "Release Validator Literal-Match Repair",
+  "version": "17.0.51",
+  "name": "86 Chaos 17.0.51",
+  "build": "17.0.51",
+  "label": "86 Chaos 17.0.51",
+  "releasedAt": "2026-09-30T00:55:00Z",
+  "releaseTitle": "System Administrator Live-Data Boundary Repair",
   "notes": [
-    "Repairs the 17.0.49 source validator that over-escaped version regex literals and rejected valid release identity.",
-    "Uses direct literal identity checks for version-bearing source files instead of fragile regular expressions.",
-    "Keeps the 17.0.49 release-gate readiness repairs unchanged."
+    "Normalizes remaining System Administrator live Firestore records before they can reach React rendering.",
+    "Accepts both client and Admin SDK Firestore timestamp JSON shapes at the System Administrator safety boundary.",
+    "Adds targeted Node and Play Store/release-gate coverage for the exact System Administrator recovery-boundary failure."
   ],
-  "title": "86 Chaos 17.0.50",
-  "summary": "Surgical source-validator repair so the full release gate can proceed past valid 17.0.50 identity.",
-  "description": "Fixes only the release validation harness defect observed in the 17.0.49 full-gate handoff; restaurant workflow behavior is unchanged.",
+  "title": "86 Chaos 17.0.51",
+  "summary": "Surgical System Administrator live-data safety repair for the 17.0.50 release-gate recovery crash.",
+  "description": "Repairs only the unsafe live-record boundary exercised by the System Administrator overview; restaurant workflows and production remain unchanged.",
   "highlights": [
-    "Version validation now uses exact string inclusion for server, client, POS Bridge, Help, and PDF identities.",
-    "Targeted regression coverage verifies the validator does not reintroduce over-escaped release regexes.",
-    "POS Bridge emulator isolation and stable Schedule/Request Off test IDs remain intact."
+    "Restore-drill, operations-review, super-admin, and restaurant-admin-alert records are normalized before state update.",
+    "Directly rendered System Administrator status and alert fields are converted to safe scalar text.",
+    "Regression coverage rejects App Recovery on the System Administrator overview and exercises malformed Firestore-shaped values."
   ]
 }
