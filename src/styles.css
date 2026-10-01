@@ -4088,9 +4088,9 @@ select {
 
 @media (max-width: 1023px) {
   .schedule-builder-control-deck {
-    position: sticky !important;
-    top: 58px !important;
-    z-index: 36 !important;
+    position: relative !important;
+    top: auto !important;
+    z-index: 1 !important;
   }
 }
 

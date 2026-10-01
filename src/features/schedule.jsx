@@ -1052,8 +1052,8 @@ const TabMasterSchedule = ({ currentDate, setCurrentDate = null, onSubTabChange 
   const scheduleIdentity = buildScheduleIdentityFields(getSchedulePersonForAppUser(appUser, users), appUser);
   const availabilityWhereClauses = canViewTeamAvailability ? [] : [['scheduleUserId', '==', scheduleIdentity.scheduleUserId || '__none__']];
   const availabilityLimit = canViewTeamAvailability ? 220 : 25;
-  const availabilityRecordsState = useLiveCollectionState('availabilityRecords', appUser?.restaurantId, { enabled: !!appUser?.restaurantId && (subTab === 'availability' || subTab === 'schedule-builder'), whereClauses: availabilityWhereClauses, orderByField: canViewTeamAvailability ? 'employeeName' : null, orderDirection: 'asc', limitCount: availabilityLimit, fallbackLimitCount: canViewTeamAvailability ? 80 : 25, debugLabel: `schedule:${subTab}:availability` });
-  const availabilityRecords = availabilityRecordsState.data || [];
+  const availabilityRecordsState = useLiveCollectionState('availabilityRecords', appUser?.restaurantId, { enabled: !!appUser?.restaurantId && (subTab === 'availability' || subTab === 'schedule-builder'), whereClauses: availabilityWhereClauses, orderByField: null, orderDirection: 'asc', limitCount: availabilityLimit, fallbackLimitCount: canViewTeamAvailability ? 80 : 25, debugLabel: `schedule:${subTab}:availability` });
+  const availabilityRecords = [...(availabilityRecordsState.data || [])].sort((a, b) => String(a?.employeeName || a?.name || '').localeCompare(String(b?.employeeName || b?.name || '')));
 
   useEffect(() => { onSubTabChange?.(subTab); }, [subTab, onSubTabChange]);
 
@@ -1948,14 +1948,15 @@ const [eventDate, setEventDate] = useState(getToday());
       const configuredTopbar = Number.parseFloat(shellStyle?.getPropertyValue('--chaos-compact-topbar-h') || '');
       const topbarHeight = Number.isFinite(configuredTopbar) ? configuredTopbar : 54;
       const deck = scheduleBuilderControlDeckRef.current;
-      const deckHeight = Math.ceil(deck?.getBoundingClientRect?.().height || 0);
-      const configuredDeckTop = Number.parseFloat(deck ? window.getComputedStyle(deck).top : '');
-      // The control deck is sticky on phones too. 17.0.40 treated mobile as zero-height,
-      // so the day/date header pinned behind the deck and disappeared while scrolling.
-      // Use the deck's resolved CSS top instead of inferring a different scroll owner;
-      // the mobile stylesheet intentionally pins the deck below the 52px app header.
-      const deckTop = Number.isFinite(configuredDeckTop) ? configuredDeckTop : topbarHeight;
-      setScheduleBuilderStickyTop(Math.max(0, deckTop + deckHeight + (deckHeight ? 4 : 2)));
+      const deckStyle = deck ? window.getComputedStyle(deck) : null;
+      const deckIsSticky = deckStyle?.position === 'sticky';
+      const deckHeight = deckIsSticky ? Math.ceil(deck?.getBoundingClientRect?.().height || 0) : 0;
+      const configuredDeckTop = Number.parseFloat(deckStyle?.top || '');
+      // On compact/mobile layouts the control deck is intentionally allowed to scroll away.
+      // Pinning a multi-row deck consumed most of the viewport and made the day/date strip
+      // collide with a deck whose height changed as data and fonts settled.
+      const deckTop = deckIsSticky && Number.isFinite(configuredDeckTop) ? configuredDeckTop : topbarHeight;
+      setScheduleBuilderStickyTop(Math.max(0, deckTop + deckHeight + (deckIsSticky && deckHeight ? 4 : 2)));
     };
     updateStickyTop();
     window.addEventListener('resize', updateStickyTop);

@@ -7,7 +7,7 @@ test.describe('51 security maturity and Firebase cost observability', () => {
     const system=creds('SYSTEM_ADMIN'),staff=creds('STAFF');requireCreds(system,'system admin');requireCreds(staff,'staff');
     const adminContext=await browser.newContext();const admin=await adminContext.newPage();const problems=[];watchForProblems(admin,problems);
     await login(admin,system.email,system.password);await gotoTab(admin,'godmode',{settleMs:1200});
-    const securityButton=admin.getByRole('button',{name:/^Security Center$/i}).first();await expect(securityButton).toBeVisible();await securityButton.click();
+    const securityButton=admin.getByRole('button',{name:/^(?:Open\s+)?Security Center$/i}).first();await expect(securityButton).toBeVisible();await securityButton.click();
     await expect(admin.getByTestId('security-maturity-diagnostics')).toBeVisible();
     await admin.getByRole('button',{name:/Refresh Security Center/i}).click();
     await expect(admin.getByTestId('security-maturity-diagnostics')).toContainText(/MFA|App Check|environment|deployment identity/i,{timeout:60000});

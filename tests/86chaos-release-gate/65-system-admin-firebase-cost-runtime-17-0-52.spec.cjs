@@ -11,11 +11,11 @@ test('17.0.52 System Administrator renders Firebase cost observability without t
   const text = await gotoTab(page, 'godmode', { settleMs: 2500, maxText: 70000 });
   expect(text).not.toMatch(/86 CHAOS APP RECOVERY|This section hit a snag/i);
 
-  let securityButton = page.getByRole('button', { name: 'Security Center', exact: true }).first();
+  let securityButton = page.getByRole('button', { name: /^(?:Open\s+)?Security Center$/i }).first();
   if (!(await securityButton.isVisible().catch(() => false))) {
     const directoryButton = page.getByRole('button', { name: /Show directory/i }).first();
     if (await directoryButton.isVisible().catch(() => false)) await directoryButton.click();
-    securityButton = page.getByRole('button', { name: 'Security Center', exact: true }).first();
+    securityButton = page.getByRole('button', { name: /^(?:Open\s+)?Security Center$/i }).first();
   }
   await expect(securityButton).toBeVisible({ timeout: 15000 });
   await securityButton.click();

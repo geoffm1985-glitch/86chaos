@@ -15,7 +15,10 @@ test.describe('17.0.26 Phase 1 Spanish interface', () => {
 
     const language = page.getByTestId('app-language-select');
     await expect(language).toBeVisible();
-    const originalLanguage = await language.inputValue();
+
+    await language.selectOption('en');
+    await page.getByRole('button', { name: /save preferences|guardar preferencias/i }).click();
+    await expect(page.locator('html')).toHaveAttribute('lang', 'en', { timeout: 15000 });
 
     try {
       await language.selectOption('es');
@@ -46,9 +49,12 @@ test.describe('17.0.26 Phase 1 Spanish interface', () => {
       if (await prefs.isVisible().catch(() => false)) await prefs.click();
       const restore = page.getByTestId('app-language-select');
       if (await restore.isVisible().catch(() => false)) {
-        await restore.selectOption(originalLanguage || 'en');
+        await restore.selectOption('en');
         const save = page.getByRole('button', { name: /save preferences|guardar preferencias/i }).first();
-        if (await save.isVisible().catch(() => false)) await save.click();
+        if (await save.isVisible().catch(() => false)) {
+          await save.click();
+          await expect(page.locator('html')).toHaveAttribute('lang', 'en', { timeout: 15000 });
+        }
       }
     }
   });
