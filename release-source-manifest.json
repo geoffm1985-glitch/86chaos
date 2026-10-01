@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "sourceHash": "322ba091a26c49770f556b5feca781bf1149859c5e55f93924261cfa1907d830",
+  "sourceHash": "58ec597cbc883150e272e977df9953b65e76139a4a44d260ceb29ea6e52716cc",
   "files": [
     {
       "file": ".gitattributes",
@@ -17,6 +17,186 @@
     {
       "file": ".npmrc",
       "sha256": "ee67d84ccb0871919c5b0a645b015ac349a62c603f990389c628f48f70add638"
+    },
+    {
+      "file": "INSTALL_AND_RUN_86CHAOS_ULTIMATE_TESTS.cmd",
+      "sha256": "e37a9a2606198685d4a908233211851e1cdf14a4f57e4569ebaf615bee96b0f7"
+    },
+    {
+      "file": "INSTALL_AND_RUN_86CHAOS_ULTIMATE_TESTS.ps1",
+      "sha256": "087b50c4c4573f4199ac2098f38982dfe6b6630f32d330d60931846e60ec87f5"
+    },
+    {
+      "file": "README_86CHAOS_FULL_TEST_SUITE.txt",
+      "sha256": "7cec8e81eedc31ea85de4c951e903cbb9eae524beebceb1bfba4e827972a8767"
+    },
+    {
+      "file": "RELEASE_17_0_10.md",
+      "sha256": "8c53baf7679fd1cb47f64f50cfaad9bae139304477c093ef4ea6a9477640faf8"
+    },
+    {
+      "file": "RELEASE_17_0_11.md",
+      "sha256": "229a7aa3e4d0694748873b5a03bcb82b5a9044d8547c6554c33edf367cb53ffe"
+    },
+    {
+      "file": "RELEASE_17_0_12.md",
+      "sha256": "caed5560c13b34541397bc53f8a611db6fe39799506949595cb715fca0ce3eac"
+    },
+    {
+      "file": "RELEASE_17_0_14.md",
+      "sha256": "cb3a1d616c0822a37255f30353d05596c1437784aeacfbecc0041a5abf09a79d"
+    },
+    {
+      "file": "RELEASE_17_0_15.md",
+      "sha256": "e2aaa8aca355d6c50b9c78196c9a3ce499cebcf1b8617ff040f6c499e417c097"
+    },
+    {
+      "file": "RELEASE_17_0_16.md",
+      "sha256": "8373c20d025eb0bc40ab1e2c6ad1382ad2f01ce983211eaf66f7d69cc0a3f396"
+    },
+    {
+      "file": "RELEASE_17_0_17.md",
+      "sha256": "ebee1b2a3ab2162b99f7f08f4819a0fb004ca1164c034eb4c2573bd52e4611d9"
+    },
+    {
+      "file": "RELEASE_17_0_18.md",
+      "sha256": "f10081431351415bb0cedc551388dc166a43125b1fe6cd881b315f6975e26ff7"
+    },
+    {
+      "file": "RELEASE_17_0_19.md",
+      "sha256": "f02300e0d5cd4a295dd711a4e4d29f457cbcb499c026612ba45793a94185582a"
+    },
+    {
+      "file": "RELEASE_17_0_20.md",
+      "sha256": "ce6df730afce143e7ed3243dfc94bb42af6537065d9670e69b32e68fbb4c53c0"
+    },
+    {
+      "file": "RELEASE_17_0_21.md",
+      "sha256": "3ddfcd8c289ca6398deb1de2dabd78e8b6eea23590570e420d450e94f6e8eff9"
+    },
+    {
+      "file": "RELEASE_17_0_22.md",
+      "sha256": "b29825eda7945eeca89dae8ce884378ede6c429cd5d83bfd83093218c5cf707e"
+    },
+    {
+      "file": "RELEASE_17_0_23.md",
+      "sha256": "06ba38979d377ccfbbd64a66b7e03be985da9f0036e2b9dd255a932fe3b99696"
+    },
+    {
+      "file": "RELEASE_17_0_24.md",
+      "sha256": "1ba258c8d54d0c3c4c48d13591c45534da011006a4467577fa0b76e636214063"
+    },
+    {
+      "file": "RELEASE_17_0_25.md",
+      "sha256": "b7bb947577e3dc02b2be9d20f2ed967e1b234ad6aa7322bb88dd453da86dabae"
+    },
+    {
+      "file": "RELEASE_17_0_26.md",
+      "sha256": "8a640638fd0374ec8ecfaef15e5ef52cd03bbdb8f2c1c9c667cb778902715cfc"
+    },
+    {
+      "file": "RELEASE_17_0_27.md",
+      "sha256": "f6dc9f636f589d03be97631a1dc7a05a23e779c81a1f8e3b5a6ed708521602cd"
+    },
+    {
+      "file": "RELEASE_17_0_28.md",
+      "sha256": "b203fa7957270f8133d442f0b59f0726664e10c04c5ecc8c5372a88e80058529"
+    },
+    {
+      "file": "RELEASE_17_0_29.md",
+      "sha256": "ab5aa9eaa1fbb6bf247d78b1df9368115944dc814690e06daab5beb592556bd5"
+    },
+    {
+      "file": "RELEASE_17_0_30.md",
+      "sha256": "cb2dcacab269e5677ecce30d23421cab1bf462e2c7798238db8a13b7f6c33f76"
+    },
+    {
+      "file": "RELEASE_17_0_31.md",
+      "sha256": "c442650da138d14ab24fc37c7ab7ea5a4f29e5c34ac4eda6fd49a3f4a913c0dc"
+    },
+    {
+      "file": "RELEASE_17_0_39.md",
+      "sha256": "c49b0d1f4c5fa1d42442ea559a52d599b0913f41d17a12886d99c11eef9c341e"
+    },
+    {
+      "file": "RELEASE_17_0_40.md",
+      "sha256": "28792785c66b7b8cf376dad11ebfbe1e7d18a0602c8145a7d1a734f9aaa45199"
+    },
+    {
+      "file": "RELEASE_17_0_41.md",
+      "sha256": "7de6586f05969e9f8dd391d3a72cbe6b99fcd425601815cde0401ce6e70f4116"
+    },
+    {
+      "file": "RELEASE_17_0_42.md",
+      "sha256": "5edb0aa9934d484d2827eea36e550634a6af25f07fe064fa6445f64296e73c1d"
+    },
+    {
+      "file": "RELEASE_17_0_43.md",
+      "sha256": "5270544253630e068e06e283a9331b3e8fea281b9c6e3e4f8280ac11f8d4cc14"
+    },
+    {
+      "file": "RELEASE_17_0_44.md",
+      "sha256": "898268d1141a453277f307c91bc7b9448004f2c3ddde789e267676d0aa687987"
+    },
+    {
+      "file": "RELEASE_17_0_45.md",
+      "sha256": "6e79840963a9f4ae247011d2d54a8b3a1c3bcf8ff78e038dbdbe1d6cc7b48fec"
+    },
+    {
+      "file": "RELEASE_17_0_46.md",
+      "sha256": "3039a234f0d002e9f87662c1470af6bb8301870986fbbc58c785eb9f6077580f"
+    },
+    {
+      "file": "RELEASE_17_0_49.md",
+      "sha256": "be03aafc522ea70b11acb7a876a1ab832005c9c7752b2532e5e3d9731d171601"
+    },
+    {
+      "file": "RELEASE_17_0_5.md",
+      "sha256": "5b70523b930597b5f29524911ae93e7235be86a973a6de04a89f0a37753cafe7"
+    },
+    {
+      "file": "RELEASE_17_0_52.md",
+      "sha256": "f9fe1fefdc2e6b55407a6b2bdd6eed5a5c3f184d3aa6b13cdce6278c468cafad"
+    },
+    {
+      "file": "RELEASE_17_0_53.md",
+      "sha256": "ca13aa7810c3b75944d1089514c701ddbb1f947f55b268fa0d88388d8bbeca47"
+    },
+    {
+      "file": "RELEASE_17_0_8.md",
+      "sha256": "2545cbaba81622c63b4129729ea0eb8076746129d0425d66dfc1a154ac78cf00"
+    },
+    {
+      "file": "RELEASE_17_0_9.md",
+      "sha256": "8816b631d17b9764f1ab9c3215cee7fcba4f95c24770f71a643f01129c658728"
+    },
+    {
+      "file": "RUN_86CHAOS_CURRENT_BLOCKERS_RELEASE_GATE.ps1",
+      "sha256": "6b612f784e2f17ebe5bc2d0ba6a0df8a8aeb2d6acc80f125905cdc0f70abdf31"
+    },
+    {
+      "file": "RUN_86CHAOS_FAILED_AND_NEW_RELEASE_GATE.ps1",
+      "sha256": "4f2df8a25a9b62baa4bb7cb80c69b1a89cfd9bfcd7e4c0b0f1b20df5b138e53e"
+    },
+    {
+      "file": "RUN_86CHAOS_FAILED_ONLY_RELEASE_GATE.ps1",
+      "sha256": "2762dd2ad16ad5c08483fd48bad23038630b912200bc1fc18c04bc46b5340ae9"
+    },
+    {
+      "file": "RUN_86CHAOS_FULL_TEST_SUITE.cmd",
+      "sha256": "903dd623d4bc948eb35af4f6d0d7d0f280a4af970b2340b1beb51d53421531c6"
+    },
+    {
+      "file": "RUN_86CHAOS_FULL_TEST_SUITE.ps1",
+      "sha256": "1c19643f5dc41e9aa601358c8d77475ee5846cb408b24710b868764bc8a9b3f3"
+    },
+    {
+      "file": "RUN_86CHAOS_PARTIAL_RESUME_RELEASE_GATE.ps1",
+      "sha256": "39c28597a794cdf3ad534f91d9be283c637ed23ec373a68f7db6ad394604ab46"
+    },
+    {
+      "file": "RUN_86CHAOS_PLAY_STORE_RELEASE_GATE.ps1",
+      "sha256": "3457896e72ee0454b3c5954d3dc6659dd9df156f56c220947670c3de4a7ac789"
     },
     {
       "file": "api/_ai-policy.js",
@@ -1455,14 +1635,6 @@
       "sha256": "33c5d5512ff101d83cbb15abf029daccc0b4f12ec37d8f766ed3276cba47cdeb"
     },
     {
-      "file": "INSTALL_AND_RUN_86CHAOS_ULTIMATE_TESTS.cmd",
-      "sha256": "e37a9a2606198685d4a908233211851e1cdf14a4f57e4569ebaf615bee96b0f7"
-    },
-    {
-      "file": "INSTALL_AND_RUN_86CHAOS_ULTIMATE_TESTS.ps1",
-      "sha256": "087b50c4c4573f4199ac2098f38982dfe6b6630f32d330d60931846e60ec87f5"
-    },
-    {
       "file": "package-lock.json",
       "sha256": "11491e3918e552972d724a6acdcc5711a2264c7be04600b0950f7bb32ad65ede"
     },
@@ -1691,180 +1863,8 @@
       "sha256": "8204b5dbe28224a35279a533e0b6adb4d4ba1aafbe402918df0d6d76bcbf9d3a"
     },
     {
-      "file": "README_86CHAOS_FULL_TEST_SUITE.txt",
-      "sha256": "7cec8e81eedc31ea85de4c951e903cbb9eae524beebceb1bfba4e827972a8767"
-    },
-    {
-      "file": "RELEASE_17_0_10.md",
-      "sha256": "8c53baf7679fd1cb47f64f50cfaad9bae139304477c093ef4ea6a9477640faf8"
-    },
-    {
-      "file": "RELEASE_17_0_11.md",
-      "sha256": "229a7aa3e4d0694748873b5a03bcb82b5a9044d8547c6554c33edf367cb53ffe"
-    },
-    {
-      "file": "RELEASE_17_0_12.md",
-      "sha256": "caed5560c13b34541397bc53f8a611db6fe39799506949595cb715fca0ce3eac"
-    },
-    {
-      "file": "RELEASE_17_0_14.md",
-      "sha256": "cb3a1d616c0822a37255f30353d05596c1437784aeacfbecc0041a5abf09a79d"
-    },
-    {
-      "file": "RELEASE_17_0_15.md",
-      "sha256": "e2aaa8aca355d6c50b9c78196c9a3ce499cebcf1b8617ff040f6c499e417c097"
-    },
-    {
-      "file": "RELEASE_17_0_16.md",
-      "sha256": "8373c20d025eb0bc40ab1e2c6ad1382ad2f01ce983211eaf66f7d69cc0a3f396"
-    },
-    {
-      "file": "RELEASE_17_0_17.md",
-      "sha256": "ebee1b2a3ab2162b99f7f08f4819a0fb004ca1164c034eb4c2573bd52e4611d9"
-    },
-    {
-      "file": "RELEASE_17_0_18.md",
-      "sha256": "f10081431351415bb0cedc551388dc166a43125b1fe6cd881b315f6975e26ff7"
-    },
-    {
-      "file": "RELEASE_17_0_19.md",
-      "sha256": "f02300e0d5cd4a295dd711a4e4d29f457cbcb499c026612ba45793a94185582a"
-    },
-    {
-      "file": "RELEASE_17_0_20.md",
-      "sha256": "ce6df730afce143e7ed3243dfc94bb42af6537065d9670e69b32e68fbb4c53c0"
-    },
-    {
-      "file": "RELEASE_17_0_21.md",
-      "sha256": "3ddfcd8c289ca6398deb1de2dabd78e8b6eea23590570e420d450e94f6e8eff9"
-    },
-    {
-      "file": "RELEASE_17_0_22.md",
-      "sha256": "b29825eda7945eeca89dae8ce884378ede6c429cd5d83bfd83093218c5cf707e"
-    },
-    {
-      "file": "RELEASE_17_0_23.md",
-      "sha256": "06ba38979d377ccfbbd64a66b7e03be985da9f0036e2b9dd255a932fe3b99696"
-    },
-    {
-      "file": "RELEASE_17_0_24.md",
-      "sha256": "1ba258c8d54d0c3c4c48d13591c45534da011006a4467577fa0b76e636214063"
-    },
-    {
-      "file": "RELEASE_17_0_25.md",
-      "sha256": "b7bb947577e3dc02b2be9d20f2ed967e1b234ad6aa7322bb88dd453da86dabae"
-    },
-    {
-      "file": "RELEASE_17_0_26.md",
-      "sha256": "8a640638fd0374ec8ecfaef15e5ef52cd03bbdb8f2c1c9c667cb778902715cfc"
-    },
-    {
-      "file": "RELEASE_17_0_27.md",
-      "sha256": "f6dc9f636f589d03be97631a1dc7a05a23e779c81a1f8e3b5a6ed708521602cd"
-    },
-    {
-      "file": "RELEASE_17_0_28.md",
-      "sha256": "b203fa7957270f8133d442f0b59f0726664e10c04c5ecc8c5372a88e80058529"
-    },
-    {
-      "file": "RELEASE_17_0_29.md",
-      "sha256": "ab5aa9eaa1fbb6bf247d78b1df9368115944dc814690e06daab5beb592556bd5"
-    },
-    {
-      "file": "RELEASE_17_0_30.md",
-      "sha256": "cb2dcacab269e5677ecce30d23421cab1bf462e2c7798238db8a13b7f6c33f76"
-    },
-    {
-      "file": "RELEASE_17_0_31.md",
-      "sha256": "c442650da138d14ab24fc37c7ab7ea5a4f29e5c34ac4eda6fd49a3f4a913c0dc"
-    },
-    {
-      "file": "RELEASE_17_0_39.md",
-      "sha256": "c49b0d1f4c5fa1d42442ea559a52d599b0913f41d17a12886d99c11eef9c341e"
-    },
-    {
-      "file": "RELEASE_17_0_40.md",
-      "sha256": "28792785c66b7b8cf376dad11ebfbe1e7d18a0602c8145a7d1a734f9aaa45199"
-    },
-    {
-      "file": "RELEASE_17_0_41.md",
-      "sha256": "7de6586f05969e9f8dd391d3a72cbe6b99fcd425601815cde0401ce6e70f4116"
-    },
-    {
-      "file": "RELEASE_17_0_42.md",
-      "sha256": "5edb0aa9934d484d2827eea36e550634a6af25f07fe064fa6445f64296e73c1d"
-    },
-    {
-      "file": "RELEASE_17_0_43.md",
-      "sha256": "5270544253630e068e06e283a9331b3e8fea281b9c6e3e4f8280ac11f8d4cc14"
-    },
-    {
-      "file": "RELEASE_17_0_44.md",
-      "sha256": "898268d1141a453277f307c91bc7b9448004f2c3ddde789e267676d0aa687987"
-    },
-    {
-      "file": "RELEASE_17_0_45.md",
-      "sha256": "6e79840963a9f4ae247011d2d54a8b3a1c3bcf8ff78e038dbdbe1d6cc7b48fec"
-    },
-    {
-      "file": "RELEASE_17_0_46.md",
-      "sha256": "3039a234f0d002e9f87662c1470af6bb8301870986fbbc58c785eb9f6077580f"
-    },
-    {
-      "file": "RELEASE_17_0_49.md",
-      "sha256": "be03aafc522ea70b11acb7a876a1ab832005c9c7752b2532e5e3d9731d171601"
-    },
-    {
-      "file": "RELEASE_17_0_5.md",
-      "sha256": "5b70523b930597b5f29524911ae93e7235be86a973a6de04a89f0a37753cafe7"
-    },
-    {
-      "file": "RELEASE_17_0_52.md",
-      "sha256": "f9fe1fefdc2e6b55407a6b2bdd6eed5a5c3f184d3aa6b13cdce6278c468cafad"
-    },
-    {
-      "file": "RELEASE_17_0_53.md",
-      "sha256": "ca13aa7810c3b75944d1089514c701ddbb1f947f55b268fa0d88388d8bbeca47"
-    },
-    {
-      "file": "RELEASE_17_0_8.md",
-      "sha256": "2545cbaba81622c63b4129729ea0eb8076746129d0425d66dfc1a154ac78cf00"
-    },
-    {
-      "file": "RELEASE_17_0_9.md",
-      "sha256": "8816b631d17b9764f1ab9c3215cee7fcba4f95c24770f71a643f01129c658728"
-    },
-    {
       "file": "requirements.txt",
       "sha256": "36c340c5d3d68f36b85067242fec50077de7b1bdbf658ef7151768ad5102cb5d"
-    },
-    {
-      "file": "RUN_86CHAOS_CURRENT_BLOCKERS_RELEASE_GATE.ps1",
-      "sha256": "6b612f784e2f17ebe5bc2d0ba6a0df8a8aeb2d6acc80f125905cdc0f70abdf31"
-    },
-    {
-      "file": "RUN_86CHAOS_FAILED_AND_NEW_RELEASE_GATE.ps1",
-      "sha256": "4f2df8a25a9b62baa4bb7cb80c69b1a89cfd9bfcd7e4c0b0f1b20df5b138e53e"
-    },
-    {
-      "file": "RUN_86CHAOS_FAILED_ONLY_RELEASE_GATE.ps1",
-      "sha256": "2762dd2ad16ad5c08483fd48bad23038630b912200bc1fc18c04bc46b5340ae9"
-    },
-    {
-      "file": "RUN_86CHAOS_FULL_TEST_SUITE.cmd",
-      "sha256": "903dd623d4bc948eb35af4f6d0d7d0f280a4af970b2340b1beb51d53421531c6"
-    },
-    {
-      "file": "RUN_86CHAOS_FULL_TEST_SUITE.ps1",
-      "sha256": "1c19643f5dc41e9aa601358c8d77475ee5846cb408b24710b868764bc8a9b3f3"
-    },
-    {
-      "file": "RUN_86CHAOS_PARTIAL_RESUME_RELEASE_GATE.ps1",
-      "sha256": "39c28597a794cdf3ad534f91d9be283c637ed23ec373a68f7db6ad394604ab46"
-    },
-    {
-      "file": "RUN_86CHAOS_PLAY_STORE_RELEASE_GATE.ps1",
-      "sha256": "3457896e72ee0454b3c5954d3dc6659dd9df156f56c220947670c3de4a7ac789"
     },
     {
       "file": "scripts/86chaos-full-audit/cleanup-fake-restaurant.cjs",
@@ -3059,10 +3059,6 @@
       "sha256": "0ba7af027ee91d76ce039c9c7cecbcce6cb583462619747e32bda5ba3320fe7b"
     },
     {
-      "file": "src/components/common.jsx",
-      "sha256": "5af93e21c1b35b13771fcae2e5b2ddddf1c181ce2c968b642c68556b4aafabd8"
-    },
-    {
       "file": "src/components/DayDotPrintScreen.js",
       "sha256": "f8aeb53b25a2c3225fd6ee12d89857f67cf018e39dd4db61c7242699fe835010"
     },
@@ -3149,6 +3145,10 @@
     {
       "file": "src/components/TabTimeOff.js",
       "sha256": "fe5721518830d8eb2ae26e4c9288f2f9b89c0fcc9bc4f5a1de13beee42cbc02a"
+    },
+    {
+      "file": "src/components/common.jsx",
+      "sha256": "5af93e21c1b35b13771fcae2e5b2ddddf1c181ce2c968b642c68556b4aafabd8"
     },
     {
       "file": "src/config/plans.js",
