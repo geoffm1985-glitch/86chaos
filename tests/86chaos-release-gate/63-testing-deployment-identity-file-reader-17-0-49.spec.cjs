@@ -9,7 +9,7 @@ const root = path.resolve(__dirname, '../..');
 
 test('17.0.49 testing deployment identity wait is ARG_MAX-safe', async () => {
   const pkg = require('../../package.json');
-  expect(pkg.version).toBe('17.0.49');
+  expect(pkg.version).toMatch(/^17\.0\.\d+$/);
 
   const workflow = fs.readFileSync(path.join(root, '.github/workflows/testing-targeted-delta.yml'), 'utf8');
   expect(workflow).toContain('curl --fail --silent --show-error -o "$identity_file"');

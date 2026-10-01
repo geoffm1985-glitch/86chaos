@@ -56,6 +56,24 @@ function buildFakeRestaurantProfile({ restaurantId = '', runId = '', anchorDate 
     ...tag,
   }));
 
+  const overCoverageAnchor = fixture.shifts.find(s => s.employeeId === 'qa-chuck' && s.role === 'Bartender' && s.startTime === '10a' && s.endTime === '4p');
+  if (overCoverageAnchor) {
+    shifts.push({
+      restaurantId,
+      employeeKey: 'lani',
+      employeeName: 'Lani QA',
+      role: 'Bartender',
+      date: overCoverageAnchor.date,
+      startTime: '10a',
+      endTime: '4p',
+      isPublished: true,
+      source: '86chaos-full-audit-seed',
+      qaExpectedValid: true,
+      qaIndex: shifts.length,
+      ...tag,
+    });
+  }
+
   const timeOffRequests = [
     { restaurantId, userKey: 'allen', employeeName: 'Allen QA', userName: 'Allen QA', date: allenPartialRequestDate, requestDate: allenPartialRequestDate, startTime: '12p', endTime: '4p', partialDay: true, status: 'approved', reason: 'QA partial request-off visible time check', requestedAt: new Date().toISOString(), ...tag },
     { restaurantId, userKey: 'sara', employeeName: 'Sara QA', userName: 'Sara QA', date: tomorrowStr, requestDate: tomorrowStr, allDay: true, status: 'pending', reason: 'QA full day request-off warning check', requestedAt: new Date().toISOString(), ...tag },
@@ -150,7 +168,7 @@ function buildFakeRestaurantProfile({ restaurantId = '', runId = '', anchorDate 
   const scheduleCoverageTargets = [
     { restaurantId, dayIndex: 5, role: 'Line Cook', startTime: '16:00', endTime: '22:00', count: 3, ...tag },
     { restaurantId, dayIndex: 5, role: 'Server', startTime: '16:00', endTime: '22:00', count: 4, ...tag },
-    // Tuesday has two seeded Chuck QA 10a-4p bartender shifts; target 1 gives a deterministic over-coverage warning.
+    // Tuesday has two distinct seeded bartenders at 10a-4p; target 1 gives a deterministic over-coverage warning.
     { restaurantId, dayIndex: 2, role: 'Bartender', startTime: '10a', endTime: '4p', count: 1, ...tag },
   ];
 

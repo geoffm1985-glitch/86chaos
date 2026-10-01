@@ -166,7 +166,7 @@ async function renderedRouteIdentityReady(page, tab, spec, text) {
 
 const FATAL_TEXT_RE = /Application error|Unhandled Runtime Error|Minified React error|Cannot read properties of undefined|Cannot read property|undefined is not a function|ReferenceError|TypeError:|Something went wrong|White screen/i;
 const BAD_VALUE_RE = /\bInvalid Date\b(?!s)|Infinity|undefined undefined|null null|Inactive -\d+ days|\$NaN|NaN%|(?:^|[^A-Za-z])NaN(?:[^A-Za-z]|$)/i;
-const PERMISSION_GATE_RE = /permission gate|not authorized|not available|Your role does not include|internal-only|access denied/i;
+const PERMISSION_GATE_RE = /Plan & Permission Gate|Your role does not include this tool|This tool is not available for your account right now|not authorized|internal-only|access denied/i;
 const LOGIN_RE = /Email Address\s*Password|Unlock System|Sign In|Log In|Forgot Password/i;
 const STAFF_FORBIDDEN_RE = /System Administrator|Backup Center|Security Center|Forensics|QuickBooks Integration Hub|Python Automation|Pay Rate|Hourly Rate|Owner Pro/i;
 const STAFF_ACTION_RE = /Backup Now|Restore Backup|Security Diagnostics|Delete User|Log Out Everyone|Run Python|Approve & Send|Send to QuickBooks|Post to QuickBooks/i;

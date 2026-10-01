@@ -64,7 +64,10 @@ async function diagnostics(page) {
 async function openScenario(page, scenario) {
   await gotoAuthenticatedRoute(page, scenario.tab, { timeout: 30_000 });
   if (scenario.subtab) {
-    const control = page.getByRole('button', { name: scenario.subtab }).first().or(page.getByText(scenario.subtab).first());
+    let control = page.getByRole('button', { name: scenario.subtab }).first();
+    if (!(await control.isVisible({ timeout: 1200 }).catch(() => false))) {
+      control = page.getByText(scenario.subtab).first();
+    }
     await expect(control, `${scenario.name} subtab control`).toBeVisible({ timeout: 12_000 });
     await control.click();
     await assertAuthenticatedAfterNavigation(page, { timeout: 20_000 });
