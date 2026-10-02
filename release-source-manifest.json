@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "sourceHash": "70fe251d64293ff2b987c82f4eed2dcf600f222bc4b35175767f705485a501de",
+  "sourceHash": "ca1a5f75c9b6293d2a385711aed945d7eb25e0b31d505ef71d7520d862105c3f",
   "files": [
     {
       "file": ".gitattributes",
@@ -212,7 +212,7 @@
     },
     {
       "file": "RUN_86CHAOS_PLAY_STORE_RELEASE_GATE.ps1",
-      "sha256": "d644ccded983fb6ad16496b24d529c9038014606f33228acd447de53970e2495"
+      "sha256": "0e971e36cadd1fb2091d9424eae7c2c949d3729e654e38260e82b6147c6c97ea"
     },
     {
       "file": "api/_ai-policy.js",
@@ -937,6 +937,10 @@
     {
       "file": "api/posthog-instrumentation-source.test.cjs",
       "sha256": "dd7c348048baed472d7618dd586b0809591219673e3ae4c4ca3627fee375365e"
+    },
+    {
+      "file": "api/preflight-emulator-start.test.cjs",
+      "sha256": "023e61a0ced1f8540ad9a3c5e88e9ce0c1cbd6e600f120e13327f1640c02d2a7"
     },
     {
       "file": "api/presence-heartbeat.js",
@@ -2000,11 +2004,11 @@
     },
     {
       "file": "scripts/86chaos-release-gate/preflight-and-start.cjs",
-      "sha256": "2511e57328551caffe9e5dbe7a14b709f96f2424bce17a2e679b1102891449d8"
+      "sha256": "dffbaef4fb6809e49c2da57d88d96ca10c08739bcc1664d681f426cbe91e3efd"
     },
     {
       "file": "scripts/86chaos-release-gate/preflight-env.cjs",
-      "sha256": "b218700e55c55d70d2d29e425cea610680acdc73e5cd8ea19b637262fe537e68"
+      "sha256": "2d05cbb1906c13675b36760f5c6251c820f5db243104300f8008adde09c0de7c"
     },
     {
       "file": "scripts/86chaos-release-gate/prepare-failed-only-manifest.cjs",

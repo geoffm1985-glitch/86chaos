@@ -312,6 +312,7 @@ async function main() {
     visibleVersion,
     htmlVersion,
     firebaseProjectId,
+    firebaseTarget: firebaseTarget.target,
     envFilesLoaded: loaded,
     accounts: accounts.map(a => ({ prefix: a.prefix, emailPresent: Boolean(a.email), passwordPresent: a.passwordPresent })),
     firebaseConfigResolved: Boolean(present.FIREBASE_CLIENT_CONFIG),
