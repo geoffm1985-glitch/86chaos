@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "sourceHash": "2c58e19078823002e81d030d2cfe6b9617c045905c24ca2d80ed53a3f0642975",
+  "sourceHash": "e295113eb0e2485a4ac53254051ae270db113e223945d6f9de80acd77777ace7",
   "files": [
     {
       "file": ".gitattributes",
@@ -600,7 +600,7 @@
     },
     {
       "file": "api/emergency-runtime-sticky-17-0-41.test.cjs",
-      "sha256": "c418d55cfca879c9ad96d7aa910face29e9896b1f30f27628aad0239f117cca4"
+      "sha256": "f372cf7c2a11ea6bcba3c0d757543821457a16ae30850577a700c0d4f2a0b07f"
     },
     {
       "file": "api/emergency-schedule-requestoff-17-0-40.test.cjs",
@@ -935,6 +935,10 @@
       "sha256": "2f195eb8e1cdb332a237e0446e31f52b9a0fdb33b89b56442b7ef808cc9d41a2"
     },
     {
+      "file": "api/pos-emulator-launch.test.cjs",
+      "sha256": "74984d4b4c66380312c5e75a457e2d557d05a46de612cf41072154510d912bdb"
+    },
+    {
       "file": "api/posthog-instrumentation-source.test.cjs",
       "sha256": "dd7c348048baed472d7618dd586b0809591219673e3ae4c4ca3627fee375365e"
     },
@@ -1080,7 +1084,7 @@
     },
     {
       "file": "api/release-gate-execution-17-0-5.test.cjs",
-      "sha256": "2f142976f72ceafe78bb22bc1feec7d3bb7c4bd26879a73e27d93c74fe3f41ed"
+      "sha256": "5c87d6638dcfdb2caf827a389dcbe139a3f0094cb7b3863cab9dcf91c527bbc9"
     },
     {
       "file": "api/release-gate-expected-skips.test.cjs",
@@ -2192,7 +2196,7 @@
     },
     {
       "file": "scripts/run-pos-bridge-emulator-tests.cjs",
-      "sha256": "37f8956ada54636f3118d42c75866ad0b68d6417ba33a971523533998c1e493a"
+      "sha256": "3eb060709efa60af40c12eb87fc1534d89d242d352beac918976776c75c0cc9d"
     },
     {
       "file": "scripts/run-recovery-emulator-tests.cjs",
