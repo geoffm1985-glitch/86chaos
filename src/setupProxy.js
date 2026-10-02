@@ -2,5 +2,6 @@
 module.exports = app => {
   if (process.env.REACT_APP_86CHAOS_YARDMASTER === 'true') {
     require('../scripts/yardmaster-readiness.cjs').installReadiness(app);
+    require('../scripts/yardmaster-api.cjs').installLocalApi(app);
   }
 };
