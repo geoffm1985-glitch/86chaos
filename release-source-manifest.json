@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "sourceHash": "ca1a5f75c9b6293d2a385711aed945d7eb25e0b31d505ef71d7520d862105c3f",
+  "sourceHash": "b6448c1771972fb863c374706a8c3413b4a5c905e52d9a2a9861a55ac5c72b8b",
   "files": [
     {
       "file": ".gitattributes",
@@ -192,7 +192,7 @@
     },
     {
       "file": "RUN_86CHAOS_FAILED_AND_NEW_RELEASE_GATE.ps1",
-      "sha256": "5f57e9325bb4ac3cff08a1c794ecfb1414833c83504c8ca52e89b48c80d959c3"
+      "sha256": "02d8f85860afbcc103540672085ca43a6d15789f28dd74b6fe5c86c075eeaf59"
     },
     {
       "file": "RUN_86CHAOS_FAILED_ONLY_RELEASE_GATE.ps1",
@@ -212,7 +212,7 @@
     },
     {
       "file": "RUN_86CHAOS_PLAY_STORE_RELEASE_GATE.ps1",
-      "sha256": "0e971e36cadd1fb2091d9424eae7c2c949d3729e654e38260e82b6147c6c97ea"
+      "sha256": "bb710be17fff7da4795adcc43b1032fce5e8001c7a7a11078e92f4d0b197b8ed"
     },
     {
       "file": "api/_ai-policy.js",
@@ -2121,6 +2121,14 @@
     {
       "file": "scripts/86chaos-release-gate/write-customer-help-artifacts.cjs",
       "sha256": "3822ef4252e548d054beb517aeb6f9f63e7cc15fb17a47a4055036c90011136e"
+    },
+    {
+      "file": "scripts/86chaos-release-gate/yardmaster-dependency-install.cjs",
+      "sha256": "2675c6f5a239998bdc31352a2d2af2f4175581e680128c39afa5ae763e7cb08b"
+    },
+    {
+      "file": "scripts/86chaos-release-gate/yardmaster-dependency-install.test.cjs",
+      "sha256": "760e880133657e0a511810b3ae9df64de8cfb5dbc2f77c121065644914174444"
     },
     {
       "file": "scripts/check-api-syntax.js",
