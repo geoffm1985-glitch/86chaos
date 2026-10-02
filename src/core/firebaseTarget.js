@@ -1,4 +1,4 @@
-import emulatorConfig from '../../firebase-emulator.config.json';
+import emulatorConfig from './firebase-emulator.config.json';
 
 const normalizeTarget = (value = '') => String(value || '').trim().toLowerCase();
 const env = (key, fallback = '') => process.env[key] || fallback;

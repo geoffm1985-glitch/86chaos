@@ -1,23 +1,22 @@
 {
-  "version": "17.0.54",
-  "name": "86 Chaos 17.0.54",
-  "build": "17.0.54",
-  "label": "86 Chaos 17.0.54",
-  "releasedAt": "2026-10-02T01:00:00Z",
-  "releaseTitle": "Precision Firebase Emulator Bridge",
+  "version": "17.0.55",
+  "name": "86 Chaos 17.0.55",
+  "build": "17.0.55",
+  "label": "86 Chaos 17.0.55",
+  "releasedAt": "2026-10-02T02:00:00Z",
+  "releaseTitle": "Firebase Emulator CRA Build Repair",
   "notes": [
-    "Adds explicit LIVE and EMULATOR Firebase targets with LIVE remaining the default.",
-    "EMULATOR uses demo-86chaos and official Firestore, Auth, Functions, Realtime Database and Storage emulators before application traffic begins.",
-    "Release-gate Firebase clients, fixture seed/cleanup, Admin SDK, RTDB presence and secondary tenant Auth share the same fail-closed local target.",
-    "Cloud-only FCM, App Check, MFA fidelity, IAM and Vercel deployment identity remain explicit live-verification boundaries."
+    "Moves the shared Firebase emulator configuration under src/core so Create React App can bundle the browser target module.",
+    "The Node/release-gate bridge reads the same canonical configuration file, preserving one source of emulator host/port truth.",
+    "Adds permanent source and Playwright regressions for the exact external-src import build failure while retaining all 17.0.54 fail-closed emulator protections."
   ],
-  "title": "86 Chaos 17.0.54",
-  "summary": "Adds a local, fail-closed Firebase Emulator Suite bridge for eligible release-gate and Playwright workflows without changing normal live Firebase behavior.",
-  "description": "A surgical test-infrastructure release that keeps production behavior unchanged while allowing Yardmaster to select a demo-project Firebase Emulator Suite target.",
+  "title": "86 Chaos 17.0.55",
+  "summary": "Repairs the 17.0.54 Vercel module-not-found failure without changing Firebase target behavior.",
+  "description": "A precision build repair for the Firebase Emulator Bridge. No restaurant feature, UI, production Firebase behavior, or security rule is changed.",
   "highlights": [
-    "Default Firebase target remains LIVE.",
-    "Local emulator mode refuses non-loopback hosts and never silently falls back to chaos-test-d1601 or production.",
-    "Existing Firestore, Storage and RTDB security rules remain authoritative in emulator runs.",
-    "Mobile/iPhone-compatible startup regression coverage is retained."
+    "CRA-safe single-source emulator configuration.",
+    "LIVE remains the default target.",
+    "EMULATOR remains demo-86chaos and loopback-only.",
+    "No production deployment."
   ]
 }

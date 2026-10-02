@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "sourceHash": "57e4ffc77c8e34f80ba7bfee4812a87b7c1fb1f8f6095d6698f509a505090091",
+  "sourceHash": "0a3d2927dfc5f93c7a434689ef7c527d055a1b84140a56b8c65583c08739ca22",
   "files": [
     {
       "file": ".gitattributes",
@@ -8,7 +8,7 @@
     },
     {
       "file": ".github/workflows/testing-targeted-delta.yml",
-      "sha256": "eaa2460580cd84aae039b68cf325acde6f099a504af0284fb25dae515b9c5d2b"
+      "sha256": "34a61921314901b5752528b7a7542b8f4c82660f8ddfbf74fad8aa6e73226f50"
     },
     {
       "file": ".gitignore",
@@ -108,7 +108,7 @@
     },
     {
       "file": "api/_pos-bridge-config.js",
-      "sha256": "0ab9fcc8c83afc5b9a9d04b9c4b9cf0f9d8857eb8d7cebcc15d54d5f7644ed7e"
+      "sha256": "203356b1007519c39d14d237139971006c165379a8403e54943422c95bb6eb64"
     },
     {
       "file": "api/_pos-bridge-events.js",
@@ -244,7 +244,7 @@
     },
     {
       "file": "api/_version.js",
-      "sha256": "38816c26c89ad4225da6d0a34b56513252960bc64c5f910a0524d8635dd58f2f"
+      "sha256": "6763637667ab82547f3d3d3beb0fdc8a1fbf0714c6229df462bf78bd03e1fd05"
     },
     {
       "file": "api/account-deletion-request.js",
@@ -473,6 +473,10 @@
     {
       "file": "api/firebase-emulator-bridge-17-0-54.test.cjs",
       "sha256": "22804b854c8493d6879eb7d5ce99a0627f6efda11ca0576235550ab4101621be"
+    },
+    {
+      "file": "api/firebase-emulator-cra-import-17-0-55.test.cjs",
+      "sha256": "df21577fc08968de774d01152b02f0dbbc9be2dc747c3bf7dd87767c7d43ac14"
     },
     {
       "file": "api/firebase-listener-lifecycle-17-0-39.test.cjs",
@@ -1423,10 +1427,6 @@
       "sha256": "d9789b7d485819ea219be394e1ce6b08fe181c8a2798b50d656fdc843a7a4cff"
     },
     {
-      "file": "firebase-emulator.config.json",
-      "sha256": "0ec28b663fb2a0622bd4d7e8461dd5cb01ccf3ea02526a04b970c0e80e90b37c"
-    },
-    {
       "file": "firebase.json",
       "sha256": "d5c5ef7e1865aaa1cc613003acf32ed2bb169ff4a590a07fc6342358d77d1c45"
     },
@@ -1476,11 +1476,11 @@
     },
     {
       "file": "package-lock.json",
-      "sha256": "36733a26233c0df83ac0b99f3074ccc7341e49856dc85c40f258620e571d9eb5"
+      "sha256": "ce516016958864bd838996f635c1af8fbaa765e4be78941cfc1cba26d7d8f22c"
     },
     {
       "file": "package.json",
-      "sha256": "658f8515f733e495f448e1c75cc5d1b5dae953a4596f5a3b63f675364924beb3"
+      "sha256": "f7542039820dde3c9a267043f3e1d69eedac65b5c604dacb0fc32feea2d7b0b6"
     },
     {
       "file": "playwright.config.js",
@@ -1696,7 +1696,7 @@
     },
     {
       "file": "public/version.json",
-      "sha256": "50684bff0d931fe9c5fc48211ab10888dc8b3cd6371d34f4173c890cedb4b743"
+      "sha256": "4286ab1cb7962dfbf3a0743ec75d8f8aea9d9eb47a82e2bbc57512c65f86139b"
     },
     {
       "file": "public/wisco.png",
@@ -1843,6 +1843,10 @@
       "sha256": "2427eed5cb7e81db64b94a8ad70505807f0ea41551800371863e94d5c2314bb0"
     },
     {
+      "file": "RELEASE_17_0_55.md",
+      "sha256": "d7c5a6dd0ff13cfead52c6d38fa8509d533499290576d0064ff3a121d1d47e34"
+    },
+    {
       "file": "RELEASE_17_0_8.md",
       "sha256": "2545cbaba81622c63b4129729ea0eb8076746129d0425d66dfc1a154ac78cf00"
     },
@@ -1884,7 +1888,7 @@
     },
     {
       "file": "scripts/86chaos-firebase-target.cjs",
-      "sha256": "a28eebddf9d54dd4f3f08a6a3101cc9f689457ed68e122a54b35067ab3a83567"
+      "sha256": "db315c19e2b2544e662fe05557fef227789a6fd1a53faa31d077ad331b90ec71"
     },
     {
       "file": "scripts/86chaos-full-audit/cleanup-fake-restaurant.cjs",
@@ -1996,7 +2000,7 @@
     },
     {
       "file": "scripts/86chaos-release-gate/release-test-universe.cjs",
-      "sha256": "780643ef5e21e184384a4d08e9141dec06a6e7da83dc280cd2633b215ce179ce"
+      "sha256": "7fb6bfe8914c79f0804e65419b1fe6c6fad503e84ee2462584cda4a2009385d7"
     },
     {
       "file": "scripts/86chaos-release-gate/reported-current-blockers-20260814-064437.json",
@@ -3027,6 +3031,10 @@
       "sha256": "caaad94d2f01049b83a90376240094907d4d01ddf9bd0656f8cd9f779c95b334"
     },
     {
+      "file": "scripts/validate-17-0-55.js",
+      "sha256": "497e4f828b805eeab70bf427e77f1d743e744e437865bd4570d46572a52c5a13"
+    },
+    {
       "file": "scripts/validate-17-0-6.js",
       "sha256": "cd9e194913174744a48d6413fac4cf4ee4d0888f5f960de7d959748cc1eaee5d"
     },
@@ -3204,7 +3212,7 @@
     },
     {
       "file": "src/core/appCore.js",
-      "sha256": "6c4b24a48f236ce8fc5919e427fa0d575d4f6f20a7bd71a3213334ef1d856930"
+      "sha256": "e5e9a148dd2b4e34c7b12b7878bde0f99906fc362cf593ba8e453afdb95a8e78"
     },
     {
       "file": "src/core/csvSafety.test.js",
@@ -3212,15 +3220,19 @@
     },
     {
       "file": "src/core/customerHelpKnowledge.cjs",
-      "sha256": "9377927e10ea68d4df4e1d54e62980ddab802889faa22c42114e1dcff9da730f"
+      "sha256": "079f24b38a893faab6fd8e4e7a75e06578ddca0dad2bcc6d4d901f64440d4824"
     },
     {
       "file": "src/core/customerHelpKnowledge.js",
-      "sha256": "64f3be5f9cf39a01840c43953b27e750f09f7bdc41867e8190d266b9ee4b1b7f"
+      "sha256": "84dd0c63051078e2c97015dcc70e570e02d97f5357c4b56e0a4108f3c58a7018"
     },
     {
       "file": "src/core/fileCompression.js",
       "sha256": "ee3e7f4ed168a9f3a6fdd2a7992cc61b1a1b4494f2f98dac1eead68d91370f9d"
+    },
+    {
+      "file": "src/core/firebase-emulator.config.json",
+      "sha256": "0ec28b663fb2a0622bd4d7e8461dd5cb01ccf3ea02526a04b970c0e80e90b37c"
     },
     {
       "file": "src/core/firebaseCostDiagnostics.cjs",
@@ -3232,7 +3244,7 @@
     },
     {
       "file": "src/core/firebaseTarget.js",
-      "sha256": "42fd34e356c2328e861dab374050a8761e0fcada2e28c8ed294e0143626ae417"
+      "sha256": "27420ccf4d1a32e5fae41fe0aa5215a2daa0f838f162e29da5f92f1633e0ac3d"
     },
     {
       "file": "src/core/foodSafety.cjs",
@@ -3464,7 +3476,7 @@
     },
     {
       "file": "src/core/schedulePdf.js",
-      "sha256": "e5e266e8f568f326fbbe07302eedb237865c1e18e960f8eaf869579c1e2b1407"
+      "sha256": "158e969c29b47c4aa22a64803d8ad49a85fab8e0fc3b8c4f60fb95f88c6cd0e8"
     },
     {
       "file": "src/core/schedulePdf.test.js",
@@ -3668,11 +3680,11 @@
     },
     {
       "file": "test-tools/certification/cost-performance-baselines.json",
-      "sha256": "bc3a19d6fe4ff0deae51d86a30e34a1789eec94bdfdf2076aea474763eabdeda"
+      "sha256": "092736d3072eca625bf13572a0df683ad612f76eff7ba1c073799d1cc60644d0"
     },
     {
       "file": "test-tools/certification/groups.json",
-      "sha256": "ad6ecc525df036ba19da031f523156e6992d94fc33fc3de13d0e08f581c3e6e9"
+      "sha256": "fd95fbd7ec9c6ffe6f8d3ab0bb6f7beb05c935e0aff2541a7ae60648ae2d7872"
     },
     {
       "file": "test-tools/certification/permission-matrix.json",
@@ -3724,7 +3736,7 @@
     },
     {
       "file": "test-tools/regressions/registry.json",
-      "sha256": "948ccf0877a2342050266f8cd30c745014d34f169b01e16afaa58dbfc8d66fa0"
+      "sha256": "60e535d6af1fe5a6add0cda426b23d3b950b93ed50075dd1b8ba4288d4bef720"
     },
     {
       "file": "test-tools/reporters/chaos-release-gate-reporter.cjs",
@@ -4105,6 +4117,10 @@
     {
       "file": "tests/86chaos-release-gate/66-firebase-emulator-bridge-17-0-54.spec.cjs",
       "sha256": "0fd5b7419076a308d6c55351ec403e23af47606bb4dd2d8551f2db6fdb60ded0"
+    },
+    {
+      "file": "tests/86chaos-release-gate/67-firebase-emulator-cra-build-17-0-55.spec.cjs",
+      "sha256": "b986cb5bff1ca36a2a8c01f53a8398654b6577c480e8c9b34533efa263abf893"
     },
     {
       "file": "tests/86chaos-release-gate/exhaustive-surface-matrix.cjs",

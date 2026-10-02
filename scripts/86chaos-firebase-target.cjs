@@ -1,6 +1,6 @@
 'use strict';
 
-const emulatorConfig = require('../firebase-emulator.config.json');
+const emulatorConfig = require('../src/core/firebase-emulator.config.json');
 const LOOPBACK_RE = /^(localhost|127(?:\.\d{1,3}){3}|\[?::1\]?)$/i;
 
 function clean(value = '') { return String(value == null ? '' : value).trim(); }
