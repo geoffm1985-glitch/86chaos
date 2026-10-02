@@ -1,22 +1,22 @@
 {
-  "version": "17.0.55",
-  "name": "86 Chaos 17.0.55",
-  "build": "17.0.55",
-  "label": "86 Chaos 17.0.55",
-  "releasedAt": "2026-10-02T02:00:00Z",
-  "releaseTitle": "Firebase Emulator CRA Build Repair",
+  "version": "17.0.56",
+  "name": "86 Chaos 17.0.56",
+  "build": "17.0.56",
+  "label": "86 Chaos 17.0.56",
+  "releasedAt": "2026-10-02T02:40:00Z",
+  "releaseTitle": "Firebase Entrypoint Import Repair",
   "notes": [
-    "Moves the shared Firebase emulator configuration under src/core so Create React App can bundle the browser target module.",
-    "The Node/release-gate bridge reads the same canonical configuration file, preserving one source of emulator host/port truth.",
-    "Adds permanent source and Playwright regressions for the exact external-src import build failure while retaining all 17.0.54 fail-closed emulator protections."
+    "Repairs the 17.0.55 optimized CRA build failure caused by importing firebaseRuntimeTarget from a module that did not export it.",
+    "The app entrypoint now imports firebaseRuntimeTarget directly from its defining firebaseTarget module while firebaseEmulatorReadiness remains sourced from appCore.",
+    "Adds permanent source and Playwright regression coverage for the exact import contract without changing LIVE or EMULATOR Firebase behavior."
   ],
-  "title": "86 Chaos 17.0.55",
-  "summary": "Repairs the 17.0.54 Vercel module-not-found failure without changing Firebase target behavior.",
-  "description": "A precision build repair for the Firebase Emulator Bridge. No restaurant feature, UI, production Firebase behavior, or security rule is changed.",
+  "title": "86 Chaos 17.0.56",
+  "summary": "Precision repair for the 17.0.55 Firebase entrypoint import_error build failure.",
+  "description": "A surgical build-only repair. No restaurant feature, UI behavior, Firebase target behavior, security rule, or production environment is changed.",
   "highlights": [
-    "CRA-safe single-source emulator configuration.",
-    "LIVE remains the default target.",
+    "Exact failing import corrected.",
+    "LIVE remains the default Firebase target.",
     "EMULATOR remains demo-86chaos and loopback-only.",
-    "No production deployment."
+    "Production is not deployed by this release."
   ]
 }

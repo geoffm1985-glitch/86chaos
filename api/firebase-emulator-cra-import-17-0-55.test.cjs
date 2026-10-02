@@ -27,10 +27,8 @@ test('17.0.55 shared emulator config preserves the 17.0.54 safety contract', () 
   assert.equal(config.productionProjectId, 'cheers-34b8d');
 });
 
-test('17.0.55 release identity and Playwright regression are wired', () => {
+test('17.0.55 regression coverage remains wired into later releases', () => {
   const pkg = JSON.parse(read('package.json'));
-  assert.equal(pkg.version, '17.0.55');
   assert.match(pkg.scripts['test:current-release-targeted'], /firebase-emulator-cra-import-17-0-55\.test\.cjs/);
-  assert.match(pkg.scripts['test:current-release-targeted'], /validate-17-0-55\.js/);
   assert.equal(fs.existsSync(path.join(root, 'tests/86chaos-release-gate/67-firebase-emulator-cra-build-17-0-55.spec.cjs')), true);
 });

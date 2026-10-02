@@ -3,7 +3,8 @@ import { createRoot } from "react-dom/client";
 
 import App from "./App";
 import { installMobileNoZoomGuard } from "./core/mobileNoZoom";
-import { firebaseRuntimeTarget, firebaseEmulatorReadiness } from "./core/appCore";
+import { firebaseEmulatorReadiness } from "./core/appCore";
+import { firebaseRuntimeTarget } from "./core/firebaseTarget";
 import "./styles.css";
 
 installMobileNoZoomGuard();
