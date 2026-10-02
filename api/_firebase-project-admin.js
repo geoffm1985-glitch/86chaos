@@ -1,8 +1,10 @@
 const admin = require('./_firebase-admin-compat');
 const crypto = require('crypto');
 const fs = require('fs');
+const { getFirebaseTarget, applyFirebaseEmulatorEnv } = require('../scripts/86chaos-firebase-target.cjs');
+const FIREBASE_TARGET = getFirebaseTarget(process.env);
 
-const TRUSTED_PROJECTS = ['chaos-test-d1601', 'cheers-34b8d'];
+const TRUSTED_PROJECTS = FIREBASE_TARGET.emulator ? [FIREBASE_TARGET.projectId] : ['chaos-test-d1601', 'cheers-34b8d'];
 const PROJECT_ENV_ALIASES = {
   'chaos-test-d1601': {
     json: [
@@ -234,6 +236,7 @@ function readProjectCredential(projectId) {
 }
 
 function getDatabaseUrlForProject(projectId) {
+  if (FIREBASE_TARGET.emulator && projectId === FIREBASE_TARGET.projectId) return `https://${projectId}-default-rtdb.firebaseio.com`;
   const direct = projectId === 'cheers-34b8d'
     ? (process.env.FIREBASE_PROD_DATABASE_URL || process.env.PROD_FIREBASE_DATABASE_URL || process.env.REACT_APP_PROD_FIREBASE_DATABASE_URL)
     : (process.env.FIREBASE_TEST_DATABASE_URL || process.env.TEST_FIREBASE_DATABASE_URL || process.env.REACT_APP_TEST_FIREBASE_DATABASE_URL);
@@ -244,6 +247,7 @@ function getDatabaseUrlForProject(projectId) {
 }
 
 function getStorageBucketForProject(projectId) {
+  if (FIREBASE_TARGET.emulator && projectId === FIREBASE_TARGET.projectId) return `${projectId}.appspot.com`;
   const aliases = PROJECT_ENV_ALIASES[projectId] || {};
   const projectSpecific = readFirstEnv(aliases.storageBucket || []);
   if (projectSpecific) return projectSpecific.replace(/^gs:\/\//, '');
@@ -297,6 +301,7 @@ function readGenericCredentialProject() {
 }
 
 function getConfiguredDefaultProjectId(req = null) {
+  if (FIREBASE_TARGET.emulator) { applyFirebaseEmulatorEnv(process.env); return FIREBASE_TARGET.projectId; }
   // 86 Chaos uses one Firebase Admin JSON per deployment. For server-to-server
   // routes, the project_id inside FIREBASE_SERVICE_ACCOUNT_KEY is the source of
   // truth. This keeps testing deployments on chaos-test-d1601 even if an old
@@ -359,6 +364,12 @@ function getAdminAppForProject(projectId, { requireCredentials = true } = {}) {
   const appName = appNameForProject(wanted);
   const existing = admin.apps.find(app => app.name === appName);
   if (existing) return existing;
+
+  if (FIREBASE_TARGET.emulator) {
+    if (wanted !== FIREBASE_TARGET.projectId) throw new Error(`Emulator mode refuses Firebase project ${wanted}; expected ${FIREBASE_TARGET.projectId}.`);
+    applyFirebaseEmulatorEnv(process.env);
+    return admin.initializeApp({ projectId: wanted, storageBucket: getStorageBucketForProject(wanted), databaseURL: getDatabaseUrlForProject(wanted) }, appName);
+  }
 
   const found = readProjectCredential(wanted);
   if (!found) {
@@ -492,6 +503,7 @@ async function downloadFirebaseStorageUrl(downloadUrl, projectId, expectedStorag
 }
 
 function projectCredentialStatus(projectId) {
+  if (FIREBASE_TARGET.emulator && projectId === FIREBASE_TARGET.projectId) return { configured: true, projectId, source: 'Firebase Emulator Suite', serviceAccountEmail: '' };
   try {
     const found = readProjectCredential(projectId);
     return found

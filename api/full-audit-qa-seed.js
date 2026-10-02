@@ -1,7 +1,8 @@
 const { admin, initAdmin, authorize, readBody, writeAudit, clean, norm, memberDocId } = require('./_chaos-admin');
 const { isProductionHost, isTestingPreviewHost } = require('../scripts/86chaos-release-gate/mutation-safety.cjs');
+const { expectedFirebaseProject } = require('../scripts/86chaos-firebase-target.cjs');
 
-const TESTING_PROJECT_ID = 'chaos-test-d1601';
+const TESTING_PROJECT_ID = expectedFirebaseProject(process.env);
 const QA_PREFIX = '86 Chaos Release Gate QA ';
 const MAX_DOCS = 900;
 const PAGE_SIZE = 450;

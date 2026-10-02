@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { collection, query, where, onSnapshot, addDoc, updateDoc, deleteDoc, doc, getDocs, setDoc } from 'firebase/firestore';
 import { initializeApp } from 'firebase/app';
-import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword } from 'firebase/auth';
-import { secureFetch } from '../core/appCore';
+import { getAuth, connectAuthEmulator, createUserWithEmailAndPassword, signInWithEmailAndPassword } from 'firebase/auth';
+import { secureFetch, firebaseRuntimeTarget, firebaseEmulatorSettings } from '../core/appCore';
 import { Package, Trash2, Moon, Search, Calendar, BookOpen, Bug, Bell, Shield, Loader2, ClipboardList, HelpCircle, Users, LifeBuoy, Radio, KeyRound, ChevronRight, Sparkles } from 'lucide-react';
 
 const TabGodMode = ({ appUser, addToast, setGhostTenant, db, auth, Modal, T, getToday, generateTempPass, firebaseConfig, CURRENT_VERSION, logAudit }) => {
@@ -78,7 +78,7 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant, db, auth, Modal, T, get
     try {
       const defaultFeatures = { schedule: true, prep: true, inventory: true, recipes: true, messages: true, sales: true };
       const newRestRef = await addDoc(collection(db, "restaurants"), { name: rName.trim(), ownerName: oName.trim(), ownerEmail: oEmail.toLowerCase().trim(), isActive: true, isReadOnly: false, features: defaultFeatures, labs: {}, planId: 'smart_kitchen', subscriptionStatus: 'beta', isFounderBeta: true, integrationsLocked: true, subscription: { planId: 'smart_kitchen', selectedFutureTier: 'smart_kitchen', status: 'beta', isFounderBeta: true, founderDiscountPercent: 50, billingProvider: 'none', integrationsLocked: true }, createdAt: new Date().toISOString(), lastActive: new Date().toISOString() });
-      const tPass = generateTempPass(); const secondaryApp = initializeApp(firebaseConfig, "TenantBuilder_" + Date.now()); const secondaryAuth = getAuth(secondaryApp);
+      const tPass = generateTempPass(); const secondaryApp = initializeApp(firebaseConfig, "TenantBuilder_" + Date.now()); const secondaryAuth = getAuth(secondaryApp); if (firebaseRuntimeTarget === 'EMULATOR') connectAuthEmulator(secondaryAuth, `http://${firebaseEmulatorSettings.host}:${firebaseEmulatorSettings.authPort}`, { disableWarnings: true });
       const userCredential = await createUserWithEmailAndPassword(secondaryAuth, oEmail.toLowerCase().trim(), tPass); const newAuthUid = userCredential.user.uid; await secondaryAuth.signOut();
       await setDoc(doc(db, "users", newAuthUid), { name: oName.trim(), email: oEmail.toLowerCase().trim(), role: 'Owner', isAdmin: true, isActive: true, forcePasswordChange: true, restaurantId: newRestRef.id, restaurantName: rName.trim(), permissions: { schedule: true, inventory: true, prep: true, sales: true, team: true }, passwordStored: false, passwordPurgedAt: new Date().toISOString() });
       const welcomeMsg = `Welcome to 86chaos!\n\nYour restaurant OS is live. Access it here: https://app.86chaos.com\n\nUsername: ${oEmail.toLowerCase().trim()}\nTemporary Password: ${tPass}\n\nPlease log in to set a permanent password.`;

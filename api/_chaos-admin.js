@@ -3,6 +3,7 @@ const zlib = require('zlib');
 const crypto = require('crypto');
 const { getAdminAppForRequest, getAdminAppForProject, getRequestedProjectId, verifyTrustedFirebaseIdToken: verifyTrustedFirebaseTokenShared } = require('./_firebase-project-admin');
 const { mergeProtectedRootAdminEmails } = require('./_protected-root-admin');
+const { getFirebaseTarget } = require('../scripts/86chaos-firebase-target.cjs');
 
 function norm(v) { return String(v || '').toLowerCase().trim(); }
 function clean(v, fallback = '') { return String(v == null ? fallback : v).trim(); }
@@ -232,7 +233,7 @@ async function authorizeCrossProjectMaster(req) {
 }
 
 function boolEnv(name) { return ['true', '1', 'yes', 'enforce'].includes(String(process.env[name] || '').toLowerCase().trim()); }
-function mfaEnforcementEnabled() { return boolEnv('MFA_ENFORCE_ELEVATED_ROLES') || boolEnv('FIREBASE_MFA_ENFORCE_ELEVATED_ROLES') || boolEnv('REACT_APP_MFA_ENFORCE_ELEVATED_ROLES'); }
+function mfaEnforcementEnabled() { if (getFirebaseTarget(process.env).emulator) return false; return boolEnv('MFA_ENFORCE_ELEVATED_ROLES') || boolEnv('FIREBASE_MFA_ENFORCE_ELEVATED_ROLES') || boolEnv('REACT_APP_MFA_ENFORCE_ELEVATED_ROLES'); }
 function decodedHasMfa(decoded = {}) { const fb = decoded.firebase || {}; return Boolean(fb.sign_in_second_factor || fb.second_factor_identifier || decoded.sign_in_second_factor || decoded.mfa === true); }
 function roleNeedsMfa(user = {}, decoded = {}, isSuperAdmin = false) {
   const permissions = user.permissions || {};
@@ -262,6 +263,7 @@ function requireMfaIfEnforced(decoded = {}, user = {}, isSuperAdmin = false) {
 }
 
 function appCheckEnforced() {
+  if (getFirebaseTarget(process.env).emulator) return false;
   return ['true', '1', 'yes', 'enforce'].includes(String(process.env.APP_CHECK_ENFORCE || '').toLowerCase().trim());
 }
 async function requireAppCheckIfEnforced(app, req) {

@@ -620,7 +620,7 @@ if (Test-Path $CleanupPath) {
   $SetupRestaurantId = [string]$setup.restaurantId
   if ([string]::IsNullOrWhiteSpace($SetupRestaurantId)) { $SetupRestaurantId = [string]$setup.temporaryRestaurantId }
   $WritesStarted = [bool]($setup.writesStarted -or $setup.qaDataWritesStarted -or $setup.createdRestaurant -or $setup.restaurantCreated -or $setup.membershipsCreated -or $setup.seeded -or $setup.fixtureSeedStarted)
-  $CleanupEligible = $WritesStarted -and ($SetupRunId -eq $RunId) -and ($SetupProjectId -eq 'chaos-test-d1601')
+  $CleanupEligible = $WritesStarted -and ($SetupRunId -eq $RunId) -and ($SetupProjectId -eq $ExpectedFirebaseProject)
   if ($setup.createdRestaurant -or $setup.restaurantCreated) { $CleanupEligible = $CleanupEligible -and -not [string]::IsNullOrWhiteSpace($SetupRestaurantId) }
   if ($CleanupEligible) {
     Set-RunnerPhase 'cleanup'
@@ -634,7 +634,7 @@ if (Test-Path $CleanupPath) {
     $RunnerState.cleanupAttempted = $false
     $RunnerState.cleanupCompleted = $false
     if ($SetupRunId -ne $RunId) { $RunnerState.cleanupRefusalReason = 'current-run ID did not match setup state' }
-    elseif ($SetupProjectId -ne 'chaos-test-d1601') { $RunnerState.cleanupRefusalReason = 'testing Firebase project identity was missing or unsafe' }
+    elseif ($SetupProjectId -ne $ExpectedFirebaseProject) { $RunnerState.cleanupRefusalReason = 'testing Firebase project identity was missing or unsafe' }
     elseif (($setup.createdRestaurant -or $setup.restaurantCreated) -and [string]::IsNullOrWhiteSpace($SetupRestaurantId)) { $RunnerState.cleanupRefusalReason = 'temporary restaurant ID was missing after current-run writes' }
     else { $RunnerState.cleanupRefusalReason = 'cleanup ownership evidence was incomplete' }
     Save-RunnerState

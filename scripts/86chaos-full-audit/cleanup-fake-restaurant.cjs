@@ -7,8 +7,10 @@ const { readFirebaseConfig } = require('./firebase-client.cjs');
 const { ensureRunDir, getSeedReportPath, getCleanupReportPath, getSetupStatePath, readJsonIfExists, writeJson } = require('../86chaos-release-gate/run-context.cjs');
 const { resolveQaWorkspaceName, validateQaWorkspaceName } = require('../86chaos-release-gate/qa-workspace.cjs');
 const { assertMutationSafety } = require('../86chaos-release-gate/mutation-safety.cjs');
+const { applyFirebaseEmulatorEnv, firebaseAuthRestUrl, firestoreRestOrigin, storageRestOrigin } = require('../86chaos-firebase-target.cjs');
 
 loadEnv(process.cwd());
+applyFirebaseEmulatorEnv(process.env);
 
 const { runId: RUN_ID, runDir: RELEASE_RUN_DIR } = ensureRunDir();
 const REPORT_PATH = getCleanupReportPath(RUN_ID);
@@ -104,14 +106,14 @@ async function pageFetchJson(page, request) {
 
 function firestoreRest(config, idToken) {
   const encodedProject = encodeURIComponent(config.projectId);
-  const base = `https://firestore.googleapis.com/v1/projects/${encodedProject}/databases/(default)/documents`;
+  const base = `${firestoreRestOrigin(process.env)}/v1/projects/${encodedProject}/databases/(default)/documents`;
   const headers = { Authorization: `Bearer ${idToken}`, 'Content-Type': 'application/json' };
   return { base, headers, projectId: config.projectId };
 }
 
 function storageRest(config, idToken) {
   const bucket = config.storageBucket || '';
-  const base = `https://firebasestorage.googleapis.com/v0/b/${encodeURIComponent(bucket)}/o`;
+  const base = `${storageRestOrigin(process.env)}/v0/b/${encodeURIComponent(bucket)}/o`;
   const headers = { Authorization: `Bearer ${idToken}` };
   return { base, headers, bucket, projectId: config.projectId };
 }
@@ -132,14 +134,14 @@ function firestoreDocData(doc) { return Object.fromEntries(Object.entries(doc?.f
 
 async function getDocByName(page, rest, docName) {
   if (!docName) return null;
-  try { return await pageFetchJson(page, { url: `https://firestore.googleapis.com/v1/${docName}`, method: 'GET', headers: rest.headers }); }
+  try { return await pageFetchJson(page, { url: `${firestoreRestOrigin(process.env)}/v1/${docName}`, method: 'GET', headers: rest.headers }); }
   catch (error) { if (/HTTP 404\b/.test(error.message || '')) return null; throw error; }
 }
 
 async function deleteDocName(page, rest, docName) {
   if (!docName) return { ok: false, reason: 'missing docName' };
   try {
-    await pageFetchJson(page, { url: `https://firestore.googleapis.com/v1/${docName}`, method: 'DELETE', headers: rest.headers });
+    await pageFetchJson(page, { url: `${firestoreRestOrigin(process.env)}/v1/${docName}`, method: 'DELETE', headers: rest.headers });
     return { ok: true };
   } catch (error) {
     if (/HTTP 404\b/.test(error.message || '')) return { ok: true, alreadyAbsent: true };
@@ -341,7 +343,7 @@ async function fetchJson(url, options = {}, fetchImpl = global.fetch) {
 }
 
 async function signInForIdToken(config, email, password) {
-  const signInUrl = `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${encodeURIComponent(config.apiKey)}`;
+  const signInUrl = firebaseAuthRestUrl(config.apiKey, 'signInWithPassword', process.env);
   const signed = await fetchJson(signInUrl, {
     method: 'POST',
     headers: buildFirebaseAuthRequestHeaders(),

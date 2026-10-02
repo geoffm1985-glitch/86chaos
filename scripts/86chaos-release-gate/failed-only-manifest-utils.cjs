@@ -1,3 +1,4 @@
+const { expectedFirebaseProject } = require('../86chaos-firebase-target.cjs');
 const fs = require('fs');
 const path = require('path');
 const { getResultsRoot, getRunDir, getFailedOnlyManifestPath, readJsonIfExists, writeJson } = require('./run-context.cjs');
@@ -886,7 +887,8 @@ function validateTargetManifestContext({ currentSourceVersion = readPackageVersi
   if (!currentSourceVersion) errors.push('Target source version is missing.');
   if (!currentDeployedVersion) errors.push('Target deployed preview version is missing.');
   if (currentSourceVersion && currentDeployedVersion && currentSourceVersion !== currentDeployedVersion) errors.push(`Target source/deployed versions do not match: ${currentSourceVersion} vs ${currentDeployedVersion}.`);
-  if (firebaseProjectId && firebaseProjectId !== 'chaos-test-d1601') errors.push(`Target Firebase project must be chaos-test-d1601, got ${firebaseProjectId}.`);
+  const expectedProjectId = expectedFirebaseProject(process.env);
+  if (firebaseProjectId && firebaseProjectId !== expectedProjectId) errors.push(`Target Firebase project must be ${expectedProjectId}, got ${firebaseProjectId}.`);
   const url = targetUrl || appUrl || '';
   if (url && isProductionUrl(url)) errors.push(`Refusing failed-only run against production-looking target URL: ${url}`);
   return { ok: errors.length === 0, errors };

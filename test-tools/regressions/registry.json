@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "release": "17.0.53",
+  "release": "17.0.54",
   "defects": [
     {
       "defectId": "RG-API-WRAPPER-FIDELITY",
@@ -638,6 +638,20 @@
       "fidelity": "ACTUAL MODULE",
       "fixedVersion": "17.0.53",
       "mandatoryGroup": "deployed"
+    },
+    {
+      "defectId": "RG-FIREBASE-EMULATOR-BRIDGE-17054",
+      "origin": "Firebase cost-control request for full eligible local release-gate and Playwright execution",
+      "affectedInvariant": "Explicit emulator mode routes Firebase test traffic to loopback emulators under demo-86chaos and cannot silently fall back to chaos-test-d1601 or production.",
+      "reproducer": "api/firebase-emulator-bridge-17-0-54.test.cjs / tests/86chaos-release-gate/66-firebase-emulator-bridge-17-0-54.spec.cjs",
+      "permanentTestIds": [
+        "17.0.54 target defaults LIVE and explicit emulator uses demo project",
+        "17.0.54 emulator environment routes Firebase service clients locally",
+        "17.0.54 runtime remains on the selected Firebase target with no silent live fallback"
+      ],
+      "fidelity": "ACTUAL FIREBASE SDK CONFIG / PLAYWRIGHT DESKTOP+MOBILE+WEBKIT",
+      "fixedVersion": "17.0.54",
+      "mandatoryGroup": "firebase"
     }
   ]
 }

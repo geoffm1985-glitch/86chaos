@@ -1,24 +1,23 @@
 {
-  "version": "17.0.53",
-  "name": "86 Chaos 17.0.53",
-  "build": "17.0.53",
-  "label": "86 Chaos 17.0.53",
-  "releasedAt": "2026-10-01T20:00:00Z",
-  "releaseTitle": "Release Gate State Isolation and Schedule Reliability Repair",
+  "version": "17.0.54",
+  "name": "86 Chaos 17.0.54",
+  "build": "17.0.54",
+  "label": "86 Chaos 17.0.54",
+  "releasedAt": "2026-10-02T01:00:00Z",
+  "releaseTitle": "Precision Firebase Emulator Bridge",
   "notes": [
-    "Language preference changes now take effect in the same browser tab, and the Spanish release-gate probe always restores the shared QA identity to English.",
-    "Schedule Builder availability loading no longer depends on a composite-order query; records are sorted client-side after the tenant-scoped read.",
-    "On mobile, the multi-row Schedule Builder control deck scrolls away while the day/date header remains sticky below the app header.",
-    "Release-gate selectors now tolerate decorated accessible names, historical identity tests no longer pin the current package to an old release, and permission-gate detection no longer matches incidental 'not available' text.",
-    "The over-coverage QA fixture now uses two distinct bartenders so it measures real staffing coverage rather than duplicate shifts for one person."
+    "Adds explicit LIVE and EMULATOR Firebase targets with LIVE remaining the default.",
+    "EMULATOR uses demo-86chaos and official Firestore, Auth, Functions, Realtime Database and Storage emulators before application traffic begins.",
+    "Release-gate Firebase clients, fixture seed/cleanup, Admin SDK, RTDB presence and secondary tenant Auth share the same fail-closed local target.",
+    "Cloud-only FCM, App Check, MFA fidelity, IAM and Vercel deployment identity remain explicit live-verification boundaries."
   ],
-  "title": "86 Chaos 17.0.53",
-  "summary": "Repairs same-tab language state, Schedule Builder availability loading, mobile sticky day headers, and release-gate selector/fixture false alarms.",
-  "description": "A surgical testing-branch repair for the 17.0.52 failed+new evidence set. It fixes the real runtime defects and tightens release-gate assertions that were failing on translated or decorated UI without changing working restaurant behavior.",
+  "title": "86 Chaos 17.0.54",
+  "summary": "Adds a local, fail-closed Firebase Emulator Suite bridge for eligible release-gate and Playwright workflows without changing normal live Firebase behavior.",
+  "description": "A surgical test-infrastructure release that keeps production behavior unchanged while allowing Yardmaster to select a demo-project Firebase Emulator Suite target.",
   "highlights": [
-    "Same-tab English/Spanish switching updates the document language immediately.",
-    "Schedule availability and coverage tools remain index-light and complete.",
-    "Mobile schedule day/date context remains visible without a giant sticky control deck.",
-    "Failed+new regression coverage is isolated from shared-account language state and selector decoration."
+    "Default Firebase target remains LIVE.",
+    "Local emulator mode refuses non-loopback hosts and never silently falls back to chaos-test-d1601 or production.",
+    "Existing Firestore, Storage and RTDB security rules remain authoritative in emulator runs.",
+    "Mobile/iPhone-compatible startup regression coverage is retained."
   ]
 }

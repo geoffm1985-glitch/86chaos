@@ -47,7 +47,7 @@ const RELEASE_CRITICAL_SPECS = Object.freeze([
   'tests/86chaos-release-gate/65-system-admin-firebase-cost-runtime-17-0-52.spec.cjs',
 ]);
 
-const PWA_SPEC_PATTERN = /86chaos-release-gate\/(26-pwa-icon-source-deployed-parity|27-pwa-browser-icon-matrix)\.spec\.cjs/;
+const PWA_SPEC_PATTERN = /86chaos-release-gate\/(26-pwa-icon-source-deployed-parity|27-pwa-browser-icon-matrix|66-firebase-emulator-bridge-17-0-54)\.spec\.cjs/;
 const RUNTIME_COVERAGE_PATTERN = /21-runtime-code-coverage\.spec\.cjs|runtime-code-coverage/i;
 
 function normalizeSpecPath(value = '') {
