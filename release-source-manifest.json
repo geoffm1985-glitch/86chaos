@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "sourceHash": "b6448c1771972fb863c374706a8c3413b4a5c905e52d9a2a9861a55ac5c72b8b",
+  "sourceHash": "2c58e19078823002e81d030d2cfe6b9617c045905c24ca2d80ed53a3f0642975",
   "files": [
     {
       "file": ".gitattributes",
@@ -3139,6 +3139,14 @@
       "sha256": "c82c97f1215ee6b02cb3f10e42cbc942cdb3921d852c2673f9a8598d0b85afdf"
     },
     {
+      "file": "scripts/yardmaster-api.cjs",
+      "sha256": "03c76dbf7fccea59335e573dade2a1cb0dd74f44033d507119e6d395dc5ea473"
+    },
+    {
+      "file": "scripts/yardmaster-api.test.cjs",
+      "sha256": "f68764179e3b5e5d386a850fec142eaada18598706f393c8c25d7fd388d946aa"
+    },
+    {
       "file": "scripts/yardmaster-readiness.cjs",
       "sha256": "dc3db5e1534b72051ef12869bd93f12bb99c56a5cbf2aa43d4343169c038241e"
     },
@@ -3716,7 +3724,7 @@
     },
     {
       "file": "src/setupProxy.js",
-      "sha256": "cf904ae2eb6db9a9cdbc0cd4f6ce5691bd5092d7b3b530a4fed65fd4e61bb084"
+      "sha256": "3d2f08e6949ebac4b5cf5801a439981d3faeb5125b98c919866d423c91aeef4a"
     },
     {
       "file": "src/setupTests.js",
