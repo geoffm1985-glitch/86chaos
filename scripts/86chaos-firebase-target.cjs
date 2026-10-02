@@ -19,7 +19,7 @@ function port(env, explicitName, standardName, fallback) {
   return fallback;
 }
 function targetValue(env = process.env) {
-  return normalizeTarget(env[emulatorConfig.targetEnv] || env.CHAOS_FIREBASE_TARGET || env.FIREBASE_TARGET || 'live');
+  return normalizeTarget(env.YARDMASTER_FIREBASE_TARGET || env[emulatorConfig.targetEnv] || env.CHAOS_FIREBASE_TARGET || env.FIREBASE_TARGET || 'live');
 }
 function getFirebaseTarget(env = process.env) {
   const raw = targetValue(env);
@@ -36,7 +36,7 @@ function getFirebaseTarget(env = process.env) {
     ports: {
       firestore: port(env, 'REACT_APP_86CHAOS_FIRESTORE_EMULATOR_PORT', 'FIRESTORE_EMULATOR_HOST', emulatorConfig.ports.firestore),
       auth: port(env, 'REACT_APP_86CHAOS_AUTH_EMULATOR_PORT', 'FIREBASE_AUTH_EMULATOR_HOST', emulatorConfig.ports.auth),
-      functions: port(env, 'REACT_APP_86CHAOS_FUNCTIONS_EMULATOR_PORT', 'FUNCTIONS_EMULATOR_HOST', emulatorConfig.ports.functions),
+      functions: port(env, 'REACT_APP_86CHAOS_FUNCTIONS_EMULATOR_PORT', env.FIREBASE_FUNCTIONS_EMULATOR_HOST ? 'FIREBASE_FUNCTIONS_EMULATOR_HOST' : 'FUNCTIONS_EMULATOR_HOST', emulatorConfig.ports.functions),
       database: port(env, 'REACT_APP_86CHAOS_DATABASE_EMULATOR_PORT', 'FIREBASE_DATABASE_EMULATOR_HOST', emulatorConfig.ports.database),
       storage: port(env, 'REACT_APP_86CHAOS_STORAGE_EMULATOR_PORT', 'FIREBASE_STORAGE_EMULATOR_HOST', emulatorConfig.ports.storage),
     },
@@ -66,6 +66,10 @@ function applyFirebaseEmulatorEnv(env = process.env) {
   env.FUNCTIONS_EMULATOR_HOST = hp(target.ports.functions);
   env.CHAOS_ALLOW_LOCAL_UI_ONLY = 'true';
   env.FIREBASE_DEPLOYMENT_MODE = 'testing';
+  if (normalizeTarget(env.YARDMASTER_FIREBASE_TARGET) === 'emulator') {
+    const localUrl = require('../yardmaster.firebase.json').localApp.url;
+    for (const key of ['APP_URL', 'CHAOS_BASE_URL', 'PLAYWRIGHT_BASE_URL', 'BASE_URL', 'TEST_BASE_URL', 'RELEASE_GATE_BASE_URL', 'CHAOS_TEST_BASE_URL']) env[key] = localUrl;
+  }
   return target;
 }
 function firebaseAuthRestUrl(apiKey = 'demo-api-key', action = 'signInWithPassword', env = process.env) {

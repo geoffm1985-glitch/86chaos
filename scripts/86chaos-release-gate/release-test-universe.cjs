@@ -47,6 +47,7 @@ const RELEASE_CRITICAL_SPECS = Object.freeze([
   'tests/86chaos-release-gate/65-system-admin-firebase-cost-runtime-17-0-52.spec.cjs',
   'tests/86chaos-release-gate/67-firebase-emulator-cra-build-17-0-55.spec.cjs',
   'tests/86chaos-release-gate/68-firebase-emulator-entry-import-17-0-56.spec.cjs',
+  'tests/86chaos-release-gate/69-yardmaster-firebase-bridge-17-0-57.spec.cjs',
 ]);
 
 const PWA_SPEC_PATTERN = /86chaos-release-gate\/(26-pwa-icon-source-deployed-parity|27-pwa-browser-icon-matrix|66-firebase-emulator-bridge-17-0-54)\.spec\.cjs/;

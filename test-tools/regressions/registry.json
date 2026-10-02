@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "release": "17.0.56",
+  "release": "17.0.57",
   "defects": [
     {
       "defectId": "RG-API-WRAPPER-FIDELITY",
@@ -678,6 +678,20 @@
       "fidelity": "ACTUAL SOURCE / CRA PRODUCTION BUILD / PLAYWRIGHT",
       "fixedVersion": "17.0.56",
       "mandatoryGroup": "deployed"
+    },
+    {
+      "defectId": "RG-YARDMASTER-FIREBASE-BRIDGE-17057",
+      "origin": "Yardmaster missing yardmaster.firebase.json blocks emulator tests",
+      "affectedInvariant": "The root bridge names existing full gate scripts, starts CRA on loopback with the pinned demo target, acknowledges actual SDK readiness and prevents live Firebase connections.",
+      "reproducer": "api/yardmaster-firebase-bridge-17-0-57.test.cjs / tests/86chaos-release-gate/69-yardmaster-firebase-bridge-17-0-57.spec.cjs",
+      "permanentTestIds": [
+        "17.0.57 root bridge satisfies Yardmaster schema and preserves complete gate commands",
+        "17.0.57 pinned Yardmaster target overrides stale live settings and maps all SDK ports",
+        "local Yardmaster observes actual SDK readiness and blocks live Firebase"
+      ],
+      "fidelity": "ACTUAL BRIDGE / BROWSER SDK / FIREBASE EMULATORS / DESKTOP+ANDROID",
+      "fixedVersion": "17.0.57",
+      "mandatoryGroup": "firebase"
     }
   ]
 }

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "sourceHash": "1e18a1447d5d9f630702f04e7124116d699aaa02c5652f1c2101f35ccf4da0d3",
+  "sourceHash": "70fe251d64293ff2b987c82f4eed2dcf600f222bc4b35175767f705485a501de",
   "files": [
     {
       "file": ".gitattributes",
@@ -8,7 +8,7 @@
     },
     {
       "file": ".github/workflows/testing-targeted-delta.yml",
-      "sha256": "e92ac6b38a1d1cf0bbcef27ebd60d5a5d01e0933166a457a891840575ea5a8ff"
+      "sha256": "cacd6021f1b303ff25a295c6de5b37cd728789676c9f734a332ca73cd9a56194"
     },
     {
       "file": ".gitignore",
@@ -175,6 +175,10 @@
       "sha256": "7e7d96ee3bba98b1e58dffa5f5e0f0cd85b9d221e242f18685974831dbdfd933"
     },
     {
+      "file": "RELEASE_17_0_57.md",
+      "sha256": "63297010c640ded20dec5e659ea843e404e79c245d8bd4f1707d5801345ce23c"
+    },
+    {
       "file": "RELEASE_17_0_8.md",
       "sha256": "2545cbaba81622c63b4129729ea0eb8076746129d0425d66dfc1a154ac78cf00"
     },
@@ -300,7 +304,7 @@
     },
     {
       "file": "api/_pos-bridge-config.js",
-      "sha256": "cf6590e30d8106ce5c334b7f28ccdaf6fc1a23ddf784c712637854dfd08a6dcd"
+      "sha256": "ee16ea29b9f3e2c2ee9fc32b2e1d69d4b438fe79aac72bc3563a308d4ce8e66b"
     },
     {
       "file": "api/_pos-bridge-events.js",
@@ -436,7 +440,7 @@
     },
     {
       "file": "api/_version.js",
-      "sha256": "b3f21cb05573e5a7ed0531341dd3ec54051ce68bac00609a6899200cb55523b7"
+      "sha256": "deeb14ad21411d7cc730e728a3992ae1eb0d6b88b3ef58826914de73a336483a"
     },
     {
       "file": "api/account-deletion-request.js",
@@ -672,7 +676,7 @@
     },
     {
       "file": "api/firebase-emulator-entry-import-17-0-56.test.cjs",
-      "sha256": "afb6b38bef75b137464e4b9277ceed70ef9016e0043f42e9d9bc60a8faa67bb1"
+      "sha256": "8a475ddb1eda365532e9ae97cae4c623cb5f8e82ece8f57bcad27468db39a5b9"
     },
     {
       "file": "api/firebase-listener-lifecycle-17-0-39.test.cjs",
@@ -1587,6 +1591,10 @@
       "sha256": "9614531a6e635136bd8c71e85d39a9257f4c331f9d2b8348e84e799ece742b5c"
     },
     {
+      "file": "api/yardmaster-firebase-bridge-17-0-57.test.cjs",
+      "sha256": "b38f09e646d22ad0076d3ac0d6e314e0eccf0bcff27fdfa35365539decf329b7"
+    },
+    {
       "file": "database.rules.json",
       "sha256": "152b5cd3f9839f598c9602706d8205b96759296e865d540b52c780900bfba138"
     },
@@ -1621,6 +1629,10 @@
     {
       "file": "docs/firebase-emulator-bridge-17.0.54.md",
       "sha256": "d9789b7d485819ea219be394e1ce6b08fe181c8a2798b50d656fdc843a7a4cff"
+    },
+    {
+      "file": "docs/yardmaster-firebase-bridge-17.0.57.md",
+      "sha256": "dc7d71d3d89ee3397fecc5628067db178403ed77b17ecbd22bb19365ba9f6e38"
     },
     {
       "file": "firebase.json",
@@ -1664,11 +1676,11 @@
     },
     {
       "file": "package-lock.json",
-      "sha256": "f0bf5520f714a08cb99dc478621ed31d71cb5bf98822729205c2315d7b96e897"
+      "sha256": "2e09fdd3eb4674657169acdf9a9f46389da14f6d8aae64e07d705144fa33ddb6"
     },
     {
       "file": "package.json",
-      "sha256": "d1eee903a717730fac44818d9686f8a2eac8f4dbbaa4ca97e8b8878a7a7fd3e8"
+      "sha256": "abb1ad1d2253f6978040e0dd5d93fddbcdb27a40dc0cd62bc173c4b8b8c6e9ff"
     },
     {
       "file": "playwright.config.js",
@@ -1679,8 +1691,12 @@
       "sha256": "e9512520285f411c63add4dd9c9423f58e507383384c21ce3d4644dd6e8f27af"
     },
     {
+      "file": "playwright.firebase-bridge.config.cjs",
+      "sha256": "e1c5d133948fc8b9f7fbc9228f7c768826cd9db97e43debbe215c2667211c8e1"
+    },
+    {
       "file": "playwright.inventory.config.cjs",
-      "sha256": "c24c23c8ea866d9ad2974a259e6a27eeb44a3783a6f91e02fc595cf96e1c64ca"
+      "sha256": "b89e9b3fc361f0cf92833007f565a70fe0ec9967084345d44de06493d1eb32a6"
     },
     {
       "file": "playwright.layout.config.cjs",
@@ -1688,7 +1704,7 @@
     },
     {
       "file": "playwright.play-store-release.config.cjs",
-      "sha256": "46a28cbd1702123376ab35060429ce167e1f17ce80dc783022c3a31797d66197"
+      "sha256": "aee3a630f4f0a507cea3cc592f2b069e04aa3901926e1c498669c06d79e541f3"
     },
     {
       "file": "public/6139.png",
@@ -1884,7 +1900,7 @@
     },
     {
       "file": "public/version.json",
-      "sha256": "22d4ca63fcb7dfa6c4ee4c756da20d1ece492c5645432c6b13b8af34106173db"
+      "sha256": "63c6749f4b105b2d61111212a346545ba07f3a2aab509ace7c7e4edda317c92b"
     },
     {
       "file": "public/wisco.png",
@@ -1896,7 +1912,7 @@
     },
     {
       "file": "scripts/86chaos-firebase-target.cjs",
-      "sha256": "db315c19e2b2544e662fe05557fef227789a6fd1a53faa31d077ad331b90ec71"
+      "sha256": "c07c4647602fb983c71af552d8186042f921bb483cee48567c7321292fee0ece"
     },
     {
       "file": "scripts/86chaos-full-audit/cleanup-fake-restaurant.cjs",
@@ -2008,7 +2024,7 @@
     },
     {
       "file": "scripts/86chaos-release-gate/release-test-universe.cjs",
-      "sha256": "6672c527cda0e01e61ae7cf7d45cc1ecddf7ec13f8999345dd87bb7c603c627e"
+      "sha256": "3643b4a80038262b83602f7cc78e059121cb68fad6d97a6476b238cf4e24855b"
     },
     {
       "file": "scripts/86chaos-release-gate/reported-current-blockers-20260814-064437.json",
@@ -2159,6 +2175,10 @@
       "sha256": "c0be4cd24e9f6197cef59de491d05e8c869ab527d1a37add2efd9dd1303bd650"
     },
     {
+      "file": "scripts/run-firebase-bridge-tests.cjs",
+      "sha256": "31e23497591a20639f3c0a8e34d2159b6554fe72f41565ffcdcd66904746ea23"
+    },
+    {
       "file": "scripts/run-pos-bridge-emulator-tests.cjs",
       "sha256": "37f8956ada54636f3118d42c75866ad0b68d6417ba33a971523533998c1e493a"
     },
@@ -2189,6 +2209,10 @@
     {
       "file": "scripts/stamp-build-identity.cjs",
       "sha256": "0d3ccc8983122eabb10c11da31336f14971ad841561d588d55541680853f7cda"
+    },
+    {
+      "file": "scripts/start-yardmaster.cjs",
+      "sha256": "f5d477f86411e77d2545e27e2c8d582dd8325eef0a3de482c14af90ab3b71dfc"
     },
     {
       "file": "scripts/test-16-0-54-targeted.cjs",
@@ -3047,6 +3071,10 @@
       "sha256": "027415a849ec54b5f2c2c2315512aa097e5de2b0da2b3d1199413a1744e66ba0"
     },
     {
+      "file": "scripts/validate-17-0-57.js",
+      "sha256": "3d0b31e2e3dfdfd50da7d52633fae72b3fc8930bd93acf43e784f064b2e6df17"
+    },
+    {
       "file": "scripts/validate-17-0-6.js",
       "sha256": "cd9e194913174744a48d6413fac4cf4ee4d0888f5f960de7d959748cc1eaee5d"
     },
@@ -3097,6 +3125,14 @@
     {
       "file": "scripts/verify-repository-safety.cjs",
       "sha256": "c82c97f1215ee6b02cb3f10e42cbc942cdb3921d852c2673f9a8598d0b85afdf"
+    },
+    {
+      "file": "scripts/yardmaster-readiness.cjs",
+      "sha256": "dc3db5e1534b72051ef12869bd93f12bb99c56a5cbf2aa43d4343169c038241e"
+    },
+    {
+      "file": "scripts/yardmaster-tailwind.config.cjs",
+      "sha256": "9f5d514319efb5276f3f60abf4b5adfb6c7ec6248a00d5f176d94c97a9720671"
     },
     {
       "file": "src/App.js",
@@ -3224,7 +3260,7 @@
     },
     {
       "file": "src/core/appCore.js",
-      "sha256": "37490565e4dd1a9ff75de6e4941633446b8ba4b3a31e311ad1936cdb418b2fdc"
+      "sha256": "ad90120a0df98c3db3e83e9708e65f242a7b849f89f9cdfc5ef2130af163f3a6"
     },
     {
       "file": "src/core/csvSafety.test.js",
@@ -3232,11 +3268,11 @@
     },
     {
       "file": "src/core/customerHelpKnowledge.cjs",
-      "sha256": "1e8bdf0583a629d0016e5107567ae2215e2f039774efdedc31dc5b61a7885123"
+      "sha256": "e38fd820092bb07b86c4bff2f0794fbec6c8491e5b7b6e430091125237dffa4d"
     },
     {
       "file": "src/core/customerHelpKnowledge.js",
-      "sha256": "2d4df33657e2d092e4778812bd996df547dac92943e30de229b72a398801a0b7"
+      "sha256": "bf5e96863adb16b00375190674ecfe98a896feef6f218a69b00771aec43d9b84"
     },
     {
       "file": "src/core/fileCompression.js",
@@ -3488,7 +3524,7 @@
     },
     {
       "file": "src/core/schedulePdf.js",
-      "sha256": "fce863cc685902a9d68c9db20d3fcfb999d9edde5e9d0ae805475212e4974e55"
+      "sha256": "51b11c203ccbf2b0abd5aebea4effe83b434756383352a5b83ddd465e3b7b6f8"
     },
     {
       "file": "src/core/schedulePdf.test.js",
@@ -3667,6 +3703,10 @@
       "sha256": "601b60ab1885ea30db2101d33c46f5d508f2d53a2f0d35a69871d1f9181019b3"
     },
     {
+      "file": "src/setupProxy.js",
+      "sha256": "cf904ae2eb6db9a9cdbc0cd4f6ce5691bd5092d7b3b530a4fed65fd4e61bb084"
+    },
+    {
       "file": "src/setupTests.js",
       "sha256": "cf9e1ae532a75389041b6d17471432292651165e13f69b21f6a73c77606fa7cb"
     },
@@ -3692,11 +3732,11 @@
     },
     {
       "file": "test-tools/certification/cost-performance-baselines.json",
-      "sha256": "e0ba4985f4509f71d2a765ed33ba36aa48da33777f0ba563e7107c2cdf1eb2ab"
+      "sha256": "f4eeaa8acea43dcc2681bbc8b7727938778819675d6ece708d35fb703e818b77"
     },
     {
       "file": "test-tools/certification/groups.json",
-      "sha256": "17e09226f0485cb455a3966c935553fa1737ccbb14f5dfd3bab6d985f0937778"
+      "sha256": "8a765cfe89b969790d9e970cc048adbc80f0bef42c2b729d4b935cbd86728190"
     },
     {
       "file": "test-tools/certification/permission-matrix.json",
@@ -3748,7 +3788,7 @@
     },
     {
       "file": "test-tools/regressions/registry.json",
-      "sha256": "124a76b8d265a3b1d882db2ac1ba765998da7f1862f29b8f76b932220cb6f89b"
+      "sha256": "c24f3ee3fb25a0066317e648461c0ee5e1102eb2dfa073e74b5852bc81a7ba07"
     },
     {
       "file": "test-tools/reporters/chaos-release-gate-reporter.cjs",
@@ -4139,6 +4179,10 @@
       "sha256": "285f8b3acbbdc767082b945e72ef61da0287fe8b6b1c02ccd200613866718f6a"
     },
     {
+      "file": "tests/86chaos-release-gate/69-yardmaster-firebase-bridge-17-0-57.spec.cjs",
+      "sha256": "bb84f52dde667714650e5c6ab077737c857ffbf1c63abe47eae7ee044911a07c"
+    },
+    {
       "file": "tests/86chaos-release-gate/exhaustive-surface-matrix.cjs",
       "sha256": "daf945020805fbe56e7d5952538c2d6984ab65994d9b944b821ad5297ae4845c"
     },
@@ -4213,6 +4257,10 @@
     {
       "file": "vercel.json",
       "sha256": "aa0babf47f1c5599dbcdd13768c3434de47e982c560f96c455aad2eee7db2e72"
+    },
+    {
+      "file": "yardmaster.firebase.json",
+      "sha256": "88ee1e1a65882a5986548278695529bcda7fb6142d776114bcc8386ebbafcaf9"
     }
   ]
 }

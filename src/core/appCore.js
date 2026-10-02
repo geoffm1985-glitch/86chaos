@@ -158,11 +158,13 @@ if (isFirebaseEmulatorTarget) {
   if (!realtimeDb) throw new Error('Realtime Database emulator target could not initialize.');
   connectDatabaseEmulator(realtimeDb, firebaseEmulatorSettings.host, firebaseEmulatorSettings.databasePort);
   connectStorageEmulator(storage, firebaseEmulatorSettings.host, firebaseEmulatorSettings.storagePort);
+  firebaseDiagnostics.connectedProducts = ['firestore', 'auth', 'database', 'storage', 'functions'];
 }
 export const firebaseEmulatorReadiness = isFirebaseEmulatorTarget ? verifyFirebaseEmulatorAvailability() : Promise.resolve({ ok: true, target: firebaseRuntimeTarget, services: [] });
 if (typeof window !== 'undefined') {
   window.__CHAOS_FIREBASE_DIAGNOSTICS__ = firebaseDiagnostics;
   window.__CHAOS_FIREBASE_EMULATOR_READY__ = firebaseEmulatorReadiness;
+  if (isFirebaseEmulatorTarget) window.__CHAOS_FIREBASE_CHECK_READY__ = verifyFirebaseEmulatorAvailability;
 }
 export const isFirebaseMessagingUnsupportedError = (error = {}) => {
   const text = [
@@ -459,7 +461,7 @@ export const MASTER_ADMIN_EMAIL = (process.env.REACT_APP_MASTER_ADMIN_EMAIL || '
 export const EVENT_TAGS = ['Standard Day', 'Packers Game', 'Brewers Game', 'Live Music', 'Severe Weather', 'Private Catering', 'Holiday'];
 
 // --- VERSION TRACKING ---
-export const CURRENT_VERSION = '17.0.56';
+export const CURRENT_VERSION = '17.0.57';
 
 // --- Helpers ---
 const usePageVisible = () => {

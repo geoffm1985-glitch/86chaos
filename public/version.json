@@ -1,22 +1,21 @@
 {
-  "version": "17.0.56",
-  "name": "86 Chaos 17.0.56",
-  "build": "17.0.56",
-  "label": "86 Chaos 17.0.56",
-  "releasedAt": "2026-10-02T02:40:00Z",
-  "releaseTitle": "Firebase Entrypoint Import Repair",
+  "version": "17.0.57",
+  "name": "86 Chaos 17.0.57",
+  "build": "17.0.57",
+  "label": "86 Chaos 17.0.57",
+  "releasedAt": "2026-10-02T04:04:09.404Z",
+  "releaseTitle": "Yardmaster Firebase Emulator Bridge",
   "notes": [
-    "Repairs the 17.0.55 optimized CRA build failure caused by importing firebaseRuntimeTarget from a module that did not export it.",
-    "The app entrypoint now imports firebaseRuntimeTarget directly from its defining firebaseTarget module while firebaseEmulatorReadiness remains sourced from appCore.",
-    "Adds permanent source and Playwright regression coverage for the exact import contract without changing LIVE or EMULATOR Firebase behavior."
+    "Adds the missing root Yardmaster bridge, using the existing Firebase configuration and all five local emulators.",
+    "Local startup translates the pinned target into CRA settings and reports actual browser SDK readiness behind a loopback connection policy.",
+    "Adds focused Node and desktop/Android Playwright regressions; production Firebase selection remains unchanged."
   ],
-  "title": "86 Chaos 17.0.56",
-  "summary": "Precision repair for the 17.0.55 Firebase entrypoint import_error build failure.",
-  "description": "A surgical build-only repair. No restaurant feature, UI behavior, Firebase target behavior, security rule, or production environment is changed.",
+  "title": "86 Chaos 17.0.57",
+  "summary": "Repairs missing yardmaster.firebase.json and the local startup/readiness contract.",
+  "description": "Repairs missing yardmaster.firebase.json and the local startup/readiness contract.",
   "highlights": [
-    "Exact failing import corrected.",
-    "LIVE remains the default Firebase target.",
-    "EMULATOR remains demo-86chaos and loopback-only.",
-    "Production is not deployed by this release."
+    "Yardmaster uses demo-86chaos locally.",
+    "Unavailable emulators block readiness with no live fallback.",
+    "Complete release-gate scripts retain their inventory."
   ]
 }
