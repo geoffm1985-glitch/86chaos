@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "sourceHash": "e295113eb0e2485a4ac53254051ae270db113e223945d6f9de80acd77777ace7",
+  "sourceHash": "f18fabbd485f4c756ab6e2991ef2b886db8605d7aa26193e1f3a3c2ae8e89e4b",
   "files": [
     {
       "file": ".gitattributes",
@@ -192,7 +192,7 @@
     },
     {
       "file": "RUN_86CHAOS_FAILED_AND_NEW_RELEASE_GATE.ps1",
-      "sha256": "02d8f85860afbcc103540672085ca43a6d15789f28dd74b6fe5c86c075eeaf59"
+      "sha256": "70f6d2ef7d6188a95a8633746c5c5949d053f1cb4eb40a6835f75fc61bad0616"
     },
     {
       "file": "RUN_86CHAOS_FAILED_ONLY_RELEASE_GATE.ps1",
@@ -1361,6 +1361,10 @@
     {
       "file": "api/schema-doctor.js",
       "sha256": "6d0041d70543b081e1546e06bb83678e07ef944e6adda2e8eaa5937e649f334a"
+    },
+    {
+      "file": "api/scoped-emulator-target.test.cjs",
+      "sha256": "285725c5f2f87e6f81a6dc172fe98d68e28c4d47484cb0e8a2be49f797005afa"
     },
     {
       "file": "api/security-diagnostics.js",

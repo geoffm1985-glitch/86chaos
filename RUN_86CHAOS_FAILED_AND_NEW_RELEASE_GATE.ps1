@@ -360,11 +360,24 @@ function Stop-BeforePlaywright {
   Write-Host $Reason -ForegroundColor Red
 }
 
+function Set-VerifiedScopedEmulatorTarget {
+  param([object]$Report, [string]$Selection = $env:YARDMASTER_FIREBASE_TARGET)
+  if ($Selection -ne 'emulator') { return }
+  $local = [uri]$Report.appUrl
+  if (-not $Report.ok -or $Report.firebaseTarget -ne 'EMULATOR' -or $Report.firebaseProjectId -ne 'demo-86chaos' -or $local.Scheme -ne 'http' -or $local.Host -notin @('127.0.0.1','localhost','[::1]','::1')) { throw 'Scoped preflight did not prove the selected local Firebase emulator target.' }
+  foreach ($key in @('APP_URL','CHAOS_BASE_URL','PLAYWRIGHT_BASE_URL','BASE_URL','TEST_BASE_URL','RELEASE_GATE_BASE_URL','CHAOS_TEST_BASE_URL')) {
+    [Environment]::SetEnvironmentVariable($key, $Report.appUrl.TrimEnd('/'), 'Process')
+  }
+  [Environment]::SetEnvironmentVariable('CHAOS_VERIFIED_IMMUTABLE_DEPLOYMENT_URL', $null, 'Process')
+}
+
 Set-RunnerPhase 'environment-preflight'
 $PreflightExit = Run-Step "Environment preflight" "node scripts/86chaos-release-gate/preflight-env.cjs"
 if ($PreflightExit -ne 0) {
   Stop-BeforePlaywright "Release gate blocked before dependency installation because environment/deployment preflight failed."
 } else {
+  $ScopedPreflight = Get-Content (Join-Path $RunDir 'environment-preflight.json') -Raw | ConvertFrom-Json
+  Set-VerifiedScopedEmulatorTarget -Report $ScopedPreflight
   Set-RunnerPhase 'node-version'
   $NodeExit = Run-Step "Node version" "npm run node:check --if-present"
   if ($NodeExit -ne 0) {
