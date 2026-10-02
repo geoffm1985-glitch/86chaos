@@ -459,7 +459,7 @@ if ($PreflightExit -ne 0) {
       Set-RunnerPhase 'install-locked-test-dependencies'
       $RunnerState.dependencyInstallAttempted = $true
       Save-RunnerState
-      $InstallExit = Run-Step "Install locked test dependencies" "node scripts/86chaos-release-gate/run-observable-command.cjs --label 'Install locked test dependencies' --heartbeat 20 --timeout 1800 -- npm ci --include=dev --no-audit --no-fund"
+      $InstallExit = Run-Step "Install locked test dependencies" "node scripts/86chaos-release-gate/yardmaster-dependency-install.cjs"
       $RunnerState.dependencyInstallPassed = ($InstallExit -eq 0)
       Save-RunnerState
       if ($InstallExit -ne 0) {
