@@ -1,5 +1,5 @@
 const { admin, initAdmin, authorize, readBody, writeAudit, clean, norm, memberDocId } = require('./_chaos-admin');
-const { isProductionHost, isTestingPreviewHost } = require('../scripts/86chaos-release-gate/mutation-safety.cjs');
+const { isProductionHost, isTestingPreviewHost, parseHost } = require('../scripts/86chaos-release-gate/mutation-safety.cjs');
 const { expectedFirebaseProject } = require('../scripts/86chaos-firebase-target.cjs');
 
 const TESTING_PROJECT_ID = expectedFirebaseProject(process.env);
@@ -36,7 +36,7 @@ function validateBase({ req, auth, body, projectId }) {
   const restaurantId = safeId(body.restaurantId || '', 180);
   const workspaceName = clean(body.workspaceName || body.restaurantName || '', '');
   const expectedProjectId = clean(body.expectedProjectId || TESTING_PROJECT_ID, '');
-  const host = clean(req.headers['x-forwarded-host'] || req.headers.host || '', '').toLowerCase();
+  const host = parseHost('http://' + clean(req.headers['x-forwarded-host'] || req.headers.host || '', ''));
   if (!auth.isSuperAdmin) errors.push('System Administrator authority is required.');
   if (projectId !== TESTING_PROJECT_ID) errors.push(`QA seed route only runs against ${TESTING_PROJECT_ID}; current project is ${projectId || '(missing)'}.`);
   if (expectedProjectId !== TESTING_PROJECT_ID) errors.push(`expectedProjectId must be ${TESTING_PROJECT_ID}.`);

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "sourceHash": "f18fabbd485f4c756ab6e2991ef2b886db8605d7aa26193e1f3a3c2ae8e89e4b",
+  "sourceHash": "0b9bccaa1fc9e431d8637a9c74538a33d633d80cd1537198a68105c0c6d82b9e",
   "files": [
     {
       "file": ".gitattributes",
@@ -712,7 +712,7 @@
     },
     {
       "file": "api/full-audit-qa-seed.js",
-      "sha256": "ec5ea74680a52980e0e7371bb2bbacc78e264a990a38eff2db1931b1ffa65de8"
+      "sha256": "c4a19e94e7f3b3e6de00fbeb1868eceaf69efeccd071e01cffd0633e1ed836e0"
     },
     {
       "file": "api/full-system-diagnostics.js",
@@ -1025,6 +1025,10 @@
     {
       "file": "api/qa-role-definitions.test.cjs",
       "sha256": "817d62ba7672c2abc434dda002703063059d55b38c1f5fac852549d95553951b"
+    },
+    {
+      "file": "api/qa-seed-host.test.cjs",
+      "sha256": "b8ddd90cde164447a1bbb69a3d4499f606e97d2f5cefc7bc983d59e428c20f47"
     },
     {
       "file": "api/quickbooks-accountant-export.js",
