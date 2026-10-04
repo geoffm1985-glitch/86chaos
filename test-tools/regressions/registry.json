@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "release": "17.0.76",
+  "release": "17.0.77",
   "defects": [
     {
       "defectId": "RG-API-WRAPPER-FIDELITY",
@@ -888,6 +888,22 @@
       "fidelity": "ACTUAL RELEASE-BROWSER SOURCE ASSERTION / ACTUAL GHOST REQUEST OFF PLAYWRIGHT SPEC / RELEASE-GATE PLAYWRIGHT / INDEPENDENT PLAYWRIGHT",
       "fixedVersion": "17.0.76",
       "mandatoryGroup": "schedule"
+    },
+    {
+      "defectId": "RG-SERVER-CERTIFICATION-DRIFT-17077",
+      "origin": "17.0.76 full Yardmaster gate blocked before Playwright because six historical server certification assertions no longer matched the current stable test/runtime contracts.",
+      "affectedInvariant": "Historical certification guards must follow current stable source/test contracts without weakening the behavior they protect, and a multi-failure server gate must be repaired as one evidence-backed certification-maintenance set before Playwright can start.",
+      "reproducer": "api/release-gate-hostile-fixture-manifest-17-0-70.test.cjs / api/release-gate-maturity-16-0-207.test.cjs / api/release-gate-maturity-16-0-209.test.cjs / api/release-gate-runner-observability.test.cjs / api/schedule-warning-request-off-controls.test.cjs / api/spanish-release-gate-fidelity-17-0-29.test.cjs / api/release-gate-server-certification-drift-17-0-77.test.cjs / tests/86chaos-release-gate/89-server-certification-drift-17-0-77.spec.cjs / tests/e2e/server-certification-drift-17-0-77.spec.cjs",
+      "permanentTestIds": [
+        "17.0.77 stale server certification assertions track current contracts without weakening behavior",
+        "17.0.77 exact previously failing server files all pass together",
+        "release-gate source assertions follow the current stable contracts",
+        "all six formerly failing server guards are covered by the 17.0.77 targeted regression",
+        "targeted delta discovery includes both 17.0.77 Playwright regressions"
+      ],
+      "fidelity": "ACTUAL SIX FAILED SERVER TEST FILES / CURRENT SOURCE CONTRACTS / RELEASE-GATE PLAYWRIGHT / INDEPENDENT PLAYWRIGHT",
+      "fixedVersion": "17.0.77",
+      "mandatoryGroup": "deployed"
     }
   ]
 }

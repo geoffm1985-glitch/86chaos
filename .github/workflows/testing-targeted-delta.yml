@@ -135,6 +135,7 @@ jobs:
           tests/86chaos-release-gate/86-partial-run-evidence-emulator-target-17-0-74.spec.cjs
           tests/86chaos-release-gate/87-qa-role-emulator-target-17-0-75.spec.cjs
           tests/86chaos-release-gate/88-ghost-request-off-selector-17-0-76.spec.cjs
+          tests/86chaos-release-gate/89-server-certification-drift-17-0-77.spec.cjs
           tests/e2e/runtime-isolation-csp-sticky-a11y.spec.cjs
           tests/e2e/failed-new-evidence-17-0-68.spec.cjs
           tests/e2e/source-manifest-authority-17-0-69.spec.cjs
@@ -145,6 +146,7 @@ jobs:
           tests/e2e/partial-run-evidence-emulator-target-17-0-74.spec.cjs
           tests/e2e/qa-role-emulator-target-17-0-75.spec.cjs
           tests/e2e/ghost-request-off-selector-17-0-76.spec.cjs
+          tests/e2e/server-certification-drift-17-0-77.spec.cjs
           tests/e2e/release-gate-lineage-title-migration.spec.cjs
           tests/86chaos-full-audit/05-schedule-builder-mutation.spec.cjs
           tests/86chaos-release-gate/35-reminder-notification-certification.spec.cjs

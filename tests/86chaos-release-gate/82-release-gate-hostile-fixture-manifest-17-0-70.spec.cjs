@@ -17,7 +17,8 @@ test.describe('17.0.70 hostile fixture manifest compatibility repair', () => {
 
   test('targeted Node regression executes the current source validator against a synthetic hostile manifest', async () => {
     const targeted = fs.readFileSync(path.join(root, 'api/release-gate-hostile-fixture-manifest-17-0-70.test.cjs'), 'utf8');
-    expect(targeted).toContain("cp.spawnSync(process.execPath, ['scripts/validate-17-0-70.js']");
+    expect(targeted).toContain("scripts?.['test:source']");
+    expect(targeted).toContain('validatorMatch[1]');
     expect(targeted).toContain('version: captured.version');
   });
 });

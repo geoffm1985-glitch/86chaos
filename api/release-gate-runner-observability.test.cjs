@@ -43,9 +43,10 @@ test('Windows .cmd wrapper handles a path with spaces without EINVAL', { skip: p
 test('release-gate runners use observable setup, overlap protection, and isolated rules ports', () => {
   const ps1 = fs.readFileSync(path.join(root, 'RUN_86CHAOS_PLAY_STORE_RELEASE_GATE.ps1'), 'utf8');
   const nodeChecks = fs.readFileSync(path.join(root, 'scripts', '86chaos-release-gate', 'run-node-release-checks.cjs'), 'utf8');
+  const dependencyInstaller = fs.readFileSync(path.join(root, 'scripts', '86chaos-release-gate', 'yardmaster-dependency-install.cjs'), 'utf8');
   assert.match(ps1, /Verify npm wrapper/);
   assert.match(ps1, /run-observable-command\.cjs/);
-  assert.match(ps1, /--timeout 1800/);
+  assert.match(dependencyInstaller, /'--timeout','1800'/);
   assert.match(ps1, /\.current-run\.lock/);
   assert.match(ps1, /BLOCKED BEFORE TEST EXECUTION/);
   assert.match(ps1, /UTF8Encoding/);

@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
-  "version": "17.0.76",
-  "sourceHash": "77e46d77d8b2de93030e98f1a1db2c816d3f675ba46463cdf68d2e4ea08f8d16",
+  "version": "17.0.77",
+  "sourceHash": "c4bc4bb965c8a08fdf858fa86902d576d8faef6dcc7bcedd9cf357b3bd94a63a",
   "files": [
     {
       "file": ".gitattributes",
@@ -9,7 +9,7 @@
     },
     {
       "file": ".github/workflows/testing-targeted-delta.yml",
-      "sha256": "7cc0565c425950e965382f8094a35e255ccfc9fd8ca11acfc76c88ab49a85c30"
+      "sha256": "29486d8b26d6c506aa3e3dbbf013c79a90bec8ca0a845e5eb5e5fd33b82af906"
     },
     {
       "file": ".gitignore",
@@ -250,6 +250,10 @@
     {
       "file": "RELEASE_17_0_76.md",
       "sha256": "f558eec6fc1642d771436d44adc1db021aefcd76bd034bf54247b47e61cd1665"
+    },
+    {
+      "file": "RELEASE_17_0_77.md",
+      "sha256": "7858bcdd527d20b70e66566965f01dec6f29f87f914f7e597d0bee682821fcbc"
     },
     {
       "file": "RELEASE_17_0_8.md",
@@ -513,7 +517,7 @@
     },
     {
       "file": "api/_version.js",
-      "sha256": "f2845ebdea5870c1f8cc999ab357886bbbf2a8212050b9242e075476b8385afa"
+      "sha256": "7a2bc9577a153fc0a5bf456a33bc82fe6fb644c8e95d24c9c31a3c9b0acad20c"
     },
     {
       "file": "api/account-deletion-request.js",
@@ -1213,7 +1217,7 @@
     },
     {
       "file": "api/release-gate-hostile-fixture-manifest-17-0-70.test.cjs",
-      "sha256": "ea39fa66e0fa9ea250f9e0456fa7cef1e0f6785abd6db7b8648c84c152500354"
+      "sha256": "0c3abc7ae80c957546ac446bbc56ac7008590a14d65c87abd9e6a9a9dff14237"
     },
     {
       "file": "api/release-gate-ignored-local-source-17-0-61.test.cjs",
@@ -1249,7 +1253,7 @@
     },
     {
       "file": "api/release-gate-maturity-16-0-207.test.cjs",
-      "sha256": "23f8270c1c39164209f54d194da4f53e54155a15db97e1ff91ede938e938f80c"
+      "sha256": "8857787daceaee389d35db6e91bbeaf989980c1fafe8feca0c34c3645ba18a31"
     },
     {
       "file": "api/release-gate-maturity-16-0-208.test.cjs",
@@ -1257,7 +1261,7 @@
     },
     {
       "file": "api/release-gate-maturity-16-0-209.test.cjs",
-      "sha256": "e6717f7d29dc6614bc50fc8ed1ab2a12bd55eb2c5496145754da319cb2da74a7"
+      "sha256": "8aeaacff14f16f4e7e7fdf902b93d7bec7d1f892b01d3f389dfcc8df04e9b405"
     },
     {
       "file": "api/release-gate-maturity-16-0-210.test.cjs",
@@ -1273,7 +1277,7 @@
     },
     {
       "file": "api/release-gate-runner-observability.test.cjs",
-      "sha256": "09bd1a9684a917663fd980356c09a75e1ec233757e1df4c87fcc86993e1e475b"
+      "sha256": "68553ad5a1c9fcff9851f5cee9b4e53ac4df90a11906d7ef985f5b780332d5f1"
     },
     {
       "file": "api/release-gate-runtime-isolation-17-0-67.test.cjs",
@@ -1282,6 +1286,10 @@
     {
       "file": "api/release-gate-schedule-runner-17-0-18.test.cjs",
       "sha256": "d976cbbaeab00fc96e3e935cfd592d44bb111bde9808a3db18ece536fb2434af"
+    },
+    {
+      "file": "api/release-gate-server-certification-drift-17-0-77.test.cjs",
+      "sha256": "82945eeb2f5b1a64fcab8a6630a57c236d43e4c8c4824c4236c732edb595a79a"
     },
     {
       "file": "api/release-gate-source-inventory-17-0-60.test.cjs",
@@ -1509,7 +1517,7 @@
     },
     {
       "file": "api/schedule-warning-request-off-controls.test.cjs",
-      "sha256": "e839265891f00d9b4750ffdae447f33abdc85eacab73e01f3f126303980a3b19"
+      "sha256": "e03d778fc0cf3556a095f0c37a6db72ff1921e727e54eac2bd7b38588ca445e9"
     },
     {
       "file": "api/schema-doctor.js",
@@ -1625,7 +1633,7 @@
     },
     {
       "file": "api/spanish-release-gate-fidelity-17-0-29.test.cjs",
-      "sha256": "43d78f3e6b5bf8b62ed9d1c9f02c8cdb92d9514578fee404f915ae320199f30a"
+      "sha256": "e48cbd51fd353ad1dd462aaa095073a4dd544f6dda030ed871ef10bb85db75b9"
     },
     {
       "file": "api/staff-member-email-update-source.test.cjs",
@@ -1841,11 +1849,11 @@
     },
     {
       "file": "package-lock.json",
-      "sha256": "4feb0d2f16560e4157cf5dcb9c0c6cabcf091cfe5004ee11c6daec51d7e9d717"
+      "sha256": "9d0ce7c1e50ebfa9ec956b75768508a69448e3db58831d4f1706e0c6dd197034"
     },
     {
       "file": "package.json",
-      "sha256": "100002c4f5448cb2642ccbe7a8fb8742492533c12e7ae1313c69712cd4993bc3"
+      "sha256": "9d96f1cd8ec070928238d558377c19c58981e688eee5ac0adfc3655f77da0c51"
     },
     {
       "file": "playwright.config.js",
@@ -2065,7 +2073,7 @@
     },
     {
       "file": "public/version.json",
-      "sha256": "fd69ac88463feeba6c8fd8084a247271061cae8ba80b54457f0863083022c33f"
+      "sha256": "a6d7de06ce823e7243404d0e3c49cbfb761ef945ae2ac8bc47dae87ee7ef46a6"
     },
     {
       "file": "public/wisco.png",
@@ -2189,7 +2197,7 @@
     },
     {
       "file": "scripts/86chaos-release-gate/release-test-universe.cjs",
-      "sha256": "ccc43a9fd3092dfd0c846f308410e40ce72439638ad00a477f418c993d055e22"
+      "sha256": "dac7da0e0a8db39246f6d697f8952325bcb9e01e0ce8ed0eaff934fe9fd83617"
     },
     {
       "file": "scripts/86chaos-release-gate/reported-current-blockers-20260814-064437.json",
@@ -3332,6 +3340,10 @@
       "sha256": "b52a3296e6744ec5f6c269231ad513c830a601fc21dcad908f04f0316e97797b"
     },
     {
+      "file": "scripts/validate-17-0-77.js",
+      "sha256": "ca0a1674a7209054e520d07ced4a782297fd12d50186f75d6aa4e0c6d9d7548d"
+    },
+    {
       "file": "scripts/validate-17-0-8.js",
       "sha256": "88eb1c63a6f6efbd9445f016c535e2f97e29466d1809e221d408d31cff0a91aa"
     },
@@ -3517,7 +3529,7 @@
     },
     {
       "file": "src/core/appCore.js",
-      "sha256": "aa0f99c44790087cfda6f117ea7ec994eb2722c638f35897b1e5784d971428cf"
+      "sha256": "f8f44e9fbc0ce52f9c1d10a9dd679a987bdcd1de82c6f6c855f190f405105cd5"
     },
     {
       "file": "src/core/csvSafety.test.js",
@@ -3525,11 +3537,11 @@
     },
     {
       "file": "src/core/customerHelpKnowledge.cjs",
-      "sha256": "dccf5fcb537e2ae5bf73005d55d435b2a8e3efc6f151b76b8a668da1b0579a69"
+      "sha256": "01efa0f727f29a9c853d39bb38d7418e096b06a33c67dcd08db6d854d08eceb6"
     },
     {
       "file": "src/core/customerHelpKnowledge.js",
-      "sha256": "2ac37a0332a3352c8f2abf5b1f4c3844096c1c79607199cc100678cb3972cbb3"
+      "sha256": "8e4bf2617835c855eb9a68c6e724bc115315486b5d6fa23a07b083aaef0e2aef"
     },
     {
       "file": "src/core/fileCompression.js",
@@ -3989,11 +4001,11 @@
     },
     {
       "file": "test-tools/certification/cost-performance-baselines.json",
-      "sha256": "6a5cb8d238d1466308898960bad6f0cf5d5ea228681fb0512185e3d06275e767"
+      "sha256": "f8d4fe486d573a797c6c37d770008d43f76d15d57d989f97d1fab93b09b77c3a"
     },
     {
       "file": "test-tools/certification/groups.json",
-      "sha256": "05cd3f34e63e55d6e702c7663ef20f83d3fc36ea766f87f4649b8d92243c695d"
+      "sha256": "709f3b559fd3c6f85c8c060da58f58584773b24a699f5121c45b12259e4b3fcc"
     },
     {
       "file": "test-tools/certification/permission-matrix.json",
@@ -4045,7 +4057,7 @@
     },
     {
       "file": "test-tools/regressions/registry.json",
-      "sha256": "7f163e59057b847ef96b4103d830c191e6babb223886845eb834c1d849ec47bf"
+      "sha256": "0b907d53c4fc637bb4e274d68c0f40d4595383e092c62f8596c0ff721ddad5f3"
     },
     {
       "file": "test-tools/reporters/chaos-release-gate-reporter.cjs",
@@ -4489,7 +4501,7 @@
     },
     {
       "file": "tests/86chaos-release-gate/82-release-gate-hostile-fixture-manifest-17-0-70.spec.cjs",
-      "sha256": "d683bfa820e7d4aaf36dcdf9ef4c40b2b61c24e5a6497f64189e111be34162c9"
+      "sha256": "05937ace463cc67b3ebe2ba6a6702dd46612317ba1be5c74d9f85ff2567f8a8d"
     },
     {
       "file": "tests/86chaos-release-gate/83-failed-only-manifest-emulator-target-17-0-71.spec.cjs",
@@ -4514,6 +4526,10 @@
     {
       "file": "tests/86chaos-release-gate/88-ghost-request-off-selector-17-0-76.spec.cjs",
       "sha256": "2288d1e6ff2b72c949a73047ead67be4fcb7b63e408ff74a040031e52b660f24"
+    },
+    {
+      "file": "tests/86chaos-release-gate/89-server-certification-drift-17-0-77.spec.cjs",
+      "sha256": "95dd11ff6af3c119808797e4bfdcd701b4c2735feead1e006ea2ef1a3200e63e"
     },
     {
       "file": "tests/86chaos-release-gate/exhaustive-surface-matrix.cjs",
@@ -4618,6 +4634,10 @@
     {
       "file": "tests/e2e/schedule-request-off-management.spec.cjs",
       "sha256": "ac94e79aab9c7ef51ec942f5c887b98c1fc29b2e082434f26e90a1741a42536c"
+    },
+    {
+      "file": "tests/e2e/server-certification-drift-17-0-77.spec.cjs",
+      "sha256": "724f6add8f87062c3ad43f4a096fed044f7ecc834dcc20e94aa4b95a233f035c"
     },
     {
       "file": "tests/e2e/source-manifest-authority-17-0-69.spec.cjs",

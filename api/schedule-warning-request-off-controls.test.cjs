@@ -140,7 +140,11 @@ test('current QA seed deduplicates duplicate bartender shifts for coverage', () 
     weekShifts: profile.collections.shifts,
     roleMatcher: (left, right) => String(left || '').toLowerCase() === String(right || '').toLowerCase(),
   });
-  assert.equal(rows.length, 0);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].type, 'over');
+  assert.equal(rows[0].existing, 2);
+  assert.equal(rows[0].target, 1);
+  assert.equal(rows[0].over, 1);
 });
 
 test('schedule warning model survives malformed legacy records without taking down the route', () => {

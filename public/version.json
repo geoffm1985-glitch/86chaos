@@ -1,28 +1,28 @@
 {
-  "version": "17.0.76",
-  "name": "86 Chaos 17.0.76",
-  "build": "17.0.76",
-  "label": "86 Chaos 17.0.76",
-  "releasedAt": "2026-10-04T10:22:05.820Z",
-  "releaseTitle": "Ghost Request Off Certification Selector Repair",
+  "version": "17.0.77",
+  "name": "86 Chaos 17.0.77",
+  "build": "17.0.77",
+  "label": "86 Chaos 17.0.77",
+  "releasedAt": "2026-10-04T11:20:13.267682Z",
+  "releaseTitle": "Server Certification Drift Repair",
   "notes": [
-    "Repairs a stale release-browser reliability assertion that still required the former Schedule Request Off button-name selector.",
-    "The Ghost Request Off browser workflow continues to use the employee Time Clock & Schedule route and the stable schedule-request-off-tab test ID.",
-    "No Schedule Builder permission, production authorization, Ghost Mode behavior, or Request Off runtime behavior is changed.",
-    "Adds dedicated Node, Play Store/release-gate Playwright, and independent Playwright regression coverage."
+    "Repairs the six stale server certification assertions that blocked the 17.0.76 full gate before Playwright.",
+    "No production scheduling, Request Off, localization, Firebase, authorization, or dependency-install behavior is changed.",
+    "Keeps the 30-minute dependency timeout in its current Yardmaster dependency installer owner and keeps stable warning test IDs.",
+    "Adds dedicated Node, Play Store/release-gate Playwright, and independent Playwright regression coverage for the exact six-file failure set."
   ],
-  "title": "86 Chaos 17.0.76",
-  "summary": "Aligns the Ghost Request Off certification assertion with the current stable employee-route test ID.",
-  "description": "Surgical test-harness repair only. The active browser workflow already uses the correct employee Time Clock & Schedule route without elevating Schedule Builder access.",
+  "title": "86 Chaos 17.0.77",
+  "summary": "Realigns stale historical certification guards with the current stable source and test contracts so the full gate can reach Playwright again.",
+  "description": "Surgical certification-maintenance repair only. The gate evidence showed six historical assertions had drifted behind intentional current behavior.",
   "highlights": [
-    "Updates api/release-browser-reliability.test.cjs to recognize schedule-request-off-tab.",
-    "Preserves the prohibition on navigating the Ghost Request Off workflow through Schedule Builder.",
-    "Adds permanent regression coverage to prevent the obsolete Schedule Request Off button-name selector from returning."
+    "Runs the hostile-manifest synthetic fixture through the current source validator instead of the archived 17.0.70 validator.",
+    "Tracks stable Schedule Builder warning test IDs and dependency-installer timeout ownership.",
+    "Makes QA coverage and Spanish fidelity assertions verify the current behavior without reducing strictness."
   ],
   "changes": [
-    "Bumps release identity from 17.0.75 to 17.0.76.",
-    "Repairs the exact server-test blocker exposed by the 17.0.75 full gate.",
+    "Bumps release identity from 17.0.76 to 17.0.77.",
+    "Repairs all six server-test blockers exposed by the 17.0.76 full gate.",
     "Registers mandatory release-gate and independent Playwright coverage.",
-    "Regenerates release-source-manifest.json after finalizing the 17.0.76 source tree."
+    "Regenerates release-source-manifest.json after finalizing the 17.0.77 source tree."
   ]
 }
