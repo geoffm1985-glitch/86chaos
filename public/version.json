@@ -1,27 +1,28 @@
 {
-  "version": "17.0.75",
-  "name": "86 Chaos 17.0.75",
-  "build": "17.0.75",
-  "label": "86 Chaos 17.0.75",
-  "releasedAt": "2026-10-04T09:49:45.058Z",
-  "releaseTitle": "QA Role Emulator Fixture Target Repair",
+  "version": "17.0.76",
+  "name": "86 Chaos 17.0.76",
+  "build": "17.0.76",
+  "label": "86 Chaos 17.0.76",
+  "releasedAt": "2026-10-04T10:22:05.820Z",
+  "releaseTitle": "Ghost Request Off Certification Selector Repair",
   "notes": [
-    "Repairs the QA role-definition server fixture so Firebase project identity follows the active shared LIVE/EMULATOR target instead of a hard-coded live testing project.",
-    "Preserves the System Administrator Kitchen/non-owner/non-admin invariant and all production role-verification behavior.",
-    "Adds targeted Node, mandatory Play Store/release-gate Playwright, and independent Playwright regression coverage for emulator and live target modes."
+    "Repairs a stale release-browser reliability assertion that still required the former Schedule Request Off button-name selector.",
+    "The Ghost Request Off browser workflow continues to use the employee Time Clock & Schedule route and the stable schedule-request-off-tab test ID.",
+    "No Schedule Builder permission, production authorization, Ghost Mode behavior, or Request Off runtime behavior is changed.",
+    "Adds dedicated Node, Play Store/release-gate Playwright, and independent Playwright regression coverage."
   ],
-  "title": "86 Chaos 17.0.75",
-  "summary": "Makes the QA role-definition fixture target-aware so Yardmaster full certification can run the same role invariant under demo-86chaos emulator mode and chaos-test-d1601 live mode.",
-  "description": "Surgical test-harness repair. No production authorization, permissions, Firebase security rules, or application runtime role behavior is changed.",
+  "title": "86 Chaos 17.0.76",
+  "summary": "Aligns the Ghost Request Off certification assertion with the current stable employee-route test ID.",
+  "description": "Surgical test-harness repair only. The active browser workflow already uses the correct employee Time Clock & Schedule route without elevating Schedule Builder access.",
   "highlights": [
-    "The failing role fixture now uses EXPECTED_FIREBASE_PROJECT from the canonical Firebase target resolver.",
-    "The exact server fixture is rerun in both EMULATOR and LIVE modes by a dedicated regression.",
-    "Release discovery and targeted-delta Playwright coverage keep the regression mandatory."
+    "Updates api/release-browser-reliability.test.cjs to recognize schedule-request-off-tab.",
+    "Preserves the prohibition on navigating the Ghost Request Off workflow through Schedule Builder.",
+    "Adds permanent regression coverage to prevent the obsolete Schedule Request Off button-name selector from returning."
   ],
   "changes": [
-    "Bumps release identity from 17.0.74 to 17.0.75.",
-    "Updates api/qa-role-definitions.test.cjs to remove the stale live-project fixture literal from current-target rows.",
-    "Adds 17.0.75 Node, release-gate Playwright, and independent Playwright regressions to mandatory discovery.",
-    "Regenerates release-source-manifest.json after the completed 17.0.75 source tree is finalized."
+    "Bumps release identity from 17.0.75 to 17.0.76.",
+    "Repairs the exact server-test blocker exposed by the 17.0.75 full gate.",
+    "Registers mandatory release-gate and independent Playwright coverage.",
+    "Regenerates release-source-manifest.json after finalizing the 17.0.76 source tree."
   ]
 }

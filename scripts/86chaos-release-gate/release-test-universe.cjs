@@ -66,6 +66,7 @@ const RELEASE_CRITICAL_SPECS = Object.freeze([
   'tests/86chaos-release-gate/85-failed-only-repair-selection-emulator-target-17-0-73.spec.cjs',
   'tests/86chaos-release-gate/86-partial-run-evidence-emulator-target-17-0-74.spec.cjs',
   'tests/86chaos-release-gate/87-qa-role-emulator-target-17-0-75.spec.cjs',
+  'tests/86chaos-release-gate/88-ghost-request-off-selector-17-0-76.spec.cjs',
 ]);
 
 const PWA_SPEC_PATTERN = /86chaos-release-gate\/(26-pwa-icon-source-deployed-parity|27-pwa-browser-icon-matrix|66-firebase-emulator-bridge-17-0-54|70-release-gate-emulator-target-coherence-17-0-58)\.spec\.cjs/;

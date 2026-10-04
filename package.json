@@ -1,6 +1,6 @@
 {
   "name": "86chaos",
-  "version": "17.0.75",
+  "version": "17.0.76",
   "private": true,
   "dependencies": {
     "@fontsource/noto-sans": "^5.3.0",
@@ -30,7 +30,7 @@
     "deploy:check": "npm run test:ci && NODE_OPTIONS=--max-old-space-size=4096 GENERATE_SOURCEMAP=false npm run build",
     "validate:audit-repair": "node scripts/validate-repair.js",
     "rules:check": "node scripts/validate-rules.js",
-    "test:source": "node scripts/validate-17-0-75.js",
+    "test:source": "node scripts/validate-17-0-76.js",
     "validate:16.0.232": "node scripts/validate-16-0-232.js",
     "validate:16.0.233": "node scripts/validate-16-0-233.js",
     "validate:16.0.234": "node scripts/validate-16-0-234.js",
@@ -133,7 +133,7 @@
     "validate:17.0.25": "node scripts/validate-17-0-25.js",
     "test:schedule-shift-delete": "node --test api/schedule-shift-delete-17-0-25.test.cjs",
     "test:delta-clean-baseline": "node --test api/release-gate-delta-clean-baseline-17-0-25.test.cjs",
-    "test:current-release-targeted": "node --test api/qa-role-fixture-emulator-target-17-0-75.test.cjs api/partial-run-evidence-emulator-target-17-0-74.test.cjs api/failed-only-repair-selection-emulator-target-17-0-73.test.cjs api/failed-only-manifest-reporter-independence-17-0-72.test.cjs api/failed-only-manifest-emulator-target-17-0-71.test.cjs api/release-gate-hostile-fixture-manifest-17-0-70.test.cjs api/release-gate-source-manifest-authority-17-0-69.test.cjs api/release-gate-failed-new-evidence-17-0-68.test.cjs api/release-gate-runtime-isolation-17-0-67.test.cjs api/release-gate-lineage-suite-prefix-17-0-66.test.cjs api/release-gate-lineage-title-migration-17-0-65.test.cjs api/release-gate-emulator-runtime-boundaries-17-0-64.test.cjs api/release-gate-yardmaster-readiness-bootstrap-17-0-63.test.cjs api/release-gate-root-source-archive-17-0-62.test.cjs api/release-gate-ignored-local-source-17-0-61.test.cjs api/release-gate-source-inventory-17-0-60.test.cjs api/release-gate-staleness-manifest-17-0-59.test.cjs api/release-gate-emulator-target-coherence-17-0-58.test.cjs api/yardmaster-firebase-bridge-17-0-57.test.cjs api/firebase-emulator-entry-import-17-0-56.test.cjs api/firebase-emulator-cra-import-17-0-55.test.cjs api/firebase-emulator-bridge-17-0-54.test.cjs api/release-gate-cascade-repair-17-0-53.test.cjs api/system-admin-firebase-cost-runtime-17-0-52.test.cjs api/system-admin-runtime-boundary-17-0-51.test.cjs api/testing-deployment-identity-file-reader-17-0-49.test.cjs api/release-gate-surgical-repairs-17-0-46.test.cjs api/customer-help-version-17-0-45.test.cjs api/testing-gate-17-0-43.test.cjs api/emergency-sticky-touch-17-0-42.test.cjs api/emergency-runtime-sticky-17-0-41.test.cjs api/emergency-schedule-requestoff-17-0-40.test.cjs api/release-integrity-17-0-39.test.cjs api/security-observability-17-0-39.test.cjs api/firebase-listener-lifecycle-17-0-39.test.cjs api/restaurant-intelligence-17-0-39.test.cjs api/purchase-history-17-0-39.test.cjs api/reminder-voice-lifecycle-17-0-39.test.cjs api/merged-release-17-0-30.test.cjs api/reminder-mobile-runtime-17-0-38.test.cjs api/firebase-admin-runtime-17-0-37.test.cjs api/firebase-admin-url-api-17-0-36.test.cjs api/device-local-reminders-17-0-35.test.cjs api/restaurant-readiness-17-0-34.test.cjs api/source-manifest-parity-17-0-31.test.cjs && node scripts/validate-17-0-75.js",
+    "test:current-release-targeted": "node --test api/ghost-request-off-route-source-17-0-76.test.cjs api/qa-role-fixture-emulator-target-17-0-75.test.cjs api/partial-run-evidence-emulator-target-17-0-74.test.cjs api/failed-only-repair-selection-emulator-target-17-0-73.test.cjs api/failed-only-manifest-reporter-independence-17-0-72.test.cjs api/failed-only-manifest-emulator-target-17-0-71.test.cjs api/release-gate-hostile-fixture-manifest-17-0-70.test.cjs api/release-gate-source-manifest-authority-17-0-69.test.cjs api/release-gate-failed-new-evidence-17-0-68.test.cjs api/release-gate-runtime-isolation-17-0-67.test.cjs api/release-gate-lineage-suite-prefix-17-0-66.test.cjs api/release-gate-lineage-title-migration-17-0-65.test.cjs api/release-gate-emulator-runtime-boundaries-17-0-64.test.cjs api/release-gate-yardmaster-readiness-bootstrap-17-0-63.test.cjs api/release-gate-root-source-archive-17-0-62.test.cjs api/release-gate-ignored-local-source-17-0-61.test.cjs api/release-gate-source-inventory-17-0-60.test.cjs api/release-gate-staleness-manifest-17-0-59.test.cjs api/release-gate-emulator-target-coherence-17-0-58.test.cjs api/yardmaster-firebase-bridge-17-0-57.test.cjs api/firebase-emulator-entry-import-17-0-56.test.cjs api/firebase-emulator-cra-import-17-0-55.test.cjs api/firebase-emulator-bridge-17-0-54.test.cjs api/release-gate-cascade-repair-17-0-53.test.cjs api/system-admin-firebase-cost-runtime-17-0-52.test.cjs api/system-admin-runtime-boundary-17-0-51.test.cjs api/testing-deployment-identity-file-reader-17-0-49.test.cjs api/release-gate-surgical-repairs-17-0-46.test.cjs api/customer-help-version-17-0-45.test.cjs api/testing-gate-17-0-43.test.cjs api/emergency-sticky-touch-17-0-42.test.cjs api/emergency-runtime-sticky-17-0-41.test.cjs api/emergency-schedule-requestoff-17-0-40.test.cjs api/release-integrity-17-0-39.test.cjs api/security-observability-17-0-39.test.cjs api/firebase-listener-lifecycle-17-0-39.test.cjs api/restaurant-intelligence-17-0-39.test.cjs api/purchase-history-17-0-39.test.cjs api/reminder-voice-lifecycle-17-0-39.test.cjs api/merged-release-17-0-30.test.cjs api/reminder-mobile-runtime-17-0-38.test.cjs api/firebase-admin-runtime-17-0-37.test.cjs api/firebase-admin-url-api-17-0-36.test.cjs api/device-local-reminders-17-0-35.test.cjs api/restaurant-readiness-17-0-34.test.cjs api/source-manifest-parity-17-0-31.test.cjs && node scripts/validate-17-0-76.js",
     "test:repair:17.0.25": "npm run test:current-release-targeted",
     "validate:17.0.26": "node scripts/validate-17-0-26.js",
     "test:i18n-phase1": "node --test api/i18n-phase1-17-0-26.test.cjs",
@@ -241,7 +241,9 @@
     "validate:17.0.74": "node scripts/validate-17-0-74.js",
     "test:repair:17.0.74": "npm run test:current-release-targeted",
     "validate:17.0.75": "node scripts/validate-17-0-75.js",
-    "test:repair:17.0.75": "npm run test:current-release-targeted"
+    "test:repair:17.0.75": "npm run test:current-release-targeted",
+    "validate:17.0.76": "node scripts/validate-17-0-76.js",
+    "test:repair:17.0.76": "npm run test:current-release-targeted"
   },
   "browserslist": {
     "production": [
