@@ -1,27 +1,27 @@
 {
-  "version": "17.0.73",
-  "name": "86 Chaos 17.0.73",
-  "build": "17.0.73",
-  "label": "86 Chaos 17.0.73",
-  "releasedAt": "2026-10-04T08:04:29Z",
-  "releaseTitle": "Failed-Only Recovery Emulator Target Repair",
+  "version": "17.0.74",
+  "name": "86 Chaos 17.0.74",
+  "build": "17.0.74",
+  "label": "86 Chaos 17.0.74",
+  "releasedAt": "2026-10-04T09:09:56Z",
+  "releaseTitle": "Partial-Resume Firebase Target Fixture Repair",
   "notes": [
-    "Repairs the historical failed-only recovery fixture so its current manifest validation resolves the active Firebase target instead of hardcoding the live testing project.",
-    "Preserves chaos-test-d1601 in historical environment/summary evidence while emulator-mode current validation correctly uses demo-86chaos.",
-    "Adds targeted Node, mandatory Play Store/release-gate Playwright, and independent Playwright regression coverage for the exact blocked full-gate failure."
+    "Repairs the historical 16.0.231 partial-resume server fixture so its synthetic environment preflight follows the active shared Firebase LIVE/EMULATOR target.",
+    "Preserves target-drift rejection: a genuinely different Firebase project still refuses resume, while a valid demo-86chaos emulator run no longer fails against a stale chaos-test-d1601 literal.",
+    "Adds targeted Node, mandatory Play Store/release-gate Playwright, and independent Playwright regression coverage for the exact blocked-gate failure."
   ],
-  "title": "86 Chaos 17.0.73",
-  "summary": "Repairs the remaining stale failed-only recovery test fixture that blocked Yardmaster full-gate server checks in emulator mode.",
-  "description": "Surgical test-harness repair. The old focused-run recovery fixture now validates the current manifest against the shared LIVE/EMULATOR Firebase target while retaining its historical live-project evidence.",
+  "title": "86 Chaos 17.0.74",
+  "summary": "Repairs the legacy partial-run evidence regression so Yardmaster full-gate server validation honors the active Firebase target without weakening environment-drift protection.",
+  "description": "Surgical test-fixture compatibility repair. The historical partial-resume fixture now derives its synthetic Firebase project from the shared target resolver. Runtime Firebase routing, production behavior, security rules, and deployment behavior are unchanged.",
   "highlights": [
-    "Current failed-only manifest validation uses expectedFirebaseProject(process.env).",
-    "Historical fixture evidence remains pinned to chaos-test-d1601, preserving the cross-version lineage scenario.",
-    "No application runtime, security rule, deployment target, or production behavior is changed."
+    "Both synthetic partial-resume preflight records now use expectedFirebaseProject(process.env).",
+    "The original partial-resume mismatch guard remains fail-closed for a genuinely different Firebase project.",
+    "Regression coverage executes the historical server suite under both EMULATOR/demo-86chaos and LIVE/chaos-test-d1601 target modes."
   ],
   "changes": [
-    "Bumps release identity from 17.0.72 to 17.0.73.",
-    "Updates api/failed-only-repair-selection-16-0-153.test.cjs only at the current-target validation boundary.",
-    "Adds 17.0.73 Node, release-gate Playwright, and independent Playwright regressions to mandatory discovery.",
-    "Regenerates release-source-manifest.json after the completed 17.0.73 source tree is finalized."
+    "Bumps release identity from 17.0.73 to 17.0.74.",
+    "Updates api/partial-run-evidence-16-0-231.test.cjs to remove two stale live-project literals from synthetic current-environment evidence.",
+    "Adds 17.0.74 Node, release-gate Playwright, and independent Playwright regressions to mandatory discovery.",
+    "Regenerates release-source-manifest.json after the completed 17.0.74 source tree is finalized."
   ]
 }
