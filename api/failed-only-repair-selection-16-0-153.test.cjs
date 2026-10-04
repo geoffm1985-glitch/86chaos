@@ -19,6 +19,7 @@ const {
   buildRepairSelection,
   resolveCurrentReleaseRepairScope,
 } = require('../scripts/86chaos-release-gate/current-release-repair-scope.cjs');
+const { expectedFirebaseProject } = require('../scripts/86chaos-firebase-target.cjs');
 
 function tempRoot() {
   return fs.mkdtempSync(path.join(os.tmpdir(), '86chaos-153-selection-'));
@@ -229,7 +230,7 @@ test('strict failed-only recovers from latest completed focused run when the old
     currentRunDir,
     currentSourceVersion: '16.0.159',
     currentDeployedVersion: '16.0.159',
-    firebaseProjectId: 'chaos-test-d1601',
+    firebaseProjectId: expectedFirebaseProject(process.env),
     appUrl: 'https://86chaos-git-testing-cheers-portal-s-projects.vercel.app',
     validateIdentities: false,
   });

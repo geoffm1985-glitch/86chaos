@@ -131,12 +131,14 @@ jobs:
           tests/86chaos-release-gate/82-release-gate-hostile-fixture-manifest-17-0-70.spec.cjs
           tests/86chaos-release-gate/83-failed-only-manifest-emulator-target-17-0-71.spec.cjs
           tests/86chaos-release-gate/84-failed-only-manifest-reporter-independence-17-0-72.spec.cjs
+          tests/86chaos-release-gate/85-failed-only-repair-selection-emulator-target-17-0-73.spec.cjs
           tests/e2e/runtime-isolation-csp-sticky-a11y.spec.cjs
           tests/e2e/failed-new-evidence-17-0-68.spec.cjs
           tests/e2e/source-manifest-authority-17-0-69.spec.cjs
           tests/e2e/release-gate-hostile-fixture-manifest-17-0-70.spec.cjs
           tests/e2e/failed-only-manifest-emulator-target-17-0-71.spec.cjs
           tests/e2e/failed-only-manifest-reporter-independence-17-0-72.spec.cjs
+          tests/e2e/failed-only-repair-selection-emulator-target-17-0-73.spec.cjs
           tests/e2e/release-gate-lineage-title-migration.spec.cjs
           tests/86chaos-full-audit/05-schedule-builder-mutation.spec.cjs
           tests/86chaos-release-gate/35-reminder-notification-certification.spec.cjs

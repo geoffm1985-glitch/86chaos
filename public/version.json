@@ -1,27 +1,27 @@
 {
-  "version": "17.0.72",
-  "name": "86 Chaos 17.0.72",
-  "build": "17.0.72",
-  "label": "86 Chaos 17.0.72",
-  "releasedAt": "2026-10-04T07:16:45Z",
-  "releaseTitle": "Nested Node Reporter Independence Repair",
+  "version": "17.0.73",
+  "name": "86 Chaos 17.0.73",
+  "build": "17.0.73",
+  "label": "86 Chaos 17.0.73",
+  "releasedAt": "2026-10-04T08:04:29Z",
+  "releaseTitle": "Failed-Only Recovery Emulator Target Repair",
   "notes": [
-    "Removes brittle parsing of the literal TAP summary line # pass 11 from the 17.0.71 nested cross-version server regression.",
-    "Preserves the existing child-process exit-status assertion and Firebase target mismatch guard, so emulator/live validation remains fail-closed.",
-    "Adds targeted Node, mandatory Play Store/release-gate Playwright, and independent Playwright regression coverage that exercises a non-TAP Node reporter."
+    "Repairs the historical failed-only recovery fixture so its current manifest validation resolves the active Firebase target instead of hardcoding the live testing project.",
+    "Preserves chaos-test-d1601 in historical environment/summary evidence while emulator-mode current validation correctly uses demo-86chaos.",
+    "Adds targeted Node, mandatory Play Store/release-gate Playwright, and independent Playwright regression coverage for the exact blocked full-gate failure."
   ],
-  "title": "86 Chaos 17.0.72",
-  "summary": "Repairs the 17.0.71 server regression so Yardmaster full-gate validation does not depend on a specific Node test reporter summary format.",
-  "description": "Surgical test-harness repair. Nested cross-version server validation now trusts the child process exit status, which is reporter-independent, while preserving the existing LIVE/EMULATOR Firebase target checks and production runtime behavior.",
+  "title": "86 Chaos 17.0.73",
+  "summary": "Repairs the remaining stale failed-only recovery test fixture that blocked Yardmaster full-gate server checks in emulator mode.",
+  "description": "Surgical test-harness repair. The old focused-run recovery fixture now validates the current manifest against the shared LIVE/EMULATOR Firebase target while retaining its historical live-project evidence.",
   "highlights": [
-    "Nested Node regression success is determined by process exit status instead of reporter text.",
-    "A new regression runs the wrapper with NODE_OPTIONS=--test-reporter=spec to reproduce the reporter-variation failure path.",
-    "No application runtime, Firebase target selection, security policy, or production deployment behavior is changed."
+    "Current failed-only manifest validation uses expectedFirebaseProject(process.env).",
+    "Historical fixture evidence remains pinned to chaos-test-d1601, preserving the cross-version lineage scenario.",
+    "No application runtime, security rule, deployment target, or production behavior is changed."
   ],
   "changes": [
-    "Bumps release identity from 17.0.71 to 17.0.72.",
-    "Updates api/failed-only-manifest-emulator-target-17-0-71.test.cjs to stop requiring # pass 11 / # fail 0 TAP text.",
-    "Adds 17.0.72 Node, release-gate Playwright, and independent Playwright regressions to mandatory discovery.",
-    "Regenerates release-source-manifest.json after the completed 17.0.72 source tree is finalized."
+    "Bumps release identity from 17.0.72 to 17.0.73.",
+    "Updates api/failed-only-repair-selection-16-0-153.test.cjs only at the current-target validation boundary.",
+    "Adds 17.0.73 Node, release-gate Playwright, and independent Playwright regressions to mandatory discovery.",
+    "Regenerates release-source-manifest.json after the completed 17.0.73 source tree is finalized."
   ]
 }
