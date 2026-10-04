@@ -1,26 +1,27 @@
 {
-  "version": "17.0.69",
-  "name": "86 Chaos 17.0.69",
-  "build": "17.0.69",
-  "label": "86 Chaos 17.0.69",
-  "releasedAt": "2026-10-04T01:09:00Z",
-  "releaseTitle": "Source Manifest Authority Repair",
+  "version": "17.0.70",
+  "name": "86 Chaos 17.0.70",
+  "build": "17.0.70",
+  "label": "86 Chaos 17.0.70",
+  "releasedAt": "2026-10-04T06:00:00Z",
+  "releaseTitle": "Hostile Fixture Manifest Version Repair",
   "notes": [
-    "Preserves the current failed+new lineage and changed-test-source selection logic in failed-only-manifest-utils.cjs.",
-    "Reseals release-source-manifest.json only after the complete 17.0.69 source and regression set is finalized.",
-    "Adds explicit Node, Play Store/release-gate Playwright, and independent Playwright checks for the exact drifted manifest row and full-tree parity."
+    "Repairs the historical 17.0.5 hostile-certification fixture so its synthetic release-source-manifest.json includes the version field required by current source validation.",
+    "Leaves production preflight and manifest authority logic unchanged; only the stale test fixture contract is updated.",
+    "Adds targeted Node, mandatory Play Store/release-gate Playwright, and independent Playwright regression coverage for the exact blocked-before-Playwright failure."
   ],
-  "title": "86 Chaos 17.0.69",
-  "summary": "Repairs the exact failed+new source-manifest split where failed-only-manifest-utils.cjs changed after the 17.0.68 manifest was sealed.",
-  "description": "Surgical testing-build repair that preserves the current failed+new selection logic and reseals release source identity. No production push is included.",
+  "title": "86 Chaos 17.0.70",
+  "summary": "Repairs the stale hostile-certification fixture that blocked the 17.0.69 full gate before Playwright after source-manifest version authority became mandatory.",
+  "description": "Surgical testing-build repair. The synthetic hostile fixture now carries schema, version, source hash, and file inventory together. No production push or deployment is included.",
   "highlights": [
-    "The manifest row for scripts/86chaos-release-gate/failed-only-manifest-utils.cjs must equal the normalized bytes actually shipped.",
-    "The bundled manifest hash must equal a fresh capture of the complete packaged source tree.",
-    "Historical source-integrity checks continue to fail closed if any application source changes after sealing."
+    "The historical hostile preflight good path now supplies manifest.version from the captured fixture source identity.",
+    "A targeted regression builds a temporary fixture and proves the current source validator accepts the complete synthetic manifest contract.",
+    "Release-gate and independent Playwright coverage keep the fixture compatible without weakening fail-closed source identity checks."
   ],
   "changes": [
-    "Bumps release identity from 17.0.68 to 17.0.69.",
-    "Adds 17.0.69 source-manifest authority regressions to the mandatory release universe and targeted-delta workflow.",
-    "Regenerates release-source-manifest.json from the final completed source tree."
+    "Bumps release identity from 17.0.69 to 17.0.70.",
+    "Updates api/release-gate-execution-17-0-5.test.cjs to write schemaVersion 2 plus version in its synthetic release manifest.",
+    "Adds 17.0.70 hostile-fixture manifest regressions to the mandatory release universe and targeted-delta workflow.",
+    "Regenerates release-source-manifest.json after the completed 17.0.70 source tree is finalized."
   ]
 }

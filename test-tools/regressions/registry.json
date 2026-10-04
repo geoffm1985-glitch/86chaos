@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "release": "17.0.69",
+  "release": "17.0.70",
   "defects": [
     {
       "defectId": "RG-API-WRAPPER-FIDELITY",
@@ -781,6 +781,21 @@
       "fidelity": "ACTUAL FAILED+NEW MANIFEST QUALIFIER / WINDOWS PLAYWRIGHT LINEAGE SHAPE / RELEASE-GATE PLAYWRIGHT / PLAYWRIGHT REGRESSION",
       "fixedVersion": "17.0.66",
       "mandatoryGroup": "deployed"
+    },
+    {
+      "defectId": "RG-HOSTILE-FIXTURE-MANIFEST-VERSION-17070",
+      "origin": "17.0.69 full gate blocked before Playwright: the historical 17.0.5 hostile-certification fixture generated a synthetic release-source-manifest.json without the version field now required by the current source validator.",
+      "affectedInvariant": "Synthetic release-gate source fixtures must carry the same minimum manifest identity contract as a real bundled release manifest, including the current application version, so a valid hostile-certification good path can execute mandatory source validation instead of failing on stale fixture shape.",
+      "reproducer": "api/release-gate-execution-17-0-5.test.cjs / api/release-gate-hostile-fixture-manifest-17-0-70.test.cjs / tests/86chaos-release-gate/82-release-gate-hostile-fixture-manifest-17-0-70.spec.cjs / tests/e2e/release-gate-hostile-fixture-manifest-17-0-70.spec.cjs",
+      "permanentTestIds": [
+        "17.0.70 hostile preflight fixture writes schema/version/source hash/file inventory together",
+        "17.0.70 synthetic hostile fixture manifest satisfies the current source validator",
+        "17.0.70 release-gate coverage keeps the historical hostile good path compatible with current manifest authority",
+        "17.0.70 independent Playwright regression guards the hostile fixture manifest version contract"
+      ],
+      "fidelity": "ACTUAL HISTORICAL HOSTILE PREFLIGHT FIXTURE / CURRENT SOURCE VALIDATOR / RELEASE-GATE PLAYWRIGHT / INDEPENDENT PLAYWRIGHT",
+      "fixedVersion": "17.0.70",
+      "mandatoryGroup": "hostile-certification"
     }
   ]
 }
