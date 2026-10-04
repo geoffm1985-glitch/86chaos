@@ -1,27 +1,27 @@
 {
-  "version": "17.0.74",
-  "name": "86 Chaos 17.0.74",
-  "build": "17.0.74",
-  "label": "86 Chaos 17.0.74",
-  "releasedAt": "2026-10-04T09:09:56Z",
-  "releaseTitle": "Partial-Resume Firebase Target Fixture Repair",
+  "version": "17.0.75",
+  "name": "86 Chaos 17.0.75",
+  "build": "17.0.75",
+  "label": "86 Chaos 17.0.75",
+  "releasedAt": "2026-10-04T09:49:45.058Z",
+  "releaseTitle": "QA Role Emulator Fixture Target Repair",
   "notes": [
-    "Repairs the historical 16.0.231 partial-resume server fixture so its synthetic environment preflight follows the active shared Firebase LIVE/EMULATOR target.",
-    "Preserves target-drift rejection: a genuinely different Firebase project still refuses resume, while a valid demo-86chaos emulator run no longer fails against a stale chaos-test-d1601 literal.",
-    "Adds targeted Node, mandatory Play Store/release-gate Playwright, and independent Playwright regression coverage for the exact blocked-gate failure."
+    "Repairs the QA role-definition server fixture so Firebase project identity follows the active shared LIVE/EMULATOR target instead of a hard-coded live testing project.",
+    "Preserves the System Administrator Kitchen/non-owner/non-admin invariant and all production role-verification behavior.",
+    "Adds targeted Node, mandatory Play Store/release-gate Playwright, and independent Playwright regression coverage for emulator and live target modes."
   ],
-  "title": "86 Chaos 17.0.74",
-  "summary": "Repairs the legacy partial-run evidence regression so Yardmaster full-gate server validation honors the active Firebase target without weakening environment-drift protection.",
-  "description": "Surgical test-fixture compatibility repair. The historical partial-resume fixture now derives its synthetic Firebase project from the shared target resolver. Runtime Firebase routing, production behavior, security rules, and deployment behavior are unchanged.",
+  "title": "86 Chaos 17.0.75",
+  "summary": "Makes the QA role-definition fixture target-aware so Yardmaster full certification can run the same role invariant under demo-86chaos emulator mode and chaos-test-d1601 live mode.",
+  "description": "Surgical test-harness repair. No production authorization, permissions, Firebase security rules, or application runtime role behavior is changed.",
   "highlights": [
-    "Both synthetic partial-resume preflight records now use expectedFirebaseProject(process.env).",
-    "The original partial-resume mismatch guard remains fail-closed for a genuinely different Firebase project.",
-    "Regression coverage executes the historical server suite under both EMULATOR/demo-86chaos and LIVE/chaos-test-d1601 target modes."
+    "The failing role fixture now uses EXPECTED_FIREBASE_PROJECT from the canonical Firebase target resolver.",
+    "The exact server fixture is rerun in both EMULATOR and LIVE modes by a dedicated regression.",
+    "Release discovery and targeted-delta Playwright coverage keep the regression mandatory."
   ],
   "changes": [
-    "Bumps release identity from 17.0.73 to 17.0.74.",
-    "Updates api/partial-run-evidence-16-0-231.test.cjs to remove two stale live-project literals from synthetic current-environment evidence.",
-    "Adds 17.0.74 Node, release-gate Playwright, and independent Playwright regressions to mandatory discovery.",
-    "Regenerates release-source-manifest.json after the completed 17.0.74 source tree is finalized."
+    "Bumps release identity from 17.0.74 to 17.0.75.",
+    "Updates api/qa-role-definitions.test.cjs to remove the stale live-project fixture literal from current-target rows.",
+    "Adds 17.0.75 Node, release-gate Playwright, and independent Playwright regressions to mandatory discovery.",
+    "Regenerates release-source-manifest.json after the completed 17.0.75 source tree is finalized."
   ]
 }

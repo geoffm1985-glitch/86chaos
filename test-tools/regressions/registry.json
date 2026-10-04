@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "release": "17.0.74",
+  "release": "17.0.75",
   "defects": [
     {
       "defectId": "RG-API-WRAPPER-FIDELITY",
@@ -857,6 +857,21 @@
       ],
       "fidelity": "ACTUAL HISTORICAL PARTIAL-RESUME SERVER FIXTURE / SHARED FIREBASE TARGET RESOLVER / RELEASE-GATE PLAYWRIGHT / INDEPENDENT PLAYWRIGHT",
       "fixedVersion": "17.0.74",
+      "mandatoryGroup": "firebase"
+    },
+    {
+      "defectId": "RG-QA-ROLE-EMULATOR-TARGET-17075",
+      "origin": "17.0.74 full Yardmaster gate blocked before Playwright because api/qa-role-definitions.test.cjs hard-coded chaos-test-d1601 while the shared Firebase target was EMULATOR/demo-86chaos.",
+      "affectedInvariant": "QA role-definition fixtures must validate the same System Administrator and restaurant-role invariants against the active shared LIVE/EMULATOR Firebase project identity, without changing production authorization behavior.",
+      "reproducer": "api/qa-role-definitions.test.cjs / api/qa-role-fixture-emulator-target-17-0-75.test.cjs / tests/86chaos-release-gate/87-qa-role-emulator-target-17-0-75.spec.cjs / tests/e2e/qa-role-emulator-target-17-0-75.spec.cjs",
+      "permanentTestIds": [
+        "17.0.75 QA role definition fixture passes under emulator Firebase target",
+        "17.0.75 QA role definition fixture still passes under live Firebase target",
+        "role fixture resolves current project identity through the shared target resolver",
+        "targeted delta discovery includes both 17.0.75 Playwright regressions"
+      ],
+      "fidelity": "ACTUAL ROLE ANALYZER FIXTURE / SHARED FIREBASE TARGET RESOLVER / RELEASE-GATE PLAYWRIGHT / INDEPENDENT PLAYWRIGHT",
+      "fixedVersion": "17.0.75",
       "mandatoryGroup": "firebase"
     }
   ]

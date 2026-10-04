@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
-  "version": "17.0.74",
-  "sourceHash": "fe5a07436ced079a7fd9e3985ffbeaae7d6a4b75635db5cf942363251db30a29",
+  "version": "17.0.75",
+  "sourceHash": "a9a34b0c353242db3b8cddf8c041c8f63acf6e06e9ebda0efcc9352f710fcbe8",
   "files": [
     {
       "file": ".gitattributes",
@@ -9,7 +9,7 @@
     },
     {
       "file": ".github/workflows/testing-targeted-delta.yml",
-      "sha256": "c66b881b5157c8bcad8b9e2aa055849f7d14eef65b48167a5bd881457dc3d7a3"
+      "sha256": "cf2557b06cb5b48f3d202bd7e1527fa2e6c06782313ad29cbbe4b93b79d79f0c"
     },
     {
       "file": ".gitignore",
@@ -242,6 +242,10 @@
     {
       "file": "RELEASE_17_0_74.md",
       "sha256": "1822e16e82bc901de6ca615045065b80e0581f9152f6992753aab5e660343519"
+    },
+    {
+      "file": "RELEASE_17_0_75.md",
+      "sha256": "581b938946a390fb9d4b34a13a5b272948b730e2a20f7cca974c821115c39d57"
     },
     {
       "file": "RELEASE_17_0_8.md",
@@ -505,7 +509,7 @@
     },
     {
       "file": "api/_version.js",
-      "sha256": "e0acf93400e9f52ecd7e95f233196783d2e86b1481dc2d04d5eddc160b4077e9"
+      "sha256": "f7c83cc81876a8c1a96d3ffc8675eb80cc78763c466218253fb33e7d70ff9044"
     },
     {
       "file": "api/account-deletion-request.js",
@@ -1105,7 +1109,11 @@
     },
     {
       "file": "api/qa-role-definitions.test.cjs",
-      "sha256": "817d62ba7672c2abc434dda002703063059d55b38c1f5fac852549d95553951b"
+      "sha256": "d4fec961c5670366f95eaa25f57fc560026cbafa63b4791e1ed5d08159046494"
+    },
+    {
+      "file": "api/qa-role-fixture-emulator-target-17-0-75.test.cjs",
+      "sha256": "4e75599783523a8bf10b4f22f7aa9b2ecd5fe53436bc04debc56f0f892b99366"
     },
     {
       "file": "api/qa-seed-host.test.cjs",
@@ -1825,11 +1833,11 @@
     },
     {
       "file": "package-lock.json",
-      "sha256": "811bd981807c0a7ad519f947b872221f8456758d9ca8888f238930aa657a6f57"
+      "sha256": "14b6b438cee856c2c43e1c2a6a8804f4b5f623432490198796e278acc4987e07"
     },
     {
       "file": "package.json",
-      "sha256": "5fab1f50bb9c7166d4ce04846b569a54f019db9accc7aa39178a18aeb1d29c09"
+      "sha256": "094133c5c96becc810ac0770b77f2d7832b5204c5311426a3ef98deaf9ee5781"
     },
     {
       "file": "playwright.config.js",
@@ -2049,7 +2057,7 @@
     },
     {
       "file": "public/version.json",
-      "sha256": "b3fee1c955c9f4d441e715c42ce20c7787f3d6859be6a4017660a8b0078281d1"
+      "sha256": "fce570f1c8639e869b6d5b4eea6bcd127773a207961af1829ff73c713952538e"
     },
     {
       "file": "public/wisco.png",
@@ -2173,7 +2181,7 @@
     },
     {
       "file": "scripts/86chaos-release-gate/release-test-universe.cjs",
-      "sha256": "58fa31b6c01922549d9c5c7ebcb6a9f42329fa9566fa5dc7cf80a1ed7723eaea"
+      "sha256": "b5d5eb42c29fc92c59eecd69d537899922141f1b4ff9e8125649a32d5d070f94"
     },
     {
       "file": "scripts/86chaos-release-gate/reported-current-blockers-20260814-064437.json",
@@ -3308,6 +3316,10 @@
       "sha256": "a565039e204174185dee114fbaa7fd781608eda13915c1b50211a827166d9399"
     },
     {
+      "file": "scripts/validate-17-0-75.js",
+      "sha256": "64eb79019c8bb572d69bdfee6182b109e7a6d0a484c4131a7dfd1ddb4aefcb95"
+    },
+    {
       "file": "scripts/validate-17-0-8.js",
       "sha256": "88eb1c63a6f6efbd9445f016c535e2f97e29466d1809e221d408d31cff0a91aa"
     },
@@ -3493,7 +3505,7 @@
     },
     {
       "file": "src/core/appCore.js",
-      "sha256": "bda4bdfaedf5b7adbc6a45f30cb851e8dcce90ecdb987a91203c705e6074e4ea"
+      "sha256": "bfd8fa95f06f64068ff49b1377cf988d682f846a755747c5d0335cf3f9a0687d"
     },
     {
       "file": "src/core/csvSafety.test.js",
@@ -3501,11 +3513,11 @@
     },
     {
       "file": "src/core/customerHelpKnowledge.cjs",
-      "sha256": "8b1a732cef5bfc6f63e4d0f8b5a2ba57b55a291ea9d02714ea71d89819e6675a"
+      "sha256": "7f9f5b8633eb6f1d3f5b6ababaa217dce776a458de056f187d098dd1ca07ad6e"
     },
     {
       "file": "src/core/customerHelpKnowledge.js",
-      "sha256": "49da2bea68645babaef1a9b56931461aa8ae656cbf11c4a5d223e9f6f68a7c82"
+      "sha256": "dd002dcd90419c18b5e97fda1ce2204a5c1ba07e7638bd725700b4e64c89964b"
     },
     {
       "file": "src/core/fileCompression.js",
@@ -3965,11 +3977,11 @@
     },
     {
       "file": "test-tools/certification/cost-performance-baselines.json",
-      "sha256": "56c91ca7b3f9f4857c94e005abadc892bccc34834b73d04113c2efbedb6ed17f"
+      "sha256": "e76f82504560dd6dda61da2ecd5124e079767fae43a72e1d8ba2f55c9dfe63ff"
     },
     {
       "file": "test-tools/certification/groups.json",
-      "sha256": "664189c5e0a98ec50044a4305d83a0360d5defc7236d188291b6e0f6ca8408dc"
+      "sha256": "aebfa287739ea8c6d8c27b2eca80314aa116c8450a5d244d329acf3cdddb9b44"
     },
     {
       "file": "test-tools/certification/permission-matrix.json",
@@ -4021,7 +4033,7 @@
     },
     {
       "file": "test-tools/regressions/registry.json",
-      "sha256": "4135f79f289f36e26e008aac32c138210d2471e0ef638cd9ce1d40afe259c8e3"
+      "sha256": "a07a500e35ddf66a88ad13a14ea70fecc6c1b683acb090d42da98c911f50aeb7"
     },
     {
       "file": "test-tools/reporters/chaos-release-gate-reporter.cjs",
@@ -4484,6 +4496,10 @@
       "sha256": "bc5101faa5fbf837c0d5f36e8f40e457e277066686adef536389c11f8f4ca844"
     },
     {
+      "file": "tests/86chaos-release-gate/87-qa-role-emulator-target-17-0-75.spec.cjs",
+      "sha256": "e86f7c6a16df24bcaefea1e62ebb8b9fba9a990ac5600de395fa9b83c7ade407"
+    },
+    {
       "file": "tests/86chaos-release-gate/exhaustive-surface-matrix.cjs",
       "sha256": "3421c84129bd194684da72a2cc0822a49f85d3c3e274d7b09adf567a6d0fa3de"
     },
@@ -4562,6 +4578,10 @@
     {
       "file": "tests/e2e/partial-run-evidence-emulator-target-17-0-74.spec.cjs",
       "sha256": "583992a3a468d336fc045ab5c1635f6f94ce3ca7a408d2e466dc1981232c55a3"
+    },
+    {
+      "file": "tests/e2e/qa-role-emulator-target-17-0-75.spec.cjs",
+      "sha256": "507cf4aee0a8624ce5743d200da62f15dadbe30e079ecdd6a25d0a9bbd2b7a7d"
     },
     {
       "file": "tests/e2e/release-gate-hostile-fixture-manifest-17-0-70.spec.cjs",
