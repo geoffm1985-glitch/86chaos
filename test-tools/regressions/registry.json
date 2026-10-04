@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "release": "17.0.71",
+  "release": "17.0.72",
   "defects": [
     {
       "defectId": "RG-API-WRAPPER-FIDELITY",
@@ -811,6 +811,21 @@
       ],
       "fidelity": "ACTUAL CROSS-VERSION SERVER FIXTURE / SHARED FIREBASE TARGET RESOLVER / RELEASE-GATE PLAYWRIGHT / INDEPENDENT PLAYWRIGHT",
       "fixedVersion": "17.0.71",
+      "mandatoryGroup": "firebase"
+    },
+    {
+      "defectId": "RG-NESTED-NODE-REPORTER-INDEPENDENCE-17072",
+      "origin": "17.0.71 full Yardmaster gate blocked before Playwright because api/failed-only-manifest-emulator-target-17-0-71.test.cjs required the nested child output to contain the literal TAP summary # pass 11 even though the child process exited successfully under a different Node test reporter.",
+      "affectedInvariant": "Nested server regressions must determine pass/fail from the child Node test process exit status, not from a reporter-specific text rendering, while retaining the existing Firebase LIVE/EMULATOR target assertions.",
+      "reproducer": "api/failed-only-manifest-emulator-target-17-0-71.test.cjs / api/failed-only-manifest-reporter-independence-17-0-72.test.cjs / tests/86chaos-release-gate/84-failed-only-manifest-reporter-independence-17-0-72.spec.cjs / tests/e2e/failed-only-manifest-reporter-independence-17-0-72.spec.cjs",
+      "permanentTestIds": [
+        "17.0.72 repaired wrapper does not depend on TAP pass/fail summary text",
+        "17.0.72 nested cross-version regression passes with the spec reporter in emulator and live target modes",
+        "release-gate coverage keeps nested reporter independence mandatory",
+        "independent Playwright coverage keeps the 17.0.72 regression in targeted delta discovery"
+      ],
+      "fidelity": "ACTUAL NESTED NODE TEST PROCESS / NON-TAP REPORTER / RELEASE-GATE PLAYWRIGHT / INDEPENDENT PLAYWRIGHT",
+      "fixedVersion": "17.0.72",
       "mandatoryGroup": "firebase"
     }
   ]
