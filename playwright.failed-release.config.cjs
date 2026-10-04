@@ -1,3 +1,4 @@
+require('./scripts/86chaos-firebase-target.cjs').applyFirebaseEmulatorEnv(process.env);
 const fs = require('fs');
 const path = require('path');
 const { defineConfig, devices } = require('@playwright/test');

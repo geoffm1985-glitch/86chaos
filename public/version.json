@@ -1,21 +1,26 @@
 {
-  "version": "17.0.57",
-  "name": "86 Chaos 17.0.57",
-  "build": "17.0.57",
-  "label": "86 Chaos 17.0.57",
-  "releasedAt": "2026-10-02T04:04:09.404Z",
-  "releaseTitle": "Yardmaster Firebase Emulator Bridge",
+  "version": "17.0.69",
+  "name": "86 Chaos 17.0.69",
+  "build": "17.0.69",
+  "label": "86 Chaos 17.0.69",
+  "releasedAt": "2026-10-04T01:09:00Z",
+  "releaseTitle": "Source Manifest Authority Repair",
   "notes": [
-    "Adds the missing root Yardmaster bridge, using the existing Firebase configuration and all five local emulators.",
-    "Local startup translates the pinned target into CRA settings and reports actual browser SDK readiness behind a loopback connection policy.",
-    "Adds focused Node and desktop/Android Playwright regressions; production Firebase selection remains unchanged."
+    "Preserves the current failed+new lineage and changed-test-source selection logic in failed-only-manifest-utils.cjs.",
+    "Reseals release-source-manifest.json only after the complete 17.0.69 source and regression set is finalized.",
+    "Adds explicit Node, Play Store/release-gate Playwright, and independent Playwright checks for the exact drifted manifest row and full-tree parity."
   ],
-  "title": "86 Chaos 17.0.57",
-  "summary": "Repairs missing yardmaster.firebase.json and the local startup/readiness contract.",
-  "description": "Repairs missing yardmaster.firebase.json and the local startup/readiness contract.",
+  "title": "86 Chaos 17.0.69",
+  "summary": "Repairs the exact failed+new source-manifest split where failed-only-manifest-utils.cjs changed after the 17.0.68 manifest was sealed.",
+  "description": "Surgical testing-build repair that preserves the current failed+new selection logic and reseals release source identity. No production push is included.",
   "highlights": [
-    "Yardmaster uses demo-86chaos locally.",
-    "Unavailable emulators block readiness with no live fallback.",
-    "Complete release-gate scripts retain their inventory."
+    "The manifest row for scripts/86chaos-release-gate/failed-only-manifest-utils.cjs must equal the normalized bytes actually shipped.",
+    "The bundled manifest hash must equal a fresh capture of the complete packaged source tree.",
+    "Historical source-integrity checks continue to fail closed if any application source changes after sealing."
+  ],
+  "changes": [
+    "Bumps release identity from 17.0.68 to 17.0.69.",
+    "Adds 17.0.69 source-manifest authority regressions to the mandatory release universe and targeted-delta workflow.",
+    "Regenerates release-source-manifest.json from the final completed source tree."
   ]
 }

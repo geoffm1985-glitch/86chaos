@@ -210,6 +210,12 @@ export const messagingReady = !isFirebaseEmulatorTarget && typeof window !== "un
 // Kitchen Wi-Fi Armor: keep offline cache without tripping single-tab persistence in Android Chrome/PWA tab piles.
 const enableChaosFirestorePersistence = () => {
   if (typeof window === 'undefined') return Promise.resolve(null);
+  // Emulator release-gate runs destructively reseed Firestore while the app is open.
+  // Keep that disposable target memory-only so IndexedDB/watch state cannot survive fixture resets.
+  if (isFirebaseEmulatorTarget) {
+    window.__chaosFirestorePersistenceInit = window.__chaosFirestorePersistenceInit || Promise.resolve(null);
+    return window.__chaosFirestorePersistenceInit;
+  }
   window.__chaosFirestorePersistenceInit = window.__chaosFirestorePersistenceInit || null;
   if (window.__chaosFirestorePersistenceInit) return window.__chaosFirestorePersistenceInit;
   window.__chaosFirestorePersistenceInit = Promise.resolve()
@@ -461,7 +467,7 @@ export const MASTER_ADMIN_EMAIL = (process.env.REACT_APP_MASTER_ADMIN_EMAIL || '
 export const EVENT_TAGS = ['Standard Day', 'Packers Game', 'Brewers Game', 'Live Music', 'Severe Weather', 'Private Catering', 'Holiday'];
 
 // --- VERSION TRACKING ---
-export const CURRENT_VERSION = '17.0.57';
+export const CURRENT_VERSION = '17.0.69';
 
 // --- Helpers ---
 const usePageVisible = () => {

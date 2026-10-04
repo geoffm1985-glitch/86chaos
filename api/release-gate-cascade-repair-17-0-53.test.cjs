@@ -11,8 +11,10 @@ test('17.0.53 same-tab language state and shared QA cleanup are deterministic', 
   const spanish = read('tests/86chaos-new-implementations/08-phase1-spanish-interface.spec.cjs');
   assert.ok(app.includes('window.setInterval(syncStoredLanguage, 200)'));
   assert.ok(app.includes('setAppLanguage(current => current === nextLanguage ? current : nextLanguage)'));
-  assert.ok(spanish.includes("restore.selectOption('en')"));
-  assert.ok(spanish.includes("toHaveAttribute('lang', 'en'"));
+  assert.ok(spanish.includes("saveLanguagePreference(page, 'en', { verifyReload: true })"));
+  assert.ok(spanish.includes('must survive a fresh authenticated reload'));
+  assert.ok(!spanish.includes('if (await save.isVisible'));
+  assert.ok(spanish.includes("toHaveAttribute('lang', value"));
 });
 
 test('17.0.53 Schedule Builder uses index-light availability and distinct-person overcoverage evidence', () => {

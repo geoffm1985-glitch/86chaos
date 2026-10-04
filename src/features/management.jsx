@@ -9222,7 +9222,7 @@ Type RESTORE to continue.`);
                     {check.error && <div className="sm:col-span-2 text-[10px] font-bold text-red-300">{check.error}</div>}
                   </div>
                 ))}
-                {(healthSnapshot?.apiRouteManifest || []).length > 0 && <div className="p-3 bg-[#0B0E11]/60 border-t border-[#2A353D]"><div className="text-[10px] font-black uppercase tracking-widest text-[#D4A381] mb-2">Full Vercel API Route Manifest</div><div className="grid sm:grid-cols-2 gap-1.5 max-h-72 overflow-y-auto custom-scrollbar">{healthSnapshot.apiRouteManifest.map(route => <div key={route.route} className="flex items-center justify-between gap-2 bg-[#12161A] border border-[#2A353D] rounded-lg px-2 py-1.5"><span className="text-[10px] font-mono text-slate-300 truncate">{route.route}</span><span className={`text-[8px] font-black uppercase tracking-widest ${route.status === 'ready' ? 'text-emerald-300' : 'text-red-300'}`}>{route.status}</span></div>)}</div></div>}
+                {(healthSnapshot?.apiRouteManifest || []).length > 0 && <div className="p-3 bg-[#0B0E11]/60 border-t border-[#2A353D]"><div className="text-[10px] font-black uppercase tracking-widest text-[#D4A381] mb-2">Full Vercel API Route Manifest</div><div role="region" aria-label="Full Vercel API route manifest" tabIndex={0} className="grid sm:grid-cols-2 gap-1.5 max-h-72 overflow-y-auto custom-scrollbar focus:outline-none focus:ring-2 focus:ring-[#D4A381]">{healthSnapshot.apiRouteManifest.map(route => <div key={route.route} className="flex items-center justify-between gap-2 bg-[#12161A] border border-[#2A353D] rounded-lg px-2 py-1.5"><span className="text-[10px] font-mono text-slate-300 truncate">{route.route}</span><span className={`text-[8px] font-black uppercase tracking-widest ${route.status === 'ready' ? 'text-emerald-300' : 'text-red-300'}`}>{route.status}</span></div>)}</div></div>}
               </div>
             </div>
 
@@ -10109,7 +10109,7 @@ another@email.com"></textarea>
               </div>
               <span className="text-[9px] font-black uppercase tracking-widest text-purple-300 bg-purple-900/20 border border-purple-900/50 rounded-lg px-2 py-1">{adminAuditSessionGroups.length} session group(s)</span>
             </div>
-            <div className="max-h-[420px] overflow-y-auto custom-scrollbar divide-y divide-[#2A353D]">
+            <div role="region" aria-label="Administrator session timeline" tabIndex={0} className="max-h-[420px] overflow-y-auto custom-scrollbar divide-y divide-[#2A353D] focus:outline-none focus:ring-2 focus:ring-[#D4A381]">
               {adminAuditSessionGroups.length === 0 && <div className="p-6 text-center text-xs font-bold text-slate-500">No administrator actions found yet.</div>}
               {adminAuditSessionGroups.map(group => (
                 <div key={group.id} className="p-4 space-y-3">
@@ -10289,7 +10289,7 @@ another@email.com"></textarea>
               </div>
               <div className="text-[10px] font-black uppercase tracking-widest text-slate-500 mt-2">Showing {filteredAuditLogs.length} of {auditLogs.length} audit record(s)</div>
             </div>
-            <div className={`divide-y ${T.border} max-h-[70vh] overflow-y-auto custom-scrollbar`}>
+            <div role="region" aria-label="Global forensics and ghost audit records" tabIndex={0} className={`divide-y ${T.border} max-h-[70vh] overflow-y-auto custom-scrollbar focus:outline-none focus:ring-2 focus:ring-[#D4A381]`}>
               {filteredAuditLogs.length === 0 && <div className="p-8 text-center text-slate-500 font-bold">No forensic data matches the current filters.</div>}
               {filteredAuditLogs.map(log => (
                 <div key={log.id} className={`${T.row} flex flex-col gap-1`}>

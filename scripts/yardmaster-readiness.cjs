@@ -2,7 +2,12 @@
 const bridge = require('../yardmaster.firebase.json');
 const { getFirebaseTarget } = require('./86chaos-firebase-target.cjs');
 // Applies to every browser visiting the local app, before any script runs.
-const CONNECT_POLICY = "default-src 'self'; connect-src 'self' http://127.0.0.1:* http://localhost:* ws://127.0.0.1:* ws://localhost:*; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; worker-src 'none'; object-src 'none'; frame-src 'none'; form-action 'self'; base-uri 'self'";
+const CONNECT_POLICY = "default-src 'self'; connect-src 'self' http://127.0.0.1:* http://localhost:* ws://127.0.0.1:* ws://localhost:*; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.google.com https://*.google.com https://www.googleapis.com; script-src-elem 'self' 'unsafe-inline' 'unsafe-eval' https://www.google.com https://*.google.com https://www.googleapis.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; worker-src 'none'; object-src 'none'; frame-src 'self' https://*.firebaseapp.com https://*.web.app https://accounts.google.com https://*.google.com; form-action 'self'; base-uri 'self'";
+
+function bootstrapAcknowledgment(target, blockLiveFirebase = process.env.CHAOS_BLOCK_LIVE_FIREBASE === '1') {
+  if (!target?.emulator || target.projectId !== bridge.projectId || !blockLiveFirebase) throw new Error('Yardmaster bootstrap is not pinned to demo-86chaos with live Firebase blocked.');
+  return { target: 'emulator', projectId: target.projectId, blockLiveFirebase: true };
+}
 
 function connectedAcknowledgment(diagnostics, readiness, target) {
   if (!target.emulator || diagnostics?.target !== 'EMULATOR' || diagnostics.projectId !== bridge.projectId || !diagnostics.failClosed || !readiness?.ok) throw new Error('Local app SDK is not ready on demo-86chaos.');
@@ -11,7 +16,7 @@ function connectedAcknowledgment(diagnostics, readiness, target) {
     const field = product === 'database' ? 'databasePort' : `${product}Port`;
     if (diagnostics.emulator?.host !== target.host || diagnostics.emulator[field] !== target.ports[product]) throw new Error(`SDK emulator endpoint mismatch: ${product}`);
   }
-  return { target: 'emulator', projectId: diagnostics.projectId, blockLiveFirebase: true, products: diagnostics.connectedProducts };
+  return { ...bootstrapAcknowledgment(target, true), products: diagnostics.connectedProducts };
 }
 
 function installReadiness(app) {
@@ -22,10 +27,11 @@ function installReadiness(app) {
     res.setHeader('Content-Security-Policy', CONNECT_POLICY);
     next();
   });
+  const bootstrap = bootstrapAcknowledgment(target);
   app.get(bridge.localApp.readyPath, (req, res) => {
     res.setHeader('Cache-Control', 'no-store');
     if (state && Date.now() - updated < 5000) res.json(state);
-    else res.status(503).json({ target: 'emulator', ready: false, error });
+    else res.status(503).json({ ...bootstrap, ready: false, error });
   });
   app.get('/yardmaster-tailwind.css', (req, res) => res.sendFile(require('node:path').resolve('.cache/yardmaster-tailwind.css')));
   // Observe a real bundled browser SDK, not a constant server acknowledgment.
@@ -58,4 +64,4 @@ function installReadiness(app) {
   timer.unref();
   process.once('exit', () => { clearTimeout(timer); });
 }
-module.exports = { CONNECT_POLICY, connectedAcknowledgment, installReadiness };
+module.exports = { CONNECT_POLICY, bootstrapAcknowledgment, connectedAcknowledgment, installReadiness };

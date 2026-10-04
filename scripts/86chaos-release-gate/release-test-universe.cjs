@@ -48,9 +48,21 @@ const RELEASE_CRITICAL_SPECS = Object.freeze([
   'tests/86chaos-release-gate/67-firebase-emulator-cra-build-17-0-55.spec.cjs',
   'tests/86chaos-release-gate/68-firebase-emulator-entry-import-17-0-56.spec.cjs',
   'tests/86chaos-release-gate/69-yardmaster-firebase-bridge-17-0-57.spec.cjs',
+  'tests/86chaos-release-gate/70-release-gate-emulator-target-coherence-17-0-58.spec.cjs',
+  'tests/86chaos-release-gate/71-release-gate-staleness-manifest-17-0-59.spec.cjs',
+  'tests/86chaos-release-gate/72-release-gate-source-inventory-17-0-60.spec.cjs',
+  'tests/86chaos-release-gate/73-release-gate-ignored-local-source-17-0-61.spec.cjs',
+  'tests/86chaos-release-gate/74-release-gate-root-source-archive-17-0-62.spec.cjs',
+  'tests/86chaos-release-gate/75-yardmaster-readiness-bootstrap-17-0-63.spec.cjs',
+  'tests/86chaos-release-gate/76-emulator-runtime-boundaries-17-0-64.spec.cjs',
+  'tests/86chaos-release-gate/77-release-gate-lineage-title-migration-17-0-65.spec.cjs',
+  'tests/86chaos-release-gate/78-release-gate-lineage-suite-prefix-17-0-66.spec.cjs',
+  'tests/86chaos-release-gate/79-runtime-isolation-csp-sticky-a11y-17-0-67.spec.cjs',
+  'tests/86chaos-release-gate/80-failed-new-evidence-17-0-68.spec.cjs',
+  'tests/86chaos-release-gate/81-source-manifest-authority-17-0-69.spec.cjs',
 ]);
 
-const PWA_SPEC_PATTERN = /86chaos-release-gate\/(26-pwa-icon-source-deployed-parity|27-pwa-browser-icon-matrix|66-firebase-emulator-bridge-17-0-54)\.spec\.cjs/;
+const PWA_SPEC_PATTERN = /86chaos-release-gate\/(26-pwa-icon-source-deployed-parity|27-pwa-browser-icon-matrix|66-firebase-emulator-bridge-17-0-54|70-release-gate-emulator-target-coherence-17-0-58)\.spec\.cjs/;
 const RUNTIME_COVERAGE_PATTERN = /21-runtime-code-coverage\.spec\.cjs|runtime-code-coverage/i;
 
 function normalizeSpecPath(value = '') {

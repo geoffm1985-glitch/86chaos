@@ -13,8 +13,9 @@ const {
   BASE_URL,
 } = require('../86chaos-full-audit/utils/audit-helpers.cjs');
 const { readFirebaseConfig, readConfiguredAccounts, signInAccount, buildFirebaseAuthFetchOptions } = require('../../scripts/86chaos-release-gate/verify-role-accounts.cjs');
+const { expectedFirebaseProject } = require('../../scripts/86chaos-firebase-target.cjs');
 
-const QA_TEST_PROJECT_ID = 'chaos-test-d1601';
+const QA_TEST_PROJECT_ID = expectedFirebaseProject(process.env);
 
 let qaRequestOffResetAuthPromise = null;
 async function getQaRequestOffResetAuth() {

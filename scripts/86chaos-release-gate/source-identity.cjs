@@ -13,11 +13,14 @@ function normalizeRelative(value = '') { return String(value || '').replace(/\\/
 function excludedFile(relative = '') {
   const file = normalizeRelative(relative);
   const base = path.posix.basename(file);
-  if (!file || file === 'public/build-identity.json' || file === 'release-source-manifest.json') return true;
+  if (!file || file === 'public/build-identity.json' || file === 'release-source-manifest.json' || file === '.npmrc') return true;
   if (file.split('/').some(part => excludedDirectories.has(part))) return true;
   if (base.startsWith('.env') || base.endsWith('.log') || base.endsWith('.pyc')) return true;
   if (/^86chaos-release-gate-.*\.zip$/i.test(base)) return true;
   if (/^86chaos_.*_app_only(?:\([^)]*\))?\.zip$/i.test(base)) return true;
+  // Root-level 86 Chaos ZIPs are source/build handoff artifacts, never application source.
+  // Keep nested ZIP assets eligible so an intentional runtime asset cannot be hidden.
+  if (!file.includes('/') && /^86chaos[-_].*\.zip$/i.test(base)) return true;
   return false;
 }
 
@@ -26,27 +29,31 @@ function runGit(root, args, timeout = 5000) {
   return result.status === 0 ? String(result.stdout || '') : '';
 }
 
-function trackedSourceFiles(root) {
-  const output = runGit(root, ['ls-files', '-z'], 10000);
-  if (!output) return null;
-  const files = output.split('\0').map(normalizeRelative).filter(Boolean).filter(file => !excludedFile(file));
-  return files.sort();
+function gitWorkspaceSourceFiles(root) {
+  const inside = runGit(root, ['rev-parse', '--is-inside-work-tree']).trim();
+  if (inside !== 'true') return null;
+  const output = runGit(root, ['ls-files', '-z', '--cached', '--others', '--exclude-standard'], 10000);
+  return output.split('\0').map(normalizeRelative).filter(Boolean).filter(file => !excludedFile(file)).sort();
 }
 
-function sourceFiles(root, directory = root, files = []) {
-  if (directory === root && !process.env.VERCEL) {
-    const tracked = trackedSourceFiles(root);
-    if (tracked && tracked.length) return tracked;
-  }
+function walkSourceFiles(root, directory = root, files = []) {
   for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
     if (excludedDirectories.has(entry.name) || entry.name.startsWith('.env') || entry.name.endsWith('.log') || entry.name.endsWith('.pyc')) continue;
     const absolute = path.join(directory, entry.name);
     const relative = normalizeRelative(path.relative(root, absolute));
     if (excludedFile(relative)) continue;
-    if (entry.isDirectory()) sourceFiles(root, absolute, files);
+    if (entry.isDirectory()) walkSourceFiles(root, absolute, files);
     else if (entry.isFile()) files.push(relative);
   }
   return files.sort();
+}
+
+function sourceFiles(root) {
+  // In a Git worktree, inventory committed files plus untracked, non-ignored repair files.
+  // Git-ignored machine-local files are deliberately outside the packaged source identity.
+  // In a Yardmaster ZIP with no .git metadata, fall back to the package filesystem itself.
+  const gitFiles = gitWorkspaceSourceFiles(root);
+  return gitFiles === null ? walkSourceFiles(root) : gitFiles;
 }
 
 function gitIdentity(root) {

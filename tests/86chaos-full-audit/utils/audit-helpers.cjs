@@ -222,6 +222,18 @@ function isIgnorableStaticAssetFailure(text = '') {
   return /ERR_ABORTED|ERR_CONNECTION_RESET|net::ERR_FAILED/i.test(text) && /\/(6136|6139|6240|wisco|app-icon|notification-badge)\.(jpg|png|webp|ico)/i.test(text);
 }
 
+function isExpectedEmulatorFirebaseAuthBootstrapNoise(text = '') {
+  const emulatorSelected = [
+    process.env.YARDMASTER_FIREBASE_TARGET,
+    process.env.CHAOS_FIREBASE_TARGET,
+    process.env.REACT_APP_86CHAOS_FIREBASE_TARGET,
+  ].some(value => String(value || '').trim().toLowerCase() === 'emulator');
+  if (!emulatorSelected) return false;
+  const value = String(text || '');
+  return /https:\/\/apis\.google\.com\/js\/api\.js/i.test(value)
+    && /content security policy|\bcsp\b|blocked/i.test(value);
+}
+
 function watchForProblems(page, problems, options = {}) {
   const nonfatal4xx = [];
   const seen = new Set();
@@ -238,6 +250,7 @@ function watchForProblems(page, problems, options = {}) {
     if (/favicon|ResizeObserver|ERR_ABORTED|401|403|net::ERR_BLOCKED_BY_CLIENT|analytics/i.test(text)) return;
     if (/Failed to load resource:.*status of (400|404)/i.test(text)) return;
     if (isIgnorableStaticAssetFailure(text)) return;
+    if (isExpectedEmulatorFirebaseAuthBootstrapNoise(text)) return;
     pushProblem({ type: 'console-error', message: text.slice(0, 1600) });
   });
   page.on('response', async (response) => {
@@ -261,6 +274,7 @@ function watchForProblems(page, problems, options = {}) {
     const failure = request.failure()?.errorText || '';
     if (/favicon|hot-update|sockjs|jwe|ERR_ABORTED/i.test(`${failure} ${url}`)) return;
     if (isIgnorableStaticAssetFailure(`${failure} ${url}`)) return;
+    if (isExpectedEmulatorFirebaseAuthBootstrapNoise(`${failure} ${url}`)) return;
     pushProblem({ type: 'requestfailed', url: url.split('?')[0].slice(0, 260), failure });
   });
   return { nonfatal4xx };
@@ -758,5 +772,6 @@ module.exports = {
   dismissBlockingDialogs,
   visibleDialogSnapshot,
   neutralizeTestingPreviewOverlays,
+  isExpectedEmulatorFirebaseAuthBootstrapNoise,
   QA_WORKSPACE_NAME,
 };

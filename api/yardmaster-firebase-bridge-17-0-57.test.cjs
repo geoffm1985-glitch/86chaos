@@ -56,8 +56,9 @@ test('17.0.57 readiness refuses live, missing SDK connections, mismatched ports 
   assert.throws(() => connectedAcknowledgment({ ...diagnostics, emulator: { ...diagnostics.emulator, functionsPort: 7777 } }, { ok: true }, selected));
   assert.throws(() => connectedAcknowledgment(diagnostics, { ok: false }, selected));
   assert.throws(() => connectedAcknowledgment(diagnostics, { ok: true }, target.getFirebaseTarget({})));
-  assert.match(CONNECT_POLICY, /connect-src 'self' http:\/\/127\.0\.0\.1:\*/);
-  assert.doesNotMatch(CONNECT_POLICY, /googleapis|firebaseio|https:/);
+  const connectPolicy = CONNECT_POLICY.split(';').map(part => part.trim()).find(part => part.startsWith('connect-src ')) || '';
+  assert.match(connectPolicy, /connect-src 'self' http:\/\/127\.0\.0\.1:\*/);
+  assert.doesNotMatch(connectPolicy, /googleapis|firebaseio|https:/);
 });
 
 test('17.0.57 ordinary production target and environment remain unchanged', () => {

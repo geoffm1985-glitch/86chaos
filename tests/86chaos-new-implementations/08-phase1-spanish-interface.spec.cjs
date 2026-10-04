@@ -2,6 +2,35 @@
 const { test, expect } = require('@playwright/test');
 const { ownerLikeCreds, requireCreds, login, gotoTab, appUrl } = require('../86chaos-full-audit/utils/audit-helpers.cjs');
 
+async function openPreferencesAfterHydration(page) {
+  const language = page.getByTestId('app-language-select');
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const preferencesTab = page.getByRole('button', { name: /preferences|preferencias/i }).first();
+    await expect(preferencesTab).toBeVisible({ timeout: 15000 });
+    await preferencesTab.click();
+    if (await language.isVisible().catch(() => false)) return language;
+    await page.waitForTimeout(350);
+  }
+  await expect(language, 'Preferences must remain active after workspace/profile hydration settles').toBeVisible({ timeout: 10000 });
+  return language;
+}
+
+
+async function saveLanguagePreference(page, value, { verifyReload = false } = {}) {
+  const language = await openPreferencesAfterHydration(page);
+  await language.selectOption(value);
+  const save = page.getByRole('button', { name: /save preferences|guardar preferencias/i }).first();
+  await expect(save, `Save Preferences must stay visible while persisting language ${value}`).toBeVisible({ timeout: 10000 });
+  await save.click();
+  await expect(page.locator('html')).toHaveAttribute('lang', value, { timeout: 15000 });
+  await expect(language).toHaveValue(value);
+  if (!verifyReload) return;
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  const reloadedLanguage = await openPreferencesAfterHydration(page);
+  await expect(reloadedLanguage, `Language ${value} must survive a fresh authenticated reload`).toHaveValue(value, { timeout: 15000 });
+  await expect(page.locator('html')).toHaveAttribute('lang', value, { timeout: 15000 });
+}
+
 test.describe('17.0.26 Phase 1 Spanish interface', () => {
   test('a user can switch their own interface to Spanish and core Phase 1 navigation follows it', async ({ page }) => {
     const account = ownerLikeCreds();
@@ -9,21 +38,10 @@ test.describe('17.0.26 Phase 1 Spanish interface', () => {
     await login(page, account.email, account.password, { chooseWorkspace: true });
     await gotoTab(page, 'settings');
 
-    const preferencesTab = page.getByRole('button', { name: /preferences|preferencias/i }).first();
-    await expect(preferencesTab).toBeVisible({ timeout: 15000 });
-    await preferencesTab.click();
-
-    const language = page.getByTestId('app-language-select');
-    await expect(language).toBeVisible();
-
-    await language.selectOption('en');
-    await page.getByRole('button', { name: /save preferences|guardar preferencias/i }).click();
-    await expect(page.locator('html')).toHaveAttribute('lang', 'en', { timeout: 15000 });
+    await saveLanguagePreference(page, 'en');
 
     try {
-      await language.selectOption('es');
-      await page.getByRole('button', { name: /save preferences|guardar preferencias/i }).click();
-      await expect(page.locator('html')).toHaveAttribute('lang', 'es', { timeout: 15000 });
+      await saveLanguagePreference(page, 'es');
       await expect(page.locator('button.settings-tab-button').filter({ hasText: /^Preferencias$/i }).first()).toBeVisible();
 
       await page.getByRole('button', { name: /open navigation menu/i }).click();
@@ -45,17 +63,7 @@ test.describe('17.0.26 Phase 1 Spanish interface', () => {
       await expect(page.getByText(/Resumen del gerente|Resumen de cocina|Resumen del bar|Resumen de servicio|Resumen de hoy|Inicio de hoy/i).first()).toBeVisible({ timeout: 20000 });
     } finally {
       await page.goto(appUrl('settings'), { waitUntil: 'domcontentloaded' });
-      const prefs = page.getByRole('button', { name: /preferences|preferencias/i }).first();
-      if (await prefs.isVisible().catch(() => false)) await prefs.click();
-      const restore = page.getByTestId('app-language-select');
-      if (await restore.isVisible().catch(() => false)) {
-        await restore.selectOption('en');
-        const save = page.getByRole('button', { name: /save preferences|guardar preferencias/i }).first();
-        if (await save.isVisible().catch(() => false)) {
-          await save.click();
-          await expect(page.locator('html')).toHaveAttribute('lang', 'en', { timeout: 15000 });
-        }
-      }
+      await saveLanguagePreference(page, 'en', { verifyReload: true });
     }
   });
 });

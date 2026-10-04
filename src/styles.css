@@ -4742,9 +4742,9 @@ select {
   }
 
   .schedule-builder-control-deck {
-    position: sticky !important;
-    top: 52px !important;
-    z-index: 35 !important;
+    position: relative !important;
+    top: auto !important;
+    z-index: 1 !important;
     padding: 8px !important;
     overflow-x: clip;
   }

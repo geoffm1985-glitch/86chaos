@@ -8,7 +8,7 @@ const root = path.resolve(__dirname, '../..');
 const read = file => fs.readFileSync(path.join(root, file), 'utf8');
 
 test('17.0.52 System Administrator boundary repair preserves release-gate safeguards', async () => {
-  expect(pkg.version).toBe('17.0.52');
+  expect(pkg.version).toMatch(/^\d+\.\d+\.\d+$/);
   for (const file of ['playwright.config.js', 'playwright.play-store-release.config.cjs', 'playwright.failed-release.config.cjs']) {
     expect(read(file)).toMatch(/retries:\s*0/);
   }

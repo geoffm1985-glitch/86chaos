@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "release": "17.0.57",
+  "release": "17.0.69",
   "defects": [
     {
       "defectId": "RG-API-WRAPPER-FIDELITY",
@@ -692,6 +692,95 @@
       "fidelity": "ACTUAL BRIDGE / BROWSER SDK / FIREBASE EMULATORS / DESKTOP+ANDROID",
       "fixedVersion": "17.0.57",
       "mandatoryGroup": "firebase"
+    },
+    {
+      "defectId": "RG-FAILED-NEW-FIREBASE-TARGET-17058",
+      "origin": "17.0.57 failed+new gate expected LIVE while Yardmaster correctly ran EMULATOR",
+      "affectedInvariant": "Failed+new Playwright and bridge regressions must resolve the same canonical Firebase target as the full release gate and local app.",
+      "reproducer": "api/release-gate-emulator-target-coherence-17-0-58.test.cjs / tests/86chaos-release-gate/70-release-gate-emulator-target-coherence-17-0-58.spec.cjs",
+      "permanentTestIds": [
+        "17.0.58 failed+new config propagates the selected emulator target before Playwright evaluates tests",
+        "17.0.58 Firebase bridge regression resolves the canonical target instead of guessing LIVE from one env key",
+        "Playwright process and browser diagnostics agree on LIVE versus EMULATOR"
+      ],
+      "fidelity": "ACTUAL CONFIG / SHARED TARGET MODULE / BROWSER DIAGNOSTICS / DESKTOP+ANDROID+PWA+IPHONE",
+      "fixedVersion": "17.0.58",
+      "mandatoryGroup": "firebase"
+    },
+    {
+      "defectId": "RG-STALE-VALIDATOR-MANIFEST-17059",
+      "origin": "17.0.58 failed+new gate: historical validator-name assertion plus stale bundled source manifest",
+      "affectedInvariant": "Historical release-gate regressions must follow the active release validator, and bundled certification source evidence must exactly match the completed source tree.",
+      "reproducer": "api/release-gate-staleness-manifest-17-0-59.test.cjs / tests/86chaos-release-gate/71-release-gate-staleness-manifest-17-0-59.spec.cjs",
+      "permanentTestIds": [
+        "17.0.59 historical emulator-entry coverage follows the active validator instead of a stale patch version",
+        "17.0.59 bundled source manifest matches the completed repaired source tree",
+        "historical release-gate wiring tracks the active validator across later patch versions",
+        "bundled certification manifest is byte-for-byte current with the repaired source inventory"
+      ],
+      "fidelity": "ACTUAL PACKAGE SCRIPT / HISTORICAL REGRESSION / BUNDLED SOURCE MANIFEST / PLAYWRIGHT",
+      "fixedVersion": "17.0.59",
+      "mandatoryGroup": "deployed"
+    },
+    {
+      "defectId": "RG-GIT-ZIP-SOURCE-INVENTORY-17060",
+      "origin": "17.0.59 failed+new gate: bundled manifest and Git checkout computed different source inventories",
+      "affectedInvariant": "Certification source inventory must be identical for a Yardmaster ZIP overlay and its Git working copy; unindexed repair files remain visible while local-only .npmrc does not alter the application source hash.",
+      "reproducer": "api/release-gate-source-inventory-17-0-60.test.cjs / tests/86chaos-release-gate/72-release-gate-source-inventory-17-0-60.spec.cjs",
+      "permanentTestIds": [
+        "17.0.60 source inventory is Git/ZIP invariant for overlaid repairs",
+        "17.0.60 manifest parity still rejects real application-source drift",
+        "Git/ZIP source inventory remains deterministic in Playwright regression"
+      ],
+      "fidelity": "ACTUAL SOURCE IDENTITY / TEMP GIT WORKTREE / BUNDLED MANIFEST / PLAYWRIGHT",
+      "fixedVersion": "17.0.60",
+      "mandatoryGroup": "deployed"
+    }
+  ],
+  "regressions": [
+    {
+      "defectId": "RG-YARDMASTER-READINESS-BOOTSTRAP-17063",
+      "origin": "17.0.62 failed+new gate blocked before Playwright: prepared local app returned readiness HTTP 503 while browser SDK readiness was pending",
+      "affectedInvariant": "A live, loopback Yardmaster app pinned to demo-86chaos may reuse its active dependencies while browser SDK readiness is pending, without weakening emulator isolation or allowing npm ci to mutate the running app.",
+      "reproducer": "api/release-gate-yardmaster-readiness-bootstrap-17-0-63.test.cjs / tests/86chaos-release-gate/75-yardmaster-readiness-bootstrap-17-0-63.spec.cjs",
+      "permanentTestIds": [
+        "17.0.63 dependency gate does not deadlock on verified 503 browser-readiness bootstrap",
+        "17.0.63 dependency gate still fails closed for non-isolated or unrelated readiness failures",
+        "verified 503 bootstrap proceeds to dependency preflight instead of blocking before Playwright"
+      ],
+      "fidelity": "ACTUAL READINESS CONTRACT / DEPENDENCY GATE / PLAYWRIGHT RUNNER",
+      "fixedVersion": "17.0.63",
+      "mandatoryGroup": "firebase"
+    },
+    {
+      "defectId": "RG-FAILED-NEW-RETIRED-TITLE-17065",
+      "origin": "17.0.64 failed+new gate blocked before Playwright because the previously failed mobile Schedule Builder identity was renamed to match the repaired compact-layout behavior",
+      "affectedInvariant": "Failed+new lineage must preserve a known failed test across an intentional title rename only when an explicit exact identity migration exists; unrelated missing tests must still block the gate.",
+      "reproducer": "api/release-gate-lineage-title-migration-17-0-65.test.cjs / tests/86chaos-release-gate/77-release-gate-lineage-title-migration-17-0-65.spec.cjs / tests/e2e/release-gate-lineage-title-migration.spec.cjs",
+      "permanentTestIds": [
+        "17.0.65 failed+new migrates the retired sticky-header title to the current mobile identity",
+        "17.0.65 retired-title migration remains exact and does not mask unrelated missing Playwright identities",
+        "old mobile sticky-header failure remains selected under the current truthful test title",
+        "failed+new keeps a failed mobile sticky-header lineage after its 17.0.64 behavior-title rename"
+      ],
+      "fidelity": "ACTUAL FAILED+NEW MANIFEST QUALIFIER / RELEASE-GATE PLAYWRIGHT / PLAYWRIGHT REGRESSION",
+      "fixedVersion": "17.0.65",
+      "mandatoryGroup": "deployed"
+    },
+    {
+      "defectId": "RG-FAILED-NEW-SUITE-PREFIX-17066",
+      "origin": "17.0.65 failed+new gate still blocked before Playwright because the carried failed mobile Schedule Builder lineage included the spec filename as the first fullSuitePath segment, while current discovery reports only the describe suite path.",
+      "affectedInvariant": "The explicit retired-title migration may canonicalize only a matching spec-file prefix from the carried suite path; unrelated suite paths and unknown missing identities must still fail closed.",
+      "reproducer": "api/release-gate-lineage-suite-prefix-17-0-66.test.cjs / tests/86chaos-release-gate/78-release-gate-lineage-suite-prefix-17-0-66.spec.cjs / tests/e2e/release-gate-lineage-title-migration.spec.cjs",
+      "permanentTestIds": [
+        "17.0.66 migrates the exact handoff lineage when Playwright prefixes fullSuitePath with the spec file",
+        "17.0.66 only strips the matching spec-file prefix and still fails closed for a mismatched suite lineage",
+        "the exact Yardmaster failed lineage resolves to the current mobile sticky-header identity",
+        "failed+new accepts the real Playwright lineage shape with a Windows spec-file suite prefix"
+      ],
+      "fidelity": "ACTUAL FAILED+NEW MANIFEST QUALIFIER / WINDOWS PLAYWRIGHT LINEAGE SHAPE / RELEASE-GATE PLAYWRIGHT / PLAYWRIGHT REGRESSION",
+      "fixedVersion": "17.0.66",
+      "mandatoryGroup": "deployed"
     }
   ]
 }

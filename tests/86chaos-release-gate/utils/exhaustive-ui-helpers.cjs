@@ -247,7 +247,7 @@ async function applyStatePath(page, path, { strict = true } = {}) {
 async function resetRouteRoot(page, route) {
   const target = String(route || 'today');
   const neutral = target === 'today' ? 'messages' : 'today';
-  await page.evaluate(async ({ neutralTab, targetTab }) => {
+  const routeReset = async () => page.evaluate(async ({ neutralTab, targetTab }) => {
     const navigate = async tab => {
       const url = new URL(window.location.href);
       url.searchParams.set('tab', tab);
@@ -259,6 +259,14 @@ async function resetRouteRoot(page, route) {
     await navigate(neutralTab);
     await navigate(targetTab);
   }, { neutralTab: neutral, targetTab: target });
+  try {
+    await routeReset();
+  } catch (error) {
+    if (!/Execution context was destroyed|most likely because of a navigation/i.test(String(error?.message || error))) throw error;
+    await page.waitForLoadState('domcontentloaded', { timeout: 10000 }).catch(() => null);
+    await settleReactFrames(page).catch(() => null);
+    await routeReset();
+  }
   await dismissBlockingDialogs(page, { maxPasses: 2 }).catch(() => null);
   await neutralizeTestingPreviewOverlays(page).catch(() => null);
 }

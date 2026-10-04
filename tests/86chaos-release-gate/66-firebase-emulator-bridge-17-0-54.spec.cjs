@@ -1,4 +1,5 @@
 const { test, expect } = require('@playwright/test');
+const { getFirebaseTarget } = require('../../scripts/86chaos-firebase-target.cjs');
 
 const FORBIDDEN_LIVE_FIREBASE = /(firestore\.googleapis\.com|identitytoolkit\.googleapis\.com|securetoken\.googleapis\.com|firebasestorage\.googleapis\.com|(?:^|\.)firebaseio\.com|(?:^|\.)firebasedatabase\.app)/i;
 
@@ -9,7 +10,7 @@ test.describe('17.0.54 Firebase Emulator Bridge', () => {
     await page.goto('/');
     await page.waitForFunction(() => Boolean(window.__CHAOS_FIREBASE_DIAGNOSTICS__), null, { timeout: 15000 });
     const diagnostics = await page.evaluate(() => window.__CHAOS_FIREBASE_DIAGNOSTICS__);
-    const requestedTarget = String(process.env.REACT_APP_86CHAOS_FIREBASE_TARGET || 'live').toLowerCase();
+    const requestedTarget = getFirebaseTarget(process.env).emulator ? 'emulator' : 'live';
 
     if (requestedTarget === 'emulator') {
       expect(diagnostics.target).toBe('EMULATOR');

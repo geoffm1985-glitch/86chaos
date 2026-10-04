@@ -33,12 +33,12 @@ export function assertFirebaseEmulatorBrowserHost(hostname = '') {
   if (!LOCAL_HOST_RE.test(clean)) throw new Error(`86 Chaos emulator mode is local-only. Browser host "${clean || '(missing)'}" is not allowed.`);
   return true;
 }
-const probe = async (name, port, timeoutMs = 3500) => {
+const probe = async (name, port, timeoutMs = 3500, path = '/') => {
   if (typeof fetch !== 'function') return { name, skipped: true };
   const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
   const timer = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
   try {
-    await fetch(`http://${firebaseEmulatorSettings.host}:${port}/`, { method: 'GET', mode: 'no-cors', cache: 'no-store', signal: controller?.signal });
+    await fetch(`http://${firebaseEmulatorSettings.host}:${port}${path}`, { method: 'GET', mode: 'no-cors', cache: 'no-store', signal: controller?.signal });
     return { name, ok: true };
   } catch (error) {
     throw new Error(`Firebase ${name} emulator is unavailable at ${firebaseEmulatorSettings.host}:${port}. Emulator mode is fail-closed and will not fall back to live Firebase. ${error?.message || error}`);
@@ -51,7 +51,7 @@ export async function verifyFirebaseEmulatorAvailability() {
     probe('Authentication', firebaseEmulatorSettings.authPort),
     probe('Functions', firebaseEmulatorSettings.functionsPort),
     probe('Realtime Database', firebaseEmulatorSettings.databasePort),
-    probe('Storage', firebaseEmulatorSettings.storagePort),
+    probe('Storage', firebaseEmulatorSettings.storagePort, 3500, `/v0/b/${encodeURIComponent(`${firebaseEmulatorSettings.projectId}.appspot.com`)}/o`),
   ]);
   return { ok: true, target: firebaseRuntimeTarget, projectId: firebaseEmulatorSettings.projectId, services };
 }

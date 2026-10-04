@@ -8,10 +8,14 @@ async function dependencyInstall({root=process.cwd(),env=process.env,request=fet
   const url=new URL(bridge.localApp.url);
   if(!['127.0.0.1','localhost','[::1]'].includes(url.hostname)||url.protocol!=='http:')throw Error('Yardmaster dependency reuse requires a loopback app.');
   const response=await request(url.href.replace(/\/$/,'')+bridge.localApp.readyPath,{signal:AbortSignal.timeout(5000),cache:'no-store'});
-  if(!response.ok)throw Error('Prepared Yardmaster local app is unavailable; dependencies were not changed.');
   const state=await response.json();
-  if(state.target!=='emulator'||state.projectId!==bridge.projectId||state.blockLiveFirebase!==true)throw Error('Prepared Yardmaster app did not acknowledge emulator isolation; dependencies were not changed.');
-  console.log('Reusing dependencies of the running Yardmaster emulator app; verifying required modules. npm ci would remove files from the active app.');
+  const isolated=state?.target==='emulator'&&state.projectId===bridge.projectId&&state.blockLiveFirebase===true;
+  if(!isolated)throw Error('Prepared Yardmaster app did not acknowledge emulator isolation; dependencies were not changed.');
+  const bootstrapPending=response.ok===false&&response.status===503&&state.ready===false;
+  if(response.ok!==true&&!bootstrapPending)throw Error(`Prepared Yardmaster local app readiness request failed${response.status?` (HTTP ${response.status})`:''}; dependencies were not changed.`);
+  console.log(bootstrapPending
+    ? 'Prepared Yardmaster app is emulator-isolated while browser SDK readiness is pending; verifying required modules without npm ci.'
+    : 'Reusing dependencies of the running Yardmaster emulator app; verifying required modules. npm ci would remove files from the active app.');
   return run(process.execPath,[path.join(base,'dependency-preflight.cjs')],{cwd:root,env,stdio:'inherit',windowsHide:true}).status??1;
  }
  return run(process.execPath,[path.join(base,'run-observable-command.cjs'),'--label','Install locked test dependencies','--heartbeat','20','--timeout','1800','--','npm','ci','--include=dev','--no-audit','--no-fund'],{cwd:root,env,stdio:'inherit',windowsHide:true}).status??1;
