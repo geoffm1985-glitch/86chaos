@@ -1,29 +1,29 @@
 {
-  "version": "17.0.82",
-  "name": "86 Chaos 17.0.82",
-  "build": "17.0.82",
-  "label": "86 Chaos 17.0.82",
-  "releasedAt": "2026-10-04T20:23:49Z",
-  "releaseTitle": "Failed+New Lineage Fidelity Repair",
+  "version": "17.0.83",
+  "name": "86 Chaos 17.0.83",
+  "build": "17.0.83",
+  "label": "86 Chaos 17.0.83",
+  "releasedAt": "2026-10-04T21:34:50.554Z",
+  "releaseTitle": "Request Off Maturity Refactor Certification Repair",
   "notes": [
-    "Repairs the 17.0.77 server-certification Playwright assertion so it matches the actual escaped Spanish regression source instead of treating nested regex text as executable syntax.",
-    "Repairs the Request Off identity regression clock anchor so an October conflict is not tested while Schedule Builder is correctly frozen in September.",
-    "Coverage-warning tests keep their September week anchor; production scheduling and Request Off logic are unchanged.",
-    "Adds targeted Node, Play Store/release-gate Playwright, and independent Playwright regression coverage for both exact failed+new failures."
+    "Repairs the historical 16.0.210 Request Off maturity assertion so it follows the 17.0.82 helper extraction instead of requiring the seeded-date expression to remain inline in the Playwright spec.",
+    "The maturity contract now verifies both the helper original seeded-date behavior and the live Request Off spec wiring that consumes it.",
+    "Production scheduling and Request Off runtime behavior are unchanged.",
+    "Adds targeted Node, Play Store/release-gate Playwright, and independent Playwright regression coverage for the exact blocked-full-gate failure."
   ],
-  "title": "86 Chaos 17.0.82",
-  "summary": "Repairs two preserved failed+new certification harness defects without changing production scheduling behavior.",
-  "description": "The saved full-gate lineage exposed two test-only fidelity defects: a 17.0.77 Playwright assertion attempted to regex-match the text of a nested regex without accounting for escapes, and the Request Off warning test froze the October 4 seed to September 28 even though Allen QA's approved conflict was October 3. 17.0.82 corrects those certification contracts and leaves production runtime code untouched.",
+  "title": "86 Chaos 17.0.83",
+  "summary": "Repairs a stale historical certification assertion exposed by the first owned 17.0.82 full gate.",
+  "description": "The 17.0.82 full gate blocked before Playwright because a 16.0.210 maturity test still looked for the scheduleFixtureDateFromSeed return expression inside schedule-request-off-management.spec.cjs after that logic was extracted into a shared helper. 17.0.83 updates the maturity evidence to follow the refactor while preserving its behavior and archive-row checks. No production workflow logic changes.",
   "highlights": [
-    "Saved failure-lineage repair",
-    "Month-boundary Request Off certification fix",
-    "Escaped-source assertion fidelity"
+    "Blocked-full-gate repair",
+    "Historical maturity refactor fidelity",
+    "Request Off helper wiring certification"
   ],
   "changes": [
-    "Bumps release identity from 17.0.81 to 17.0.82.",
-    "Updates the historical 17.0.77 server-certification Playwright source assertion to match the exact escaped Spanish regression assertion.",
-    "Separates coverage-fixture and Request Off conflict clock anchors so each test opens the period containing its own seeded evidence.",
-    "Adds targeted Node, Play Store/release-gate Playwright, and independent Playwright regression coverage for the exact failures.",
-    "Regenerates release-source-manifest.json for the final 17.0.82 source tree."
+    "Bumps release identity from 17.0.82 to 17.0.83.",
+    "Updates api/release-gate-maturity-16-0-210.test.cjs to verify the seeded-date expression in the extracted helper and the helper live spec wiring.",
+    "Adds targeted Node, Play Store/release-gate Playwright, and independent Playwright regression coverage for the exact blocker.",
+    "Keeps production scheduling and Request Off runtime code unchanged.",
+    "Regenerates release-source-manifest.json for the completed 17.0.83 source tree."
   ]
 }
