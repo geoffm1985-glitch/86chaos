@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "release": "17.0.77",
+  "release": "17.0.82",
   "defects": [
     {
       "defectId": "RG-API-WRAPPER-FIDELITY",
@@ -891,18 +891,96 @@
     },
     {
       "defectId": "RG-SERVER-CERTIFICATION-DRIFT-17077",
-      "origin": "17.0.76 full Yardmaster gate blocked before Playwright because six historical server certification assertions no longer matched the current stable test/runtime contracts.",
-      "affectedInvariant": "Historical certification guards must follow current stable source/test contracts without weakening the behavior they protect, and a multi-failure server gate must be repaired as one evidence-backed certification-maintenance set before Playwright can start.",
-      "reproducer": "api/release-gate-hostile-fixture-manifest-17-0-70.test.cjs / api/release-gate-maturity-16-0-207.test.cjs / api/release-gate-maturity-16-0-209.test.cjs / api/release-gate-runner-observability.test.cjs / api/schedule-warning-request-off-controls.test.cjs / api/spanish-release-gate-fidelity-17-0-29.test.cjs / api/release-gate-server-certification-drift-17-0-77.test.cjs / tests/86chaos-release-gate/89-server-certification-drift-17-0-77.spec.cjs / tests/e2e/server-certification-drift-17-0-77.spec.cjs",
+      "origin": "17.0.76 full Yardmaster gate blocked before Playwright because six historical server certification assertions no longer matched the current stable source contracts.",
+      "affectedInvariant": "Historical certification must track current stable selectors, validator ownership, dependency timeout ownership, distinct-person coverage math, and reusable language helpers without weakening runtime behavior.",
+      "reproducer": "api/release-gate-server-certification-drift-17-0-77.test.cjs / tests/86chaos-release-gate/89-server-certification-drift-17-0-77.spec.cjs / tests/e2e/server-certification-drift-17-0-77.spec.cjs",
       "permanentTestIds": [
         "17.0.77 stale server certification assertions track current contracts without weakening behavior",
         "17.0.77 exact previously failing server files all pass together",
         "release-gate source assertions follow the current stable contracts",
-        "all six formerly failing server guards are covered by the 17.0.77 targeted regression",
         "targeted delta discovery includes both 17.0.77 Playwright regressions"
       ],
-      "fidelity": "ACTUAL SIX FAILED SERVER TEST FILES / CURRENT SOURCE CONTRACTS / RELEASE-GATE PLAYWRIGHT / INDEPENDENT PLAYWRIGHT",
+      "fidelity": "ACTUAL HISTORICAL SERVER CERTIFICATION FILES / CURRENT SOURCE CONTRACTS / RELEASE-GATE PLAYWRIGHT / INDEPENDENT PLAYWRIGHT",
       "fixedVersion": "17.0.77",
+      "mandatoryGroup": "firebase"
+    },
+    {
+      "defectId": "RG-YARDMASTER-EMULATOR-BROWSER-FIDELITY-17078",
+      "origin": "17.0.77 reached the full Playwright phase and exposed browser certifications that treated the managed HTTP/no-worker Yardmaster emulator as a live deployment, plus mobile listener/navigation timing assumptions.",
+      "affectedInvariant": "Live release certification remains strict while the managed demo-86chaos emulator proves equivalent non-billable isolation contracts; listener-backed UI assertions must wait for their exact row and mobile-only navigation must use the shipped controls.",
+      "reproducer": "api/release-gate-emulator-playwright-fidelity-17-0-78.test.cjs / tests/86chaos-release-gate/90-emulator-playwright-fidelity-17-0-78.spec.cjs / tests/e2e/emulator-playwright-fidelity-17-0-78.spec.cjs",
+      "permanentTestIds": [
+        "17.0.78 managed emulator browser contracts stay isolated without weakening live certification",
+        "17.0.78 exact browser-fidelity source repairs remain present",
+        "release-gate coverage keeps managed-emulator browser fidelity mandatory",
+        "targeted delta discovery includes both 17.0.78 Playwright regressions"
+      ],
+      "fidelity": "ACTUAL RELEASE-GATE SOURCE / MANAGED FIREBASE EMULATOR BOUNDARY / RELEASE-GATE PLAYWRIGHT / INDEPENDENT PLAYWRIGHT",
+      "fixedVersion": "17.0.78",
+      "mandatoryGroup": "deployed"
+    },
+    {
+      "defectId": "RG-MANAGED-EMULATOR-BASELINE-LINEAGE-17079",
+      "origin": "17.0.78 failed+new was blocked before Playwright because the completed 17.0.77 full managed-emulator run recorded sourceVersion 17.0.77 and loopback deployedVersion 17.0.76, so generic baseline parity rejected otherwise complete 509-result Playwright evidence.",
+      "affectedInvariant": "Failed+new may reuse version-mismatched full evidence only when the source release explicitly declares runtime equivalence to that predecessor and the saved preflight proves the managed demo-86chaos HTTP loopback emulator. Live and all other mismatches remain blocked.",
+      "reproducer": "api/release-gate-emulator-runtime-equivalent-baseline-17-0-79.test.cjs / tests/86chaos-release-gate/91-emulator-runtime-equivalent-baseline-17-0-79.spec.cjs / tests/e2e/emulator-runtime-equivalent-baseline-17-0-79.spec.cjs",
+      "permanentTestIds": [
+        "17.0.79 accepts only the explicit 17.0.77 to 17.0.76 runtime-equivalent managed-emulator baseline",
+        "17.0.79 keeps mismatched live and unapproved emulator baselines fail-closed",
+        "failed+new baseline selection accepts only the explicit runtime-equivalent emulator pair",
+        "17.0.79 baseline compatibility remains a narrow emulator-only exception"
+      ],
+      "fidelity": "SAVED 17.0.77 FULL PLAYWRIGHT LINEAGE SHAPE / EXPLICIT RELEASE RUNTIME-EQUIVALENCE PROOF / RELEASE-GATE PLAYWRIGHT / INDEPENDENT PLAYWRIGHT",
+      "fixedVersion": "17.0.79",
+      "mandatoryGroup": "firebase"
+    },
+    {
+      "defectId": "RG-COMPLETED-FULL-FAILURE-LINEAGE-17080",
+      "origin": "17.0.79 failed+new still rejected the saved 17.0.77 full gate even though runner evidence proved 509 completed Playwright results with 19 unexpected failures; the source/runtime pair was 17.0.77/17.0.76 and the stronger runtime-equivalence metadata was insufficient for certification parity.",
+      "affectedInvariant": "A completed failed full gate must preserve its exact failed/timed-out identities for repair lineage without being misrepresented as a passing or certification-compatible baseline. Only the exact 17.0.77/17.0.76 pair with real unexpected failures receives failure-lineage-only treatment; clean mismatches and unrelated pairs remain rejected.",
+      "reproducer": "api/release-gate-failure-lineage-baseline-17-0-80.test.cjs / tests/86chaos-release-gate/92-failure-lineage-baseline-17-0-80.spec.cjs / tests/e2e/failure-lineage-baseline-17-0-80.spec.cjs",
+      "permanentTestIds": [
+        "17.0.80 preserves the completed 17.0.77/17.0.76 full run strictly as failed-test lineage when runtime-equivalence proof is unavailable",
+        "17.0.80 does not treat a mismatched clean pass as a reusable baseline",
+        "17.0.80 refuses unrelated mismatched failure lineage",
+        "failed+new preserves the exact saved 17.0.77 full failures without treating the mismatched run as certification parity",
+        "17.0.80 keeps failure-lineage reuse narrower than certification compatibility"
+      ],
+      "fidelity": "SAVED FULL-GATE FAILURE LINEAGE SHAPE / TARGETED NODE / RELEASE-GATE PLAYWRIGHT / INDEPENDENT PLAYWRIGHT",
+      "fixedVersion": "17.0.80",
+      "mandatoryGroup": "firebase"
+    },
+    {
+      "defectId": "RG-LAZY-CHUNK-INJECTION-FIDELITY-17081",
+      "origin": "17.0.80 failed+new reran the saved full-gate stale-chunk failure and the test attachment proved the fault injector aborted http://127.0.0.1:3000/static/js/bundle.js, the CRA development boot bundle, before React could mount. The resulting empty body was therefore test-induced rather than evidence that app lazy-chunk recovery had failed.",
+      "affectedInvariant": "The stale-chunk certification must abort only a true lazy JavaScript chunk. It must never abort bundle.js, main.js, runtime-main.js, CSS, service workers, or other boot assets, because doing so invalidates the recovery assertion by preventing the application and its recovery surface from loading at all.",
+      "reproducer": "api/release-gate-lazy-chunk-interception-17-0-81.test.cjs / tests/86chaos-release-gate/17-resilience-chunk-offline.spec.cjs / tests/86chaos-release-gate/93-lazy-chunk-interception-17-0-81.spec.cjs / tests/e2e/lazy-chunk-interception-17-0-81.spec.cjs",
+      "permanentTestIds": [
+        "17.0.81 lazy-chunk classifier never mistakes the CRA development boot bundle for a recoverable lazy chunk",
+        "17.0.81 lazy-chunk classifier still selects real CRA lazy JavaScript chunks",
+        "17.0.81 historical resilience gate delegates fault injection to the lazy-chunk classifier",
+        "release-gate chunk injection skips the CRA boot bundle and still selects actual lazy chunks",
+        "17.0.81 independent regression preserves the exact bundle.js versus lazy-chunk boundary"
+      ],
+      "fidelity": "ACTUAL 17.0.80 FAILURE ATTACHMENT URL / SHARED LAZY-CHUNK CLASSIFIER / RELEASE-GATE PLAYWRIGHT / INDEPENDENT PLAYWRIGHT",
+      "fixedVersion": "17.0.81",
+      "mandatoryGroup": "deployed"
+    },
+    {
+      "defectId": "RG-FAILED-NEW-LINEAGE-FIDELITY-17082",
+      "origin": "17.0.81 failed+new reran the saved full lineage and exposed two certification-only defects: the 17.0.77 Spanish source assertion ignored escaping inside a nested regex, and the Request Off identity test froze the 2026-10-04 seed to 2026-09-28 while Allen QA's seeded conflict was 2026-10-03.",
+      "affectedInvariant": "Preserved failure-lineage reruns must test the source syntax that actually exists and must freeze date-sensitive UI into the calendar period containing the seeded evidence. Coverage math may retain its separate week anchor.",
+      "reproducer": "api/release-gate-failed-new-lineage-repair-17-0-82.test.cjs / tests/86chaos-release-gate/89-server-certification-drift-17-0-77.spec.cjs / tests/e2e/schedule-request-off-management.spec.cjs / tests/86chaos-release-gate/94-failed-new-lineage-repair-17-0-82.spec.cjs / tests/e2e/failed-new-lineage-repair-17-0-82.spec.cjs",
+      "permanentTestIds": [
+        "17.0.82 Request Off regression anchors the conflict test in October without moving coverage math out of September",
+        "17.0.82 server-certification regression matches the escaped Spanish assertion source instead of pretending it is executable syntax",
+        "Request Off boundary seed keeps coverage in September but runs the conflict identity assertion in October",
+        "17.0.77 Spanish source assertion follows its actual escaped source contract",
+        "targeted delta discovery keeps both 17.0.82 Playwright regressions",
+        "release discovery keeps the exact 17.0.82 failed-lineage repair mandatory"
+      ],
+      "fidelity": "ACTUAL 17.0.81 FAILED+NEW REPORT / OCTOBER MONTH-BOUNDARY SEED / EXACT NESTED REGEX SOURCE / TARGETED NODE / RELEASE-GATE PLAYWRIGHT / INDEPENDENT PLAYWRIGHT",
+      "fixedVersion": "17.0.82",
       "mandatoryGroup": "deployed"
     }
   ]

@@ -68,6 +68,11 @@ const RELEASE_CRITICAL_SPECS = Object.freeze([
   'tests/86chaos-release-gate/87-qa-role-emulator-target-17-0-75.spec.cjs',
   'tests/86chaos-release-gate/88-ghost-request-off-selector-17-0-76.spec.cjs',
   'tests/86chaos-release-gate/89-server-certification-drift-17-0-77.spec.cjs',
+  'tests/86chaos-release-gate/90-emulator-playwright-fidelity-17-0-78.spec.cjs',
+  'tests/86chaos-release-gate/91-emulator-runtime-equivalent-baseline-17-0-79.spec.cjs',
+  'tests/86chaos-release-gate/92-failure-lineage-baseline-17-0-80.spec.cjs',
+  'tests/86chaos-release-gate/93-lazy-chunk-interception-17-0-81.spec.cjs',
+  'tests/86chaos-release-gate/94-failed-new-lineage-repair-17-0-82.spec.cjs',
 ]);
 
 const PWA_SPEC_PATTERN = /86chaos-release-gate\/(26-pwa-icon-source-deployed-parity|27-pwa-browser-icon-matrix|66-firebase-emulator-bridge-17-0-54|70-release-gate-emulator-target-coherence-17-0-58)\.spec\.cjs/;

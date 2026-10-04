@@ -9,6 +9,7 @@ const {
   watchForProblems,
   summarizeProblems,
 } = require('../86chaos-full-audit/utils/audit-helpers.cjs');
+const { isLazyJavaScriptChunkRequest } = require('./utils/lazy-chunk-request.cjs');
 
 const RECOVERY_RE = /refresh app|update available|update required|reload|try again|new version|recover/i;
 const FATAL_BLANK_RE = /^\s*$|Application error|Unhandled Runtime Error|White screen/i;
@@ -34,9 +35,9 @@ test.describe('17 stale chunk, offline, refresh, and service-worker resilience',
 
     let abortedUrl = '';
     let aborted = false;
-    await page.route(/\/static\/js\/.*(?:chunk|\.js)/, async route => {
+    await page.route(/\/static\/js\/.*\.js(?:[?#].*)?$/i, async route => {
       const url = route.request().url();
-      if (!aborted && !/main\.|runtime-main\.|firebase-messaging-sw/i.test(url)) {
+      if (!aborted && isLazyJavaScriptChunkRequest(url)) {
         aborted = true;
         abortedUrl = url;
         await route.abort('failed');
@@ -107,6 +108,8 @@ test.describe('17 stale chunk, offline, refresh, and service-worker resilience',
     });
 
     expect(aborted, 'The test must actually intercept one lazy JavaScript chunk').toBe(true);
+    expect(abortedUrl, 'The injected failure must target a lazy chunk, never the CRA boot bundle').toMatch(/\.chunk\.js(?:[?#].*)?$/i);
+    expect(abortedUrl, 'The injected failure must never blank the app by aborting bundle.js/main/runtime').not.toMatch(/\/(?:bundle|main|runtime-main)(?:\.[^/?]+)?\.js(?:[?#].*)?$/i);
     expect(firstText, 'Chunk failure must not produce a blank or fatal-only screen').not.toMatch(FATAL_BLANK_RE);
     expect(finalText, 'Repeated chunk failure must provide a usable update/recovery action').toMatch(RECOVERY_RE);
     expect(maxAutoReloadCount, 'Chunk recovery structured autoReloadCount must never exceed one').toBeLessThanOrEqual(1);

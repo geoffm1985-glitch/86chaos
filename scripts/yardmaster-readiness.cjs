@@ -25,6 +25,10 @@ function installReadiness(app) {
   let state = null, updated = 0, error = 'Waiting for the local application SDK.', browser, page;
   app.use((req, res, next) => {
     res.setHeader('Content-Security-Policy', CONNECT_POLICY);
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+    res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+    res.setHeader('Permissions-Policy', 'camera=(), geolocation=(), payment=(), usb=()');
     next();
   });
   const bootstrap = bootstrapAcknowledgment(target);

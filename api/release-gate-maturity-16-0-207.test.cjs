@@ -145,7 +145,7 @@ test('16.0.207 Schedule Builder tools have valid tablist semantics and the seed 
   const schedule = read('src/features/schedule.jsx');
   const oracle = read('tests/86chaos-full-audit/04-schedule-math-oracle.spec.cjs');
   assert.match(schedule, /role="tablist" aria-label="Schedule Builder tools"/);
-  assert.match(schedule, /role="tab"[\s\S]{0,180}aria-label=\{label\} title=\{label\}/);
+  assert.match(schedule, /role="tab"[\s\S]{0,220}aria-label=\{label\}[\s\S]{0,220}title=\{label\}/);
   assert.match(oracle, /test\.setTimeout\(4 \* 60 \* 1000\)/);
 });
 

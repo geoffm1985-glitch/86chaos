@@ -1,28 +1,29 @@
 {
-  "version": "17.0.77",
-  "name": "86 Chaos 17.0.77",
-  "build": "17.0.77",
-  "label": "86 Chaos 17.0.77",
-  "releasedAt": "2026-10-04T11:20:13.267682Z",
-  "releaseTitle": "Server Certification Drift Repair",
+  "version": "17.0.82",
+  "name": "86 Chaos 17.0.82",
+  "build": "17.0.82",
+  "label": "86 Chaos 17.0.82",
+  "releasedAt": "2026-10-04T20:23:49Z",
+  "releaseTitle": "Failed+New Lineage Fidelity Repair",
   "notes": [
-    "Repairs the six stale server certification assertions that blocked the 17.0.76 full gate before Playwright.",
-    "No production scheduling, Request Off, localization, Firebase, authorization, or dependency-install behavior is changed.",
-    "Keeps the 30-minute dependency timeout in its current Yardmaster dependency installer owner and keeps stable warning test IDs.",
-    "Adds dedicated Node, Play Store/release-gate Playwright, and independent Playwright regression coverage for the exact six-file failure set."
+    "Repairs the 17.0.77 server-certification Playwright assertion so it matches the actual escaped Spanish regression source instead of treating nested regex text as executable syntax.",
+    "Repairs the Request Off identity regression clock anchor so an October conflict is not tested while Schedule Builder is correctly frozen in September.",
+    "Coverage-warning tests keep their September week anchor; production scheduling and Request Off logic are unchanged.",
+    "Adds targeted Node, Play Store/release-gate Playwright, and independent Playwright regression coverage for both exact failed+new failures."
   ],
-  "title": "86 Chaos 17.0.77",
-  "summary": "Realigns stale historical certification guards with the current stable source and test contracts so the full gate can reach Playwright again.",
-  "description": "Surgical certification-maintenance repair only. The gate evidence showed six historical assertions had drifted behind intentional current behavior.",
+  "title": "86 Chaos 17.0.82",
+  "summary": "Repairs two preserved failed+new certification harness defects without changing production scheduling behavior.",
+  "description": "The saved full-gate lineage exposed two test-only fidelity defects: a 17.0.77 Playwright assertion attempted to regex-match the text of a nested regex without accounting for escapes, and the Request Off warning test froze the October 4 seed to September 28 even though Allen QA's approved conflict was October 3. 17.0.82 corrects those certification contracts and leaves production runtime code untouched.",
   "highlights": [
-    "Runs the hostile-manifest synthetic fixture through the current source validator instead of the archived 17.0.70 validator.",
-    "Tracks stable Schedule Builder warning test IDs and dependency-installer timeout ownership.",
-    "Makes QA coverage and Spanish fidelity assertions verify the current behavior without reducing strictness."
+    "Saved failure-lineage repair",
+    "Month-boundary Request Off certification fix",
+    "Escaped-source assertion fidelity"
   ],
   "changes": [
-    "Bumps release identity from 17.0.76 to 17.0.77.",
-    "Repairs all six server-test blockers exposed by the 17.0.76 full gate.",
-    "Registers mandatory release-gate and independent Playwright coverage.",
-    "Regenerates release-source-manifest.json after finalizing the 17.0.77 source tree."
+    "Bumps release identity from 17.0.81 to 17.0.82.",
+    "Updates the historical 17.0.77 server-certification Playwright source assertion to match the exact escaped Spanish regression assertion.",
+    "Separates coverage-fixture and Request Off conflict clock anchors so each test opens the period containing its own seeded evidence.",
+    "Adds targeted Node, Play Store/release-gate Playwright, and independent Playwright regression coverage for the exact failures.",
+    "Regenerates release-source-manifest.json for the final 17.0.82 source tree."
   ]
 }

@@ -12,6 +12,7 @@ const {
   appUrl,
   PERMISSION_GATE_RE,
 } = require('../86chaos-full-audit/utils/audit-helpers.cjs');
+const { isManagedYardmasterEmulator } = require('./utils/yardmaster-runtime-target.cjs');
 
 const FUZZ = [
   `<img src=x onerror=window.__CHAOS_XSS__=1>`,
@@ -23,6 +24,7 @@ const FUZZ = [
 test.describe('22 security headers, query abuse, and input robustness', () => {
   test('production shell exposes required browser security headers', async ({ request }, testInfo) => {
     const base = process.env.APP_URL || process.env.CHAOS_BASE_URL || process.env.BASE_URL;
+    const managedEmulator = isManagedYardmasterEmulator(process.env, base);
     const response = await request.get(base, { failOnStatusCode: false });
     const headers = response.headers();
     const checks = {
@@ -33,10 +35,16 @@ test.describe('22 security headers, query abuse, and input robustness', () => {
       referrerPolicy: headers['referrer-policy'] || '',
       permissionsPolicy: headers['permissions-policy'] || '',
     };
-    await attachJson(testInfo, '22-security-headers.json', { status: response.status(), checks });
+    await attachJson(testInfo, '22-security-headers.json', { status: response.status(), managedEmulator, checks });
     expect(response.status()).toBeLessThan(500);
     expect(checks.contentSecurityPolicy).toBeTruthy();
-    expect(checks.strictTransportSecurity).toMatch(/max-age=/i);
+    if (managedEmulator) {
+      expect(new URL(base).protocol).toBe('http:');
+      expect(checks.strictTransportSecurity, 'HSTS is intentionally absent on the non-release HTTP loopback emulator').toBe('');
+      expect(checks.contentSecurityPolicy).toMatch(/worker-src 'none'/i);
+    } else {
+      expect(checks.strictTransportSecurity).toMatch(/max-age=/i);
+    }
     expect(checks.contentTypeOptions).toMatch(/nosniff/i);
     expect(`${checks.frameOptions} ${checks.contentSecurityPolicy}`).toMatch(/deny|sameorigin|frame-ancestors/i);
     expect(checks.referrerPolicy).toBeTruthy();

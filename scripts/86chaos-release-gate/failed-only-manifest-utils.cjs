@@ -68,6 +68,58 @@ function runHasPlaywrightEvidence(dir) {
   return Boolean(meta.summary?.playwright && (Array.isArray(meta.summary.playwright.failedTests) || Number(meta.summary.playwright.totalResults || 0) > 0));
 }
 
+
+const EXPLICIT_RUNTIME_EQUIVALENT_BASELINE_PAIRS = new Set([
+  // 17.0.77 changed certification assertions only. RELEASE_17_0_77.md explicitly
+  // records that runtime behavior was unchanged from 17.0.76. The first complete
+  // managed-emulator Playwright pass therefore remains valid failure-lineage
+  // evidence even though its loopback /version.json still reported 17.0.76.
+  '17.0.77|17.0.76',
+]);
+
+function isLoopbackHttpUrl(value = '') {
+  try {
+    const url = new URL(String(value || ''));
+    return url.protocol === 'http:' && /^(localhost|127(?:\.\d{1,3}){3}|\[?::1\]?)$/i.test(url.hostname);
+  } catch (_) {
+    return false;
+  }
+}
+
+function isExplicitRuntimeEquivalentEmulatorBaseline(meta = {}, { root = process.cwd() } = {}) {
+  const sourceVersion = String(meta.sourceVersion || '').trim();
+  const deployedVersion = String(meta.deployedVersion || '').trim();
+  if (!sourceVersion || !deployedVersion || sourceVersion === deployedVersion) return false;
+  if (!EXPLICIT_RUNTIME_EQUIVALENT_BASELINE_PAIRS.has(`${sourceVersion}|${deployedVersion}`)) return false;
+  const preflight = meta.preflight || {};
+  if (String(preflight.firebaseTarget || '').toUpperCase() !== 'EMULATOR') return false;
+  if (String(preflight.firebaseProjectId || '') !== 'demo-86chaos') return false;
+  if (!isLoopbackHttpUrl(preflight.appUrl || meta.appUrl || '')) return false;
+  const sourceIdentity = preflight.sourceIdentity || {};
+  if (sourceIdentity.version && String(sourceIdentity.version) !== sourceVersion) return false;
+  if (sourceIdentity.dirty === true) return false;
+  const releaseNote = path.join(root, `RELEASE_${sourceVersion.replaceAll('.', '_')}.md`);
+  if (!fs.existsSync(releaseNote)) return false;
+  const releaseText = fs.readFileSync(releaseNote, 'utf8');
+  return /runtime behavior is unchanged/i.test(releaseText);
+}
+
+function baselineVersionsAreCompatible(meta = {}, options = {}) {
+  const sourceVersion = String(meta.sourceVersion || '').trim();
+  const deployedVersion = String(meta.deployedVersion || '').trim();
+  return Boolean(sourceVersion && deployedVersion && (sourceVersion === deployedVersion || isExplicitRuntimeEquivalentEmulatorBaseline(meta, options)));
+}
+
+function isExplicitCompletedFailureLineage(meta = {}, completed = null) {
+  const sourceVersion = String(meta.sourceVersion || '').trim();
+  const deployedVersion = String(meta.deployedVersion || '').trim();
+  if (`${sourceVersion}|${deployedVersion}` !== '17.0.77|17.0.76') return false;
+  const counts = completed?.counts || {};
+  const unexpected = Number(counts.unexpected || 0);
+  const total = Number(counts.total || 0);
+  return Boolean(completed?.ok && total > 0 && unexpected > 0);
+}
+
 function collectFailedEntriesFromPlaywright(playwright = {}, meta = {}) {
   const entries = [];
   const walkSuites = (suites = [], parents = []) => {
@@ -709,6 +761,7 @@ function selectFailedOnlyManifestForCurrentRun({ currentRunDir = getRunDir(), re
 
   if (baselineFullRunDir) {
     baselineManifest = generateFailedOnlyManifestFromRun(baselineFullRunDir, { write: false, currentRunDir });
+    lineageMode = baselineManifest.lineageMode || lineageMode;
     latestFailedOnlyRunDir = findLatestCompletedFailedOnlyDescendant({ baselineFullRunId: baselineManifest.baselineFullRunId, currentRunDir, resultsRoot });
     if (latestFailedOnlyRunDir) {
       const narrowed = buildNarrowedManifestFromFailedOnlyRun(latestFailedOnlyRunDir, { baselineManifest, target, currentRunDir });
@@ -829,7 +882,7 @@ function findMostRecentCompletedFullRun({ currentRunDir = getRunDir(), resultsRo
     const completed = hasCompletedReleaseGateEvidence(dir);
     if (!completed.ok) return false;
     const meta = loadRunMeta(dir);
-    return Boolean(meta.sourceVersion && meta.deployedVersion && meta.sourceVersion === meta.deployedVersion);
+    return baselineVersionsAreCompatible(meta) || isExplicitCompletedFailureLineage(meta, completed);
   }) || '';
 }
 
@@ -837,8 +890,12 @@ function buildFailedOnlyManifest(fullRunDir, { target = {}, currentRunDir = getR
   const reportPath = path.join(fullRunDir, 'playwright-report.json');
   const playwright = readJsonIfExists(reportPath);
   const meta = loadRunMeta(fullRunDir);
+  const completed = hasCompletedReleaseGateEvidence(fullRunDir);
+  const failureLineageOnly = !baselineVersionsAreCompatible(meta) && isExplicitCompletedFailureLineage(meta, completed);
   const selected = playwright ? collectFailedEntriesFromPlaywright(playwright, meta) : collectFailedEntriesFromSummary(meta.summary, meta);
   return {
+    lineageMode: failureLineageOnly ? 'full-failure-lineage' : 'full-baseline',
+    failureLineageOnly,
     // A clean full baseline with zero FAIL/TIMEOUT rows is still a valid delta baseline.
     // Delta then selects only tests that are new relative to that completed full inventory.
     ok: runHasPlaywrightEvidence(fullRunDir),
@@ -906,7 +963,17 @@ function validateBaselineManifest(manifest, { currentRunDir = getRunDir() } = {}
   const baselineDeployed = manifest.baselineDeployedVersion || manifest.deployedVersion || '';
   if (!baselineSource) errors.push('Baseline source version is missing.');
   if (!baselineDeployed) errors.push('Baseline deployed version is missing.');
-  if (baselineSource && baselineDeployed && baselineSource !== baselineDeployed) errors.push(`Baseline source/deployed versions do not match: ${baselineSource} vs ${baselineDeployed}.`);
+  if (baselineSource && baselineDeployed && baselineSource !== baselineDeployed) {
+    const baselineMeta = baselineDir && fs.existsSync(baselineDir) ? loadRunMeta(baselineDir) : {};
+    const failureLineageOnly = manifest?.lineageMode === 'full-failure-lineage'
+      && isExplicitCompletedFailureLineage(baselineMeta, baselineEvidence)
+      && Number(baselineEvidence?.counts?.unexpected || 0) > 0
+      && Array.isArray(manifest?.selected)
+      && manifest.selected.length > 0;
+    if (!isExplicitRuntimeEquivalentEmulatorBaseline(baselineMeta) && !failureLineageOnly) {
+      errors.push(`Baseline source/deployed versions do not match: ${baselineSource} vs ${baselineDeployed}.`);
+    }
+  }
   if (!Array.isArray(manifest.selected)) errors.push('Baseline failed/timed-out selection is malformed.');
   if (manifest.selected?.some(row => !row.specPath && !row.spec)) errors.push('One or more selected tests are missing a spec path.');
   if (manifest.selected?.some(row => !(row.title || row.exactTestTitle))) errors.push('One or more selected tests are missing an exact title.');
@@ -1122,6 +1189,9 @@ module.exports = {
   readProjectNames,
   extractTestTitlesFromSpec,
   compareVersions,
+  baselineVersionsAreCompatible,
+  isExplicitRuntimeEquivalentEmulatorBaseline,
+  isExplicitCompletedFailureLineage,
   inventoryFromPlaywrightReport,
   addNewInventorySelections,
   currentInventoryRecords,

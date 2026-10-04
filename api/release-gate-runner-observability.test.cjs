@@ -46,7 +46,9 @@ test('release-gate runners use observable setup, overlap protection, and isolate
   const dependencyInstaller = fs.readFileSync(path.join(root, 'scripts', '86chaos-release-gate', 'yardmaster-dependency-install.cjs'), 'utf8');
   assert.match(ps1, /Verify npm wrapper/);
   assert.match(ps1, /run-observable-command\.cjs/);
-  assert.match(dependencyInstaller, /'--timeout','1800'/);
+  assert.match(ps1, /yardmaster-dependency-install\.cjs/);
+  assert.match(ps1, /timed out after 30 minutes/);
+  assert.match(dependencyInstaller, /['"]--timeout['"],['"]1800['"]/);
   assert.match(ps1, /\.current-run\.lock/);
   assert.match(ps1, /BLOCKED BEFORE TEST EXECUTION/);
   assert.match(ps1, /UTF8Encoding/);

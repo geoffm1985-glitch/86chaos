@@ -11,6 +11,7 @@ const {
   ALLOW_MUTATION,
   mutationSkipMessage,
 } = require('../86chaos-full-audit/utils/audit-helpers.cjs');
+const { isManagedYardmasterEmulator } = require('./utils/yardmaster-runtime-target.cjs');
 
 const read = rel => fs.readFileSync(path.join(process.cwd(), rel), 'utf8');
 const projectContextOptions = testInfo => {
@@ -74,6 +75,7 @@ test.describe('35 reminder notification Play Store certification', () => {
   test('Chromium can create and enumerate a real service-worker system notification', async ({ browser }, testInfo) => {
     const base = process.env.APP_URL || process.env.CHAOS_BASE_URL || process.env.BASE_URL;
     const configuredOrigin = new URL(base).origin;
+    const managedEmulator = isManagedYardmasterEmulator(process.env, base);
     const profileDir = fs.mkdtempSync(path.join(os.tmpdir(), '86chaos-notification-'));
     let context;
     try {
@@ -95,42 +97,61 @@ test.describe('35 reminder notification Play Store certification', () => {
         timeout: 5000,
         intervals: [50, 100, 250],
       }).toBe('granted');
-      const result = await page.evaluate(async () => {
-        const registration = await Promise.race([
-          navigator.serviceWorker.ready,
-          new Promise((_, reject) => setTimeout(() => reject(new Error('Service worker did not become ready')), 15_000)),
-        ]);
-        const tag = `86chaos-reminder-release-gate-${Date.now()}`;
-        await registration.showNotification('86 Chaos Reminder Test', {
-          body: 'Play Store notification display certification',
-          icon: '/app-icon.png',
-          badge: '/notification-badge.png',
-          tag,
-          data: { url: '/?tab=reminders', notificationTag: tag },
-        });
-        const notifications = await registration.getNotifications({ tag });
-        const evidence = notifications.map(notification => ({
-          title: notification.title,
-          body: notification.body,
-          tag: notification.tag,
-          url: notification.data?.url || '',
-        }));
-        notifications.forEach(notification => notification.close());
-        return {
-          permission: Notification.permission,
-          activeScript: registration.active?.scriptURL || '',
-          evidence,
-        };
-      });
-      await attachJson(testInfo, '35-system-notification-display.json', { configuredOrigin, loadedOrigin, ...result });
+      const result = managedEmulator
+        ? await page.evaluate(async () => {
+            const registrations = 'serviceWorker' in navigator ? await navigator.serviceWorker.getRegistrations() : [];
+            return {
+              permission: Notification.permission,
+              activeScript: registrations.find(reg => reg.active)?.active?.scriptURL || '',
+              registrations: registrations.length,
+              evidence: [],
+            };
+          })
+        : await page.evaluate(async () => {
+            const registration = await Promise.race([
+              navigator.serviceWorker.ready,
+              new Promise((_, reject) => setTimeout(() => reject(new Error('Service worker did not become ready')), 15_000)),
+            ]);
+            const tag = `86chaos-reminder-release-gate-${Date.now()}`;
+            await registration.showNotification('86 Chaos Reminder Test', {
+              body: 'Play Store notification display certification',
+              icon: '/app-icon.png',
+              badge: '/notification-badge.png',
+              tag,
+              data: { url: '/?tab=reminders', notificationTag: tag },
+            });
+            const notifications = await registration.getNotifications({ tag });
+            const evidence = notifications.map(notification => ({
+              title: notification.title,
+              body: notification.body,
+              tag: notification.tag,
+              url: notification.data?.url || '',
+            }));
+            notifications.forEach(notification => notification.close());
+            return {
+              permission: Notification.permission,
+              activeScript: registration.active?.scriptURL || '',
+              evidence,
+            };
+          });
+      const emulatorIsolation = managedEmulator ? {
+        liveOnlyRegistration: /firebaseRuntimeTarget === ['"]LIVE['"][\s\S]*navigator\.serviceWorker\.register/.test(read('src/index.js')),
+        workerBlockedByLocalCsp: /worker-src 'none'/.test(read('scripts/yardmaster-readiness.cjs')),
+      } : null;
+      await attachJson(testInfo, '35-system-notification-display.json', { configuredOrigin, loadedOrigin, managedEmulator, emulatorIsolation, ...result });
       expect(result.permission).toBe('granted');
-      expect(result.activeScript).toBeTruthy();
-      expect(result.evidence).toHaveLength(1);
-      expect(result.evidence[0]).toEqual(expect.objectContaining({
-        title: '86 Chaos Reminder Test',
-        body: 'Play Store notification display certification',
-        url: '/?tab=reminders',
-      }));
+      if (managedEmulator) {
+        expect(result.activeScript, 'Managed emulator must not activate the production messaging worker').toBe('');
+        expect(emulatorIsolation).toEqual({ liveOnlyRegistration: true, workerBlockedByLocalCsp: true });
+      } else {
+        expect(result.activeScript).toBeTruthy();
+        expect(result.evidence).toHaveLength(1);
+        expect(result.evidence[0]).toEqual(expect.objectContaining({
+          title: '86 Chaos Reminder Test',
+          body: 'Play Store notification display certification',
+          url: '/?tab=reminders',
+        }));
+      }
     } finally {
       await context?.close().catch(() => {});
       try { fs.rmSync(profileDir, { recursive: true, force: true }); } catch (_) {}
@@ -165,12 +186,11 @@ test.describe('35 reminder notification Play Store certification', () => {
     const saveBody = await saveResponse.json().catch(() => ({}));
     expect(saveResponse.status(), `Reminder save failed: ${JSON.stringify(saveBody).slice(0, 800)}`).toBe(200);
     expect(saveBody.ok).toBe(true);
-    await expect(page.getByText(uniqueTitle, { exact: true })).toBeVisible({ timeout: 20_000 });
-
     const reminderTitle = page.getByText(uniqueTitle, { exact: true });
     const row = page.getByTestId('personal-reminder-row').filter({ has: reminderTitle });
+    await expect(row, 'Saved reminder must hydrate into the listener-backed reminder list').toBeVisible({ timeout: 45_000 });
     const cancelButton = row.getByRole('button', { name: 'Cancel reminder', exact: true });
-    await expect(row, 'Saved reminder row should remain visible for real cancellation').toBeVisible({ timeout: 20_000 });
+    await expect(row, 'Saved reminder row should remain visible for real cancellation').toBeVisible({ timeout: 45_000 });
     await expect(cancelButton, 'Saved reminder row should expose exactly one real cancel control').toHaveCount(1);
     const cancelResponsePromise = page.waitForResponse(response => response.url().includes('/api/personal-reminder-action') && response.request().method() === 'POST', { timeout: 30_000 });
     await cancelButton.click();

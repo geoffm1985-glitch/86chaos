@@ -43,15 +43,24 @@ test.describe('56 Manager Brief runtime + sticky Schedule Builder day header', (
 
     await page.evaluate(() => {
       const sticky = document.querySelector('[data-testid="schedule-builder-sticky-day-header"]');
-      const amount = Math.max(700, (sticky?.getBoundingClientRect().top || 0) + 450);
+      const deck = document.querySelector('[data-testid="schedule-builder-control-deck"]');
+      const gridShell = sticky?.closest('.schedule-builder-grid-shell') || sticky?.parentElement || null;
       let scrollport = sticky?.parentElement || null;
       while (scrollport) {
         const style = getComputedStyle(scrollport);
         if (/(auto|scroll)/.test(style.overflowY) && scrollport.scrollHeight > scrollport.clientHeight + 8) break;
         scrollport = scrollport.parentElement;
       }
+      const portTop = scrollport?.getBoundingClientRect().top ?? 0;
+      const stickyOffset = Number.parseFloat(sticky ? getComputedStyle(sticky).top || '0' : '0') || 0;
+      const deckBottom = deck?.getBoundingClientRect().bottom ?? 0;
+      const shellBottom = gridShell?.getBoundingClientRect().bottom ?? Infinity;
+      const minimum = Math.max(180, Math.ceil(deckBottom - (portTop + stickyOffset) + 80));
+      const containmentRoom = Number.isFinite(shellBottom) ? Math.max(0, Math.floor(shellBottom - (portTop + stickyOffset) - 120)) : minimum;
+      const amount = Math.min(minimum, containmentRoom || minimum);
       if (scrollport) {
-        scrollport.scrollTop = Math.min(scrollport.scrollHeight - scrollport.clientHeight, scrollport.scrollTop + amount);
+        const maxScroll = Math.max(0, scrollport.scrollHeight - scrollport.clientHeight);
+        scrollport.scrollTop = Math.min(maxScroll, scrollport.scrollTop + amount);
         scrollport.dispatchEvent(new Event('scroll', { bubbles: true }));
       } else {
         window.scrollBy(0, amount);

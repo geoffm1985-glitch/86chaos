@@ -30,10 +30,9 @@ test('17.0.70 synthetic hostile fixture manifest satisfies the current source va
       sourceHash: captured.sourceHash,
       files: captured.files,
     }, null, 2) + '\n');
-    const currentSourceCommand = JSON.parse(fs.readFileSync(path.join(repo, 'package.json'), 'utf8')).scripts?.['test:source'] || '';
-    const validatorMatch = currentSourceCommand.match(/^node\s+(scripts[\\/]validate-[^\s]+\.js)$/);
-    assert.ok(validatorMatch, `Current source validator command is not recognized: ${currentSourceCommand}`);
-    const result = cp.spawnSync(process.execPath, [validatorMatch[1]], {
+    const currentValidator = String(require('../package.json').scripts['test:source'] || '').match(/^node\s+(.+\.js)$/)?.[1];
+    assert.ok(currentValidator, 'current test:source script exposes the active source validator');
+    const result = cp.spawnSync(process.execPath, [currentValidator], {
       cwd: repo,
       encoding: 'utf8',
       maxBuffer: 10 * 1024 * 1024,
