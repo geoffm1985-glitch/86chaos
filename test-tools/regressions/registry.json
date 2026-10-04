@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "release": "17.0.70",
+  "release": "17.0.71",
   "defects": [
     {
       "defectId": "RG-API-WRAPPER-FIDELITY",
@@ -796,6 +796,22 @@
       "fidelity": "ACTUAL HISTORICAL HOSTILE PREFLIGHT FIXTURE / CURRENT SOURCE VALIDATOR / RELEASE-GATE PLAYWRIGHT / INDEPENDENT PLAYWRIGHT",
       "fixedVersion": "17.0.70",
       "mandatoryGroup": "hostile-certification"
+    },
+    {
+      "defectId": "RG-FAILED-ONLY-EMULATOR-TARGET-17071",
+      "origin": "17.0.70 full Yardmaster gate blocked before Playwright because api/failed-only-manifest-cross-version.test.cjs passed chaos-test-d1601 as the current target while the shared Firebase target was EMULATOR/demo-86chaos.",
+      "affectedInvariant": "Cross-version failed-only fixtures must preserve historical baseline project evidence while validating the current remediation target against the active shared LIVE/EMULATOR Firebase target.",
+      "reproducer": "api/failed-only-manifest-cross-version.test.cjs / api/failed-only-manifest-emulator-target-17-0-71.test.cjs / tests/86chaos-release-gate/83-failed-only-manifest-emulator-target-17-0-71.spec.cjs / tests/e2e/failed-only-manifest-emulator-target-17-0-71.spec.cjs",
+      "permanentTestIds": [
+        "17.0.71 cross-version target validation resolves the active Firebase project while preserving historical baseline evidence",
+        "17.0.71 emulator-mode server regression executes all cross-version manifest cases against demo-86chaos",
+        "17.0.71 live-mode server regression still accepts chaos-test-d1601",
+        "current target validation uses the shared Firebase target resolver instead of a live-project literal",
+        "historical baseline evidence remains live-project evidence while current validation is runtime-target aware"
+      ],
+      "fidelity": "ACTUAL CROSS-VERSION SERVER FIXTURE / SHARED FIREBASE TARGET RESOLVER / RELEASE-GATE PLAYWRIGHT / INDEPENDENT PLAYWRIGHT",
+      "fixedVersion": "17.0.71",
+      "mandatoryGroup": "firebase"
     }
   ]
 }

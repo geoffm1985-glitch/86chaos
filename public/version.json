@@ -1,27 +1,27 @@
 {
-  "version": "17.0.70",
-  "name": "86 Chaos 17.0.70",
-  "build": "17.0.70",
-  "label": "86 Chaos 17.0.70",
-  "releasedAt": "2026-10-04T06:00:00Z",
-  "releaseTitle": "Hostile Fixture Manifest Version Repair",
+  "version": "17.0.71",
+  "name": "86 Chaos 17.0.71",
+  "build": "17.0.71",
+  "label": "86 Chaos 17.0.71",
+  "releasedAt": "2026-10-04T07:15:00Z",
+  "releaseTitle": "Failed-Only Manifest Emulator Target Repair",
   "notes": [
-    "Repairs the historical 17.0.5 hostile-certification fixture so its synthetic release-source-manifest.json includes the version field required by current source validation.",
-    "Leaves production preflight and manifest authority logic unchanged; only the stale test fixture contract is updated.",
+    "Repairs the cross-version failed-only manifest server fixture so current target validation follows the shared LIVE/EMULATOR Firebase target resolver.",
+    "Preserves historical baseline evidence from chaos-test-d1601 while allowing Yardmaster emulator runs to validate the current target as demo-86chaos.",
     "Adds targeted Node, mandatory Play Store/release-gate Playwright, and independent Playwright regression coverage for the exact blocked-before-Playwright failure."
   ],
-  "title": "86 Chaos 17.0.70",
-  "summary": "Repairs the stale hostile-certification fixture that blocked the 17.0.69 full gate before Playwright after source-manifest version authority became mandatory.",
-  "description": "Surgical testing-build repair. The synthetic hostile fixture now carries schema, version, source hash, and file inventory together. No production push or deployment is included.",
+  "title": "86 Chaos 17.0.71",
+  "summary": "Repairs a stale live-project literal in cross-version failed-only manifest server tests that blocked Yardmaster emulator certification before Playwright.",
+  "description": "Surgical testing-build repair. Current failed-only target validation now uses the existing Firebase target resolver; production runtime logic and historical baseline evidence remain unchanged.",
   "highlights": [
-    "The historical hostile preflight good path now supplies manifest.version from the captured fixture source identity.",
-    "A targeted regression builds a temporary fixture and proves the current source validator accepts the complete synthetic manifest contract.",
-    "Release-gate and independent Playwright coverage keep the fixture compatible without weakening fail-closed source identity checks."
+    "Current target validation resolves demo-86chaos in emulator mode and chaos-test-d1601 in live testing mode.",
+    "Historical baseline preflight fixtures remain pinned to their original chaos-test-d1601 evidence.",
+    "The regression executes all 11 cross-version manifest server cases in both emulator and live target modes."
   ],
   "changes": [
-    "Bumps release identity from 17.0.69 to 17.0.70.",
-    "Updates api/release-gate-execution-17-0-5.test.cjs to write schemaVersion 2 plus version in its synthetic release manifest.",
-    "Adds 17.0.70 hostile-fixture manifest regressions to the mandatory release universe and targeted-delta workflow.",
-    "Regenerates release-source-manifest.json after the completed 17.0.70 source tree is finalized."
+    "Bumps release identity from 17.0.70 to 17.0.71.",
+    "Updates api/failed-only-manifest-cross-version.test.cjs to use expectedFirebaseProject(process.env) for current-target validation only.",
+    "Adds 17.0.71 Node, release-gate Playwright, and independent Playwright regressions to mandatory discovery.",
+    "Regenerates release-source-manifest.json after the completed 17.0.71 source tree is finalized."
   ]
 }
