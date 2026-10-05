@@ -173,7 +173,7 @@ function buildFakeRestaurantProfile({ restaurantId = '', runId = '', anchorDate 
   ];
 
   return {
-    restaurant: { restaurantId, name: QA_WORKSPACE_NAME, timezone: 'America/Chicago', type: 'Bar & Grill', scheduleStyle: 'biweekly', payrollWeekStart: 'Monday', systemSettings: { overtime: 40, enableTargets: true, targetLaborPct: 23 }, ...tag },
+    restaurant: { restaurantId, name: QA_WORKSPACE_NAME, timezone: 'America/Chicago', type: 'Bar & Grill', scheduleStyle: 'biweekly', payrollWeekStart: 'Monday', timeOffPolicy: { enabled: false, cutoffDaysBeforeRelease: 10, monthlyReleaseDay: 25, nonMonthlyReleaseLeadDays: 7, blackouts: [] }, systemSettings: { overtime: 40, enableTargets: true, targetLaborPct: 23 }, ...tag },
     collections: {
       users, vendors, inventoryItems, recipes, menuDependencies, shifts, timeOffRequests, events, timePunches, prepItems, tasks, maintenanceLogs, pmSchedules, sales, financialExpenses, restaurantAdminAlerts, personalReminders: reminders, availabilityRecords, scheduleTemplates, scheduleCoverageTargets,
     },

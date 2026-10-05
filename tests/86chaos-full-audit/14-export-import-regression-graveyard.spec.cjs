@@ -1,16 +1,30 @@
 const { test, expect } = require('@playwright/test');
 const { ownerLikeCreds, requireCreds, login, gotoTab, bodyText, attachJson } = require('./utils/audit-helpers.cjs');
 
+const LOGIN_SURFACE_RE = /Email Address\s*Password|Unlock System|Sign In|Log In/i;
+
 test.describe('14 exports/imports and permanent regression graveyard', () => {
   test('export/import surfaces are reachable and exported-total screens do not show broken values', async ({ page }, testInfo) => {
     const account = ownerLikeCreds();
     requireCreds(account, 'owner-like account');
     await login(page, account.email, account.password);
-    const schedule = await gotoTab(page, 'schedule', { settleMs: 1500, maxText: 50000 });
-    const financials = await gotoTab(page, 'financials', { settleMs: 1500, maxText: 60000 });
-    const inventory = await gotoTab(page, 'inventory', { settleMs: 1500, maxText: 60000 });
+    let authRecoveries = 0;
+    const openExportSurface = async (tab, options) => {
+      let text = await gotoTab(page, tab, options);
+      if (LOGIN_SURFACE_RE.test(text)) {
+        expect(authRecoveries, 'Export/import audit may recover one transient emulator auth handoff, never a repeating logout loop').toBe(0);
+        authRecoveries += 1;
+        await login(page, account.email, account.password, { tab });
+        text = await gotoTab(page, tab, { ...options, force: true });
+      }
+      expect(text, `${tab} export/import surface must remain authenticated after at most one recovery`).not.toMatch(LOGIN_SURFACE_RE);
+      return text;
+    };
+    const schedule = await openExportSurface('schedule', { settleMs: 1500, maxText: 50000 });
+    const financials = await openExportSurface('financials', { settleMs: 1500, maxText: 60000 });
+    const inventory = await openExportSurface('inventory', { settleMs: 1500, maxText: 60000 });
     const joined = `${schedule}\n${financials}\n${inventory}`;
-    await attachJson(testInfo, '14-export-import-surfaces.json', { schedule: schedule.slice(0, 4000), financials: financials.slice(0, 5000), inventory: inventory.slice(0, 5000) });
+    await attachJson(testInfo, '14-export-import-surfaces.json', { authRecoveries, schedule: schedule.slice(0, 4000), financials: financials.slice(0, 5000), inventory: inventory.slice(0, 5000) });
     expect(joined).toMatch(/export|csv|pdf|import|template|download|upload/i);
     expect(joined).not.toMatch(/Invalid Date|Infinity|undefined undefined|null null|\$NaN|NaN%|(?:^|[^A-Za-z])NaN(?:[^A-Za-z]|$)/i);
   });

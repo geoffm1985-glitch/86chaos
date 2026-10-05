@@ -1,29 +1,31 @@
 {
-  "version": "17.0.83",
-  "name": "86 Chaos 17.0.83",
-  "build": "17.0.83",
-  "label": "86 Chaos 17.0.83",
-  "releasedAt": "2026-10-04T21:34:50.554Z",
-  "releaseTitle": "Request Off Maturity Refactor Certification Repair",
+  "version": "17.0.84",
+  "name": "86 Chaos 17.0.84",
+  "build": "17.0.84",
+  "label": "86 Chaos 17.0.84",
+  "releasedAt": "2026-10-05T03:41:00.000Z",
+  "releaseTitle": "Owned Full-Gate Fidelity Repair",
   "notes": [
-    "Repairs the historical 16.0.210 Request Off maturity assertion so it follows the 17.0.82 helper extraction instead of requiring the seeded-date expression to remain inline in the Playwright spec.",
-    "The maturity contract now verifies both the helper original seeded-date behavior and the live Request Off spec wiring that consumes it.",
-    "Production scheduling and Request Off runtime behavior are unchanged.",
-    "Adds targeted Node, Play Store/release-gate Playwright, and independent Playwright regression coverage for the exact blocked-full-gate failure."
+    "Keeps the Ghost Request Off conflict/cancel fixture deterministic by explicitly disabling cutoff policy in the disposable QA restaurant only.",
+    "Allows exactly one export/import audit re-authentication when the emulator handoff transiently returns the login surface; repeated logout still fails.",
+    "Accepts either a healthy app after the designed one-shot chunk recovery navigation or a usable recovery action, while retaining blank-screen and reload-loop guards.",
+    "Uses the shipped Log Out flow before System Administrator runtime-coverage traversal and verifies the signed-out state survives reload.",
+    "Adds targeted Node, Play Store/release-gate Playwright, and independent Playwright coverage for all captured 17.0.83 full-gate failures."
   ],
-  "title": "86 Chaos 17.0.83",
-  "summary": "Repairs a stale historical certification assertion exposed by the first owned 17.0.82 full gate.",
-  "description": "The 17.0.82 full gate blocked before Playwright because a 16.0.210 maturity test still looked for the scheduleFixtureDateFromSeed return expression inside schedule-request-off-management.spec.cjs after that logic was extracted into a shared helper. 17.0.83 updates the maturity evidence to follow the refactor while preserving its behavior and archive-row checks. No production workflow logic changes.",
+  "title": "86 Chaos 17.0.84",
+  "summary": "Repairs four certification-harness fidelity failures exposed by the first owned 17.0.83 full Playwright gate.",
+  "description": "The owned 17.0.83 full gate reached Playwright and exposed deterministic-fixture, emulator auth handoff, chunk-recovery sampling, and Firebase identity-switch coverage defects. 17.0.84 repairs only those QA/certification boundaries and version identity; production Request Off, chunk recovery, and authorization behavior are unchanged.",
   "highlights": [
-    "Blocked-full-gate repair",
-    "Historical maturity refactor fidelity",
-    "Request Off helper wiring certification"
+    "Owned full-gate fidelity repair",
+    "Deterministic Ghost Request Off fixture",
+    "Real System Administrator runtime-coverage identity"
   ],
   "changes": [
-    "Bumps release identity from 17.0.82 to 17.0.83.",
-    "Updates api/release-gate-maturity-16-0-210.test.cjs to verify the seeded-date expression in the extracted helper and the helper live spec wiring.",
-    "Adds targeted Node, Play Store/release-gate Playwright, and independent Playwright regression coverage for the exact blocker.",
-    "Keeps production scheduling and Request Off runtime code unchanged.",
-    "Regenerates release-source-manifest.json for the completed 17.0.83 source tree."
+    "Bumps release identity from 17.0.83 to 17.0.84.",
+    "Explicitly disables Request Off cutoff policy in the disposable full-audit QA restaurant fixture.",
+    "Adds a one-time authenticated retry to the export/import audit and fails on any repeated login fallback.",
+    "Measures stale-chunk success after the designed one-shot navigation as either healthy recovered app or usable recovery UI.",
+    "Performs a real application logout before System Administrator runtime-coverage traversal.",
+    "Adds exact 17.0.84 Node and Playwright regressions and seals the completed source tree."
   ]
 }

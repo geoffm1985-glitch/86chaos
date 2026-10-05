@@ -59,9 +59,19 @@ test.describe('17 stale chunk, offline, refresh, and service-worker resilience',
 
     const recoveryControl = page.locator('[data-chaos-recovery-state], button[aria-label*="recover" i], button:has-text("REFRESH NOW")').first();
     await recoveryControl.waitFor({ state: 'visible', timeout: 15000 }).catch(() => {});
+    await expect.poll(async () => {
+      const state = await page.locator('[data-chaos-recovery-state]').first().getAttribute('data-chaos-recovery-state').catch(() => '');
+      if (state) return `recovery-ui:${state}`;
+      const text = await bodyText(page, 30000);
+      if (text.trim().length > 20 && !FATAL_BLANK_RE.test(text)) return 'healthy-app';
+      return 'pending';
+    }, { timeout: 30000, intervals: [100, 250, 500, 1000] }).not.toBe('pending');
     const recoveryStateNodes = await page.locator('[data-chaos-recovery-state]').evaluateAll(nodes => nodes.map(node => ({ state: node.getAttribute('data-chaos-recovery-state'), text: (node.innerText || '').replace(/\s+/g, ' ').trim().slice(0, 500) }))).catch(() => []);
     const finalText = await bodyText(page, 30000);
     const finalUrl = page.url();
+    const recoveryUiText = recoveryStateNodes.map(row => row.text || '').join('\n');
+    const recoveredHealthyApp = finalText.trim().length > 20 && !FATAL_BLANK_RE.test(finalText);
+    const usableRecoveryUi = RECOVERY_RE.test(`${firstText}\n${finalText}\n${recoveryUiText}`);
     const recoveryEvents = await page.evaluate(() => window.__chaosRecoveryEvents || []).catch(() => []);
     const parsedStateWrites = recoveryEvents
       .filter(x => x.type === 'sessionStorage.setItem' && /chunkRecoveryState|chunk|recovery/i.test(String(x.key || '')))
@@ -104,6 +114,8 @@ test.describe('17 stale chunk, offline, refresh, and service-worker resilience',
       automaticRecoveryAttempts,
       firstNonemptyRecoveryUi: recoveryStateNodes[0]?.state || '',
       finalRouteState: finalUrl,
+      recoveredHealthyApp,
+      usableRecoveryUi,
       problems: summarizeProblems(problems),
     });
 
@@ -111,7 +123,7 @@ test.describe('17 stale chunk, offline, refresh, and service-worker resilience',
     expect(abortedUrl, 'The injected failure must target a lazy chunk, never the CRA boot bundle').toMatch(/\.chunk\.js(?:[?#].*)?$/i);
     expect(abortedUrl, 'The injected failure must never blank the app by aborting bundle.js/main/runtime').not.toMatch(/\/(?:bundle|main|runtime-main)(?:\.[^/?]+)?\.js(?:[?#].*)?$/i);
     expect(firstText, 'Chunk failure must not produce a blank or fatal-only screen').not.toMatch(FATAL_BLANK_RE);
-    expect(finalText, 'Repeated chunk failure must provide a usable update/recovery action').toMatch(RECOVERY_RE);
+    expect(recoveredHealthyApp || usableRecoveryUi, 'Chunk failure must settle on either a healthy recovered app or a usable recovery action').toBe(true);
     expect(maxAutoReloadCount, 'Chunk recovery structured autoReloadCount must never exceed one').toBeLessThanOrEqual(1);
     expect(autoRecoveryStartedTransitions, 'Chunk recovery should start automatic recovery at most once').toBeLessThanOrEqual(1);
     expect(automaticRecoveryAttempts, 'Chunk recovery must not enter an infinite reload loop').toBeLessThanOrEqual(1);

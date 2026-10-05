@@ -42,11 +42,21 @@ test.describe('21 ultimate Chromium runtime execution coverage', () => {
 
     const sys=creds('SYSTEM_ADMIN');
     if (sys.email && sys.password) {
-      await page.context().clearCookies().catch(()=>{});
-      await page.goto('about:blank');
+      await gotoTab(page, 'godmode', { settleMs: 500, maxText: 12000 });
+      const logout = page.getByRole('button', { name: /open sign out|log out/i }).first();
+      await expect(logout, 'Owner session must expose a real app logout before switching runtime-coverage identities').toBeVisible({ timeout: 12000 });
+      await logout.click();
+      const emailBox = page.getByRole('textbox', { name: /^Email Address$/i }).first();
+      await expect(emailBox, 'Owner logout must reach the login surface before System Administrator coverage begins').toBeVisible({ timeout: 12000 });
+      await page.reload({ waitUntil: 'domcontentloaded', timeout: 45000 });
+      await expect(emailBox, 'A reload after logout must stay signed out instead of restoring the owner Firebase session').toBeVisible({ timeout: 12000 });
       await login(page, sys.email, sys.password);
       const god=ROUTE_SPECS.find(r=>r.tab==='godmode');
-      if (god) traversed.push({ route:'godmode', ...(await traverseRouteStates(page, god)) });
+      if (god) {
+        const godResult = await traverseRouteStates(page, god);
+        expect(godResult.gated, 'Verified System Administrator must actually enter godmode before runtime coverage is scored').toBe(false);
+        traversed.push({ route:'godmode', ...godResult });
+      }
     }
 
     const js=await page.coverage.stopJSCoverage();

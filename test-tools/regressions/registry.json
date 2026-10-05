@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "release": "17.0.83",
+  "release": "17.0.84",
   "defects": [
     {
       "defectId": "RG-API-WRAPPER-FIDELITY",
@@ -998,6 +998,25 @@
       ],
       "fidelity": "ACTUAL 17.0.82 BLOCKED FULL-GATE ASSERTION / EXTRACTED REQUEST OFF ANCHOR HELPER / HISTORICAL MATURITY CONTRACT / RELEASE-GATE PLAYWRIGHT / INDEPENDENT PLAYWRIGHT",
       "fixedVersion": "17.0.83",
+      "mandatoryGroup": "deployed"
+    },
+    {
+      "defectId": "RG-OWNED-FULL-GATE-FIDELITY-17084",
+      "origin": "The first owned 17.0.83 full Playwright gate exposed four harness-fidelity failures: Ghost Request Off inherited a cutoff policy that closed its seeded next-day conflict, the desktop export/import audit remained on a transient emulator login surface, stale-chunk certification sampled the intentional one-shot cross-document recovery navigation, and runtime coverage cleared cookies without signing the Owner out of Firebase Auth before attempting System Administrator traversal.",
+      "affectedInvariant": "Owned full-gate tests must preserve the production behavior they certify while using deterministic disposable fixtures, bounded emulator-auth recovery, navigation-safe chunk recovery assertions, and a real authenticated identity transition before privileged runtime coverage is scored.",
+      "reproducer": "tests/86chaos-full-audit/06-request-off-events-integration.spec.cjs / tests/86chaos-full-audit/14-export-import-regression-graveyard.spec.cjs / tests/86chaos-release-gate/17-resilience-chunk-offline.spec.cjs / tests/86chaos-release-gate/21-runtime-code-coverage.spec.cjs / api/release-gate-owned-full-fidelity-17-0-84.test.cjs / tests/86chaos-release-gate/96-owned-full-fidelity-17-0-84.spec.cjs / tests/e2e/owned-full-fidelity-17-0-84.spec.cjs",
+      "permanentTestIds": [
+        "17.0.84 Ghost Request Off fixture keeps the seeded conflict date selectable",
+        "17.0.84 export/import audit allows only one transient auth recovery",
+        "17.0.84 chunk resilience accepts successful one-shot recovery without requiring a stale overlay",
+        "17.0.84 runtime coverage performs a real owner logout before System Administrator traversal",
+        "captured Ghost Request Off and export/import failures have deterministic QA boundaries",
+        "captured chunk and runtime-coverage failures follow the actual recovery and auth lifecycles",
+        "release discovery and targeted delta keep the 17.0.84 regression mandatory",
+        "all four captured 17.0.83 failure modes stay pinned to their narrow harness repairs"
+      ],
+      "fidelity": "ACTUAL 17.0.83 OWNED FULL-GATE PLAYWRIGHT EVIDENCE / DISPOSABLE QA FIXTURE / BOUNDED AUTH RECOVERY / ONE-SHOT CHUNK NAVIGATION / REAL FIREBASE SIGN-OUT / TARGETED NODE / RELEASE-GATE PLAYWRIGHT / INDEPENDENT PLAYWRIGHT",
+      "fixedVersion": "17.0.84",
       "mandatoryGroup": "deployed"
     }
   ]

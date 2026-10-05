@@ -1,7 +1,7 @@
 {
   "schemaVersion": 3,
-  "version": "17.0.83",
-  "sourceHash": "bcd8d25c24c2184b3cadcea091dabb584b66847f783efb2327684067eb6e54ce",
+  "version": "17.0.84",
+  "sourceHash": "c009932bab20301bf6751cc79a74a7221b976397eab4363c824d1c6ac90c8e13",
   "files": [
     {
       "file": ".gitattributes",
@@ -9,7 +9,7 @@
     },
     {
       "file": ".github/workflows/testing-targeted-delta.yml",
-      "sha256": "c132b2fb80c60eb21cb7fff3ac521c81ef257c1b54586842ed36967461dc9921"
+      "sha256": "671ae2be725f02a5bdc101273638609f0a9d82679c627ece99d59800802dc01d"
     },
     {
       "file": ".gitignore",
@@ -284,6 +284,10 @@
       "sha256": "bd12df64c2eea23766ade0011baba7601d4b3a03b2340b841040dd60f056b3a6"
     },
     {
+      "file": "RELEASE_17_0_84.md",
+      "sha256": "0957d5f8f5581728ab0529cf47af781079dce9e9176ff6cfdf55f2033defaad8"
+    },
+    {
       "file": "RELEASE_17_0_9.md",
       "sha256": "8816b631d17b9764f1ab9c3215cee7fcba4f95c24770f71a643f01129c658728"
     },
@@ -541,7 +545,7 @@
     },
     {
       "file": "api/_version.js",
-      "sha256": "3c9dee2cf0d854886d2a9dc1e9ec0ba0769f24104dad5b364a38d8f0ced04333"
+      "sha256": "8334b7289e8d3cb044c818b79ced430f45b78df834a38fc3f1dbec6ac948e61b"
     },
     {
       "file": "api/account-deletion-request.js",
@@ -1312,6 +1316,10 @@
       "sha256": "db339c707e4d8d6d00ac95bc8d8715d6c335e2ca95745d7a02e923f192dba404"
     },
     {
+      "file": "api/release-gate-owned-full-fidelity-17-0-84.test.cjs",
+      "sha256": "0675969190f9e348e7d3f7a94f04e52bcbfa9e4f2f388c9b4b678e354a5c6200"
+    },
+    {
       "file": "api/release-gate-provisioning-report.test.cjs",
       "sha256": "efc08f37d5a35d1b0e310e2e0f8bf8a52639144e3cdb8ce1adb1b369101ed70c"
     },
@@ -1897,11 +1905,11 @@
     },
     {
       "file": "package-lock.json",
-      "sha256": "8d276f9bfbe8a94c869a9b6b19112ceeb991cc947492d9982e42fbef96173f02"
+      "sha256": "83e8ec44009e48745695d5ffafa6152db53130efcac3f0aa87aece00574bc264"
     },
     {
       "file": "package.json",
-      "sha256": "b73bf17cbbde54a6fdb1c7fe03c51f1e90ed19539d9077e4f4df69af5adbef7e"
+      "sha256": "274a589b1ac248974badd946a6cc0d3f45b70d59071c728af061dc914743005a"
     },
     {
       "file": "playwright.config.js",
@@ -2121,7 +2129,7 @@
     },
     {
       "file": "public/version.json",
-      "sha256": "1949046a14a5b9bf40a54ccf952e0aea667c5a2b09da7439c841639397bf2264"
+      "sha256": "eaac25d15c74394d6ff841a806468a9d6a0d01afb1d1a6a4f9b95a557edc6bc5"
     },
     {
       "file": "public/wisco.png",
@@ -2245,7 +2253,7 @@
     },
     {
       "file": "scripts/86chaos-release-gate/release-test-universe.cjs",
-      "sha256": "6b2ee255e29b14094d4b4100ab9692e2bc2d110fc0595eb66b1fddc763944789"
+      "sha256": "9e99d70938c984e268a23a122d5b5753cf757835a8e781fb69282bcd840bf6df"
     },
     {
       "file": "scripts/86chaos-release-gate/reported-current-blockers-20260814-064437.json",
@@ -3420,6 +3428,10 @@
       "sha256": "d062e248baca9cb8791097413682e7c8784b3a396ed5409397cbe2c98325069a"
     },
     {
+      "file": "scripts/validate-17-0-84.js",
+      "sha256": "7ca433e7d975bbaea92a48bff6dbda7516ceaf3a529898ec7d0d9abe9f84f99a"
+    },
+    {
       "file": "scripts/validate-17-0-9.js",
       "sha256": "d491802dd36e11ed4bc3802a258a3f1b3ff32f8f2c57e37eb9290049fb13ad55"
     },
@@ -3601,7 +3613,7 @@
     },
     {
       "file": "src/core/appCore.js",
-      "sha256": "d58a1f6541d0b73d248cc273d21fcf8a043e811e74929ee9ecb0be97383ffd2f"
+      "sha256": "753074b449960dcc50462a850dfec0dbe439eba9a0747dcb50dc8b367765dfa4"
     },
     {
       "file": "src/core/csvSafety.test.js",
@@ -3609,11 +3621,11 @@
     },
     {
       "file": "src/core/customerHelpKnowledge.cjs",
-      "sha256": "2999188e5678beecdb8e5ea724c0d6312e763dd9f1479af4e469fe733c57d09f"
+      "sha256": "6d16a8da2dc0c663a7abf6ed03ed8d9ddd1d3c1dfff9dd1dcc98d5cf08c229cf"
     },
     {
       "file": "src/core/customerHelpKnowledge.js",
-      "sha256": "26b19250ae09f91cab9ea606dce54c0822564d088311431d71d4064165c85196"
+      "sha256": "4ae2418a5ba0e72becb17e6d2c9cea5a80dbc11c3c4b77fee86368be8f292860"
     },
     {
       "file": "src/core/fileCompression.js",
@@ -4073,11 +4085,11 @@
     },
     {
       "file": "test-tools/certification/cost-performance-baselines.json",
-      "sha256": "b701a9b67dc7ee0f7dad99eae53de6ef68b60688628c665737a4c7773614a965"
+      "sha256": "b9c317e4580ba6f3c0e91c77f4f458a0b4f01a2c2b646587123b04678cf94156"
     },
     {
       "file": "test-tools/certification/groups.json",
-      "sha256": "9b1a70bc0af9cf9e5431f7624eb329b8285cc53d9c9fa95360251757edfbe0c4"
+      "sha256": "e11cd3c3aec9ee1bf7abadb54cf7012888427244dbbe49159b7091cec81d13da"
     },
     {
       "file": "test-tools/certification/permission-matrix.json",
@@ -4129,7 +4141,7 @@
     },
     {
       "file": "test-tools/regressions/registry.json",
-      "sha256": "cc0d3ff7ac8112bbed3b9b11ce64d2f1acaede8ab1b6ec85e3bf885d4cd3052b"
+      "sha256": "7d72937dabbeddda0713a120256b6b509725165384827a96526e6d0a7158f8fa"
     },
     {
       "file": "test-tools/reporters/chaos-release-gate-reporter.cjs",
@@ -4241,7 +4253,7 @@
     },
     {
       "file": "tests/86chaos-full-audit/14-export-import-regression-graveyard.spec.cjs",
-      "sha256": "3a355b42d05496439d9f77978fee3bd5a2d64930c72fe46ada89a79a85f8a16e"
+      "sha256": "7166b53181f72e972c2bc0a97dd8a11e9e59538f8bb406da43e1ad8cf93fb466"
     },
     {
       "file": "tests/86chaos-full-audit/utils/audit-helpers.cjs",
@@ -4249,7 +4261,7 @@
     },
     {
       "file": "tests/86chaos-full-audit/utils/fake-restaurant-profile.cjs",
-      "sha256": "f77a824cd26fd43453b0262e1a307d5397e3f97a6024d8f3e8336542786ce854"
+      "sha256": "8e7b130c73eeb1db6f68d8c88cbe3528f795ccd0840df021a95d9a1e5882adc1"
     },
     {
       "file": "tests/86chaos-full-audit/utils/math-oracle.cjs",
@@ -4317,7 +4329,7 @@
     },
     {
       "file": "tests/86chaos-release-gate/17-resilience-chunk-offline.spec.cjs",
-      "sha256": "9af333e5b40ebb4b70e5c67e75d7d02a019a19a5a815538c9fadaac9e25eda76"
+      "sha256": "fc78d32e3a123fae0e727b2960091cb568b1b231ce676a2f2ad8b79ccd5086c8"
     },
     {
       "file": "tests/86chaos-release-gate/18-api-contract-release-gate.spec.cjs",
@@ -4333,7 +4345,7 @@
     },
     {
       "file": "tests/86chaos-release-gate/21-runtime-code-coverage.spec.cjs",
-      "sha256": "a88a47ef15395e3207d47b94ba7e22b9aceb63f48d5165f2e35f6c8c8447186f"
+      "sha256": "44a814d5a0df40cd7cc5e82c1a990f1a02f9df0a37ad9155b10b93b223035e2a"
     },
     {
       "file": "tests/86chaos-release-gate/22-security-headers-input-fuzz.spec.cjs",
@@ -4628,6 +4640,10 @@
       "sha256": "651e14a7447b238c12987127e08331f15f27eb0774a255e6660cc5094289c0f4"
     },
     {
+      "file": "tests/86chaos-release-gate/96-owned-full-fidelity-17-0-84.spec.cjs",
+      "sha256": "93fe78f998f3f125c878d86fb968475d1e5969dda2c2240e1be00e1ef23b565a"
+    },
+    {
       "file": "tests/86chaos-release-gate/exhaustive-surface-matrix.cjs",
       "sha256": "3421c84129bd194684da72a2cc0822a49f85d3c3e274d7b09adf567a6d0fa3de"
     },
@@ -4734,6 +4750,10 @@
     {
       "file": "tests/e2e/lazy-chunk-interception-17-0-81.spec.cjs",
       "sha256": "1d645a4fad0e3539995d9f1914494cc881c99abb8091c8a37c05b01f5ee39e8f"
+    },
+    {
+      "file": "tests/e2e/owned-full-fidelity-17-0-84.spec.cjs",
+      "sha256": "e578851f52e45cad2bd6ef38da56544dd69a546ee3930a78a4067363949c95bb"
     },
     {
       "file": "tests/e2e/partial-run-evidence-emulator-target-17-0-74.spec.cjs",
