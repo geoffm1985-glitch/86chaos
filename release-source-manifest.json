@@ -1,7 +1,7 @@
 {
   "schemaVersion": 3,
   "version": "17.0.84",
-  "sourceHash": "a7a3399dc568ee1339bcba39f1969ab434d291736508b6da036fb5e37ad5e927",
+  "sourceHash": "d169f07479df70d177a0a94f700f21ba7fb5fe91f60fbc22099729be6eff3f86",
   "files": [
     {
       "file": ".gitattributes",
@@ -1468,6 +1468,10 @@
       "sha256": "2dd83c260f3f42ccdba658374b5fce04ebe29731a609f415bb00308607d661de"
     },
     {
+      "file": "api/runtime-skip-context.test.cjs",
+      "sha256": "d0368d17e4d0ae32bc94008ba3e983bd90d6bb1702eebf72c1b3ef9c170f584c"
+    },
+    {
       "file": "api/safe-write-hostile-17-0-1.test.cjs",
       "sha256": "0633ae0676fb17cc1cb3e32b08b24933e7c256887b4c530d9efcc4ae6bae040f"
     },
@@ -2177,7 +2181,7 @@
     },
     {
       "file": "scripts/86chaos-release-gate/collect-release-gate-report.cjs",
-      "sha256": "c2047d27bd72c709a93221c166c03a0910ee5e1a0957bab4da6daef15eba7f11"
+      "sha256": "22a1792dab389b0c4e00097625bd8187778e7c33338533d6c77a0157be78b7f6"
     },
     {
       "file": "scripts/86chaos-release-gate/critical-test-inventory.cjs",
@@ -2185,7 +2189,7 @@
     },
     {
       "file": "scripts/86chaos-release-gate/current-release-repair-scope.cjs",
-      "sha256": "edec8e09537f39d8140fb4b648ad80a748a6bd58a2c506bf3e7c141c27e76c6a"
+      "sha256": "796c8daccf4ba3805264c9b63dc33805fe8f2d9c28be4dea038b1a2f2f17b40a"
     },
     {
       "file": "scripts/86chaos-release-gate/dependency-preflight.cjs",
@@ -2197,7 +2201,7 @@
     },
     {
       "file": "scripts/86chaos-release-gate/expected-skips.cjs",
-      "sha256": "aede6cf7f86796ac4dc880e78db50c62c33a1a00d493888195be126611eea14e"
+      "sha256": "1592634c6a3cde49d5e3bd80eaa705437a095deeadeb5ec2e07c148486dceda3"
     },
     {
       "file": "scripts/86chaos-release-gate/failed-only-manifest-utils.cjs",
@@ -2318,6 +2322,10 @@
     {
       "file": "scripts/86chaos-release-gate/run-rules-release-gate.cjs",
       "sha256": "2346b9f3e6770ece6366edb37b8dd14bb3c395c2f9b07523a834bc17f2ee6b77"
+    },
+    {
+      "file": "scripts/86chaos-release-gate/runtime-crawl-repair-scope.json",
+      "sha256": "aa3cd7770db23e96eb08022739072b03e01f417e4dce772f44bc23622c37ea87"
     },
     {
       "file": "scripts/86chaos-release-gate/server-firebase-boundary-preflight.cjs",
@@ -4345,7 +4353,7 @@
     },
     {
       "file": "tests/86chaos-release-gate/21-runtime-code-coverage.spec.cjs",
-      "sha256": "44a814d5a0df40cd7cc5e82c1a990f1a02f9df0a37ad9155b10b93b223035e2a"
+      "sha256": "8042146ebff089ab4a02e0a01f4ecb3887e083a86daa9d25510c977ebf422d12"
     },
     {
       "file": "tests/86chaos-release-gate/22-security-headers-input-fuzz.spec.cjs",
@@ -4644,6 +4652,10 @@
       "sha256": "93fe78f998f3f125c878d86fb968475d1e5969dda2c2240e1be00e1ef23b565a"
     },
     {
+      "file": "tests/86chaos-release-gate/97-runtime-crawl-recovery.spec.cjs",
+      "sha256": "bbaee3f4f6729da6170a3c3e2b31a664ef0b63e8ee0c6d693e08d544aab71a36"
+    },
+    {
       "file": "tests/86chaos-release-gate/exhaustive-surface-matrix.cjs",
       "sha256": "3421c84129bd194684da72a2cc0822a49f85d3c3e274d7b09adf567a6d0fa3de"
     },
@@ -4681,7 +4693,7 @@
     },
     {
       "file": "tests/86chaos-release-gate/utils/exhaustive-ui-helpers.cjs",
-      "sha256": "9812b9adca3e5640ba983397ffeb2e956f40c102f1c95babbd2c1c348c1cc510"
+      "sha256": "e47c72c6c8bca416178d35ba0e69283d7533662bd157cd0807617191deb20b12"
     },
     {
       "file": "tests/86chaos-release-gate/utils/lazy-chunk-request.cjs",

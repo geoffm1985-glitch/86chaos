@@ -4,7 +4,7 @@ const {
   attachJson, PERMISSION_GATE_RE,
 } = require('../86chaos-full-audit/utils/audit-helpers.cjs');
 const { ROUTE_STATES } = require('./exhaustive-surface-matrix.cjs');
-const { applyStatePath } = require('./utils/exhaustive-ui-helpers.cjs');
+const { applyStatePath, recoverSiblingStatePath } = require('./utils/exhaustive-ui-helpers.cjs');
 
 function mergeRanges(ranges) {
   const sorted = ranges.filter(r => r.count > 0 && r.endOffset > r.startOffset).map(r => [r.startOffset, r.endOffset]).sort((a,b)=>a[0]-b[0]);
@@ -18,10 +18,13 @@ async function traverseRouteStates(page, route) {
   const text = await gotoTab(page, route.tab, { settleMs: 500, maxText: 18000 });
   if (PERMISSION_GATE_RE.test(text)) return { gated:true, states:0 };
   let states=1;
+  let previous=[];
   for (const state of ROUTE_STATES[route.tab] || []) {
-    await gotoTab(page, route.tab, { settleMs: 250, force:true });
-    const res = await applyStatePath(page, state, { strict:false });
+    const traversal = await recoverSiblingStatePath(page, previous, state, route.tab);
+    const res = await applyStatePath(page, traversal, { strict:false });
     if (res.ok) states++;
+    previous=state;
+    console.log('[runtime-coverage] ' + route.tab + ' > ' + state.map(String).join(' > ') + ': ' + (res.ok ? 'visited' : 'missing'));
   }
   return { gated:false, states };
 }

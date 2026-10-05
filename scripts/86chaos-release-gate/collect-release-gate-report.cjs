@@ -163,7 +163,7 @@ function collectSuites(suites = [], parents = []) {
 }
 if (playwright) collectSuites(playwright.suites || []);
 const skippedTests = tests.filter(t => t.status === 'skipped');
-const skipValidation = validateReleaseSkips(tests.map(t => ({ ...t, file: normSpec(t.file), title: stripPlaywrightFileTitlePrefix(t.file, t.title) })));
+const skipValidation = validateReleaseSkips(tests.map(t => ({ ...t, file: normSpec(t.file), title: stripPlaywrightFileTitlePrefix(t.file, t.title) })), { firebaseContext: preflight.ok === true ? { target: preflight.firebaseTarget, projectId: preflight.firebaseProjectId, appUrl: preflight.appUrl } : null });
 const timedOutTests = tests.filter(t => t.status === 'timedOut');
 const failedTests = tests.filter(t => !['passed', 'skipped', 'timedOut'].includes(t.status));
 const unexpectedTests = [...failedTests, ...timedOutTests];

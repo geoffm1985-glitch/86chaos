@@ -1,0 +1,281 @@
+[
+  {
+    "specPath": "86chaos-release-gate/21-runtime-code-coverage.spec.cjs",
+    "fullSuitePath": "21 ultimate Chromium runtime execution coverage",
+    "exactTestTitle": "source-derived route/state crawl executes a high share of shipped application code and functions",
+    "project": "chromium",
+    "projects": [
+      "chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/28-exhaustive-route-state-control-graph.spec.cjs",
+    "fullSuitePath": "28 ultimate route + nested-state + control graph",
+    "exactTestTitle": "every real route, declared nested surface, field, and safe control is rendered and probeable",
+    "project": "chromium",
+    "projects": [
+      "chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/31-exhaustive-responsive-nested-layout.spec.cjs",
+    "fullSuitePath": "31 exhaustive responsive layout across nested states",
+    "exactTestTitle": "every route and nested surface fits phone/tablet/laptop/desktop without unusable overflow or tap targets [narrow-phone]",
+    "project": "chromium",
+    "projects": [
+      "chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/31-exhaustive-responsive-nested-layout.spec.cjs",
+    "fullSuitePath": "31 exhaustive responsive layout across nested states",
+    "exactTestTitle": "every route and nested surface fits phone/tablet/laptop/desktop without unusable overflow or tap targets [phone]",
+    "project": "chromium",
+    "projects": [
+      "chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/31-exhaustive-responsive-nested-layout.spec.cjs",
+    "fullSuitePath": "31 exhaustive responsive layout across nested states",
+    "exactTestTitle": "every route and nested surface fits phone/tablet/laptop/desktop without unusable overflow or tap targets [tablet]",
+    "project": "chromium",
+    "projects": [
+      "chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/31-exhaustive-responsive-nested-layout.spec.cjs",
+    "fullSuitePath": "31 exhaustive responsive layout across nested states",
+    "exactTestTitle": "every route and nested surface fits phone/tablet/laptop/desktop without unusable overflow or tap targets [laptop]",
+    "project": "chromium",
+    "projects": [
+      "chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/31-exhaustive-responsive-nested-layout.spec.cjs",
+    "fullSuitePath": "31 exhaustive responsive layout across nested states",
+    "exactTestTitle": "every route and nested surface fits phone/tablet/laptop/desktop without unusable overflow or tap targets [desktop]",
+    "project": "chromium",
+    "projects": [
+      "chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/32-exhaustive-nested-accessibility.spec.cjs",
+    "fullSuitePath": "32 nested-state WCAG accessibility",
+    "exactTestTitle": "every declared nested surface has zero serious/critical WCAG violations on desktop and mobile projects",
+    "project": "chromium",
+    "projects": [
+      "chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/57-sticky-header-touch-handoff.spec.cjs",
+    "fullSuitePath": "57 Schedule Builder direct-touch sticky header handoff",
+    "exactTestTitle": "mobile direct-touch drag keeps day header below sticky control deck",
+    "project": "chromium",
+    "projects": [
+      "chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/69-yardmaster-firebase-bridge-17-0-57.spec.cjs",
+    "fullSuitePath": "17.0.57 Yardmaster Firebase bridge",
+    "exactTestTitle": "root bridge is discoverable and names existing complete gate scripts",
+    "project": "chromium",
+    "projects": [
+      "chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/69-yardmaster-firebase-bridge-17-0-57.spec.cjs",
+    "fullSuitePath": "17.0.57 Yardmaster Firebase bridge",
+    "exactTestTitle": "local Yardmaster observes actual SDK readiness and blocks live Firebase",
+    "project": "chromium",
+    "projects": [
+      "chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/76-emulator-runtime-boundaries-17-0-64.spec.cjs",
+    "fullSuitePath": "17.0.64 emulator runtime-boundary cascade repair",
+    "exactTestTitle": "selected emulator project, storage readiness path, and compact Schedule CSS stay fail-closed",
+    "project": "chromium",
+    "projects": [
+      "chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/76-emulator-runtime-boundaries-17-0-64.spec.cjs",
+    "fullSuitePath": "17.0.64 emulator runtime-boundary cascade repair",
+    "exactTestTitle": "System Administrator emulator route has no Firestore internal assertion, Storage-root 501, or CRA runtime overlay",
+    "project": "chromium",
+    "projects": [
+      "chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/28-exhaustive-route-state-control-graph.spec.cjs",
+    "fullSuitePath": "28 ultimate route + nested-state + control graph",
+    "exactTestTitle": "every real route, declared nested surface, field, and safe control is rendered and probeable",
+    "project": "mobile-chromium",
+    "projects": [
+      "mobile-chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/31-exhaustive-responsive-nested-layout.spec.cjs",
+    "fullSuitePath": "31 exhaustive responsive layout across nested states",
+    "exactTestTitle": "every route and nested surface fits phone/tablet/laptop/desktop without unusable overflow or tap targets [narrow-phone]",
+    "project": "mobile-chromium",
+    "projects": [
+      "mobile-chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/31-exhaustive-responsive-nested-layout.spec.cjs",
+    "fullSuitePath": "31 exhaustive responsive layout across nested states",
+    "exactTestTitle": "every route and nested surface fits phone/tablet/laptop/desktop without unusable overflow or tap targets [phone]",
+    "project": "mobile-chromium",
+    "projects": [
+      "mobile-chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/31-exhaustive-responsive-nested-layout.spec.cjs",
+    "fullSuitePath": "31 exhaustive responsive layout across nested states",
+    "exactTestTitle": "every route and nested surface fits phone/tablet/laptop/desktop without unusable overflow or tap targets [tablet]",
+    "project": "mobile-chromium",
+    "projects": [
+      "mobile-chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/31-exhaustive-responsive-nested-layout.spec.cjs",
+    "fullSuitePath": "31 exhaustive responsive layout across nested states",
+    "exactTestTitle": "every route and nested surface fits phone/tablet/laptop/desktop without unusable overflow or tap targets [laptop]",
+    "project": "mobile-chromium",
+    "projects": [
+      "mobile-chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/31-exhaustive-responsive-nested-layout.spec.cjs",
+    "fullSuitePath": "31 exhaustive responsive layout across nested states",
+    "exactTestTitle": "every route and nested surface fits phone/tablet/laptop/desktop without unusable overflow or tap targets [desktop]",
+    "project": "mobile-chromium",
+    "projects": [
+      "mobile-chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/32-exhaustive-nested-accessibility.spec.cjs",
+    "fullSuitePath": "32 nested-state WCAG accessibility",
+    "exactTestTitle": "every declared nested surface has zero serious/critical WCAG violations on desktop and mobile projects",
+    "project": "mobile-chromium",
+    "projects": [
+      "mobile-chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/57-sticky-header-touch-handoff.spec.cjs",
+    "fullSuitePath": "57 Schedule Builder direct-touch sticky header handoff",
+    "exactTestTitle": "mobile direct-touch drag keeps day header below sticky control deck",
+    "project": "mobile-chromium",
+    "projects": [
+      "mobile-chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/69-yardmaster-firebase-bridge-17-0-57.spec.cjs",
+    "fullSuitePath": "17.0.57 Yardmaster Firebase bridge",
+    "exactTestTitle": "root bridge is discoverable and names existing complete gate scripts",
+    "project": "mobile-chromium",
+    "projects": [
+      "mobile-chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/69-yardmaster-firebase-bridge-17-0-57.spec.cjs",
+    "fullSuitePath": "17.0.57 Yardmaster Firebase bridge",
+    "exactTestTitle": "local Yardmaster observes actual SDK readiness and blocks live Firebase",
+    "project": "mobile-chromium",
+    "projects": [
+      "mobile-chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/76-emulator-runtime-boundaries-17-0-64.spec.cjs",
+    "fullSuitePath": "17.0.64 emulator runtime-boundary cascade repair",
+    "exactTestTitle": "selected emulator project, storage readiness path, and compact Schedule CSS stay fail-closed",
+    "project": "mobile-chromium",
+    "projects": [
+      "mobile-chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/76-emulator-runtime-boundaries-17-0-64.spec.cjs",
+    "fullSuitePath": "17.0.64 emulator runtime-boundary cascade repair",
+    "exactTestTitle": "System Administrator emulator route has no Firestore internal assertion, Storage-root 501, or CRA runtime overlay",
+    "project": "mobile-chromium",
+    "projects": [
+      "mobile-chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/97-runtime-crawl-recovery.spec.cjs",
+    "fullSuitePath": "runtime crawl bounded role replacement recovery",
+    "exactTestTitle": "a completed Drag Board click survives a delayed acknowledgement without waiting on the vanished button",
+    "project": "chromium",
+    "projects": [
+      "chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/97-runtime-crawl-recovery.spec.cjs",
+    "fullSuitePath": "runtime crawl bounded role replacement recovery",
+    "exactTestTitle": "a vanished control without selected-state evidence fails promptly instead of claiming coverage",
+    "project": "chromium",
+    "projects": [
+      "chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/97-runtime-crawl-recovery.spec.cjs",
+    "fullSuitePath": "runtime crawl bounded role replacement recovery",
+    "exactTestTitle": "sibling recovery visits real tabs without reopening and closing their shared parent",
+    "project": "chromium",
+    "projects": [
+      "chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/97-runtime-crawl-recovery.spec.cjs",
+    "fullSuitePath": "runtime crawl bounded role replacement recovery",
+    "exactTestTitle": "a completed Drag Board click survives a delayed acknowledgement without waiting on the vanished button",
+    "project": "mobile-chromium",
+    "projects": [
+      "mobile-chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/97-runtime-crawl-recovery.spec.cjs",
+    "fullSuitePath": "runtime crawl bounded role replacement recovery",
+    "exactTestTitle": "a vanished control without selected-state evidence fails promptly instead of claiming coverage",
+    "project": "mobile-chromium",
+    "projects": [
+      "mobile-chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/97-runtime-crawl-recovery.spec.cjs",
+    "fullSuitePath": "runtime crawl bounded role replacement recovery",
+    "exactTestTitle": "sibling recovery visits real tabs without reopening and closing their shared parent",
+    "project": "mobile-chromium",
+    "projects": [
+      "mobile-chromium"
+    ]
+  }
+]

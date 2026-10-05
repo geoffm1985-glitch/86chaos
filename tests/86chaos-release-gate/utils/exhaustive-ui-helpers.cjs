@@ -33,7 +33,7 @@ async function firstVisibleFromLocator(locator, { limit = 20, timeout = 500 } = 
   for (let i = 0; i < count; i += 1) {
     const candidate = locator.nth(i);
     if (await candidate.isVisible({ timeout }).catch(() => false)) {
-      await candidate.scrollIntoViewIfNeeded().catch(() => {});
+      await candidate.scrollIntoViewIfNeeded({ timeout: 1200 }).catch(() => {});
       return candidate;
     }
   }
@@ -127,7 +127,7 @@ async function findStateControl(page, label) {
   for (const index of indexes) {
     const candidate = page.locator(STATE_INTERACTIVE_SELECTOR).nth(index);
     if (await candidate.isVisible({ timeout: 350 }).catch(() => false)) {
-      await candidate.scrollIntoViewIfNeeded().catch(() => {});
+      await candidate.scrollIntoViewIfNeeded({ timeout: 1200 }).catch(() => {});
       return candidate;
     }
   }
@@ -228,12 +228,19 @@ async function applyStatePath(page, path, { strict = true } = {}) {
       if (strict) throw new Error(`Expected exhaustive sub-surface control not found: ${String(label)}`);
       return { ok: false, steps, missing: String(label) };
     }
-    await c.scrollIntoViewIfNeeded().catch(() => {});
-    await c.click({ timeout: 5000 }).catch(async (err) => {
+    try {
+      await c.click({ timeout: 5000 });
+    } catch (err) {
       const msg = String(err?.message || err);
-      if (!/intercepts pointer events|not stable|timeout/i.test(msg)) throw err;
-      await c.evaluate(el => el.click());
-    });
+      if (!/intercepts pointer events|not stable|timeout|detached/i.test(msg)) throw err;
+      // The real click can succeed while React replaces a button with its
+      // selected tab. Never wait on or click the vanished role again.
+      if (!await stateLabelAlreadyVisible(page, label)) {
+        const fresh = await waitForStateControl(page, label);
+        if (!fresh) throw new Error('State control disappeared before activation: ' + String(label), { cause: err });
+        await fresh.click({ timeout: 5000 });
+      }
+    }
     await settleReactFrames(page);
     await dismissBlockingDialogs(page, { maxPasses: 4 }).catch(() => null);
     await neutralizeTestingPreviewOverlays(page).catch(() => null);
