@@ -1,6 +1,7 @@
 {
-  "schemaVersion": 1,
-  "sourceHash": "c009932bab20301bf6751cc79a74a7221b976397eab4363c824d1c6ac90c8e13",
+  "schemaVersion": 3,
+  "version": "17.0.84",
+  "sourceHash": "a7a3399dc568ee1339bcba39f1969ab434d291736508b6da036fb5e37ad5e927",
   "files": [
     {
       "file": ".gitattributes",
@@ -8,7 +9,7 @@
     },
     {
       "file": ".github/workflows/testing-targeted-delta.yml",
-      "sha256": "671ae2be725f02a5bdc101273638609f0a9d82679c627ece99d59800802dc01d"
+      "sha256": "ad4bbbbcd5370014c6f6bf751c3812b5eb9a491915a8ee98cfa1e0cdc61f9321"
     },
     {
       "file": ".gitignore",

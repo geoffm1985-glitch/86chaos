@@ -57,7 +57,7 @@ jobs:
           const fs = require('fs');
           const identity = require('./scripts/86chaos-release-gate/source-identity.cjs');
           const captured = identity.captureSourceIdentity(process.cwd());
-          const manifest = { schemaVersion: 1, sourceHash: captured.sourceHash, files: captured.files };
+          const manifest = { schemaVersion: 3, version: captured.version, sourceHash: captured.sourceHash, files: captured.files };
           fs.writeFileSync('release-source-manifest.json', JSON.stringify(manifest, null, 2) + '\n');
           NODE
           if git diff --quiet -- release-source-manifest.json; then
