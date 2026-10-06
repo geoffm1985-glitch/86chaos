@@ -1,7 +1,7 @@
 {
   "schemaVersion": 3,
   "version": "17.0.84",
-  "sourceHash": "c44accd0383d98b0eedc3ef08f2ae9a33dd8e9333ca7990a6d155516ca6f70dd",
+  "sourceHash": "29f5c23c7078789fb1eaa5ffd9b1dd4c526a0755554481dab96bda8473f193a7",
   "files": [
     {
       "file": ".gitattributes",
@@ -1452,6 +1452,14 @@
       "sha256": "6809be6999cc398b53b12eea9eef2890c76900ad1a3f39b0f36aeb795d60c043"
     },
     {
+      "file": "api/runtime-coverage-aggregation.test.cjs",
+      "sha256": "d5e5e9dfbf8314ece9394fc13a11d6b9c5ad81775dab02bacaf6df74e354cb05"
+    },
+    {
+      "file": "api/runtime-crawl-modal-exit.test.cjs",
+      "sha256": "65d4f14aa3497af78e462dbcf2dd9f81cfaed5d27cc19a1a40dd75f9483519ee"
+    },
+    {
       "file": "api/runtime-health-evidence-16-0-231.test.cjs",
       "sha256": "4ff76624dadc3efb008e1b12342387fd5c0a913fcd31ddc4656884c461f8df0e"
     },
@@ -1913,7 +1921,7 @@
     },
     {
       "file": "package.json",
-      "sha256": "274a589b1ac248974badd946a6cc0d3f45b70d59071c728af061dc914743005a"
+      "sha256": "42bf8177620491acdaa296988d5030b49a2144a7a63b18fde886c242ca0bfafa"
     },
     {
       "file": "playwright.config.js",
@@ -2325,7 +2333,7 @@
     },
     {
       "file": "scripts/86chaos-release-gate/runtime-crawl-repair-scope.json",
-      "sha256": "ce7c8c0579c834d9fe771f78a4621870614d6156324a2e995357f8aeadf597d2"
+      "sha256": "7b7a3da18a4e64b517b8df28eb6818cbb5bce45510fd10776e61cfd381083469"
     },
     {
       "file": "scripts/86chaos-release-gate/server-firebase-boundary-preflight.cjs",
@@ -4132,6 +4140,10 @@
       "sha256": "26fa668e11a6d1c59bd9979ecf3dea13015811be14257d52dd687fa474d57531"
     },
     {
+      "file": "test-tools/fixtures/runtime-coverage-reload-17-0-84.json",
+      "sha256": "e781dd356d853bb70402b040860f3c0b2b6f7133dbe1529ce4d79ce106e9a097"
+    },
+    {
       "file": "test-tools/mutations/critical-mutations.cjs",
       "sha256": "165ecb08cab756bee06e66279565e23e25a864232ebe2d5b55fb90e6c9d3a4c7"
     },
@@ -4353,7 +4365,7 @@
     },
     {
       "file": "tests/86chaos-release-gate/21-runtime-code-coverage.spec.cjs",
-      "sha256": "8042146ebff089ab4a02e0a01f4ecb3887e083a86daa9d25510c977ebf422d12"
+      "sha256": "31b28643e1aaab9bcfb6ce845f81943ce7841b82f593e21e2f31ddfee9a678ed"
     },
     {
       "file": "tests/86chaos-release-gate/22-security-headers-input-fuzz.spec.cjs",
@@ -4653,7 +4665,7 @@
     },
     {
       "file": "tests/86chaos-release-gate/97-runtime-crawl-recovery.spec.cjs",
-      "sha256": "23795b17e7aa2a89825dbc38b02b397f3db5deb75f6b351bcfbb75a2d197c278"
+      "sha256": "eef44d111c2f3c2bd49e1bdefd5ce47eb5d7325e754f02dd6af5d2dd3595d576"
     },
     {
       "file": "tests/86chaos-release-gate/exhaustive-surface-matrix.cjs",
@@ -4693,11 +4705,15 @@
     },
     {
       "file": "tests/86chaos-release-gate/utils/exhaustive-ui-helpers.cjs",
-      "sha256": "61cd9beb3ed9a8fad4aa548a6a64c5e0ba61df4a4831c024f0ef1b07e0578835"
+      "sha256": "87bdec3442c7d075398f400e8231bbd7ca82664173e21ca49060eaf0268967f0"
     },
     {
       "file": "tests/86chaos-release-gate/utils/lazy-chunk-request.cjs",
       "sha256": "0a7faf705f4c119227da04a51a0055585ec07bf13c9af1eb76a9477286bde669"
+    },
+    {
+      "file": "tests/86chaos-release-gate/utils/runtime-coverage-summary.cjs",
+      "sha256": "3f63538027f6b02ae9fc6e35d4cc9578d1b0c4e7382f75880589f70f3b08b450"
     },
     {
       "file": "tests/86chaos-release-gate/utils/yardmaster-runtime-target.cjs",

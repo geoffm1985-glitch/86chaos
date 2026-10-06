@@ -3,6 +3,7 @@ const { expect } = require('@playwright/test');
 const {
   bodyText,
   attachJson,
+  visibleDialogSnapshot,
   dismissBlockingDialogs,
   neutralizeTestingPreviewOverlays,
   FATAL_TEXT_RE,
@@ -216,6 +217,29 @@ async function stateLabelAlreadyVisible(page, label) {
 
 
 
+// These action/title pairs come from the shipped Schedule Builder and HR Modal
+// components. A new unrelated dialog is not evidence that a state click worked.
+const STATE_DIALOG_SURFACES = [
+  ['Event', /^(?:Add|Edit) Special Event$/i],
+  ['Edit Presets', /^Manage Custom Shifts$/i],
+  ['Copy Month', /^Auto-Populate Schedule$/i],
+  ['Publish Manual', /^Publish a Training Manual$/i],
+  ['Assign Checklist', /^Assign Onboarding Checklist$/i],
+  ['Add Certification', /^Add Certification$/i],
+  ['Add Confidential Note', /^Add Confidential Performance Note$/i],
+];
+
+function stateDialogTitlePattern(label) {
+  return STATE_DIALOG_SURFACES.find(([action]) => rx(label).test(action))?.[1] || null;
+}
+
+function newlyOpenedStateDialog(label, before = [], after = []) {
+  const expectedTitle = stateDialogTitlePattern(label);
+  if (!expectedTitle) return null;
+  const previousTitles = new Set(before.map(dialog => dialog.title));
+  return after.find(dialog => expectedTitle.test(dialog.title) && !previousTitles.has(dialog.title)) || null;
+}
+
 async function applyStatePath(page, path, { strict = true } = {}) {
   const steps = [];
   for (const label of path || []) {
@@ -228,14 +252,21 @@ async function applyStatePath(page, path, { strict = true } = {}) {
       if (strict) throw new Error(`Expected exhaustive sub-surface control not found: ${String(label)}`);
       return { ok: false, steps, missing: String(label) };
     }
+    const dialogTitlePattern = stateDialogTitlePattern(label);
+    const dialogsBeforeClick = dialogTitlePattern ? await visibleDialogSnapshot(page) : [];
+    let openedDialog = null;
     try {
       await c.click({ timeout: 5000 });
     } catch (err) {
       const msg = String(err?.message || err);
       if (!/intercepts pointer events|not stable|timeout|detached/i.test(msg)) throw err;
-      // The real click can succeed while React replaces a button with its
-      // selected tab. Never wait on or click the vanished role again.
-      if (!await stateLabelAlreadyVisible(page, label)) {
+      // A completed click may replace its trigger with a selected tab or open
+      // its declared dialog before acknowledgement arrives. Prove that state
+      // before considering a retry of the old trigger.
+      openedDialog = dialogTitlePattern
+        ? newlyOpenedStateDialog(label, dialogsBeforeClick, await visibleDialogSnapshot(page))
+        : null;
+      if (!openedDialog && !await stateLabelAlreadyVisible(page, label)) {
         const fresh = await waitForStateControl(page, label);
         if (!fresh) throw new Error('State control disappeared before activation: ' + String(label), { cause: err });
         await fresh.click({ timeout: 5000 });
@@ -246,7 +277,7 @@ async function applyStatePath(page, path, { strict = true } = {}) {
     await neutralizeTestingPreviewOverlays(page).catch(() => null);
     const after = await bodyText(page, 16000);
     if (FATAL_TEXT_RE.test(after) || BAD_VALUE_RE.test(after)) throw new Error(`State click ${String(label)} produced broken UI.`);
-    steps.push({ label: String(label), active: await stateLabelAlreadyVisible(page, label) });
+    steps.push({ label: String(label), active: Boolean(openedDialog) || await stateLabelAlreadyVisible(page, label), ...(openedDialog ? { openedDialogTitle: openedDialog.title } : {}) });
   }
   return { ok: true, steps };
 }
@@ -305,8 +336,18 @@ async function recoverExitedStateModal(page, nextLabel) {
   }
   // Leave a completed form through its own non-mutating exit. A visible
   // background navigation button is not actionable through a modal backdrop.
-  const exit = modal.getByRole('button', { name: /^(?:Cancel|Close)$/i }).first();
-  if (!await exit.isVisible().catch(() => false)) throw new Error('Cannot safely leave nested state modal before ' + raw);
+  // The shared Modal names its header exit "Close <dialog title>".
+  // Search only this modal and skip hidden or disabled duplicate exits.
+  const exits = modal.getByRole('button', { name: /^(?:Cancel|Close(?:\s+.+)?)$/i });
+  let exit = null;
+  for (let index = 0, count = await exits.count(); index < count; index += 1) {
+    const candidate = exits.nth(index);
+    if (await candidate.isVisible().catch(() => false) && await candidate.isEnabled().catch(() => false)) {
+      exit = candidate;
+      break;
+    }
+  }
+  if (!exit) throw new Error('Cannot safely leave nested state modal before ' + raw);
   await exit.click({ timeout: 2500 });
   await modal.waitFor({ state: 'hidden', timeout: 3500 });
   await settleReactFrames(page);
@@ -785,4 +826,4 @@ async function auditState(page, testInfo, identity, options = {}) {
   return result;
 }
 
-module.exports = { rx, findStateControl, applyStatePath, recoverSiblingStatePath, collectControls, classifyControl, assertHealthy, auditState, formControlSelectorFor, locatorFromFormDescriptor };
+module.exports = { newlyOpenedStateDialog, recoverExitedStateModal, rx, findStateControl, applyStatePath, recoverSiblingStatePath, collectControls, classifyControl, assertHealthy, auditState, formControlSelectorFor, locatorFromFormDescriptor };

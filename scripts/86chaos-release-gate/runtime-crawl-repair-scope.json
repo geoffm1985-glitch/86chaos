@@ -331,5 +331,185 @@
     "projects": [
       "mobile-chromium"
     ]
+  },
+  {
+    "specPath": "86chaos-release-gate/97-runtime-crawl-recovery.spec.cjs",
+    "fullSuitePath": "runtime crawl bounded role replacement recovery",
+    "exactTestTitle": "sibling navigation uses the shared Modal titled close button without publishing or clicking a background exit",
+    "project": "chromium",
+    "projects": [
+      "chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/97-runtime-crawl-recovery.spec.cjs",
+    "fullSuitePath": "runtime crawl bounded role replacement recovery",
+    "exactTestTitle": "sibling navigation skips hidden and disabled modal exits to use the enabled titled close control",
+    "project": "chromium",
+    "projects": [
+      "chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/97-runtime-crawl-recovery.spec.cjs",
+    "fullSuitePath": "runtime crawl bounded role replacement recovery",
+    "exactTestTitle": "sibling navigation uses the shared Modal titled close button without publishing or clicking a background exit",
+    "project": "mobile-chromium",
+    "projects": [
+      "mobile-chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/97-runtime-crawl-recovery.spec.cjs",
+    "fullSuitePath": "runtime crawl bounded role replacement recovery",
+    "exactTestTitle": "sibling navigation skips hidden and disabled modal exits to use the enabled titled close control",
+    "project": "mobile-chromium",
+    "projects": [
+      "mobile-chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/97-runtime-crawl-recovery.spec.cjs",
+    "fullSuitePath": "runtime crawl bounded role replacement recovery",
+    "exactTestTitle": "an Event click with delayed acknowledgement proves its newly opened dialog without retrying the covered trigger",
+    "project": "chromium",
+    "projects": [
+      "chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/97-runtime-crawl-recovery.spec.cjs",
+    "fullSuitePath": "runtime crawl bounded role replacement recovery",
+    "exactTestTitle": "an Event click with delayed acknowledgement proves its newly opened dialog without retrying the covered trigger",
+    "project": "mobile-chromium",
+    "projects": [
+      "mobile-chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/97-runtime-crawl-recovery.spec.cjs",
+    "fullSuitePath": "runtime crawl bounded role replacement recovery",
+    "exactTestTitle": "a Edit Presets click with delayed acknowledgement proves its declared dialog without repeating the action",
+    "project": "chromium",
+    "projects": [
+      "chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/97-runtime-crawl-recovery.spec.cjs",
+    "fullSuitePath": "runtime crawl bounded role replacement recovery",
+    "exactTestTitle": "a Copy Month click with delayed acknowledgement proves its declared dialog without repeating the action",
+    "project": "chromium",
+    "projects": [
+      "chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/97-runtime-crawl-recovery.spec.cjs",
+    "fullSuitePath": "runtime crawl bounded role replacement recovery",
+    "exactTestTitle": "a Publish Manual click with delayed acknowledgement proves its declared dialog without repeating the action",
+    "project": "chromium",
+    "projects": [
+      "chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/97-runtime-crawl-recovery.spec.cjs",
+    "fullSuitePath": "runtime crawl bounded role replacement recovery",
+    "exactTestTitle": "a Assign Checklist click with delayed acknowledgement proves its declared dialog without repeating the action",
+    "project": "chromium",
+    "projects": [
+      "chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/97-runtime-crawl-recovery.spec.cjs",
+    "fullSuitePath": "runtime crawl bounded role replacement recovery",
+    "exactTestTitle": "a Add Certification click with delayed acknowledgement proves its declared dialog without repeating the action",
+    "project": "chromium",
+    "projects": [
+      "chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/97-runtime-crawl-recovery.spec.cjs",
+    "fullSuitePath": "runtime crawl bounded role replacement recovery",
+    "exactTestTitle": "a Add Confidential Note click with delayed acknowledgement proves its declared dialog without repeating the action",
+    "project": "chromium",
+    "projects": [
+      "chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/97-runtime-crawl-recovery.spec.cjs",
+    "fullSuitePath": "runtime crawl bounded role replacement recovery",
+    "exactTestTitle": "a Edit Presets click with delayed acknowledgement proves its declared dialog without repeating the action",
+    "project": "mobile-chromium",
+    "projects": [
+      "mobile-chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/97-runtime-crawl-recovery.spec.cjs",
+    "fullSuitePath": "runtime crawl bounded role replacement recovery",
+    "exactTestTitle": "a Copy Month click with delayed acknowledgement proves its declared dialog without repeating the action",
+    "project": "mobile-chromium",
+    "projects": [
+      "mobile-chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/97-runtime-crawl-recovery.spec.cjs",
+    "fullSuitePath": "runtime crawl bounded role replacement recovery",
+    "exactTestTitle": "a Publish Manual click with delayed acknowledgement proves its declared dialog without repeating the action",
+    "project": "mobile-chromium",
+    "projects": [
+      "mobile-chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/97-runtime-crawl-recovery.spec.cjs",
+    "fullSuitePath": "runtime crawl bounded role replacement recovery",
+    "exactTestTitle": "a Assign Checklist click with delayed acknowledgement proves its declared dialog without repeating the action",
+    "project": "mobile-chromium",
+    "projects": [
+      "mobile-chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/97-runtime-crawl-recovery.spec.cjs",
+    "fullSuitePath": "runtime crawl bounded role replacement recovery",
+    "exactTestTitle": "a Add Certification click with delayed acknowledgement proves its declared dialog without repeating the action",
+    "project": "mobile-chromium",
+    "projects": [
+      "mobile-chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/97-runtime-crawl-recovery.spec.cjs",
+    "fullSuitePath": "runtime crawl bounded role replacement recovery",
+    "exactTestTitle": "a Add Confidential Note click with delayed acknowledgement proves its declared dialog without repeating the action",
+    "project": "mobile-chromium",
+    "projects": [
+      "mobile-chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/97-runtime-crawl-recovery.spec.cjs",
+    "fullSuitePath": "runtime crawl bounded role replacement recovery",
+    "exactTestTitle": "runtime coverage merges identical script captures across a real document reload",
+    "project": "chromium",
+    "projects": [
+      "chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/97-runtime-crawl-recovery.spec.cjs",
+    "fullSuitePath": "runtime crawl bounded role replacement recovery",
+    "exactTestTitle": "runtime coverage merges identical script captures across a real document reload",
+    "project": "mobile-chromium",
+    "projects": [
+      "mobile-chromium"
+    ]
   }
 ]
