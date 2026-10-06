@@ -511,5 +511,131 @@
     "projects": [
       "mobile-chromium"
     ]
+  },
+  {
+    "specPath": "86chaos-release-gate/98-firebase-gate-reliability.spec.cjs",
+    "fullSuitePath": "Firebase release-gate recovery boundaries",
+    "exactTestTitle": "temporary Firebase Auth failure retries once on a fresh login document",
+    "project": "chromium",
+    "projects": [
+      "chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/98-firebase-gate-reliability.spec.cjs",
+    "fullSuitePath": "Firebase release-gate recovery boundaries",
+    "exactTestTitle": "persistent Firebase Auth service failure remains blocking after one retry",
+    "project": "chromium",
+    "projects": [
+      "chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/98-firebase-gate-reliability.spec.cjs",
+    "fullSuitePath": "Firebase release-gate recovery boundaries",
+    "exactTestTitle": "invalid credentials never trigger a transient Auth retry",
+    "project": "chromium",
+    "projects": [
+      "chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/98-firebase-gate-reliability.spec.cjs",
+    "fullSuitePath": "Firebase release-gate recovery boundaries",
+    "exactTestTitle": "a closed Firestore Listen stream requires a successful reconnect",
+    "project": "chromium",
+    "projects": [
+      "chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/98-firebase-gate-reliability.spec.cjs",
+    "fullSuitePath": "Firebase release-gate recovery boundaries",
+    "exactTestTitle": "an unrecovered Firestore Listen stream remains a route-health failure",
+    "project": "chromium",
+    "projects": [
+      "chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/98-firebase-gate-reliability.spec.cjs",
+    "fullSuitePath": "Firebase release-gate recovery boundaries",
+    "exactTestTitle": "temporary Firebase Auth failure retries once on a fresh login document",
+    "project": "mobile-chromium",
+    "projects": [
+      "mobile-chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/98-firebase-gate-reliability.spec.cjs",
+    "fullSuitePath": "Firebase release-gate recovery boundaries",
+    "exactTestTitle": "persistent Firebase Auth service failure remains blocking after one retry",
+    "project": "mobile-chromium",
+    "projects": [
+      "mobile-chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/98-firebase-gate-reliability.spec.cjs",
+    "fullSuitePath": "Firebase release-gate recovery boundaries",
+    "exactTestTitle": "invalid credentials never trigger a transient Auth retry",
+    "project": "mobile-chromium",
+    "projects": [
+      "mobile-chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/98-firebase-gate-reliability.spec.cjs",
+    "fullSuitePath": "Firebase release-gate recovery boundaries",
+    "exactTestTitle": "a closed Firestore Listen stream requires a successful reconnect",
+    "project": "mobile-chromium",
+    "projects": [
+      "mobile-chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/98-firebase-gate-reliability.spec.cjs",
+    "fullSuitePath": "Firebase release-gate recovery boundaries",
+    "exactTestTitle": "an unrecovered Firestore Listen stream remains a route-health failure",
+    "project": "mobile-chromium",
+    "projects": [
+      "mobile-chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/69-yardmaster-firebase-bridge-17-0-57.spec.cjs",
+    "fullSuitePath": "17.0.57 Yardmaster Firebase bridge",
+    "exactTestTitle": "root bridge is discoverable and names existing complete gate scripts",
+    "project": "chromium",
+    "projects": [
+      "chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/76-emulator-runtime-boundaries-17-0-64.spec.cjs",
+    "fullSuitePath": "17.0.64 emulator runtime-boundary cascade repair",
+    "exactTestTitle": "selected emulator project, storage readiness path, and compact Schedule CSS stay fail-closed",
+    "project": "chromium",
+    "projects": [
+      "chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/69-yardmaster-firebase-bridge-17-0-57.spec.cjs",
+    "fullSuitePath": "17.0.57 Yardmaster Firebase bridge",
+    "exactTestTitle": "root bridge is discoverable and names existing complete gate scripts",
+    "project": "mobile-chromium",
+    "projects": [
+      "mobile-chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/76-emulator-runtime-boundaries-17-0-64.spec.cjs",
+    "fullSuitePath": "17.0.64 emulator runtime-boundary cascade repair",
+    "exactTestTitle": "selected emulator project, storage readiness path, and compact Schedule CSS stay fail-closed",
+    "project": "mobile-chromium",
+    "projects": [
+      "mobile-chromium"
+    ]
   }
 ]

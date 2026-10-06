@@ -1,7 +1,7 @@
 {
   "schemaVersion": 3,
   "version": "17.0.84",
-  "sourceHash": "29f5c23c7078789fb1eaa5ffd9b1dd4c526a0755554481dab96bda8473f193a7",
+  "sourceHash": "06d26f67c20110af9cb6801295936d321b8a8187020e94a9de0e286cadc39e08",
   "files": [
     {
       "file": ".gitattributes",
@@ -794,6 +794,10 @@
     {
       "file": "api/firebase-emulator-entry-import-17-0-56.test.cjs",
       "sha256": "f3d4ae154d75a54d7b95aad02506c6044ef9dcb1dae2663ccc73cd5848dad733"
+    },
+    {
+      "file": "api/firebase-gate-reliability.test.cjs",
+      "sha256": "3bc3f654ef0c5e83a89ceb01b2e08b71f2c7b578c5a97ef7eec831616ced72d2"
     },
     {
       "file": "api/firebase-listener-lifecycle-17-0-39.test.cjs",
@@ -1921,7 +1925,7 @@
     },
     {
       "file": "package.json",
-      "sha256": "42bf8177620491acdaa296988d5030b49a2144a7a63b18fde886c242ca0bfafa"
+      "sha256": "db391bbd3c9fb37948e7380d52d0f6c5a6092532df9eb629c1a237a45594c952"
     },
     {
       "file": "playwright.config.js",
@@ -1941,7 +1945,7 @@
     },
     {
       "file": "playwright.layout.config.cjs",
-      "sha256": "271285ade625136e2476a3c7eafa42797a09158bd78659972204bfe24712075d"
+      "sha256": "c8aba396a4a13588f9551524e6017d80d6276cecd12644ce57106c079bb36308"
     },
     {
       "file": "playwright.play-store-release.config.cjs",
@@ -2333,7 +2337,7 @@
     },
     {
       "file": "scripts/86chaos-release-gate/runtime-crawl-repair-scope.json",
-      "sha256": "7b7a3da18a4e64b517b8df28eb6818cbb5bce45510fd10776e61cfd381083469"
+      "sha256": "a580893403272241132ebfcfe16ff3b3c5e9ae65614abd8090582ef3bf350a63"
     },
     {
       "file": "scripts/86chaos-release-gate/server-firebase-boundary-preflight.cjs",
@@ -4217,7 +4221,7 @@
     },
     {
       "file": "tests/86chaos-full-audit/01-auth-route-health.spec.cjs",
-      "sha256": "0cb6546fe4feb128312dbfb6dcda6a91d998bd77eebc81cc1608537e6f41ffb0"
+      "sha256": "0135242413c977b2b483f6b3c1b10743f51272492973e017314053220527db10"
     },
     {
       "file": "tests/86chaos-full-audit/02-permission-role-security.spec.cjs",
@@ -4277,11 +4281,15 @@
     },
     {
       "file": "tests/86chaos-full-audit/utils/audit-helpers.cjs",
-      "sha256": "01299cef9d23fb551b95cc8533f05dc5f6638bc593262dc68ad5de4265bb41d2"
+      "sha256": "d79b84f4d41a135a8eecbf2e563f24a584e71159dfd020c0c5ea33c86dd71431"
     },
     {
       "file": "tests/86chaos-full-audit/utils/fake-restaurant-profile.cjs",
       "sha256": "8e7b130c73eeb1db6f68d8c88cbe3528f795ccd0840df021a95d9a1e5882adc1"
+    },
+    {
+      "file": "tests/86chaos-full-audit/utils/firebase-transport-recovery.cjs",
+      "sha256": "94be1f5304cbe9a6d274c1ba4b68d46be7cbc6a7efe7edf7044609244dd0e03e"
     },
     {
       "file": "tests/86chaos-full-audit/utils/math-oracle.cjs",
@@ -4666,6 +4674,10 @@
     {
       "file": "tests/86chaos-release-gate/97-runtime-crawl-recovery.spec.cjs",
       "sha256": "eef44d111c2f3c2bd49e1bdefd5ce47eb5d7325e754f02dd6af5d2dd3595d576"
+    },
+    {
+      "file": "tests/86chaos-release-gate/98-firebase-gate-reliability.spec.cjs",
+      "sha256": "fb7a4b4aade15892d6c829b64c3b3ab434e7f6efc034b992db1809dc67d8e8fc"
     },
     {
       "file": "tests/86chaos-release-gate/exhaustive-surface-matrix.cjs",

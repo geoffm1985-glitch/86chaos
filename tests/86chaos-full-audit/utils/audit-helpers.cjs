@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const { expect } = require('@playwright/test');
+const { submitAuditLogin, createFirestoreListenRecovery } = require('./firebase-transport-recovery.cjs');
 let runContext = null;
 try { runContext = require('../../../scripts/86chaos-release-gate/run-context.cjs'); } catch (_) { runContext = null; }
 const { parseHost, isProductionHost, isTestingPreviewHost } = require('../../../scripts/86chaos-release-gate/mutation-safety.cjs');
@@ -236,12 +237,15 @@ function isExpectedEmulatorFirebaseAuthBootstrapNoise(text = '') {
 
 function watchForProblems(page, problems, options = {}) {
   const nonfatal4xx = [];
-  const seen = new Set();
+  const transportRecovery = options.recoverFirestoreListen ? createFirestoreListenRecovery(problems) : null;
+  const seen = new Map();
   const pushProblem = (row) => {
     const key = `${row.type}|${row.status || ''}|${row.url || ''}|${row.message || row.failure || ''}`;
-    if (seen.has(key)) return;
-    seen.add(key);
+    const prior = seen.get(key);
+    if (prior && problems.includes(prior)) return prior;
+    seen.set(key, row);
     problems.push(row);
+    return row;
   };
   page.on('pageerror', (error) => pushProblem({ type: 'page-error', message: error.message, stack: String(error.stack || '').slice(0, 2500) }));
   page.on('console', (msg) => {
@@ -251,11 +255,13 @@ function watchForProblems(page, problems, options = {}) {
     if (/Failed to load resource:.*status of (400|404)/i.test(text)) return;
     if (isIgnorableStaticAssetFailure(text)) return;
     if (isExpectedEmulatorFirebaseAuthBootstrapNoise(text)) return;
-    pushProblem({ type: 'console-error', message: text.slice(0, 1600) });
+    const row = pushProblem({ type: 'console-error', message: text.slice(0, 1600) });
+    transportRecovery?.track(row, msg.location()?.url || '');
   });
   page.on('response', async (response) => {
     const status = response.status();
     const url = response.url();
+    transportRecovery?.response(url, status);
     if (/hot-update|sockjs|favicon/i.test(url)) return;
     if (status === 400 || status === 404) {
       const controlled = isControlledValidationResponse(response);
@@ -275,9 +281,17 @@ function watchForProblems(page, problems, options = {}) {
     if (/favicon|hot-update|sockjs|jwe|ERR_ABORTED/i.test(`${failure} ${url}`)) return;
     if (isIgnorableStaticAssetFailure(`${failure} ${url}`)) return;
     if (isExpectedEmulatorFirebaseAuthBootstrapNoise(`${failure} ${url}`)) return;
-    pushProblem({ type: 'requestfailed', url: url.split('?')[0].slice(0, 260), failure });
+    const row = pushProblem({ type: 'requestfailed', url: url.split('?')[0].slice(0, 260), failure });
+    transportRecovery?.track(row, url);
   });
-  return { nonfatal4xx };
+  return {
+    nonfatal4xx,
+    recoveredTransports: transportRecovery?.recoveries || [],
+    async waitForTransportRecovery(timeoutMs = 8000) {
+      const deadline = Date.now() + timeoutMs;
+      while (transportRecovery?.pending() && Date.now() < deadline) await page.waitForTimeout(250);
+    }
+  };
 }
 
 function summarizeProblems(problems) {
@@ -471,14 +485,14 @@ async function login(page, email, password, options = {}) {
     return latest || await bodyText(page, 16000);
   };
 
-  await fillAndSubmit();
-  text = await waitPastLogin(22000);
-  if (LOGIN_RE.test(text) && !/invalid|wrong|error|failed|not attached/i.test(text)) {
-    // Mobile Chromium occasionally leaves the first submit on the login surface without an error
-    // while the button/actionability transition settles. Retry once, then fail loudly.
-    await fillAndSubmit();
-    text = await waitPastLogin(22000);
-  }
+  text = await submitAuditLogin({
+    submit: fillAndSubmit,
+    wait: () => waitPastLogin(22000),
+    isLogin: value => LOGIN_RE.test(value),
+    pause: () => page.waitForTimeout(1500),
+    refresh: () => page.goto(appUrl(options.tab || 'today'), { waitUntil: 'domcontentloaded', timeout: 45000 }),
+    onRecovery: options.onAuthRecovery,
+  });
 
   await dismissBlockingDialogs(page, { maxPasses: 6 }).catch(() => null);
   await chooseQaWorkspace(page);
