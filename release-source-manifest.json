@@ -1,7 +1,7 @@
 {
   "schemaVersion": 3,
   "version": "17.0.84",
-  "sourceHash": "d169f07479df70d177a0a94f700f21ba7fb5fe91f60fbc22099729be6eff3f86",
+  "sourceHash": "c44accd0383d98b0eedc3ef08f2ae9a33dd8e9333ca7990a6d155516ca6f70dd",
   "files": [
     {
       "file": ".gitattributes",
@@ -2325,7 +2325,7 @@
     },
     {
       "file": "scripts/86chaos-release-gate/runtime-crawl-repair-scope.json",
-      "sha256": "aa3cd7770db23e96eb08022739072b03e01f417e4dce772f44bc23622c37ea87"
+      "sha256": "ce7c8c0579c834d9fe771f78a4621870614d6156324a2e995357f8aeadf597d2"
     },
     {
       "file": "scripts/86chaos-release-gate/server-firebase-boundary-preflight.cjs",
@@ -4653,7 +4653,7 @@
     },
     {
       "file": "tests/86chaos-release-gate/97-runtime-crawl-recovery.spec.cjs",
-      "sha256": "bbaee3f4f6729da6170a3c3e2b31a664ef0b63e8ee0c6d693e08d544aab71a36"
+      "sha256": "23795b17e7aa2a89825dbc38b02b397f3db5deb75f6b351bcfbb75a2d197c278"
     },
     {
       "file": "tests/86chaos-release-gate/exhaustive-surface-matrix.cjs",
@@ -4693,7 +4693,7 @@
     },
     {
       "file": "tests/86chaos-release-gate/utils/exhaustive-ui-helpers.cjs",
-      "sha256": "e47c72c6c8bca416178d35ba0e69283d7533662bd157cd0807617191deb20b12"
+      "sha256": "61cd9beb3ed9a8fad4aa548a6a64c5e0ba61df4a4831c024f0ef1b07e0578835"
     },
     {
       "file": "tests/86chaos-release-gate/utils/lazy-chunk-request.cjs",

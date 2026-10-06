@@ -46,4 +46,26 @@ test.describe('runtime crawl bounded role replacement recovery',()=>{
     expect(await page.evaluate(()=>window.parentClicks||0)).toBe(0);
     await expect(page.getByRole('tab',{name:'Drag Board'})).toHaveAttribute('aria-selected','true');
   });
+  test('sibling navigation cancels only the exited modal and never publishes or clicks background exits',async({page})=>{
+    await page.setContent(`<button onclick="window.backgroundCancel=true">Cancel</button><button onclick="window.onboarding=true">Onboarding</button><div class="chaos-modal-backdrop" role="presentation" style="position:fixed;inset:0;background:white;z-index:60"><h2>Publish a Training Manual</h2><button onclick="window.published=true">Publish Manual</button><button onclick="window.cancelled=true;this.parentElement.remove()">Cancel</button></div>`);
+    const traversal=await recoverSiblingStatePath(page,['Training Manuals','Publish Manual'],['Onboarding'],'hr-training');
+    expect(traversal).toEqual(['Onboarding']);
+    expect((await applyStatePath(page,traversal)).ok).toBe(true);
+    expect(await page.evaluate(()=>({cancelled:!!window.cancelled,published:!!window.published,background:!!window.backgroundCancel,onboarding:!!window.onboarding}))).toEqual({cancelled:true,published:false,background:false,onboarding:true});
+  });
+  test('a requested child inside the current modal stays available until its state is audited',async({page})=>{
+    await page.setContent(`<button onclick="window.background=true">Details</button><div class="chaos-modal-backdrop" role="dialog" style="position:fixed;inset:0;background:white;z-index:60"><button role="tab" aria-selected="false" onclick="this.setAttribute('aria-selected','true')">Details</button><button onclick="window.cancelled=true;this.parentElement.remove()">Cancel</button></div>`);
+    const traversal=await recoverSiblingStatePath(page,['Training Manuals','Publish Manual'],['Training Manuals','Publish Manual','Details'],'hr-training');
+    expect(traversal).toEqual(['Details']);
+    expect((await applyStatePath(page,traversal)).ok).toBe(true);
+    await expect(page.getByRole('dialog')).toBeVisible();
+    await expect(page.getByRole('tab',{name:'Details'})).toHaveAttribute('aria-selected','true');
+    expect(await page.evaluate(()=>!!window.cancelled||!!window.background)).toBe(false);
+  });
+  test('a modal without a safe exit remains a failure instead of forcing a background click',async({page})=>{
+    await page.setContent(`<button onclick="window.onboarding=true">Onboarding</button><div class="chaos-modal-backdrop" style="position:fixed;inset:0;background:white;z-index:60"><button onclick="window.published=true">Publish Manual</button></div>`);
+    await expect(recoverSiblingStatePath(page,['Training Manuals','Publish Manual'],['Onboarding'],'hr-training')).rejects.toThrow(/Cannot safely leave nested state modal/);
+    expect(await page.evaluate(()=>!!window.published||!!window.onboarding)).toBe(false);
+  });
+
 });

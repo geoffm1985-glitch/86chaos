@@ -294,17 +294,36 @@ async function visibleAncestorExitControl(page) {
   return null;
 }
 
+async function recoverExitedStateModal(page, nextLabel) {
+  const modal = page.locator('.chaos-modal-backdrop:visible, [role="dialog"]:visible').first();
+  if (!await modal.isVisible().catch(() => false)) return false;
+  const raw = String(nextLabel || '');
+  const escaped = raw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const name = nextLabel instanceof RegExp ? nextLabel : new RegExp('^(?:Open\\s+)?' + escaped + '$', 'i');
+  for (const role of ['tab', 'button', 'link', 'menuitem']) {
+    if (await modal.getByRole(role, { name }).first().isVisible().catch(() => false)) return true;
+  }
+  // Leave a completed form through its own non-mutating exit. A visible
+  // background navigation button is not actionable through a modal backdrop.
+  const exit = modal.getByRole('button', { name: /^(?:Cancel|Close)$/i }).first();
+  if (!await exit.isVisible().catch(() => false)) throw new Error('Cannot safely leave nested state modal before ' + raw);
+  await exit.click({ timeout: 2500 });
+  await modal.waitFor({ state: 'hidden', timeout: 3500 });
+  await settleReactFrames(page);
+  return false;
+}
+
 async function recoverSiblingStatePath(page, previousPath = [], nextPath = [], route = 'today') {
   const previous = Array.isArray(previousPath) ? previousPath : [];
   const next = Array.isArray(nextPath) ? nextPath : [];
   if (!next.length) return [];
 
-  await dismissBlockingDialogs(page, { maxPasses: 2 }).catch(() => null);
-  await neutralizeTestingPreviewOverlays(page).catch(() => null);
-
   const commonDepth = sharedStatePathDepth(previous, next);
   const siblingPath = next.slice(commonDepth);
-  const siblingLabel = siblingPath[0];
+  const siblingLabel = siblingPath[0] || next[0];
+  const continuingModal = await recoverExitedStateModal(page, siblingLabel);
+  if (!continuingModal) await dismissBlockingDialogs(page, { maxPasses: 2 }).catch(() => null);
+  await neutralizeTestingPreviewOverlays(page).catch(() => null);
   if (siblingLabel && await findStateControl(page, siblingLabel)) return siblingPath;
   if (commonDepth > 0 && await findStateControl(page, next[0])) return next;
 

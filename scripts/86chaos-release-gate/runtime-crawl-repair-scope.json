@@ -254,6 +254,33 @@
   {
     "specPath": "86chaos-release-gate/97-runtime-crawl-recovery.spec.cjs",
     "fullSuitePath": "runtime crawl bounded role replacement recovery",
+    "exactTestTitle": "sibling navigation cancels only the exited modal and never publishes or clicks background exits",
+    "project": "chromium",
+    "projects": [
+      "chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/97-runtime-crawl-recovery.spec.cjs",
+    "fullSuitePath": "runtime crawl bounded role replacement recovery",
+    "exactTestTitle": "a requested child inside the current modal stays available until its state is audited",
+    "project": "chromium",
+    "projects": [
+      "chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/97-runtime-crawl-recovery.spec.cjs",
+    "fullSuitePath": "runtime crawl bounded role replacement recovery",
+    "exactTestTitle": "a modal without a safe exit remains a failure instead of forcing a background click",
+    "project": "chromium",
+    "projects": [
+      "chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/97-runtime-crawl-recovery.spec.cjs",
+    "fullSuitePath": "runtime crawl bounded role replacement recovery",
     "exactTestTitle": "a completed Drag Board click survives a delayed acknowledgement without waiting on the vanished button",
     "project": "mobile-chromium",
     "projects": [
@@ -273,6 +300,33 @@
     "specPath": "86chaos-release-gate/97-runtime-crawl-recovery.spec.cjs",
     "fullSuitePath": "runtime crawl bounded role replacement recovery",
     "exactTestTitle": "sibling recovery visits real tabs without reopening and closing their shared parent",
+    "project": "mobile-chromium",
+    "projects": [
+      "mobile-chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/97-runtime-crawl-recovery.spec.cjs",
+    "fullSuitePath": "runtime crawl bounded role replacement recovery",
+    "exactTestTitle": "sibling navigation cancels only the exited modal and never publishes or clicks background exits",
+    "project": "mobile-chromium",
+    "projects": [
+      "mobile-chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/97-runtime-crawl-recovery.spec.cjs",
+    "fullSuitePath": "runtime crawl bounded role replacement recovery",
+    "exactTestTitle": "a requested child inside the current modal stays available until its state is audited",
+    "project": "mobile-chromium",
+    "projects": [
+      "mobile-chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/97-runtime-crawl-recovery.spec.cjs",
+    "fullSuitePath": "runtime crawl bounded role replacement recovery",
+    "exactTestTitle": "a modal without a safe exit remains a failure instead of forcing a background click",
     "project": "mobile-chromium",
     "projects": [
       "mobile-chromium"
