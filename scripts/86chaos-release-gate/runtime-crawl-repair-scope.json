@@ -601,41 +601,5 @@
     "projects": [
       "mobile-chromium"
     ]
-  },
-  {
-    "specPath": "86chaos-release-gate/69-yardmaster-firebase-bridge-17-0-57.spec.cjs",
-    "fullSuitePath": "17.0.57 Yardmaster Firebase bridge",
-    "exactTestTitle": "root bridge is discoverable and names existing complete gate scripts",
-    "project": "chromium",
-    "projects": [
-      "chromium"
-    ]
-  },
-  {
-    "specPath": "86chaos-release-gate/76-emulator-runtime-boundaries-17-0-64.spec.cjs",
-    "fullSuitePath": "17.0.64 emulator runtime-boundary cascade repair",
-    "exactTestTitle": "selected emulator project, storage readiness path, and compact Schedule CSS stay fail-closed",
-    "project": "chromium",
-    "projects": [
-      "chromium"
-    ]
-  },
-  {
-    "specPath": "86chaos-release-gate/69-yardmaster-firebase-bridge-17-0-57.spec.cjs",
-    "fullSuitePath": "17.0.57 Yardmaster Firebase bridge",
-    "exactTestTitle": "root bridge is discoverable and names existing complete gate scripts",
-    "project": "mobile-chromium",
-    "projects": [
-      "mobile-chromium"
-    ]
-  },
-  {
-    "specPath": "86chaos-release-gate/76-emulator-runtime-boundaries-17-0-64.spec.cjs",
-    "fullSuitePath": "17.0.64 emulator runtime-boundary cascade repair",
-    "exactTestTitle": "selected emulator project, storage readiness path, and compact Schedule CSS stay fail-closed",
-    "project": "mobile-chromium",
-    "projects": [
-      "mobile-chromium"
-    ]
   }
 ]
