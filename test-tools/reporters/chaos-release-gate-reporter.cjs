@@ -335,6 +335,7 @@ class ChaosReleaseGateReporter {
     this.completed = 0;
     this.manifestPrinted = false;
     this.progressJournal = null;
+    this.runErrors = [];
   }
 
   emit(line = '') {
@@ -372,6 +373,12 @@ class ChaosReleaseGateReporter {
       this.emit(`Progress checkpoint stopped; incomplete tests will require rerun: ${error.message}`);
       this.progressJournal = null;
     }
+  }
+
+  onError(error) {
+    const message = firstUsefulError(error);
+    this.runErrors.push(message);
+    this.emit('RUN ERROR: ' + message);
   }
 
   onTestBegin(test, result) {
@@ -419,8 +426,11 @@ class ChaosReleaseGateReporter {
       }
       return;
     }
-    const summaryLines = createCompletedSummaryLines({ results: this.results, mode: this.mode, runDir: this.runDir });
-    const failedLines = createFailedTestsArtifactLines({ results: this.results, runId: process.env.CHAOS_RELEASE_GATE_RUN_ID || '', version: readPackageVersion(this.root), mode: this.mode });
+    const blockedBeforeTestExecution = this.results.length === 0;
+    const primaryBlockingFailure = this.runErrors[0] || (blockedBeforeTestExecution ? 'No Playwright tests executed; setup or test discovery did not complete.' : '');
+    const resultOverride = blockedBeforeTestExecution ? 'BLOCKED BEFORE TEST EXECUTION' : (status !== 'passed' || this.runErrors.length ? 'FAILED' : '');
+    const summaryLines = createCompletedSummaryLines({ results: this.results, mode: this.mode, runDir: this.runDir, blockedBeforeTestExecution, primaryBlockingFailure, resultOverride });
+    const failedLines = createFailedTestsArtifactLines({ results: this.results, runId: process.env.CHAOS_RELEASE_GATE_RUN_ID || '', version: readPackageVersion(this.root), mode: this.mode, blockedBeforeTestExecution, primaryBlockingFailure });
     summaryLines.forEach(line => this.emit(line));
     if (this.runDir) {
       try {

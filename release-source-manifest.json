@@ -1,7 +1,7 @@
 {
   "schemaVersion": 3,
   "version": "17.0.84",
-  "sourceHash": "c561b0d37fd162baed968f13a0146291bdaf414eacafd5f7b1208f02a0547345",
+  "sourceHash": "bce246a3cd6d42cdf1ff6ba8f1f0a2da750534f57dbde495b5bd6823f004622d",
   "files": [
     {
       "file": ".gitattributes",
@@ -1213,7 +1213,7 @@
     },
     {
       "file": "api/release-gate-console-reporter.test.cjs",
-      "sha256": "283dea44df91897698ce2b6a965c47f4b399827919e7245176cc381ba70048a4"
+      "sha256": "4c4a235ce08017431fb27311ac1e71ad6f385778219a2647736ad191c69d54df"
     },
     {
       "file": "api/release-gate-delta-clean-baseline-17-0-25.test.cjs",
@@ -1618,6 +1618,10 @@
     {
       "file": "api/send-schedule-alert.js",
       "sha256": "2eebb29e825033abd7f35d10b7e56033aeb123e75bf845af1404b077a6bfb326"
+    },
+    {
+      "file": "api/server-emulator-isolation.test.cjs",
+      "sha256": "8519b018b65a942e94874834ebb06a92074d896b15be5c77038d4d1ae5dacd2f"
     },
     {
       "file": "api/server-firebase-boundary-preflight.test.cjs",
@@ -2329,7 +2333,7 @@
     },
     {
       "file": "scripts/86chaos-release-gate/run-node-release-checks.cjs",
-      "sha256": "d760fa77fb8543dce2e91cb0714b0ef8ad4f33b7e444da84a818c65105e6f321"
+      "sha256": "fe49fef0d8ba89a58c15f3850a1ca5796016ebcdd8bff87ba839f1dcc88283bd"
     },
     {
       "file": "scripts/86chaos-release-gate/run-observable-command.cjs",
@@ -2438,6 +2442,10 @@
     {
       "file": "scripts/run-firebase-bridge-tests.cjs",
       "sha256": "31e23497591a20639f3c0a8e34d2159b6554fe72f41565ffcdcd66904746ea23"
+    },
+    {
+      "file": "scripts/run-isolated-server-tests.cjs",
+      "sha256": "dd91b8023876d3499031aabb3ae055774855d26fc09223a9f317bfe6e9914044"
     },
     {
       "file": "scripts/run-pos-bridge-emulator-tests.cjs",
@@ -4173,7 +4181,7 @@
     },
     {
       "file": "test-tools/reporters/chaos-release-gate-reporter.cjs",
-      "sha256": "b1a3ba4dade3d8ec2196e0ad6cc3c1320d5ca5fe61715a5921ed9a99b0aadcd2"
+      "sha256": "b2373409b264d5541df73e194e7b0a946001bd157cb2c980b362e789127d87b0"
     },
     {
       "file": "test-tools/reporters/jest-live-timer.cjs",
