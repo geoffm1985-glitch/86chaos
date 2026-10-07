@@ -17,6 +17,10 @@ async function reservePorts(count) {
 
 function childEnvironment(inherited) {
   const env={...inherited};
+  // These children exclusively test the private emulators, even when the
+  // enclosing release gate targets the deployed testing application.
+  env.YARDMASTER_FIREBASE_TARGET='emulator';
+  env.CHAOS_BLOCK_LIVE_FIREBASE='1';
   // Firebase CLI assigns isolated SDK hosts. An inherited browser port must
   // never override those hosts when application modules normalize the target.
   for(const product of ['FIRESTORE','STORAGE'])delete env['REACT_APP_86CHAOS_'+product+'_EMULATOR_PORT'];
