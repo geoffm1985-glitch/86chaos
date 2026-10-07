@@ -1,7 +1,7 @@
 {
   "schemaVersion": 3,
   "version": "17.0.84",
-  "sourceHash": "61eeb42c7c67f86fb46366776675000e7c9ca440e8af8fdd14fc1e8c221834d6",
+  "sourceHash": "c561b0d37fd162baed968f13a0146291bdaf414eacafd5f7b1208f02a0547345",
   "files": [
     {
       "file": ".gitattributes",
@@ -813,7 +813,7 @@
     },
     {
       "file": "api/firestore-emulator-trace-17-0-3.test.cjs",
-      "sha256": "53e442aa5048ec1cb809d3b8076a478f95e220014c9be82bf1ef10fb2430de7f"
+      "sha256": "e2c66c7b83a28b4fa51303ee60c337b38037beed024458b400678b019708acb0"
     },
     {
       "file": "api/firestore-listener-lifecycle-source.test.cjs",
@@ -4141,7 +4141,7 @@
     },
     {
       "file": "test-tools/firestore-emulator-trace.cjs",
-      "sha256": "3c009eb5b78285f509a64ba1c9cbe6629f114875552160b33a9cee02df9bd86a"
+      "sha256": "9bf3f79712e69a03fe4543a38779d0ed5bb92f88ea4445bad3deea5eaea4f558"
     },
     {
       "file": "test-tools/fixtures/release-gate-16-0-229-results.json",
