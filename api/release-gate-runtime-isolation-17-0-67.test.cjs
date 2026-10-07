@@ -17,6 +17,8 @@ test('17.0.67 Yardmaster readiness CSP permits Firebase Auth bootstrap without o
 
   assert.match(scripts, /https:\/\/\*\.google\.com/);
   assert.match(frames, /https:\/\/\*\.firebaseapp\.com/);
+  assert.match(frames, /http:\/\/127\.0\.0\.1:\*/);
+  assert.match(frames, /http:\/\/localhost:\*/);
   assert.match(frames, /https:\/\/accounts\.google\.com|https:\/\/\*\.google\.com/);
   assert.match(connects, /http:\/\/127\.0\.0\.1:\*/);
   assert.match(connects, /http:\/\/localhost:\*/);

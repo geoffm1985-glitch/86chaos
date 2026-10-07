@@ -63,6 +63,14 @@ async function diagnostics(page) {
 
 async function openScenario(page, scenario) {
   await gotoAuthenticatedRoute(page, scenario.tab, { timeout: 30_000 });
+  // Onboarding hydrates after the authenticated shell on a fresh route. Close
+  // its normal dialog before measuring or clicking the scenario's controls.
+  await page.waitForTimeout(750);
+  const blockerState = await dismissBlockingDialogs(page, { maxPasses: 4 });
+  expect(
+    blockerState.ok,
+    `${scenario.name} could not safely clear a blocking dialog: ${blockerState.failure || 'unknown dialog'}`
+  ).toBe(true);
   if (scenario.subtab) {
     let control = page.getByRole('button', { name: scenario.subtab }).first();
     if (!(await control.isVisible({ timeout: 1200 }).catch(() => false)) && scenario.tab === 'godmode') {
@@ -74,7 +82,7 @@ async function openScenario(page, scenario) {
       control = page.getByText(scenario.subtab).first();
     }
     await expect(control, `${scenario.name} subtab control`).toBeVisible({ timeout: 12_000 });
-    await control.click();
+    await control.click({ timeout: 8_000 });
     await assertAuthenticatedAfterNavigation(page, { timeout: 20_000 });
   }
   if (scenario.action === 'background') {
