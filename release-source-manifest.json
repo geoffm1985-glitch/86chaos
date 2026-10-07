@@ -1,7 +1,7 @@
 {
   "schemaVersion": 3,
   "version": "17.0.84",
-  "sourceHash": "3fa152145e34f5d737904456faa330726395085af8b951658793847cd95cddcc",
+  "sourceHash": "9a17ebf3609501e15cf3d2d1b7dd51a9e66fc158d095502991ab0aa8b3ce37e2",
   "files": [
     {
       "file": ".gitattributes",
@@ -1412,6 +1412,10 @@
       "sha256": "72f73028ff3aa61e090631c06ea3a7fa968dc3c4f1603ef366af8ad580ae020f"
     },
     {
+      "file": "api/request-off-card-accessibility.test.cjs",
+      "sha256": "8b26463ae052e03b2c9112de4b12be01c6e0458a9f68210ad828b4a977d4b33d"
+    },
+    {
       "file": "api/request-off-runtime-safety-17-0-9.test.cjs",
       "sha256": "19a4697f24f2f1acedb724202a9636de184cbdaf30e508a4cc7cbd433b331491"
     },
@@ -1925,7 +1929,7 @@
     },
     {
       "file": "package.json",
-      "sha256": "909ba2a7583bfe7bac48c40f17e1de6ab3e8c127f6d951cfa0c199b5fc578623"
+      "sha256": "fcf2584704911faad7a48d66c4ea94747331605136febb4bad43139ac03c1c89"
     },
     {
       "file": "playwright.config.js",
@@ -2337,7 +2341,7 @@
     },
     {
       "file": "scripts/86chaos-release-gate/runtime-crawl-repair-scope.json",
-      "sha256": "3af4ab942698821186d7cb385e68b7c5833d8c9eee24b3cda1d8aaf87db8839e"
+      "sha256": "fe49cdce546bef98c56b34df0e16a1e6955aead1e975b2706931974611e040db"
     },
     {
       "file": "scripts/86chaos-release-gate/server-firebase-boundary-preflight.cjs",
@@ -4045,7 +4049,7 @@
     },
     {
       "file": "src/features/schedule.jsx",
-      "sha256": "f34b33c50422e2c379159bfa54c08481faeebca81395458b7e7ed0545ade38a6"
+      "sha256": "a88b06ded61f4fd8a18885a17fb3d2d62d2cb5776f1e6d347cbf3136da1e5bd4"
     },
     {
       "file": "src/features/trainingManual.js",
@@ -4680,6 +4684,10 @@
       "sha256": "fb7a4b4aade15892d6c829b64c3b3ab434e7f6efc034b992db1809dc67d8e8fc"
     },
     {
+      "file": "tests/86chaos-release-gate/99-request-off-card-accessibility.spec.cjs",
+      "sha256": "70fa77f9cc8bb3cdcc9fec7e87d98a95565a7835e83efa2907606538e8660f3a"
+    },
+    {
       "file": "tests/86chaos-release-gate/exhaustive-surface-matrix.cjs",
       "sha256": "3421c84129bd194684da72a2cc0822a49f85d3c3e274d7b09adf567a6d0fa3de"
     },
@@ -4838,6 +4846,10 @@
     {
       "file": "tests/e2e/utils/schedule-request-off-fixture-anchor.cjs",
       "sha256": "5758d3a0fa1760e1c52a617fc20ed70f2c8506db621e2283c1da54b19b57236c"
+    },
+    {
+      "file": "tests/fixtures/request-off-card-fixture.cjs",
+      "sha256": "2b6330d20964fa9b64234ca9ece7840752e39e9d5234ced2494e1405cd7d85b3"
     },
     {
       "file": "tests/layout/mobile-voice-17-0-5.spec.cjs",

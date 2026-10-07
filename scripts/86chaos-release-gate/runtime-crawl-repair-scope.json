@@ -601,5 +601,41 @@
     "projects": [
       "mobile-chromium"
     ]
+  },
+  {
+    "specPath": "86chaos-release-gate/99-request-off-card-accessibility.spec.cjs",
+    "fullSuitePath": "Request Off card accessibility",
+    "exactTestTitle": "pending manager request cards expose named actionable controls",
+    "project": "chromium",
+    "projects": [
+      "chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/99-request-off-card-accessibility.spec.cjs",
+    "fullSuitePath": "Request Off card accessibility",
+    "exactTestTitle": "archived and employee cards preserve their allowed actions",
+    "project": "chromium",
+    "projects": [
+      "chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/99-request-off-card-accessibility.spec.cjs",
+    "fullSuitePath": "Request Off card accessibility",
+    "exactTestTitle": "pending manager request cards expose named actionable controls",
+    "project": "mobile-chromium",
+    "projects": [
+      "mobile-chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/99-request-off-card-accessibility.spec.cjs",
+    "fullSuitePath": "Request Off card accessibility",
+    "exactTestTitle": "archived and employee cards preserve their allowed actions",
+    "project": "mobile-chromium",
+    "projects": [
+      "mobile-chromium"
+    ]
   }
 ]

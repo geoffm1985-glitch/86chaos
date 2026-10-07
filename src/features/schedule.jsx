@@ -5739,8 +5739,9 @@ const TabTimeOff = ({ timeOffRequests, appUser, users, addToast, events = [], sh
   const RequestCard = ({ r }) => {
     const status = normalizeStatus(r);
     const publishedFlag = r.unresolvedPublishedOverlap || r.overlapsPublishedSchedule;
+    const requestControlContext = `${requestSubjectLabel(r)} on ${formatRequestDateLabel(requestOffDateKey(r) || r.date)}`;
     return <div className={`${T.row} items-start gap-3 ${publishedFlag ? 'border-amber-500/40 bg-amber-900/10' : ''}`}>
-      {canManage && <input type="checkbox" checked={selectedRequestIds.includes(r.id)} onChange={e => setSelectedRequestIds(prev => e.target.checked ? [...prev, r.id] : prev.filter(id => id !== r.id))} className="mt-1 accent-[#8F6040]" />}
+      {canManage && <input type="checkbox" aria-label={`Select Request Off for ${requestControlContext}`} checked={selectedRequestIds.includes(r.id)} onChange={e => setSelectedRequestIds(prev => e.target.checked ? [...prev, r.id] : prev.filter(id => id !== r.id))} className="mt-1 accent-[#8F6040]" />}
       <div className="flex-1 min-w-0">
         <div className="font-black text-white text-sm">{requestSubjectLabel(r)}</div>
         <div className={`text-[10px] font-bold ${T.muted} flex flex-wrap gap-2 mt-0.5`}><span>{formatRequestDateLabel(requestOffDateKey(r) || r.date)}</span>{r.isPartial && <span className="text-[#D4A381]">{formatRequestPartialRange(r)}</span>}<span className="uppercase tracking-widest">{status}</span>{publishedFlag && <span className="text-amber-300">Unresolved on published schedule</span>}</div>
@@ -5748,8 +5749,8 @@ const TabTimeOff = ({ timeOffRequests, appUser, users, addToast, events = [], sh
         {isArchivedRequest(r) && <div className="mt-1 text-[10px] font-bold text-slate-500">{r.scheduleId ? `Schedule: ${r.scheduleId}` : 'History record'}{r.publishedAt ? ` • Published ${formatClockDateTime(r.publishedAt)} by ${r.publishedByName || r.publishedBy || 'manager'}` : ''}{r.approvedAt ? ` • Approved ${formatClockDateTime(r.approvedAt)} by ${r.approvedByName || r.approvedBy || ''}` : ''}{r.deniedAt ? ` • Denied ${formatClockDateTime(r.deniedAt)} by ${r.deniedByName || r.deniedBy || ''}` : ''}</div>}
       </div>
       <div className="flex flex-wrap justify-end gap-2">
-        {canManage && status === 'pending' && !isArchivedRequest(r) && <button onClick={() => approveRequest(r)} className="p-2 rounded-lg bg-emerald-900/20 text-emerald-300 border border-emerald-900/50"><Check size={14}/></button>}
-        {canManage && status === 'pending' && !isArchivedRequest(r) && <button onClick={() => denyRequest(r)} className="p-2 rounded-lg bg-red-900/20 text-red-300 border border-red-900/50"><X size={14}/></button>}
+        {canManage && status === 'pending' && !isArchivedRequest(r) && <button type="button" aria-label={`Approve Request Off for ${requestControlContext}`} title={`Approve Request Off for ${requestControlContext}`} onClick={() => approveRequest(r)} className="min-h-[44px] min-w-[44px] p-2 rounded-lg bg-emerald-900/20 text-emerald-300 border border-emerald-900/50"><Check size={14}/></button>}
+        {canManage && status === 'pending' && !isArchivedRequest(r) && <button type="button" aria-label={`Deny Request Off for ${requestControlContext}`} title={`Deny Request Off for ${requestControlContext}`} onClick={() => denyRequest(r)} className="min-h-[44px] min-w-[44px] p-2 rounded-lg bg-red-900/20 text-red-300 border border-red-900/50"><X size={14}/></button>}
         {canManage && (isArchivedRequest(r) ? <button onClick={() => restoreRequest(r)} className={T.btnAlt}>Restore</button> : <button onClick={() => archiveRequest(r)} className={T.btnAlt}>Archive</button>)}
         {!canManage && (status === 'pending' || status === 'approved') && !isArchivedRequest(r) && <button type="button" data-testid={`request-off-cancel-${r.id}`} aria-label={`Cancel Request Off for ${formatRequestDateLabel(requestOffDateKey(r) || r.date)}`} title={`Cancel Request Off for ${formatRequestDateLabel(requestOffDateKey(r) || r.date)}`} onClick={() => { if(window.confirm('Cancel this request-off?')) cancelRequest(r); }} className="text-slate-400 hover:text-red-500 p-2 bg-[#1A2126] rounded-lg border border-[#2A353D]"><Trash2 size={14}/></button>}
       </div>
