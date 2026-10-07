@@ -1,6 +1,6 @@
 'use strict';
 const test=require('node:test'),assert=require('node:assert/strict');
-const {cardFixture,controls}=require('../tests/fixtures/request-off-card-fixture.cjs');
+const {cardFixture,controls,cardDocument}=require('../tests/fixtures/request-off-card-fixture.cjs');
 const pending={id:'pending-request',employeeName:'Allen QA',date:'2026-10-07',status:'pending'};
 test('production pending Request Off card names its selection and approval controls by employee and date',()=>{
   const fixture=cardFixture();const rows=controls(fixture.element(pending));
@@ -22,4 +22,17 @@ test('employee cards retain cancellation without exposing manager selection or a
 });
 test('request control names remain distinct across employees and usable with missing legacy metadata',()=>{
   const fixture=cardFixture();const labels=[pending,{...pending,id:'second',employeeName:'Chuck QA'},{id:'legacy',status:'pending'}].map(row=>controls(fixture.element(row))[0].props['aria-label']);assert.equal(new Set(labels).size,3);assert(labels.every(label=>label&& !/undefined|null|Invalid Date/.test(label)));
+});
+
+test('isolated Request Off page retains real Tailwind, viewport and CSS while excluding only app startup scripts',()=>{
+  const fs=require('node:fs'),path=require('node:path');
+  const index=fs.readFileSync(path.join(__dirname,'../public/index.html'),'utf8').replace('</head>','<link rel="stylesheet" href="/static/css/main.css"><script defer src="/static/js/main.js"></script><script defer src="/static/js/vendor.js"></script></head>');
+  const html=cardDocument(index,cardFixture().render(pending),'https://testing.86chaos.com/');
+  assert.match(html,/<script src="https:\/\/cdn\.tailwindcss\.com"><\/script>/);
+  assert.match(html,/window\.tailwind\.config/);
+  assert.match(html,/name="viewport"/);
+  assert.match(html,/href="\/static\/css\/main\.css"/);
+  assert.doesNotMatch(html,/<script[^>]+src="\/static\/js\//);
+  assert.match(html,/Select Request Off for Allen QA/);
+  assert.throws(()=>cardDocument('<html>No mount</html>','card','https://testing.86chaos.com/'),/root mount/);
 });

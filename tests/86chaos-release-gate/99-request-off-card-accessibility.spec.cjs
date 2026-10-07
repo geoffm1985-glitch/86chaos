@@ -1,15 +1,26 @@
 'use strict';
 const {test,expect}=require('@playwright/test');
-const {cardFixture}=require('../fixtures/request-off-card-fixture.cjs');
+const {cardFixture,cardDocument}=require('../fixtures/request-off-card-fixture.cjs');
 const {auditState}=require('./utils/exhaustive-ui-helpers.cjs');
 const pending={id:'pending-request',employeeName:'Allen QA',date:'2026-10-07',status:'pending'};
 async function showCard(page,fixture,row){
   const base=process.env.APP_URL||process.env.CHAOS_BASE_URL;
   if(!base)throw Error('Testing preview URL required for production styles');
-  await page.goto(base,{waitUntil:'domcontentloaded'});
-  const styles=await page.locator('link[rel="stylesheet"]').evaluateAll(links=>links.map(link=>link.href));
-  expect(styles.length,'Deployed app must expose its actual stylesheet').toBeGreaterThan(0);
-  await page.setContent('<!doctype html><html><head>'+styles.map(url=>'<link rel="stylesheet" href="'+url+'">').join('')+'</head><body><main>'+fixture.render(row)+'</main></body></html>',{waitUntil:'load'});
+  const url=new URL(base).href;
+  const response=await page.request.get(url);
+  expect(response.ok(),'Testing preview HTML must load').toBe(true);
+  const html=cardDocument(await response.text(),fixture.render(row),url);
+  const serveCard=route=>route.fulfill({status:200,contentType:'text/html',body:html});
+  await page.route(url,serveCard);
+  try { await page.goto(url,{waitUntil:'load'}); }
+  finally { await page.unroute(url,serveCard); }
+  await expect.poll(()=>page.locator('main button').evaluateAll(buttons=>buttons.every(button=>{
+    const style=getComputedStyle(button);
+    return button.classList.contains('min-h-[44px]')
+      ? parseFloat(style.minWidth)>=44&&parseFloat(style.minHeight)>=44
+      : style.paddingTop==='8px';
+  })),{message:'The production Tailwind runtime must apply the actual card utility classes'}).toBe(true);
+
 }
 test.describe('Request Off card accessibility',()=>{
   test('pending manager request cards expose named actionable controls',async({page},testInfo)=>{

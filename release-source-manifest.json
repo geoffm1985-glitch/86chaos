@@ -1,7 +1,7 @@
 {
   "schemaVersion": 3,
   "version": "17.0.84",
-  "sourceHash": "9a17ebf3609501e15cf3d2d1b7dd51a9e66fc158d095502991ab0aa8b3ce37e2",
+  "sourceHash": "61eeb42c7c67f86fb46366776675000e7c9ca440e8af8fdd14fc1e8c221834d6",
   "files": [
     {
       "file": ".gitattributes",
@@ -1413,7 +1413,7 @@
     },
     {
       "file": "api/request-off-card-accessibility.test.cjs",
-      "sha256": "8b26463ae052e03b2c9112de4b12be01c6e0458a9f68210ad828b4a977d4b33d"
+      "sha256": "7fffbb3c69311d31c8ef5ba05fe7ab69829fcb27c4fa0645dc7b88af45093778"
     },
     {
       "file": "api/request-off-runtime-safety-17-0-9.test.cjs",
@@ -4685,7 +4685,7 @@
     },
     {
       "file": "tests/86chaos-release-gate/99-request-off-card-accessibility.spec.cjs",
-      "sha256": "70fa77f9cc8bb3cdcc9fec7e87d98a95565a7835e83efa2907606538e8660f3a"
+      "sha256": "a2e4333e8a24232dd1462d599e5fda846bcce290448555dfd6a20588ef83ba07"
     },
     {
       "file": "tests/86chaos-release-gate/exhaustive-surface-matrix.cjs",
@@ -4849,7 +4849,7 @@
     },
     {
       "file": "tests/fixtures/request-off-card-fixture.cjs",
-      "sha256": "2b6330d20964fa9b64234ca9ece7840752e39e9d5234ced2494e1405cd7d85b3"
+      "sha256": "088c8cc956abefcc35d34ae4331f09c2e7be199a3bea52e0514c794a9ade43a5"
     },
     {
       "file": "tests/layout/mobile-voice-17-0-5.spec.cjs",

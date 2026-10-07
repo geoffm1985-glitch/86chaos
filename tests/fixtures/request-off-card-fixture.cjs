@@ -20,4 +20,15 @@ function cardFixture({canManage=true,selected=[]}={}){
   return {render:r=>renderToStaticMarkup(React.createElement(Card,{r})),element:r=>Card({r}),actions,selected:()=>selectedIds};
 }
 function controls(element){const out=[];function walk(node){if(!React.isValidElement(node))return;if(node.type==='input'||node.type==='button')out.push(node);React.Children.forEach(node.props.children,walk);}walk(element);return out;}
-module.exports={cardFixture,controls};
+function cardDocument(indexHtml,markup,baseURL){
+  const rootElement=/<div\b[^>]*\bid=(["'])root\1[^>]*>\s*<\/div>/i;
+  if(!rootElement.test(indexHtml))throw Error('Deployed app HTML must expose the empty root mount');
+  // Preserve the actual page head, viewport, stylesheets, and Tailwind runtime.
+  // Remove only the app bundle so an isolated card does not boot Firebase/Auth.
+  const html=indexHtml.replace(/<script\b([^>]*)>[\s\S]*?<\/script>/gi,(tag,attributes)=>{
+    const src=attributes.match(/\bsrc\s*=\s*(["'])(.*?)\1/i)?.[2];
+    return src&&new URL(src,baseURL).pathname.startsWith('/static/js/')?'':tag;
+  });
+  return html.replace(rootElement,()=>'<div id="root"><main>'+markup+'</main></div>');
+}
+module.exports={cardFixture,controls,cardDocument};
