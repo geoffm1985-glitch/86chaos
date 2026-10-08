@@ -468,7 +468,7 @@ export const MASTER_ADMIN_EMAIL = (process.env.REACT_APP_MASTER_ADMIN_EMAIL || '
 export const EVENT_TAGS = ['Standard Day', 'Packers Game', 'Brewers Game', 'Live Music', 'Severe Weather', 'Private Catering', 'Holiday'];
 
 // --- VERSION TRACKING ---
-export const CURRENT_VERSION = '18.0.10';
+export const CURRENT_VERSION = '18.0.11';
 
 // --- Helpers ---
 const usePageVisible = () => {
@@ -517,7 +517,7 @@ const nativeRuntimeIsBackgrounded = () => {
   return typeof document !== 'undefined' && document.visibilityState === 'hidden';
 };
 
-export const NATIVE_API_BASE_URL = String(env('REACT_APP_NATIVE_API_BASE_URL', 'https://testing.86chaos.com')).replace(/\/+$/, '');
+export const NATIVE_API_BASE_URL = String(env('REACT_APP_NATIVE_API_BASE_URL', 'https://app.86chaos.com')).replace(/\/+$/, '');
 const nativeOriginalFetch = typeof window !== 'undefined' && typeof window.fetch === 'function'
   ? window.fetch.bind(window)
   : null;

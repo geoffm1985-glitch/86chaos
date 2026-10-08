@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "release": "18.0.10",
+  "release": "18.0.11",
   "groups": {
     "hostile-contracts": {
       "mandatory": true,

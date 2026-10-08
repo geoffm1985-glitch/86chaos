@@ -113,12 +113,12 @@ test('signed-out and demo sessions cannot register their token on another accoun
   assert.equal(h.writes.length, 0);
 });
 
-test('preview packages the matching testing Firebase native configurations and bridge', () => {
+test('preview packages the matching production Firebase native configurations and bridge', () => {
   const services = JSON.parse(fs.readFileSync(path.join(root, 'android/app/google-services.json')));
-  assert.equal(services.project_info.project_id, 'chaos-test-d1601');
+  assert.equal(services.project_info.project_id, 'cheers-34b8d');
   assert.equal(services.client[0].client_info.android_client_info.package_name, 'com.chiltonappworks.chaos86');
   const ios = fs.readFileSync(path.join(root, 'ios/App/App/GoogleService-Info.plist'), 'utf8');
-  assert.match(ios, /chaos-test-d1601/);
+  assert.match(ios, /cheers-34b8d/);
   assert.match(ios, /com.chiltonappworks.chaos86/);
   const bridge = fs.readFileSync(path.join(root, 'src/core/nativePush.js'), 'utf8');
   assert.match(bridge, /registerPlugin\('FirebaseMessaging'\)/);

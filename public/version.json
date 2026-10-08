@@ -1,22 +1,22 @@
 {
-  "version": "18.0.10",
-  "name": "86 Chaos 18.0.10",
-  "build": "18.0.10",
-  "label": "86 Chaos 18.0.10",
-  "releasedAt": "2026-10-08T22:40:00.424Z",
-  "releaseTitle": "Borderless native launcher icon",
+  "version": "18.0.11",
+  "name": "86 Chaos 18.0.11",
+  "build": "18.0.11",
+  "label": "86 Chaos 18.0.11",
+  "releasedAt": "2026-10-08T23:32:21.696Z",
+  "releaseTitle": "Production native connection and microphone alignment",
   "notes": [
-    "Larger borderless Android adaptive launcher icon.",
-    "Branded fallback icons remain available on Android 7.",
-    "Includes the existing native notification integration and production 17.0.84.",
-    "Firebase native client-key alerts verified as restricted public configuration."
+    "Microphone placement matches the web app without double-counting Android system-bar insets.",
+    "Connects sign-in, restaurant data, storage, presence, functions and native notifications to production.",
+    "Testing accounts and data stay separate; sign in using a production account.",
+    "Retains the signing key from 18.0.10 for an in-place update."
   ],
-  "title": "86 Chaos 18.0.10",
-  "summary": "Larger borderless Android adaptive launcher artwork, preserving native notifications and production feature parity.",
-  "description": "Android launcher artwork uses a transparent foreground and a dark adaptive background without the embedded silver frame.",
+  "title": "86 Chaos 18.0.11",
+  "summary": "Connects the native app to production Firebase and APIs, with the microphone aligned to the web app.",
+  "description": "Android uses 44px voice-dock spacing inside the system-bar inset content area. Native Firebase registrations and API transport now target the production project.",
   "highlights": [
-    "Android and iOS versions align to 18.0.10 / build 180010.",
-    "Uses the existing testing Firebase project.",
-    "Notification taps open app routes; foreground alerts appear in the app."
+    "Production Firebase cheers-34b8d and app.86chaos.com APIs.",
+    "Native Android microphone spacing matches web.",
+    "Automated mutation tests use local Firebase emulators."
   ]
 }

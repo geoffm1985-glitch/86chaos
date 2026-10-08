@@ -31,9 +31,11 @@ with zipfile.ZipFile(sys.argv[1]) as apk:
     dex = b''.join(apk.read(name) for name in apk.namelist() if name.endswith('.dex'))
     assert b'FirebaseMessagingPlugin' in dex and b'MessagingService' in dex, 'Native push implementation missing from DEX'
     resources = apk.read('resources.arsc')
+    capacitor = json.loads(apk.read('assets/capacitor.config.json'))
+    assert capacitor['server']['hostname'] == 'app.86chaos.com', 'APK local origin is not production'
     services = json.loads((root / 'android/app/google-services.json').read_text())
     app_id = services['client'][0]['client_info']['mobilesdk_app_id']
-    assert services['project_info']['project_id'] == 'chaos-test-d1601'
-    for value in ['chaos-test-d1601', app_id]:
-        assert value.encode() in resources or value.encode('utf-16-le') in resources, 'Testing Firebase resource missing: ' + value
-print('Verified native FCM plugin, receiver, testing Firebase resources and sealed APK identity for ' + version['version'])
+    assert services['project_info']['project_id'] == 'cheers-34b8d'
+    for value in ['cheers-34b8d', app_id]:
+        assert value.encode() in resources or value.encode('utf-16-le') in resources, 'Production Firebase resource missing: ' + value
+print('Verified native FCM plugin, receiver, production Firebase resources and sealed APK identity for ' + version['version'])

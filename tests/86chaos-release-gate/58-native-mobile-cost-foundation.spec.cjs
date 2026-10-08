@@ -11,7 +11,7 @@ test.describe('58 Native mobile and Firebase cost foundation',()=>{
     const contract=json('mobile/native-platform-contract.json');
     expect(contract.platforms).toEqual(['android','ios']);
     expect(contract.equalPlatformPriority).toBe(true);
-    expect(contract.firebase.projectId).toBe('chaos-test-d1601');
+    expect(contract.firebase.projectId).toBe('cheers-34b8d');
     expect(contract.costControls.nativeBackgroundReleaseGraceMs).toBe(15000);
 
     const versionResponse=await request.get('/version.json');

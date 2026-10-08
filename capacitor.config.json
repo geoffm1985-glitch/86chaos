@@ -5,7 +5,7 @@
   "server": {
     "androidScheme": "https",
     "iosScheme": "https",
-    "hostname": "testing.86chaos.com"
+    "hostname": "app.86chaos.com"
   },
   "experimental": {
     "ios": {

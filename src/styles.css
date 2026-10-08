@@ -5827,3 +5827,12 @@ html.chaos-native-ios .desktop-pro-shell {
 html.chaos-native-runtime body {
   overscroll-behavior-y: none;
 }
+
+/* Android's content container already excludes the system bars. Keep the voice
+   dock at the web app's 44px offset without adding the same inset twice. */
+@media (max-width: 720px) {
+  html.chaos-native-android .voice-command-dock.fixed.bottom-5.left-4 {
+    bottom: 44px;
+    left: 12px;
+  }
+}

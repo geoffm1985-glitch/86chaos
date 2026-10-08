@@ -8,15 +8,15 @@ const read=file=>fs.readFileSync(path.join(root,file),'utf8');
 const json=file=>JSON.parse(read(file));
 const escVersion=value=>String(value).split('.').join('\\.');
 
-test('18.0.x native API bridge intercepts only local /api traffic and targets testing backend',()=>{
+test('18.0.x native API bridge intercepts only local /api traffic and targets production backend',()=>{
   const core=read('src/core/appCore.js');
   const cap=json('capacitor.config.json');
   const contract=json('mobile/native-platform-contract.json');
-  assert.equal(cap.server.hostname,'testing.86chaos.com');
-  assert.equal(contract.nativeApiBridge.backendBaseUrl,'https://testing.86chaos.com');
+  assert.equal(cap.server.hostname,'app.86chaos.com');
+  assert.equal(contract.nativeApiBridge.backendBaseUrl,'https://app.86chaos.com');
   assert.equal(contract.nativeApiBridge.transport,'CapacitorHttp');
   assert.match(core,/import \{ Capacitor, CapacitorHttp \} from '@capacitor\/core'/);
-  assert.match(core,/NATIVE_API_BASE_URL[\s\S]{0,180}https:\/\/testing\.86chaos\.com/);
+  assert.match(core,/NATIVE_API_BASE_URL[\s\S]{0,180}https:\/\/app\.86chaos\.com/);
   assert.match(core,/nativeApiRequestPath/);
   assert.match(core,/if \(\/\^\\\/api\\\//);
   assert.match(core,/CapacitorHttp\.request\(/);

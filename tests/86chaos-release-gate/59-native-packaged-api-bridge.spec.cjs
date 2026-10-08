@@ -20,8 +20,8 @@ test.describe('59 Native packaged API bridge',()=>{
 
     const cap=json('capacitor.config.json');
     const contract=json('mobile/native-platform-contract.json');
-    expect(cap.server.hostname).toBe('testing.86chaos.com');
-    expect(contract.nativeApiBridge.backendBaseUrl).toBe('https://testing.86chaos.com');
+    expect(cap.server.hostname).toBe('app.86chaos.com');
+    expect(contract.nativeApiBridge.backendBaseUrl).toBe('https://app.86chaos.com');
     expect(contract.nativeApiBridge.transport).toBe('CapacitorHttp');
     expect(contract.nativeApiBridge.paidServicesAdded).toBe(false);
   });

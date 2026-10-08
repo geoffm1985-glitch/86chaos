@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "release": "18.0.10",
+  "release": "18.0.11",
   "baseline": {
     "branch": "testing",
     "version": "17.0.42",
@@ -15,10 +15,10 @@
   "equalPlatformPriority": true,
   "webDir": "build",
   "firebase": {
-    "environment": "testing",
-    "projectId": "chaos-test-d1601",
+    "environment": "production",
+    "projectId": "cheers-34b8d",
     "separateMobileProject": false,
-    "productionProjectAllowed": false
+    "productionProjectAllowed": true
   },
   "costControls": {
     "newPaidServices": false,
@@ -59,14 +59,14 @@
       "minSdk": 24,
       "compileSdk": 36,
       "targetSdk": 36,
-      "versionCode": 180010,
-      "versionName": "18.0.10"
+      "versionCode": 180011,
+      "versionName": "18.0.11"
     },
     "ios": {
       "bundleIdentifier": "com.chiltonappworks.chaos86",
       "minimumVersion": "15.0",
-      "currentProjectVersion": 180010,
-      "marketingVersion": "18.0.10",
+      "currentProjectVersion": 180011,
+      "marketingVersion": "18.0.11",
       "packageManager": "SPM"
     }
   },
@@ -85,8 +85,8 @@
     ]
   },
   "nativeApiBridge": {
-    "localOrigin": "https://testing.86chaos.com",
-    "backendBaseUrl": "https://testing.86chaos.com",
+    "localOrigin": "https://app.86chaos.com",
+    "backendBaseUrl": "https://app.86chaos.com",
     "transport": "CapacitorHttp",
     "intercepts": "same-origin /api/* only",
     "firebaseTransport": "browser Firebase SDK unchanged",
@@ -98,7 +98,8 @@
       "containerPadding": true,
       "webViewPadding": false,
       "clipToPadding": true,
-      "darkSystemBarIcons": false
+      "darkSystemBarIcons": false,
+      "voiceDockBottomCssPx": 44
     },
     "ios": {
       "strategy": "CSS env safe-area-inset fallback",
@@ -120,7 +121,7 @@
   "nativePush": {
     "plugin": "@capacitor-firebase/messaging",
     "tokenType": "FCM",
-    "projectId": "chaos-test-d1601",
+    "projectId": "cheers-34b8d",
     "devicePermissionRequired": true,
     "authenticatedSelfRepair": true,
     "tokenRefreshListener": true,

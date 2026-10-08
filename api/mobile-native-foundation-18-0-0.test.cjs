@@ -42,13 +42,13 @@ test('Capacitor contract packages the local React build for both Android and iOS
   assert.deepEqual(contract.requiredCoverage.includes('real-device-before-public-release'),true);
 });
 
-test('mobile branch remains locked to testing Firebase and introduces no paid service',()=>{
+test('mobile package connects to production Firebase and introduces no paid service',()=>{
   const contract=json('mobile/native-platform-contract.json');
   const core=read('src/core/appCore.js');
-  assert.equal(contract.firebase.environment,'testing');
-  assert.equal(contract.firebase.projectId,'chaos-test-d1601');
+  assert.equal(contract.firebase.environment,'production');
+  assert.equal(contract.firebase.projectId,'cheers-34b8d');
   assert.equal(contract.firebase.separateMobileProject,false);
-  assert.equal(contract.firebase.productionProjectAllowed,false);
+  assert.equal(contract.firebase.productionProjectAllowed,true);
   assert.equal(contract.costControls.newPaidServices,false);
   assert.match(core,/currentHostname\.endsWith\('\.vercel\.app'\)/);
   assert.match(core,/\? 'chaos-test-d1601'/);
