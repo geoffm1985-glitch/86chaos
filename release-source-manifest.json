@@ -1,7 +1,7 @@
 {
   "schemaVersion": 3,
   "version": "18.0.8",
-  "sourceHash": "82c05194a1522a9ae8115dc264bcf2f1bd90bfcb867e2b8a6908075ffebd1d78",
+  "sourceHash": "9cb123626fd8f2c8e7d5ccb85bdf355212878e04e6663d6436d05e12408ea256",
   "files": [
     {
       "file": ".gitattributes",
@@ -9,7 +9,7 @@
     },
     {
       "file": ".github/workflows/mobile-targeted-gate.yml",
-      "sha256": "29fa88d0f5f7419b3693d4e2081ffff4604641b33031a22d1bd46fa0ace68706"
+      "sha256": "5b22d605e289c011d91e666d73ef8dc1e408b4e4a18b6938238ebefdf7fbac9b"
     },
     {
       "file": ".github/workflows/testing-targeted-delta.yml",
@@ -1177,7 +1177,7 @@
     },
     {
       "file": "api/mobile-native-system-bars-branding-18-0-4.test.cjs",
-      "sha256": "518650bd460ee678c8a255bd7a42eca677cbebffda5f8488ddcb6f51ff8c4b38"
+      "sha256": "c8afeba176d0511bb1f9bfe650cb1dbfe49622c6788600311ea322eeee4dc89c"
     },
     {
       "file": "api/mobile-ui-and-failed-current-16-0-162.test.cjs",
@@ -4953,7 +4953,7 @@
     },
     {
       "file": "tests/86chaos-release-gate/60-native-system-bars-branding.spec.cjs",
-      "sha256": "2decdb5d2feb35564b91dc3414327f7daaef7474e992961976402d13f77a3788"
+      "sha256": "bfa6119d33cece094ba8f418c3561a32512fb19c712139a663c1d550145e4b1c"
     },
     {
       "file": "tests/86chaos-release-gate/61-native-container-insets.spec.cjs",

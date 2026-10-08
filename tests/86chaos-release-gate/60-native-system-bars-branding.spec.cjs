@@ -34,7 +34,7 @@ test.describe('60 Native system bars and branding',()=>{
     const contract=json('mobile/native-platform-contract.json');
     expect(activity).toMatch(/WindowInsetsCompat\.Type\.systemBars\(\)/);
     expect(activity).toMatch(/WindowInsetsCompat\.Type\.displayCutout\(\)/);
-    expect(activity).toMatch(/view\.setPadding\(safeInsets\.left, safeInsets\.top, safeInsets\.right, safeInsets\.bottom\)/);
+    expect(activity).toMatch(/view\.setPadding\(\s*safeInsets\.left,\s*safeInsets\.top,\s*safeInsets\.right,\s*safeInsets\.bottom\s*\)/);
     expect(manifest).toMatch(/@drawable\/chaos86_app_icon/);
     expect(bin('android/app/src/main/res/drawable-nodpi/chaos86_app_icon.png').equals(bin('public/86chaos-pwa-512-v4.png'))).toBe(true);
     expect(core).toMatch(/installNativeViewportClass/);

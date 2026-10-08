@@ -14,7 +14,7 @@ test('18.0.x Android WebView respects status navigation and cutout insets',()=>{
   assert.match(activity,/WindowInsetsCompat\.Type\.systemBars\(\)/);
   assert.match(activity,/WindowInsetsCompat\.Type\.displayCutout\(\)/);
   assert.match(activity,/setOnApplyWindowInsetsListener/);
-  assert.match(activity,/view\.setPadding\(safeInsets\.left, safeInsets\.top, safeInsets\.right, safeInsets\.bottom\)/);
+  assert.match(activity,/view\.setPadding\(\s*safeInsets\.left,\s*safeInsets\.top,\s*safeInsets\.right,\s*safeInsets\.bottom\s*\)/);
   assert.match(activity,/setAppearanceLightStatusBars\(false\)/);
   assert.match(activity,/setAppearanceLightNavigationBars\(false\)/);
 });
