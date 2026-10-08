@@ -1,7 +1,7 @@
 {
   "schemaVersion": 3,
   "version": "18.0.8",
-  "sourceHash": "3eb161a9de50dc7b43e9e5310c4b285a12f27b17cab736fad6c2ab063b18fee6",
+  "sourceHash": "29d88979a48732bf2d615d065b14482201483ef0b1aaf48e70feffea95f2b728",
   "files": [
     {
       "file": ".gitattributes",
@@ -4693,7 +4693,7 @@
     },
     {
       "file": "tests/86chaos-full-audit/utils/audit-helpers.cjs",
-      "sha256": "d79b84f4d41a135a8eecbf2e563f24a584e71159dfd020c0c5ea33c86dd71431"
+      "sha256": "162f194230c174350ebdf3b46f14eba8166bc26a3cfeeb14d0704b68dbfca268"
     },
     {
       "file": "tests/86chaos-full-audit/utils/fake-restaurant-profile.cjs",
@@ -5278,6 +5278,10 @@
     {
       "file": "tests/fixtures/schedule-builder-grid-fixture.cjs",
       "sha256": "fc7a5ff1697456f197f8dd2993ec6cf7a8f97bafae01c301acdea7d3180663b7"
+    },
+    {
+      "file": "tests/layout/dialog-dismissal-navigation.spec.cjs",
+      "sha256": "7c798b4e9b164da28886c0e2c7e9d61d22407a67c0b56584a65aa0f7b97c9f91"
     },
     {
       "file": "tests/layout/mobile-voice-17-0-5.spec.cjs",

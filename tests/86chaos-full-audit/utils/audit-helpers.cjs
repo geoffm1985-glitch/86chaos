@@ -431,7 +431,10 @@ async function dismissBlockingDialogs(page, options = {}) {
       if (dangerous.test(candidate.label)) continue;
       const locator = page.getByRole('button', { name: candidate.label, exact: candidate.exact }).first();
       if (await locator.isVisible({ timeout: 650 }).catch(() => false)) {
-        await locator.click({ timeout: 2500 });
+        // Closing an informational dialog is complete when its overlay is gone.
+        // Route hydration may still be navigating; verify closure below instead
+        // of spending the click budget waiting for that unrelated navigation.
+        await locator.click({ timeout: 2500, noWaitAfter: true });
         used = candidate.label;
         break;
       }
