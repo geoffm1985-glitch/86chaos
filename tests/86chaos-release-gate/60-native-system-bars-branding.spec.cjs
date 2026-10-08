@@ -35,13 +35,22 @@ test.describe('60 Native system bars and branding',()=>{
     expect(activity).toMatch(/WindowInsetsCompat\.Type\.systemBars\(\)/);
     expect(activity).toMatch(/WindowInsetsCompat\.Type\.displayCutout\(\)/);
     expect(activity).toMatch(/view\.setPadding\(\s*safeInsets\.left,\s*safeInsets\.top,\s*safeInsets\.right,\s*safeInsets\.bottom\s*\)/);
-    expect(manifest).toMatch(/@drawable\/chaos86_app_icon/);
-    expect(bin('android/app/src/main/res/drawable-nodpi/chaos86_app_icon.png').equals(bin('public/86chaos-pwa-512-v4.png'))).toBe(true);
+    expect(manifest).toMatch(/android:icon="@mipmap\/ic_launcher"/);
+    expect(manifest).toMatch(/android:roundIcon="@mipmap\/ic_launcher_round"/);
+    for(const name of ['ic_launcher','ic_launcher_round']) {
+      expect(read(`android/app/src/main/res/mipmap-anydpi-v26/${name}.xml`)).toMatch(/@drawable\/chaos86_launcher_foreground/);
+      expect(read(`android/app/src/main/res/mipmap-anydpi/${name}.xml`)).toMatch(/@drawable\/chaos86_launcher_artwork/);
+    }
+    const foreground=read('android/app/src/main/res/drawable/chaos86_launcher_foreground.xml');
+    expect(foreground).toMatch(/@drawable\/chaos86_launcher_artwork/);
+    expect(foreground).toMatch(/android:insetLeft="23%"/);
+    expect(bin('android/app/src/main/res/drawable-nodpi/chaos86_launcher_artwork.png')[25]).toBe(6);
+    expect(read('android/app/src/main/res/values/ic_launcher_background.xml')).toContain('#12161A');
     expect(core).toMatch(/installNativeViewportClass/);
     expect(css).toMatch(/html\.chaos-native-ios body/);
     expect(contract.nativeViewport.android.containerPadding).toBe(true);
     expect(contract.nativeViewport.android.webViewPadding).toBe(false);
-    expect(contract.branding.androidLauncherIcon).toBe('public/86chaos-pwa-512-v4.png');
+    expect(contract.branding.androidLauncherIcon).toBe('android/app/src/main/res/drawable-nodpi/chaos86_launcher_artwork.png');
     expect(contract.branding.iosBrandedIconRequiredBeforeAppleDistribution).toBe(true);
   });
 });

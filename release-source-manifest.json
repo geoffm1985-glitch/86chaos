@@ -1,7 +1,7 @@
 {
   "schemaVersion": 3,
   "version": "18.0.10",
-  "sourceHash": "fc8a1f63e55aa8cf19f0dbb376efc9a01154c99631b2cee7850c6c3e2e4709bc",
+  "sourceHash": "f44eccfdef19648e840a3839ba5726921e8d554b1087b9967053dae44e3871b7",
   "files": [
     {
       "file": ".gitattributes",
@@ -5025,7 +5025,7 @@
     },
     {
       "file": "tests/86chaos-release-gate/60-native-system-bars-branding.spec.cjs",
-      "sha256": "bfa6119d33cece094ba8f418c3561a32512fb19c712139a663c1d550145e4b1c"
+      "sha256": "a81e3b998a6d2ac47d6038241e356d88b5c45e8e0dba4b75db51c82c9cb4924a"
     },
     {
       "file": "tests/86chaos-release-gate/61-native-container-insets.spec.cjs",
