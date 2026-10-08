@@ -4031,11 +4031,11 @@ const handleExportTimesheets = () => {
     </tr>
   );
 
-  const scheduleBuilderTableStyle = { '--schedule-builder-min-width': `${82 + (schedulePeriodDays.length * 56)}px` };
+  const scheduleBuilderTableStyle = { '--schedule-builder-day-count': schedulePeriodDays.length };
   const renderScheduleBuilderColgroup = () => (
     <colgroup>
       <col className="schedule-builder-staff-column" />
-      {schedulePeriodDays.map(d => <col key={`schedule-col-${d}`} />)}
+      {schedulePeriodDays.map(d => <col key={`schedule-col-${d}`} className="schedule-builder-day-column" />)}
     </colgroup>
   );
 
