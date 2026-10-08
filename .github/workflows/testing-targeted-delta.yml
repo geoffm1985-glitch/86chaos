@@ -57,7 +57,7 @@ jobs:
           const fs = require('fs');
           const identity = require('./scripts/86chaos-release-gate/source-identity.cjs');
           const captured = identity.captureSourceIdentity(process.cwd());
-          const manifest = { schemaVersion: 1, sourceHash: captured.sourceHash, files: captured.files };
+          const manifest = { schemaVersion: 3, version: captured.version, sourceHash: captured.sourceHash, files: captured.files };
           fs.writeFileSync('release-source-manifest.json', JSON.stringify(manifest, null, 2) + '\n');
           NODE
           if git diff --quiet -- release-source-manifest.json; then
@@ -66,27 +66,34 @@ jobs:
             git config user.name "86 Chaos Gate Bot"
             git config user.email "actions@users.noreply.github.com"
             git add release-source-manifest.json
-            git commit -m "ci: refresh 17.0.42 testing source manifest parity"
+            git commit -m "ci: refresh 17.0.59 testing source manifest parity"
             git push origin HEAD:testing
             echo "Manifest repaired; the follow-up testing push will run targeted/delta against the exact repaired commit."
             exit 0
           fi
-      - name: Run 17.0.42 targeted delta only
+      - name: Run 17.0.59 targeted delta only
         run: npm run test:current-release-targeted
       - name: Capture exact targeted-delta identity
         shell: bash
         run: |
           echo "CHAOS_EXPECTED_GIT_COMMIT=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
-          echo "CHAOS_EXPECTED_VERSION=$(node -p \"require('./package.json').version\")" >> "$GITHUB_ENV"
+          version=$(node -p "require('./package.json').version")
+          echo "CHAOS_EXPECTED_VERSION=$version" >> "$GITHUB_ENV"
       - name: Wait for exact testing deployment
         shell: bash
         run: |
           matched=false
+          identity_file="$RUNNER_TEMP/86chaos-build-identity.json"
+          version_file="$RUNNER_TEMP/86chaos-version.json"
           for attempt in $(seq 1 180); do
-            identity="$(curl --fail --silent --show-error "$APP_URL/build-identity.json?ci=$RANDOM" || true)"
-            version="$(curl --fail --silent --show-error "$APP_URL/version.json?ci=$RANDOM" || true)"
-            deployed_commit="$(node -e "try{const v=JSON.parse(process.argv[1]);process.stdout.write(String(v.gitCommit||v.commit||''))}catch{}" "$identity")"
-            deployed_version="$(node -e "try{const v=JSON.parse(process.argv[1]);process.stdout.write(String(v.version||''))}catch{}" "$version")"
+            if ! curl --fail --silent --show-error -o "$identity_file" "$APP_URL/build-identity.json?ci=$RANDOM"; then
+              : > "$identity_file"
+            fi
+            if ! curl --fail --silent --show-error -o "$version_file" "$APP_URL/version.json?ci=$RANDOM"; then
+              : > "$version_file"
+            fi
+            deployed_commit="$(node scripts/ci/read-deployment-identity.cjs commit "$identity_file")"
+            deployed_version="$(node scripts/ci/read-deployment-identity.cjs version "$version_file")"
             if [ "$deployed_commit" = "$CHAOS_EXPECTED_GIT_COMMIT" ] && [ "$deployed_version" = "$CHAOS_EXPECTED_VERSION" ]; then
               matched=true
               break
@@ -99,9 +106,64 @@ jobs:
           fi
       - name: Install targeted-delta browser
         run: npx playwright install --with-deps chromium
-      - name: Run new 17.0.40 browser delta on desktop and mobile
+      - name: Run 17.0.69 repaired browser delta on desktop and mobile
         run: >-
           npx playwright test
+          tests/86chaos-new-implementations/04-schedule-pdf-print.spec.cjs
+          tests/86chaos-new-implementations/05-mobile-schedule-pdf-delivery.spec.cjs
+          tests/86chaos-new-implementations/08-phase1-spanish-interface.spec.cjs
+          tests/86chaos-release-gate/66-firebase-emulator-bridge-17-0-54.spec.cjs
+          tests/86chaos-release-gate/67-firebase-emulator-cra-build-17-0-55.spec.cjs
+          tests/86chaos-release-gate/68-firebase-emulator-entry-import-17-0-56.spec.cjs
+          tests/86chaos-release-gate/69-yardmaster-firebase-bridge-17-0-57.spec.cjs
+          tests/86chaos-release-gate/70-release-gate-emulator-target-coherence-17-0-58.spec.cjs
+          tests/86chaos-release-gate/71-release-gate-staleness-manifest-17-0-59.spec.cjs
+          tests/86chaos-release-gate/72-release-gate-source-inventory-17-0-60.spec.cjs
+          tests/86chaos-release-gate/73-release-gate-ignored-local-source-17-0-61.spec.cjs
+          tests/86chaos-release-gate/74-release-gate-root-source-archive-17-0-62.spec.cjs
+          tests/86chaos-release-gate/75-yardmaster-readiness-bootstrap-17-0-63.spec.cjs
+          tests/86chaos-release-gate/76-emulator-runtime-boundaries-17-0-64.spec.cjs
+          tests/86chaos-release-gate/77-release-gate-lineage-title-migration-17-0-65.spec.cjs
+          tests/86chaos-release-gate/78-release-gate-lineage-suite-prefix-17-0-66.spec.cjs
+          tests/86chaos-release-gate/79-runtime-isolation-csp-sticky-a11y-17-0-67.spec.cjs
+          tests/86chaos-release-gate/80-failed-new-evidence-17-0-68.spec.cjs
+          tests/86chaos-release-gate/81-source-manifest-authority-17-0-69.spec.cjs
+          tests/86chaos-release-gate/82-release-gate-hostile-fixture-manifest-17-0-70.spec.cjs
+          tests/86chaos-release-gate/83-failed-only-manifest-emulator-target-17-0-71.spec.cjs
+          tests/86chaos-release-gate/84-failed-only-manifest-reporter-independence-17-0-72.spec.cjs
+          tests/86chaos-release-gate/85-failed-only-repair-selection-emulator-target-17-0-73.spec.cjs
+          tests/86chaos-release-gate/86-partial-run-evidence-emulator-target-17-0-74.spec.cjs
+          tests/86chaos-release-gate/87-qa-role-emulator-target-17-0-75.spec.cjs
+          tests/86chaos-release-gate/88-ghost-request-off-selector-17-0-76.spec.cjs
+          tests/86chaos-release-gate/89-server-certification-drift-17-0-77.spec.cjs
+          tests/86chaos-release-gate/90-emulator-playwright-fidelity-17-0-78.spec.cjs
+          tests/86chaos-release-gate/91-emulator-runtime-equivalent-baseline-17-0-79.spec.cjs
+          tests/86chaos-release-gate/92-failure-lineage-baseline-17-0-80.spec.cjs
+          tests/86chaos-release-gate/93-lazy-chunk-interception-17-0-81.spec.cjs
+          tests/86chaos-release-gate/94-failed-new-lineage-repair-17-0-82.spec.cjs
+          tests/86chaos-release-gate/95-request-off-maturity-refactor-17-0-83.spec.cjs
+          tests/86chaos-release-gate/96-owned-full-fidelity-17-0-84.spec.cjs
+          tests/e2e/runtime-isolation-csp-sticky-a11y.spec.cjs
+          tests/e2e/failed-new-evidence-17-0-68.spec.cjs
+          tests/e2e/source-manifest-authority-17-0-69.spec.cjs
+          tests/e2e/release-gate-hostile-fixture-manifest-17-0-70.spec.cjs
+          tests/e2e/failed-only-manifest-emulator-target-17-0-71.spec.cjs
+          tests/e2e/failed-only-manifest-reporter-independence-17-0-72.spec.cjs
+          tests/e2e/failed-only-repair-selection-emulator-target-17-0-73.spec.cjs
+          tests/e2e/partial-run-evidence-emulator-target-17-0-74.spec.cjs
+          tests/e2e/qa-role-emulator-target-17-0-75.spec.cjs
+          tests/e2e/ghost-request-off-selector-17-0-76.spec.cjs
+          tests/e2e/server-certification-drift-17-0-77.spec.cjs
+          tests/e2e/emulator-playwright-fidelity-17-0-78.spec.cjs
+          tests/e2e/emulator-runtime-equivalent-baseline-17-0-79.spec.cjs
+          tests/e2e/failure-lineage-baseline-17-0-80.spec.cjs
+          tests/e2e/lazy-chunk-interception-17-0-81.spec.cjs
+          tests/e2e/failed-new-lineage-repair-17-0-82.spec.cjs
+          tests/e2e/request-off-maturity-refactor-17-0-83.spec.cjs
+          tests/e2e/owned-full-fidelity-17-0-84.spec.cjs
+          tests/e2e/release-gate-lineage-title-migration.spec.cjs
+          tests/86chaos-full-audit/05-schedule-builder-mutation.spec.cjs
+          tests/86chaos-release-gate/35-reminder-notification-certification.spec.cjs
           tests/86chaos-release-gate/48-needs-attention-readiness-2.spec.cjs
           tests/86chaos-release-gate/49-restaurant-intelligence-review-boundaries.spec.cjs
           tests/86chaos-release-gate/50-purchase-reconciliation-browser.spec.cjs
@@ -112,7 +174,14 @@ jobs:
           tests/86chaos-release-gate/55-full-surface-traceability.spec.cjs
           tests/86chaos-release-gate/56-manager-brief-sticky-day-header.spec.cjs
           tests/86chaos-release-gate/57-sticky-header-touch-handoff.spec.cjs
+          tests/86chaos-release-gate/58-testing-gate-17-0-43.spec.cjs
+          tests/86chaos-release-gate/60-customer-help-version-17-0-45.spec.cjs
+          tests/86chaos-release-gate/61-release-gate-surgical-repairs-17-0-46.spec.cjs
+          tests/86chaos-release-gate/63-testing-deployment-identity-file-reader-17-0-49.spec.cjs
+          tests/86chaos-release-gate/64-system-admin-recovery-boundary-17-0-51.spec.cjs
+          tests/86chaos-release-gate/65-system-admin-firebase-cost-runtime-17-0-52.spec.cjs
           tests/86chaos-full-audit/06-request-off-events-integration.spec.cjs
+          tests/e2e/schedule-request-off-management.spec.cjs
           --config=playwright.play-store-release.config.cjs
           --project=chromium
           --project=mobile-chromium

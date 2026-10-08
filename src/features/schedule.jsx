@@ -1052,8 +1052,8 @@ const TabMasterSchedule = ({ currentDate, setCurrentDate = null, onSubTabChange 
   const scheduleIdentity = buildScheduleIdentityFields(getSchedulePersonForAppUser(appUser, users), appUser);
   const availabilityWhereClauses = canViewTeamAvailability ? [] : [['scheduleUserId', '==', scheduleIdentity.scheduleUserId || '__none__']];
   const availabilityLimit = canViewTeamAvailability ? 220 : 25;
-  const availabilityRecordsState = useLiveCollectionState('availabilityRecords', appUser?.restaurantId, { enabled: !!appUser?.restaurantId && (subTab === 'availability' || subTab === 'schedule-builder'), whereClauses: availabilityWhereClauses, orderByField: canViewTeamAvailability ? 'employeeName' : null, orderDirection: 'asc', limitCount: availabilityLimit, fallbackLimitCount: canViewTeamAvailability ? 80 : 25, debugLabel: `schedule:${subTab}:availability` });
-  const availabilityRecords = availabilityRecordsState.data || [];
+  const availabilityRecordsState = useLiveCollectionState('availabilityRecords', appUser?.restaurantId, { enabled: !!appUser?.restaurantId && (subTab === 'availability' || subTab === 'schedule-builder'), whereClauses: availabilityWhereClauses, orderByField: null, orderDirection: 'asc', limitCount: availabilityLimit, fallbackLimitCount: canViewTeamAvailability ? 80 : 25, debugLabel: `schedule:${subTab}:availability` });
+  const availabilityRecords = [...(availabilityRecordsState.data || [])].sort((a, b) => String(a?.employeeName || a?.name || '').localeCompare(String(b?.employeeName || b?.name || '')));
 
   useEffect(() => { onSubTabChange?.(subTab); }, [subTab, onSubTabChange]);
 
@@ -1560,7 +1560,7 @@ const handleOfferSwap = async (shift) => {
         {['my-schedule', 'full-schedule', 'month-view', 'trade-board', 'time-off', 'availability', ...((appUser?.isAdmin || appUser?.permissions?.schedule) && scheduleBuilderProps ? ['schedule-builder'] : [])].map((tab) => {
           const label = tab === 'my-schedule' ? t('schedule.mySchedule') : tab === 'full-schedule' ? t('schedule.fullSchedule') : tab === 'month-view' ? t('schedule.monthView') : tab === 'time-off' ? t('schedule.requestOff') : tab === 'availability' ? t('schedule.availability') : tab === 'trade-board' ? t('schedule.tradeBoard') : tab === 'schedule-builder' ? t('schedule.builder') : tab.replace('-', ' ');
           return (
-          <button key={tab} type="button" aria-label={label} title={label} onClick={() => setSubTab(tab)} className={`px-2 sm:px-4 py-2 text-[10px] sm:text-xs font-black rounded-xl uppercase tracking-widest transition-all sm:flex-1 ${subTab === tab ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>
+          <button key={tab} type="button" data-testid={tab === 'time-off' ? 'schedule-request-off-tab' : undefined} aria-label={label} title={label} onClick={() => setSubTab(tab)} className={`px-2 sm:px-4 py-2 text-[10px] sm:text-xs font-black rounded-xl uppercase tracking-widest transition-all sm:flex-1 ${subTab === tab ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>
             {label}
           </button>
         );})}
@@ -1943,26 +1943,20 @@ const [eventDate, setEventDate] = useState(getToday());
   useEffect(() => {
     if (subTab !== 'schedule' || typeof window === 'undefined') return undefined;
     const updateStickyTop = () => {
-      const viewportWidth = Number(window.innerWidth || 0);
       const shell = document.querySelector('.desktop-pro-shell');
       const shellStyle = shell ? window.getComputedStyle(shell) : null;
       const configuredTopbar = Number.parseFloat(shellStyle?.getPropertyValue('--chaos-compact-topbar-h') || '');
       const topbarHeight = Number.isFinite(configuredTopbar) ? configuredTopbar : 54;
-      const deckHeight = Math.ceil(scheduleBuilderControlDeckRef.current?.getBoundingClientRect?.().height || 0);
-      // The control deck is sticky on phones too. 17.0.40 treated mobile as zero-height,
-      // so the day/date header pinned behind the deck and disappeared while scrolling.
-      // Keep the header immediately below whichever sticky surfaces are actually present.
-      const mobileContentShell = viewportWidth <= 720
-        ? document.querySelector('.desktop-pro-shell[data-active-tab="schedule"] .app-content-shell')
-        : null;
-      const mobileContentStyle = mobileContentShell ? window.getComputedStyle(mobileContentShell) : null;
-      const mobileScrollShellOwnsTopbar = Boolean(
-        mobileContentShell
-        && /(auto|scroll)/.test(String(mobileContentStyle?.overflowY || ''))
-        && mobileContentShell.scrollHeight > mobileContentShell.clientHeight + 8
-      );
-      const baseTop = mobileScrollShellOwnsTopbar ? 0 : topbarHeight;
-      setScheduleBuilderStickyTop(Math.max(0, baseTop + deckHeight + (deckHeight ? 4 : 2)));
+      const deck = scheduleBuilderControlDeckRef.current;
+      const deckStyle = deck ? window.getComputedStyle(deck) : null;
+      const deckIsSticky = deckStyle?.position === 'sticky';
+      const deckHeight = deckIsSticky ? Math.ceil(deck?.getBoundingClientRect?.().height || 0) : 0;
+      const configuredDeckTop = Number.parseFloat(deckStyle?.top || '');
+      // On compact/mobile layouts the control deck is intentionally allowed to scroll away.
+      // Pinning a multi-row deck consumed most of the viewport and made the day/date strip
+      // collide with a deck whose height changed as data and fonts settled.
+      const deckTop = deckIsSticky && Number.isFinite(configuredDeckTop) ? configuredDeckTop : topbarHeight;
+      setScheduleBuilderStickyTop(Math.max(0, deckTop + deckHeight + (deckIsSticky && deckHeight ? 4 : 2)));
     };
     updateStickyTop();
     window.addEventListener('resize', updateStickyTop);
@@ -4021,7 +4015,7 @@ const handleExportTimesheets = () => {
               {parseInt(d.split('-')[2])}
             </div>
             {hasAlert && (
-              <div className="absolute top-full left-1/2 -translate-x-1/2 mt-1 w-32 bg-[#1A2126] border border-[#D4A381] text-white text-[10px] p-2 rounded shadow-2xl opacity-0 invisible group-hover:opacity-100 group-hover:visible z-50 pointer-events-none transition-all">
+              <div className="schedule-builder-day-tooltip absolute top-full left-1/2 -translate-x-1/2 mt-1 w-32 bg-[#1A2126] border border-[#D4A381] text-white text-[10px] p-2 rounded shadow-2xl opacity-0 invisible group-hover:opacity-100 group-hover:visible z-50 pointer-events-none transition-all">
                 {holiday && <div className="text-amber-400 font-black mb-1 leading-tight">{holiday}</div>}
                 {dayEvents.map(ev => (
                   <div key={ev.id} className="text-red-400 font-bold leading-tight mt-1 border-t border-[#2A353D] pt-1">
@@ -4037,11 +4031,11 @@ const handleExportTimesheets = () => {
     </tr>
   );
 
-  const scheduleBuilderTableStyle = { '--schedule-builder-min-width': `${82 + (schedulePeriodDays.length * 56)}px` };
+  const scheduleBuilderTableStyle = { '--schedule-builder-day-count': schedulePeriodDays.length };
   const renderScheduleBuilderColgroup = () => (
     <colgroup>
       <col className="schedule-builder-staff-column" />
-      {schedulePeriodDays.map(d => <col key={`schedule-col-${d}`} />)}
+      {schedulePeriodDays.map(d => <col key={`schedule-col-${d}`} className="schedule-builder-day-column" />)}
     </colgroup>
   );
 
@@ -5745,8 +5739,9 @@ const TabTimeOff = ({ timeOffRequests, appUser, users, addToast, events = [], sh
   const RequestCard = ({ r }) => {
     const status = normalizeStatus(r);
     const publishedFlag = r.unresolvedPublishedOverlap || r.overlapsPublishedSchedule;
+    const requestControlContext = `${requestSubjectLabel(r)} on ${formatRequestDateLabel(requestOffDateKey(r) || r.date)}`;
     return <div className={`${T.row} items-start gap-3 ${publishedFlag ? 'border-amber-500/40 bg-amber-900/10' : ''}`}>
-      {canManage && <input type="checkbox" checked={selectedRequestIds.includes(r.id)} onChange={e => setSelectedRequestIds(prev => e.target.checked ? [...prev, r.id] : prev.filter(id => id !== r.id))} className="mt-1 accent-[#8F6040]" />}
+      {canManage && <input type="checkbox" aria-label={`Select Request Off for ${requestControlContext}`} checked={selectedRequestIds.includes(r.id)} onChange={e => setSelectedRequestIds(prev => e.target.checked ? [...prev, r.id] : prev.filter(id => id !== r.id))} className="mt-1 accent-[#8F6040]" />}
       <div className="flex-1 min-w-0">
         <div className="font-black text-white text-sm">{requestSubjectLabel(r)}</div>
         <div className={`text-[10px] font-bold ${T.muted} flex flex-wrap gap-2 mt-0.5`}><span>{formatRequestDateLabel(requestOffDateKey(r) || r.date)}</span>{r.isPartial && <span className="text-[#D4A381]">{formatRequestPartialRange(r)}</span>}<span className="uppercase tracking-widest">{status}</span>{publishedFlag && <span className="text-amber-300">Unresolved on published schedule</span>}</div>
@@ -5754,8 +5749,8 @@ const TabTimeOff = ({ timeOffRequests, appUser, users, addToast, events = [], sh
         {isArchivedRequest(r) && <div className="mt-1 text-[10px] font-bold text-slate-500">{r.scheduleId ? `Schedule: ${r.scheduleId}` : 'History record'}{r.publishedAt ? ` • Published ${formatClockDateTime(r.publishedAt)} by ${r.publishedByName || r.publishedBy || 'manager'}` : ''}{r.approvedAt ? ` • Approved ${formatClockDateTime(r.approvedAt)} by ${r.approvedByName || r.approvedBy || ''}` : ''}{r.deniedAt ? ` • Denied ${formatClockDateTime(r.deniedAt)} by ${r.deniedByName || r.deniedBy || ''}` : ''}</div>}
       </div>
       <div className="flex flex-wrap justify-end gap-2">
-        {canManage && status === 'pending' && !isArchivedRequest(r) && <button onClick={() => approveRequest(r)} className="p-2 rounded-lg bg-emerald-900/20 text-emerald-300 border border-emerald-900/50"><Check size={14}/></button>}
-        {canManage && status === 'pending' && !isArchivedRequest(r) && <button onClick={() => denyRequest(r)} className="p-2 rounded-lg bg-red-900/20 text-red-300 border border-red-900/50"><X size={14}/></button>}
+        {canManage && status === 'pending' && !isArchivedRequest(r) && <button type="button" aria-label={`Approve Request Off for ${requestControlContext}`} title={`Approve Request Off for ${requestControlContext}`} onClick={() => approveRequest(r)} className="min-h-[44px] min-w-[44px] p-2 rounded-lg bg-emerald-900/20 text-emerald-300 border border-emerald-900/50"><Check size={14}/></button>}
+        {canManage && status === 'pending' && !isArchivedRequest(r) && <button type="button" aria-label={`Deny Request Off for ${requestControlContext}`} title={`Deny Request Off for ${requestControlContext}`} onClick={() => denyRequest(r)} className="min-h-[44px] min-w-[44px] p-2 rounded-lg bg-red-900/20 text-red-300 border border-red-900/50"><X size={14}/></button>}
         {canManage && (isArchivedRequest(r) ? <button onClick={() => restoreRequest(r)} className={T.btnAlt}>Restore</button> : <button onClick={() => archiveRequest(r)} className={T.btnAlt}>Archive</button>)}
         {!canManage && (status === 'pending' || status === 'approved') && !isArchivedRequest(r) && <button type="button" data-testid={`request-off-cancel-${r.id}`} aria-label={`Cancel Request Off for ${formatRequestDateLabel(requestOffDateKey(r) || r.date)}`} title={`Cancel Request Off for ${formatRequestDateLabel(requestOffDateKey(r) || r.date)}`} onClick={() => { if(window.confirm('Cancel this request-off?')) cancelRequest(r); }} className="text-slate-400 hover:text-red-500 p-2 bg-[#1A2126] rounded-lg border border-[#2A353D]"><Trash2 size={14}/></button>}
       </div>
@@ -6195,7 +6190,7 @@ const ScheduleCopilot = ({ period, periodLabel = '', users = [], shifts = [], ti
       <div className="grid grid-cols-4 gap-1.5">
         {[['Drafts',draftCount],['Missing',missingTargets.length],['Warnings',allScheduleWarnings.length],['Templates',safeTemplates.length]].map(([label,value]) => <div key={label} className="schedule-copilot-metric bg-[#12161A] border border-[#2A353D]"><span className="text-[8px] uppercase tracking-widest font-black text-slate-500">{label}</span><strong className="text-white">{value}</strong></div>)}
       </div>
-      <div className="flex gap-1.5 overflow-x-auto custom-scrollbar border-b border-[#2A353D] pb-2" role="tablist" aria-label="Schedule Builder tools" aria-orientation="horizontal">{[['targets',t('builder.coverage')],['templates',t('builder.templates')],['template-editor', editingTemplateId ? t('builder.editTemplate') : t('builder.createTemplate')],['drag',t('builder.dragBoard')],['warnings',t('builder.warnings')]].map(([id,label]) => <button key={id} type="button" role="tab" aria-label={label} title={label} onClick={() => setActiveTool(id)} aria-selected={activeTool===id} data-chaos-current-state={activeTool===id ? 'true' : undefined} className={`flex-shrink-0 px-2.5 py-1.5 rounded-lg text-[9px] uppercase tracking-widest font-black ${activeTool===id ? `${T.grad} text-slate-900` : 'bg-[#12161A] text-slate-400 hover:text-white'}`}>{label}</button>)}</div>
+      <div className="flex gap-1.5 overflow-x-auto custom-scrollbar border-b border-[#2A353D] pb-2" role="tablist" aria-label="Schedule Builder tools" aria-orientation="horizontal">{[['targets',t('builder.coverage')],['templates',t('builder.templates')],['template-editor', editingTemplateId ? t('builder.editTemplate') : t('builder.createTemplate')],['drag',t('builder.dragBoard')],['warnings',t('builder.warnings')]].map(([id,label]) => <button key={id} type="button" role="tab" data-testid={id === 'warnings' ? 'schedule-copilot-warnings-tab' : undefined} aria-label={label} title={label} onClick={() => setActiveTool(id)} aria-selected={activeTool===id} data-chaos-current-state={activeTool===id ? 'true' : undefined} className={`flex-shrink-0 px-2.5 py-1.5 rounded-lg text-[9px] uppercase tracking-widest font-black ${activeTool===id ? `${T.grad} text-slate-900` : 'bg-[#12161A] text-slate-400 hover:text-white'}`}>{label}</button>)}</div>
       <div className="schedule-copilot-body custom-scrollbar space-y-3">
       {activeTool === 'targets' && <div className="grid lg:grid-cols-2 gap-4"><form onSubmit={addCoverageTarget} className="bg-[#12161A] border border-[#2A353D] rounded-xl p-3 space-y-2"><h4 className="font-black text-white">Add Coverage Target</h4><p className="text-[10px] font-bold text-slate-400">Choose how many people you need for a role and time. Roles match the Staff Roster and Schedule Builder.</p><div className="grid grid-cols-2 gap-2"><select value={targetForm.dayIndex} onChange={e=>setTargetForm({...targetForm, dayIndex:e.target.value})} className={T.input}>{dayNames.map((d,i)=><option key={d} value={i}>{d}</option>)}</select><select value={targetForm.role} onChange={e=>setTargetForm({...targetForm, role:e.target.value})} className={T.input}>{scheduleRoleOptions.map(r => <option key={r} value={r}>{r}</option>)}</select><input type="time" value={targetForm.startTime} onChange={e=>setTargetForm({...targetForm, startTime:e.target.value})} className={T.input}/><input type="time" value={targetForm.endTime} onChange={e=>setTargetForm({...targetForm, endTime:e.target.value})} className={T.input}/><input type="number" min="1" value={targetForm.count} onChange={e=>setTargetForm({...targetForm, count:e.target.value})} className={T.input}/><button className={`${T.btn} py-2`}>Save Coverage Target</button></div></form><div className="space-y-2">{coverageTargets.length === 0 ? <FriendlyEmpty title="No coverage targets yet" text="Add the staffing level you want for each role and time. Fill Coverage Gaps can then create draft shifts for review."/> : coverageTargets.map(t => <div key={t.id} className="bg-[#12161A] border border-[#2A353D] rounded-xl p-3 flex justify-between items-center"><div><div className="font-black text-white">{dayNames[t.dayIndex]} • {t.role} x{t.count}</div><div className="text-xs text-slate-400 font-bold">{formatShortTime(t.startTime)} - {formatShortTime(t.endTime)}</div></div><button onClick={() => deleteDoc(doc(db,'scheduleCoverageTargets',t.id))} className="p-2 text-slate-400 hover:text-red-400"><Trash2 size={14}/></button></div>)}</div></div>}
       {activeTool === 'templates' && <div className="space-y-3"><div className="flex flex-col md:flex-row gap-2"><select value={templateId} onChange={e => setTemplateId(e.target.value)} className={`${T.input} flex-1`}><option value="">Select template to apply</option>{templateOptions.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}</select><button onClick={applyTemplate} disabled={periodActionBlocked} className={`${T.btn} py-2 disabled:opacity-50`}>{activePeriod.mode === 'weekly' ? 'Apply to Current Week' : 'Apply to Current Period'}</button><button onClick={saveCurrentWeekAsTemplate} className={T.btnAlt}>Save Current Week</button></div>{templateOptions.length === 0 ? <FriendlyEmpty title="No templates yet" text="Create a Normal Week, Packers Sunday, Fish Fry Friday, or Live Music template. Each restaurant gets its own library."/> : templateOptions.map(t => <div key={t.id} className="bg-[#12161A] border border-[#2A353D] rounded-xl p-3 flex justify-between items-center"><div><div className="font-black text-white">{t.name}</div><div className="text-xs text-slate-400 font-bold">{t.description || 'No description'} • {(t.rows || []).length} rules</div></div><div className="flex gap-2"><button onClick={() => editTemplate(t)} className={T.btnAlt}>Edit</button><button onClick={() => deleteTemplate(t)} className="px-3 py-2 rounded-xl bg-red-900/20 text-red-300 border border-red-900/50 text-xs font-black">Delete</button></div></div>)}</div>}

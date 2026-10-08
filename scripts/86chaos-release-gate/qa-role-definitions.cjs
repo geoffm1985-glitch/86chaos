@@ -1,4 +1,5 @@
-const EXPECTED_FIREBASE_PROJECT = 'chaos-test-d1601';
+const { expectedFirebaseProject } = require('../86chaos-firebase-target.cjs');
+const EXPECTED_FIREBASE_PROJECT = expectedFirebaseProject(process.env);
 
 const ROLE_DEFINITIONS = Object.freeze([
   {

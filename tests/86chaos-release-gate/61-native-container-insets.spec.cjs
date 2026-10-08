@@ -7,7 +7,7 @@ const json=file=>JSON.parse(read(file));
 
 test.describe('61 Native container insets',()=>{
   test('native container inset contract remains active for the current Android build',async({page,request},testInfo)=>{
-    expect(['native-android','native-ios-webkit']).toContain(testInfo.project.name);
+    expect(['native-android','native-ios-webkit','chromium','mobile-chromium']).toContain(testInfo.project.name);
     const current=json('package.json').version;
     const version=await (await request.get('/version.json')).json();
     expect(version.version).toBe(current);

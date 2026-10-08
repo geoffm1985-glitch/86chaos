@@ -5,6 +5,7 @@ const path = require('path');
 const { ensureRunDir, getSeedReportPath, getRoleReportPath, getSetupStatePath, readJsonIfExists, writeJson } = require('../86chaos-release-gate/run-context.cjs');
 const { applyQaWorkspaceEnv, validateQaWorkspaceName } = require('../86chaos-release-gate/qa-workspace.cjs');
 const { assertMutationSafety } = require('../86chaos-release-gate/mutation-safety.cjs');
+const { applyFirebaseEmulatorEnv, firestoreRestOrigin } = require('../86chaos-firebase-target.cjs');
 const { runId: RUN_ID, runDir: RELEASE_RUN_DIR } = ensureRunDir();
 const OUT_DIR = path.join(process.cwd(), 'test-results');
 fs.mkdirSync(OUT_DIR, { recursive: true });
@@ -60,6 +61,7 @@ try {
 }
 
 loadEnv(process.cwd());
+applyFirebaseEmulatorEnv(process.env);
 const ALLOW_MUTATION = boolEnv('CHAOS_ALLOW_MUTATION');
 
 const COLLECTION_ORDER = [
@@ -171,7 +173,7 @@ async function pageFetchJson(page, request) {
 
 function firestoreRest(config, idToken) {
   const encodedProject = encodeURIComponent(config.projectId);
-  const base = `https://firestore.googleapis.com/v1/projects/${encodedProject}/databases/(default)/documents`;
+  const base = `${firestoreRestOrigin(process.env)}/v1/projects/${encodedProject}/databases/(default)/documents`;
   const headers = { Authorization: `Bearer ${idToken}`, 'Content-Type': 'application/json' };
   return { base, headers };
 }
@@ -194,7 +196,7 @@ async function patchDoc(page, rest, colName, docId, payload) {
 
 async function deleteDocName(page, rest, docName) {
   if (!docName) return;
-  const url = `https://firestore.googleapis.com/v1/${docName}`;
+  const url = `${firestoreRestOrigin(process.env)}/v1/${docName}`;
   await pageFetchJson(page, { url, method: 'DELETE', headers: rest.headers });
 }
 
@@ -223,7 +225,7 @@ async function queryQaOwned(page, rest, colName, restaurantId) {
 async function getDocByName(page, rest, docName) {
   if (!docName) return null;
   try {
-    return await pageFetchJson(page, { url: `https://firestore.googleapis.com/v1/${docName}`, method: 'GET', headers: rest.headers });
+    return await pageFetchJson(page, { url: `${firestoreRestOrigin(process.env)}/v1/${docName}`, method: 'GET', headers: rest.headers });
   } catch (error) {
     if (/HTTP 404\b/.test(error.message || '')) return null;
     throw error;

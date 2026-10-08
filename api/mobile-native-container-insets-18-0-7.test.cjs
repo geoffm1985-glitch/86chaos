@@ -24,11 +24,11 @@ test('18.0.7 native container inset contract remains active for the current Andr
   const pkg=json('package.json');
   const contract=json('mobile/native-platform-contract.json');
   const android=read('android/app/build.gradle');
-  assert.equal(pkg.version,'18.0.7');
+  assert.match(pkg.version,/^18\.0\.\d+$/);
   assert.equal(contract.release,pkg.version);
   assert.equal(contract.nativeViewport.android.containerPadding,true);
   assert.equal(contract.nativeViewport.android.webViewPadding,false);
   assert.equal(contract.nativeViewport.android.clipToPadding,true);
-  assert.match(android,/versionCode 180007/);
-  assert.match(android,/versionName "18\.0\.7"/);
+  assert.match(android,new RegExp(`versionCode ${contract.capacitor.android.versionCode}`));
+  assert.ok(android.includes(`versionName "${pkg.version}"`));
 });

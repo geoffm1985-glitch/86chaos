@@ -155,3 +155,36 @@ test('release-gate config keeps JSON artifacts and manifest selection semantics 
   assert.match(failedConfig, /grep: grepForProject\(FAILED_ONLY_TESTS, 'chromium'\)/);
   assert.doesNotMatch(failedConfig, /console\.log\(`86 Chaos \$\{releaseSelectionMode\} selected tests:`\)/);
 });
+
+
+test('global setup failure with zero tests is blocked and retains its actual error', () => {
+  const lines=[],runDir=fs.mkdtempSync(path.join(os.tmpdir(),'86chaos-reporter-setup-'));
+  const reporter=new Reporter({output:line=>lines.push(line),runDir,mode:'release'});
+  reporter.onError({message:'HTTP 403: This account is inactive or unavailable.'});
+  reporter.onBegin({}, {allTests:()=>[]});
+  reporter.onEnd({status:'failed'});
+  const summary=fs.readFileSync(path.join(runDir,'TEST-SUMMARY.txt'),'utf8');
+  const failures=fs.readFileSync(path.join(runDir,'FAILED-TESTS.txt'),'utf8');
+  assert.match(summary,/RESULT: BLOCKED BEFORE TEST EXECUTION/);
+  assert.match(summary,/Primary blocker: HTTP 403/);
+  assert.match(failures,/Existing failed-test lineage was not evaluated or cleared/);
+  assert.doesNotMatch(summary,/RESULT: PASSED|Remaining failures: 0|None - no failed tests remain/);
+});
+
+test('run-level failure after a passing test cannot produce a passing summary', () => {
+  const lines=[],reporter=new Reporter({output:line=>lines.push(line),mode:'repair'});
+  reporter.onBegin({}, {allTests:()=>[fakeTest('passes')]});
+  reporter.onTestEnd(fakeTest('passes'),{status:'passed',duration:1});
+  reporter.onError({message:'Global teardown failed'});
+  reporter.onEnd({status:'failed'});
+  assert.match(lines.join('\n'),/RESULT: FAILED/);
+  assert.doesNotMatch(lines.join('\n'),/RESULT: PASSED/);
+});
+
+test('zero executed tests cannot be certified by a passed runner status', () => {
+  const lines=[],reporter=new Reporter({output:line=>lines.push(line),mode:'release'});
+  reporter.onBegin({}, {allTests:()=>[]});
+  reporter.onEnd({status:'passed'});
+  assert.match(lines.join('\n'),/RESULT: BLOCKED BEFORE TEST EXECUTION/);
+  assert.doesNotMatch(lines.join('\n'),/RESULT: PASSED|Remaining failures: 0/);
+});

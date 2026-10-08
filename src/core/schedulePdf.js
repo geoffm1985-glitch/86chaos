@@ -5,6 +5,16 @@ const GRID_SIDE_MARGIN = 8;
 const GRID_BOTTOM_MARGIN = 12;
 const MIN_FONT_SIZE = 6.5;
 const FONT_SUBSETS = Object.freeze(['latin', 'latin-ext', 'cyrillic', 'greek', 'vietnamese', 'devanagari', 'cjk-common-115']);
+const FONT_LOADERS = Object.freeze({
+  latin: [() => import('@fontsource/noto-sans/files/noto-sans-latin-400-normal.woff'), () => import('@fontsource/noto-sans/files/noto-sans-latin-700-normal.woff')],
+  'latin-ext': [() => import('@fontsource/noto-sans/files/noto-sans-latin-ext-400-normal.woff'), () => import('@fontsource/noto-sans/files/noto-sans-latin-ext-700-normal.woff')],
+  cyrillic: [() => import('@fontsource/noto-sans/files/noto-sans-cyrillic-400-normal.woff'), () => import('@fontsource/noto-sans/files/noto-sans-cyrillic-700-normal.woff')],
+  greek: [() => import('@fontsource/noto-sans/files/noto-sans-greek-400-normal.woff'), () => import('@fontsource/noto-sans/files/noto-sans-greek-700-normal.woff')],
+  vietnamese: [() => import('@fontsource/noto-sans/files/noto-sans-vietnamese-400-normal.woff'), () => import('@fontsource/noto-sans/files/noto-sans-vietnamese-700-normal.woff')],
+  devanagari: [() => import('@fontsource/noto-sans/files/noto-sans-devanagari-400-normal.woff'), () => import('@fontsource/noto-sans/files/noto-sans-devanagari-700-normal.woff')],
+  'cjk-common-115': [() => import('@fontsource/noto-sans-sc/files/noto-sans-sc-115-400-normal.woff'), () => import('@fontsource/noto-sans-sc/files/noto-sans-sc-115-700-normal.woff')]
+});
+const fontAssetCache = new Map();
 
 const graphemes = value => {
   const text = String(value == null ? '' : value);
@@ -12,27 +22,38 @@ const graphemes = value => {
   return Array.from(text);
 };
 
-async function bundledFontAssets() {
-  const modules = await Promise.all([
-    import('@fontsource/noto-sans/files/noto-sans-latin-400-normal.woff'), import('@fontsource/noto-sans/files/noto-sans-latin-700-normal.woff'),
-    import('@fontsource/noto-sans/files/noto-sans-latin-ext-400-normal.woff'), import('@fontsource/noto-sans/files/noto-sans-latin-ext-700-normal.woff'),
-    import('@fontsource/noto-sans/files/noto-sans-cyrillic-400-normal.woff'), import('@fontsource/noto-sans/files/noto-sans-cyrillic-700-normal.woff'),
-    import('@fontsource/noto-sans/files/noto-sans-greek-400-normal.woff'), import('@fontsource/noto-sans/files/noto-sans-greek-700-normal.woff'),
-    import('@fontsource/noto-sans/files/noto-sans-vietnamese-400-normal.woff'), import('@fontsource/noto-sans/files/noto-sans-vietnamese-700-normal.woff'),
-    import('@fontsource/noto-sans/files/noto-sans-devanagari-400-normal.woff'), import('@fontsource/noto-sans/files/noto-sans-devanagari-700-normal.woff'),
-    import('@fontsource/noto-sans-sc/files/noto-sans-sc-115-400-normal.woff'), import('@fontsource/noto-sans-sc/files/noto-sans-sc-115-700-normal.woff')
-  ]);
-  const urls = modules.map(module => module.default || module);
-  return Promise.all(urls.map(async url => {
-    const response = await fetch(url); if (!response.ok) throw new Error('The bundled schedule font could not be loaded.'); return new Uint8Array(await response.arrayBuffer());
-  }));
+export function schedulePdfFontSubsets(value = '') {
+  const text = String(value == null ? '' : value);
+  const subsets = ['latin'];
+  if (/[\u0100-\u024f]/u.test(text)) subsets.push('latin-ext');
+  if (/[\u0400-\u052f]/u.test(text)) subsets.push('cyrillic');
+  if (/[\u0370-\u03ff]/u.test(text)) subsets.push('greek');
+  if (/[\u1e00-\u1eff]/u.test(text)) subsets.push('vietnamese');
+  if (/[\u0900-\u097f]/u.test(text)) subsets.push('devanagari');
+  if (/[\u3400-\u9fff]/u.test(text)) subsets.push('cjk-common-115');
+  return subsets;
+}
+
+async function bundledFontAssets(subsets) {
+  const cacheKey = subsets.join('|');
+  if (!fontAssetCache.has(cacheKey)) {
+    fontAssetCache.set(cacheKey, (async () => {
+      const modules = await Promise.all(subsets.flatMap(subset => FONT_LOADERS[subset].map(load => load())));
+      const urls = modules.map(module => module.default || module);
+      return Promise.all(urls.map(async url => {
+        const response = await fetch(url); if (!response.ok) throw new Error('The bundled schedule font could not be loaded.'); return new Uint8Array(await response.arrayBuffer());
+      }));
+    })());
+  }
+  return fontAssetCache.get(cacheKey);
 }
 
 async function embedFontFamilies(document, options = {}) {
   const fontkitModule = options.fontkit || await import('@pdf-lib/fontkit');
   document.registerFontkit(fontkitModule.default || fontkitModule);
-  const assets = options.fontAssets || await bundledFontAssets();
-  if (!Array.isArray(assets) || assets.length !== FONT_SUBSETS.length * 2) throw new Error('The schedule PDF Unicode font set is incomplete.');
+  const subsets = options.fontAssets ? (options.fontSubsets || FONT_SUBSETS) : schedulePdfFontSubsets(options.requiredText);
+  const assets = options.fontAssets || await bundledFontAssets(subsets);
+  if (!Array.isArray(assets) || assets.length !== subsets.length * 2) throw new Error('The schedule PDF Unicode font set is incomplete.');
   const regular = []; const bold = [];
   for (let index = 0; index < assets.length; index += 2) {
     regular.push(await document.embedFont(assets[index], { subset: true }));
@@ -115,8 +136,8 @@ function compactShiftLabel(shift) {
 export async function generateMonthSchedulePdf(model, options = {}) {
   if (!model || model.page?.width !== PAGE_WIDTH || model.page?.height !== PAGE_HEIGHT) throw new Error('The Month Schedule PDF model is invalid.');
   const pdfLib = options.pdfLib || await import('pdf-lib'); const { PDFDocument, rgb } = pdfLib;
-  const document = await PDFDocument.create(); const fonts = await embedFontFamilies(document, options);
-  document.setTitle(`86 Chaos Schedule ${model.monthTitle}`); document.setAuthor('86 Chaos'); document.setCreator('86 Chaos'); document.setProducer('86 Chaos 17.0.42');
+  const document = await PDFDocument.create(); const fonts = await embedFontFamilies(document, { ...options, requiredText: JSON.stringify(model) });
+  document.setTitle(`86 Chaos Schedule ${model.monthTitle}`); document.setAuthor('86 Chaos'); document.setCreator('86 Chaos'); document.setProducer('86 Chaos 17.0.59');
   document.setKeywords(['86 Chaos', 'schedule', ...model.visibleShifts.map(shift => `shift:${shift.dedupeKey}`)]);
   const fixedDate = new Date('2000-01-01T00:00:00.000Z'); document.setCreationDate(fixedDate); document.setModificationDate(fixedDate);
   const black = rgb(0, 0, 0); const gray = rgb(0.94, 0.95, 0.96); const light = rgb(0.98, 0.98, 0.98); const page = document.addPage([PAGE_WIDTH, PAGE_HEIGHT]);

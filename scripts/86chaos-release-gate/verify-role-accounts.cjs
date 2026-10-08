@@ -5,6 +5,7 @@ const { ensureRunDir, writeJson, getRoleReportPath, readJsonIfExists } = require
 const { loadEnv, env } = require('../86chaos-full-audit/env-loader.cjs');
 const { readFirebaseConfig } = require('../86chaos-full-audit/firebase-client.cjs');
 const { EXPECTED_FIREBASE_PROJECT, ROLE_DEFINITIONS, safeAccountDefinition } = require('./qa-role-definitions.cjs');
+const { firebaseAuthRestUrl } = require('../86chaos-firebase-target.cjs');
 
 function normalizeEmail(value) {
   return String(value || '').trim().toLowerCase();
@@ -142,7 +143,7 @@ async function fetchJson(url, options = {}, fetchImpl = global.fetch) {
 }
 
 async function signInAccount(account, config, fetchImpl = global.fetch) {
-  const url = `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${encodeURIComponent(config.apiKey)}`;
+  const url = firebaseAuthRestUrl(config.apiKey, 'signInWithPassword', process.env);
   const signed = await fetchJson(url, buildFirebaseAuthFetchOptions({
     method: 'POST',
     body: JSON.stringify({ email: account.email, password: account.password, returnSecureToken: true }),

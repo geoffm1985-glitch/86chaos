@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "targetEnv": "REACT_APP_86CHAOS_FIREBASE_TARGET",
+  "projectId": "demo-86chaos",
+  "defaultHost": "127.0.0.1",
+  "ports": {
+    "firestore": 8080,
+    "auth": 9099,
+    "functions": 5001,
+    "database": 9000,
+    "storage": 9199
+  },
+  "liveTestingProjectId": "chaos-test-d1601",
+  "productionProjectId": "cheers-34b8d"
+}

@@ -1,3 +1,4 @@
+require('./scripts/86chaos-firebase-target.cjs').applyFirebaseEmulatorEnv(process.env);
 const { defineConfig, devices } = require('@playwright/test');
 const { RELEASE_TEST_MATCH, PWA_SPEC_PATTERN } = require('./scripts/86chaos-release-gate/release-test-universe.cjs');
 

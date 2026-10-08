@@ -1,0 +1,23 @@
+{
+  "schema": 1,
+  "projectId": "demo-86chaos",
+  "firebaseConfig": "firebase.json",
+  "products": [
+    "firestore",
+    "auth",
+    "database",
+    "storage",
+    "functions"
+  ],
+  "localApp": {
+    "startScript": "start:yardmaster",
+    "url": "http://127.0.0.1:3000",
+    "readyPath": "/api/firebase-target"
+  },
+  "scripts": {
+    "full": "test:play-store",
+    "delta": "test:play-store:delta",
+    "playwright": "test:playwright",
+    "targeted": "test:current-release-targeted"
+  }
+}

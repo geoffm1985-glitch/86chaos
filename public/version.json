@@ -1,19 +1,20 @@
 {
-  "version": "18.0.7",
-  "name": "86 Chaos 18.0.7",
-  "build": "18.0.7",
-  "label": "86 Chaos 18.0.7",
-  "releasedAt": "2026-09-27T10:00:00Z",
-  "releaseTitle": "Real-Device Native Viewport Containment Repair",
+  "version": "18.0.8",
+  "name": "86 Chaos 18.0.8",
+  "build": "18.0.8",
+  "label": "86 Chaos 18.0.8",
+  "releasedAt": "2026-10-08T00:00:00Z",
+  "releaseTitle": "Production parity for native mobile",
   "notes": [
     "Android system-bar/display-cutout insets are applied to the native activity content container, not the WebView.",
     "The WebView receives zero internal system-bar padding so fixed-position web UI uses the already-constrained viewport.",
     "The 86 Chaos Android launcher icon remains branded.",
     "iPhone/iPad safe-area fallback remains in place.",
-    "Only targeted mobile tests are run; no full Release Gate."
+    "Only targeted mobile tests are run; no full Release Gate.",
+    "Includes the complete production snapshot ab4a848058902672ee8f5114710a6af0db71a2c0."
   ],
-  "title": "86 Chaos 18.0.7",
-  "summary": "Moves Android system-bar insets to the native activity content container so the WebView viewport itself stays between the status and navigation bars.",
+  "title": "86 Chaos 18.0.8",
+  "summary": "Integrates production 17.0.84 and its full local release gate into the native mobile app.",
   "description": "Repairs the real-device Android overlap reported after 18.0.6 while preserving branded launcher assets, testing-only Firebase routing, and iPhone/iPad safe-area behavior.",
   "highlights": [
     "Packaged native app no longer sends /api requests to the phone-local asset server.",

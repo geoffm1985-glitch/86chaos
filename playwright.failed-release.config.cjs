@@ -1,3 +1,4 @@
+require('./scripts/86chaos-firebase-target.cjs').applyFirebaseEmulatorEnv(process.env);
 const fs = require('fs');
 const path = require('path');
 const { defineConfig, devices } = require('@playwright/test');
@@ -126,7 +127,7 @@ module.exports = defineConfig({
   fullyParallel: false,
   workers: 1,
   forbidOnly: !!process.env.CI,
-  retries: process.env.CI ? 1 : 0,
+  retries: 0,
   globalSetup: require.resolve('./tests/86chaos-release-gate/global-setup.cjs'),
   globalTeardown: require.resolve('./tests/86chaos-release-gate/global-teardown.cjs'),
   outputDir: path.join(resultsRoot, 'playwright-artifacts'),

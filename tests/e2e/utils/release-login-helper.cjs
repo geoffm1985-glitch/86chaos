@@ -46,7 +46,8 @@ function releaseWorkspaceName(options = {}) {
 }
 
 function authenticatedShellLocator(page) {
-  return page.getByRole('button', { name: /switch workspace\. active workspace/i })
+  return page.getByRole('button', { name: /^Active workspace\b/i })
+    .or(page.getByRole('button', { name: /switch workspace\. active workspace/i }))
     .or(page.getByLabel(/switch workspace/i))
     .or(page.locator('[aria-label*="Switch workspace" i], [data-testid*="workspace-switch" i], [data-testid*="workspace-switcher" i]'))
     .first();

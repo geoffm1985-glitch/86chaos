@@ -4,6 +4,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const vm = require('node:vm');
 
 const ROOT = path.resolve(__dirname, '..');
 const read = rel => fs.readFileSync(path.join(ROOT, rel), 'utf8');
@@ -38,13 +39,19 @@ test('17.0.41 browser intelligence modules expose the exact Manager Brief functi
   assert.match(read('src/core/restaurantReadiness.js'), /from ['\"]\.\/needsAttention\.js['\"]/);
 });
 
-test('17.0.41 Schedule Builder sticky day header reserves the live control-deck height on mobile too', () => {
+test('17.0.41 Schedule Builder day header reserves only a sticky control deck on desktop and mobile', () => {
   const schedule = read('src/features/schedule.jsx');
   const styles = read('src/styles.css');
-  assert.match(schedule, /const deckHeight = Math\.ceil\(scheduleBuilderControlDeckRef\.current\?\.getBoundingClientRect/);
+  const body = schedule.match(/const updateStickyTop = \(\) => \{([\s\S]*?)\n    \};/)[1];
+  for (const [position, expected] of [['sticky', 254], ['static', 56]]) {
+    let observed;
+    const deck = {getBoundingClientRect: () => ({height: 180})};
+    vm.runInNewContext(body, {document: {querySelector: () => null}, window: {getComputedStyle: () => ({position, top: '70px'})}, scheduleBuilderControlDeckRef: {current: deck}, setScheduleBuilderStickyTop: value => {observed = value}});
+    assert.equal(observed, expected, position + ' control deck computes the actual reserved height');
+  }
   assert.doesNotMatch(schedule, /viewportWidth\s*>=\s*1024[\s\S]{0,120}deckHeight/);
   assert.doesNotMatch(schedule, /viewportWidth\s*<=\s*720[\s\S]{0,80}setScheduleBuilderStickyTop\(0\)/);
-  assert.match(schedule, /baseTop \+ deckHeight \+ \(deckHeight \? 4 : 2\)/);
+  assert.match(schedule, /deckTop \+ deckHeight \+ \(deckIsSticky && deckHeight \? 4 : 2\)/);
   assert.match(styles, /@media \(max-width: 720px\)[\s\S]*schedule-builder-sticky-day-header[\s\S]*top:\s*var\(--schedule-builder-sticky-top/);
   assert.doesNotMatch(styles, /schedule-builder-sticky-day-header\s*\{[\s\S]{0,120}top:\s*0\s*!important/);
 });

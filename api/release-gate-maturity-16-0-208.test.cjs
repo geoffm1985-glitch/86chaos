@@ -7,12 +7,27 @@ const root = path.resolve(__dirname, '..');
 const read = file => fs.readFileSync(path.join(root, file), 'utf8');
 const { assertCurrentReleaseIdentity } = require('./_current-release-identity.cjs');
 
-test('16.0.208 mobile login readiness retries and fails explicitly instead of misreporting seed visibility', () => {
+test('16.0.208 mobile login readiness retries and fails explicitly instead of misreporting seed visibility', async () => {
   const helpers = read('tests/86chaos-full-audit/utils/audit-helpers.cjs');
   assert.match(helpers, /const fillAndSubmit = async/);
-  assert.match(helpers, /waitPastLogin/);
-  assert.match(helpers, /Retry once/);
-  assert.match(helpers, /Login did not leave the login screen/);
+  assert.match(helpers, /submitAuditLogin\(\{/);
+  assert.match(helpers, /submit: fillAndSubmit/);
+  assert.match(helpers, /wait: \(\) => waitPastLogin/);
+  const { submitAuditLogin } = require('../tests/86chaos-full-audit/utils/firebase-transport-recovery.cjs');
+  for (const persistent of [false, true]) {
+    let submissions = 0;
+    const states = persistent ? ['Login Unlocking', 'Login Unlocking'] : ['Login Unlocking', 'Authenticated workspace'];
+    const run = () => submitAuditLogin({
+      submit: async () => { submissions++; },
+      wait: async () => states.shift(),
+      isLogin: text => text.startsWith('Login'),
+      refresh: async () => { assert.fail('Pending login must not refresh'); },
+      pause: async () => { assert.fail('Pending login must not pause'); },
+    });
+    if (persistent) await assert.rejects(run, /Login did not leave the login screen/);
+    else assert.equal(await run(), 'Authenticated workspace');
+    assert.equal(submissions, 2);
+  }
 });
 
 test('16.0.208 responsive nested-state discovery opens the mobile System Administrator directory before declaring states missing', () => {

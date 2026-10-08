@@ -1586,14 +1586,36 @@ if (liveAppUser && clientData) {
      };
   }
   setActiveTimeFormat(liveAppUser?.preferences?.timeFormat || '12h');
-  const appLanguage = normalizeAppLanguage(
-    liveAppUser?.preferences?.language ||
-    appUser?.preferences?.language ||
+  const remoteAppLanguageSource = liveAppUser?.preferences?.language || appUser?.preferences?.language || '';
+  const [appLanguage, setAppLanguage] = useState(() => normalizeAppLanguage(
+    remoteAppLanguageSource ||
     (typeof window !== 'undefined' ? window.localStorage?.getItem(LANGUAGE_STORAGE_KEY) : '') ||
     'en'
-  );
+  ));
   useEffect(() => {
-    try { window.localStorage?.setItem(LANGUAGE_STORAGE_KEY, appLanguage); } catch (_) {}
+    if (!remoteAppLanguageSource) return;
+    const remoteLanguage = normalizeAppLanguage(remoteAppLanguageSource);
+    setAppLanguage(current => current === remoteLanguage ? current : remoteLanguage);
+    try { window.localStorage?.setItem(LANGUAGE_STORAGE_KEY, remoteLanguage); } catch (_) {}
+  }, [remoteAppLanguageSource, liveAppUser?.id, appUser?.id]);
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    const syncStoredLanguage = () => {
+      try {
+        const storedLanguage = window.localStorage?.getItem(LANGUAGE_STORAGE_KEY);
+        if (!storedLanguage) return;
+        const nextLanguage = normalizeAppLanguage(storedLanguage);
+        setAppLanguage(current => current === nextLanguage ? current : nextLanguage);
+      } catch (_) {}
+    };
+    const timer = window.setInterval(syncStoredLanguage, 200);
+    window.addEventListener('storage', syncStoredLanguage);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener('storage', syncStoredLanguage);
+    };
+  }, []);
+  useEffect(() => {
     if (typeof document !== 'undefined') {
       document.documentElement.lang = appLanguage === 'es' ? 'es' : 'en';
       document.documentElement.dataset.chaosLanguage = appLanguage;

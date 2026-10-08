@@ -1,0 +1,41 @@
+{
+  "runId": "2026-10-06T00-56-07",
+  "reportedBytePercent": 68.8,
+  "samples": [
+    {
+      "url": "https://testing.86chaos.com/static/js/866.64ef0adb.chunk.js",
+      "totalBytes": 408494,
+      "coveredBytes": 408494
+    },
+    {
+      "url": "https://testing.86chaos.com/static/js/208.437025a5.chunk.js",
+      "totalBytes": 1148350,
+      "coveredBytes": 1148350
+    },
+    {
+      "url": "https://testing.86chaos.com/static/js/814.f855719b.chunk.js",
+      "totalBytes": 23260,
+      "coveredBytes": 23260
+    },
+    {
+      "url": "https://testing.86chaos.com/static/js/514.3a6bbe3b.chunk.js",
+      "totalBytes": 247777,
+      "coveredBytes": 247777
+    },
+    {
+      "url": "https://testing.86chaos.com/static/js/426.a9153732.chunk.js",
+      "totalBytes": 44040,
+      "coveredBytes": 44040
+    },
+    {
+      "url": "https://testing.86chaos.com/static/js/main.b383e305.js",
+      "totalBytes": 1569212,
+      "coveredBytes": 1569212
+    },
+    {
+      "url": "https://testing.86chaos.com/static/js/main.b383e305.js",
+      "totalBytes": 1569212,
+      "coveredBytes": 5997
+    }
+  ]
+}

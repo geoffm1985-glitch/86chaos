@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { appendOfflineQueueItem, classifyRuntimeIssue, normalizeOfflineQueue, readJsonFromStorage, recordLocalRuntimeEvent, writeJsonToStorage } from './maturityGuards';
 import { initializeApp } from 'firebase/app';
-import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, getDoc, setDoc, getDocs, enableIndexedDbPersistence, enableMultiTabIndexedDbPersistence, orderBy, limit as firestoreLimit } from 'firebase/firestore';
-import { getAuth, onAuthStateChanged } from 'firebase/auth';
+import { getFirestore, connectFirestoreEmulator, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, getDoc, setDoc, getDocs, enableIndexedDbPersistence, enableMultiTabIndexedDbPersistence, orderBy, limit as firestoreLimit } from 'firebase/firestore';
+import { getAuth, connectAuthEmulator, onAuthStateChanged } from 'firebase/auth';
 import { getMessaging, isSupported } from 'firebase/messaging';
-import { getStorage } from 'firebase/storage';
-import { getDatabase, ref as rtdbRef, onValue as onRtdbValue, onDisconnect as rtdbOnDisconnect, set as rtdbSet, serverTimestamp as rtdbServerTimestamp } from 'firebase/database';
+import { getStorage, connectStorageEmulator } from 'firebase/storage';
+import { getDatabase, connectDatabaseEmulator, ref as rtdbRef, onValue as onRtdbValue, onDisconnect as rtdbOnDisconnect, set as rtdbSet, serverTimestamp as rtdbServerTimestamp } from 'firebase/database';
+import { getFunctions, connectFunctionsEmulator } from 'firebase/functions';
+import { firebaseRuntimeTarget, isFirebaseEmulatorTarget, firebaseEmulatorSettings, assertFirebaseEmulatorBrowserHost, verifyFirebaseEmulatorAvailability } from './firebaseTarget';
 import L from 'leaflet';
 import { Capacitor, CapacitorHttp } from '@capacitor/core';
 
@@ -74,6 +76,7 @@ const explicitFirebaseProject = normalizeDeployMode(env('REACT_APP_FIREBASE_ACTI
 const explicitDeployMode = normalizeDeployMode(env('REACT_APP_FIREBASE_DEPLOYMENT_MODE', ''));
 const genericFirebaseProjectId = env('REACT_APP_FIREBASE_PROJECT_ID', '').trim();
 const currentHostname = typeof window !== 'undefined' ? String(window.location.hostname || '').toLowerCase() : '';
+assertFirebaseEmulatorBrowserHost(currentHostname);
 const isVercelPreviewHost = currentHostname === 'testing.86chaos.com' || currentHostname === 'experimental.86chaos.com' || currentHostname === 'localhost' || currentHostname === '127.0.0.1' || currentHostname.endsWith('.vercel.app');
 const isProductionFirebaseHost = isProdFirebaseHost(currentHostname);
 const trustedBrowserProjects = ['chaos-test-d1601', 'cheers-34b8d'];
@@ -96,12 +99,14 @@ const genericConfigIsUsable = Boolean(genericBrowserConfig.apiKey && genericBrow
 // the test Firebase project and the locked test browser API key above. This
 // prevents a generic production env var from pushing the testing app onto the
 // live/main Firebase key and causing Google Cloud referrer blocks.
-const activeFirebaseProjectId = (isVercelPreviewHost || forceTestingFirebase)
-  ? 'chaos-test-d1601'
-  : (isProductionFirebaseHost || forceProductionFirebase)
-    ? 'cheers-34b8d'
-    : exactGenericBrowserProject || 'chaos-test-d1601';
-export const activeFirebaseMode = activeFirebaseProjectId === 'cheers-34b8d' ? 'production' : 'test';
+const activeFirebaseProjectId = isFirebaseEmulatorTarget
+  ? firebaseEmulatorSettings.projectId
+  : (isVercelPreviewHost || forceTestingFirebase)
+    ? 'chaos-test-d1601'
+    : (isProductionFirebaseHost || forceProductionFirebase)
+      ? 'cheers-34b8d'
+      : exactGenericBrowserProject || 'chaos-test-d1601';
+export const activeFirebaseMode = isFirebaseEmulatorTarget ? 'emulator' : (activeFirebaseProjectId === 'cheers-34b8d' ? 'production' : 'test');
 const configForProject = (projectId) => {
   // Never use the generic browser config on localhost/Vercel preview. Those
   // environments must use the locked test config so a stale production
@@ -109,8 +114,20 @@ const configForProject = (projectId) => {
   if (!isVercelPreviewHost && genericConfigIsUsable && genericBrowserConfig.projectId === projectId) return genericBrowserConfig;
   return projectId === 'cheers-34b8d' ? prodConfig : testConfig;
 };
-export const firebaseConfig = configForProject(activeFirebaseProjectId);
+const emulatorFirebaseConfig = {
+  apiKey: 'demo-api-key',
+  authDomain: `${firebaseEmulatorSettings.projectId}.firebaseapp.com`,
+  projectId: firebaseEmulatorSettings.projectId,
+  storageBucket: `${firebaseEmulatorSettings.projectId}.appspot.com`,
+  messagingSenderId: '000000000000',
+  appId: '1:000000000000:web:86chaosemulator',
+  databaseURL: `https://${firebaseEmulatorSettings.projectId}-default-rtdb.firebaseio.com`,
+};
+export const firebaseConfig = isFirebaseEmulatorTarget ? emulatorFirebaseConfig : configForProject(activeFirebaseProjectId);
 export const firebaseDiagnostics = {
+  target: firebaseRuntimeTarget,
+  failClosed: isFirebaseEmulatorTarget,
+  emulator: isFirebaseEmulatorTarget ? firebaseEmulatorSettings : null,
   mode: activeFirebaseMode,
   projectId: firebaseConfig.projectId,
   authDomain: firebaseConfig.authDomain,
@@ -123,14 +140,33 @@ export const firebaseDiagnostics = {
 export const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app);
 export const storage = getStorage(app);
+export const auth = getAuth(app);
+export const firebaseFunctions = getFunctions(app, env('REACT_APP_FIREBASE_FUNCTIONS_REGION', 'us-central1'));
 const safeGetRealtimeDb = () => {
   try { return getDatabase(app); }
   catch (err) {
+    if (isFirebaseEmulatorTarget) throw err;
     console.warn('Realtime Database presence is unavailable:', err?.message || err);
     return null;
   }
 };
 export const realtimeDb = safeGetRealtimeDb();
+
+if (isFirebaseEmulatorTarget) {
+  connectFirestoreEmulator(db, firebaseEmulatorSettings.host, firebaseEmulatorSettings.firestorePort);
+  connectAuthEmulator(auth, `http://${firebaseEmulatorSettings.host}:${firebaseEmulatorSettings.authPort}`, { disableWarnings: true });
+  connectFunctionsEmulator(firebaseFunctions, firebaseEmulatorSettings.host, firebaseEmulatorSettings.functionsPort);
+  if (!realtimeDb) throw new Error('Realtime Database emulator target could not initialize.');
+  connectDatabaseEmulator(realtimeDb, firebaseEmulatorSettings.host, firebaseEmulatorSettings.databasePort);
+  connectStorageEmulator(storage, firebaseEmulatorSettings.host, firebaseEmulatorSettings.storagePort);
+  firebaseDiagnostics.connectedProducts = ['firestore', 'auth', 'database', 'storage', 'functions'];
+}
+export const firebaseEmulatorReadiness = isFirebaseEmulatorTarget ? verifyFirebaseEmulatorAvailability() : Promise.resolve({ ok: true, target: firebaseRuntimeTarget, services: [] });
+if (typeof window !== 'undefined') {
+  window.__CHAOS_FIREBASE_DIAGNOSTICS__ = firebaseDiagnostics;
+  window.__CHAOS_FIREBASE_EMULATOR_READY__ = firebaseEmulatorReadiness;
+  if (isFirebaseEmulatorTarget) window.__CHAOS_FIREBASE_CHECK_READY__ = verifyFirebaseEmulatorAvailability;
+}
 export const isFirebaseMessagingUnsupportedError = (error = {}) => {
   const text = [
     error?.code,
@@ -158,7 +194,7 @@ const quietlyHandleMessagingStartupError = (err, context = 'Firebase Messaging')
 };
 
 export const getSafeMessaging = () => {
-  if (!hasFirebaseMessagingBrowserApis()) return null;
+  if (isFirebaseEmulatorTarget || !hasFirebaseMessagingBrowserApis()) return null;
   try { return getMessaging(app); }
   catch (err) {
     return quietlyHandleMessagingStartupError(err, 'Firebase Messaging');
@@ -166,7 +202,7 @@ export const getSafeMessaging = () => {
 };
 
 export const messaging = getSafeMessaging();
-export const messagingReady = typeof window !== "undefined" && hasFirebaseMessagingBrowserApis()
+export const messagingReady = !isFirebaseEmulatorTarget && typeof window !== "undefined" && hasFirebaseMessagingBrowserApis()
   ? isSupported()
       .then((supported) => supported ? getSafeMessaging() : null)
       .catch((err) => quietlyHandleMessagingStartupError(err, 'Firebase Messaging support check'))
@@ -175,6 +211,12 @@ export const messagingReady = typeof window !== "undefined" && hasFirebaseMessag
 // Kitchen Wi-Fi Armor: keep offline cache without tripping single-tab persistence in Android Chrome/PWA tab piles.
 const enableChaosFirestorePersistence = () => {
   if (typeof window === 'undefined') return Promise.resolve(null);
+  // Emulator release-gate runs destructively reseed Firestore while the app is open.
+  // Keep that disposable target memory-only so IndexedDB/watch state cannot survive fixture resets.
+  if (isFirebaseEmulatorTarget) {
+    window.__chaosFirestorePersistenceInit = window.__chaosFirestorePersistenceInit || Promise.resolve(null);
+    return window.__chaosFirestorePersistenceInit;
+  }
   window.__chaosFirestorePersistenceInit = window.__chaosFirestorePersistenceInit || null;
   if (window.__chaosFirestorePersistenceInit) return window.__chaosFirestorePersistenceInit;
   window.__chaosFirestorePersistenceInit = Promise.resolve()
@@ -333,8 +375,6 @@ export function useLowCostPresenceSummary(restaurantId = '', userId = '', { enab
   return row;
 }
 
-export const auth = getAuth(app);
-
 // --- OPTIONAL APP CHECK + SECURE API KEYCHAIN ---
 // App Check site keys are project-specific. Preview/local must not inherit the
 // production/generic App Check key, because a wrong reCAPTCHA Enterprise key can
@@ -342,9 +382,11 @@ export const auth = getAuth(app);
 const rawTestAppCheckSiteKey = env('REACT_APP_TEST_FIREBASE_APPCHECK_SITE_KEY', '');
 const rawProdAppCheckSiteKey = env('REACT_APP_PROD_FIREBASE_APPCHECK_SITE_KEY', '');
 const rawGenericAppCheckSiteKey = env('REACT_APP_FIREBASE_APPCHECK_SITE_KEY', '');
-const APPCHECK_RECAPTCHA_ENTERPRISE_SITE_KEY = activeFirebaseProjectId === 'chaos-test-d1601'
-  ? rawTestAppCheckSiteKey
-  : (rawProdAppCheckSiteKey || (!isVercelPreviewHost ? rawGenericAppCheckSiteKey : ''));
+const APPCHECK_RECAPTCHA_ENTERPRISE_SITE_KEY = isFirebaseEmulatorTarget
+  ? ''
+  : activeFirebaseProjectId === 'chaos-test-d1601'
+    ? rawTestAppCheckSiteKey
+    : (rawProdAppCheckSiteKey || (!isVercelPreviewHost ? rawGenericAppCheckSiteKey : ''));
 firebaseDiagnostics.appCheckEnabled = Boolean(APPCHECK_RECAPTCHA_ENTERPRISE_SITE_KEY);
 firebaseDiagnostics.appCheckSiteKeyTail = APPCHECK_RECAPTCHA_ENTERPRISE_SITE_KEY ? String(APPCHECK_RECAPTCHA_ENTERPRISE_SITE_KEY).slice(-6) : 'off';
 firebaseDiagnostics.genericAppCheckIgnored = Boolean(isVercelPreviewHost && activeFirebaseProjectId === 'chaos-test-d1601' && rawGenericAppCheckSiteKey && !rawTestAppCheckSiteKey);
@@ -426,7 +468,7 @@ export const MASTER_ADMIN_EMAIL = (process.env.REACT_APP_MASTER_ADMIN_EMAIL || '
 export const EVENT_TAGS = ['Standard Day', 'Packers Game', 'Brewers Game', 'Live Music', 'Severe Weather', 'Private Catering', 'Holiday'];
 
 // --- VERSION TRACKING ---
-export const CURRENT_VERSION = '18.0.7';
+export const CURRENT_VERSION = '18.0.8';
 
 // --- Helpers ---
 const usePageVisible = () => {

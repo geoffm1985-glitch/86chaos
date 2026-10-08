@@ -91,10 +91,12 @@ function createReadBarrier(parties, trace, label, timeoutMs = 15000) {
 function instrumentFirestoreDb(db, { trace, callerId, beforeFirstRead = null } = {}) {
   const wrapped = Object.create(db);
   wrapped.collection = db.collection.bind(db);
+  // A caller joins the initial concurrency barrier once. Both SDK callback
+  // retries and application retries may read through this same wrapper again.
+  let firstReadReached = false;
   wrapped.runTransaction = async (callback, options) => {
     event(trace, 'transaction-run-start', { callerId });
     let callbackAttempt = 0;
-    let firstReadReached = false;
     try {
       const result = await db.runTransaction(async transaction => {
         callbackAttempt += 1;

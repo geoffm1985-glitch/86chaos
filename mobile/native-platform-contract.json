@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "release": "18.0.7",
+  "release": "18.0.8",
   "baseline": {
     "branch": "testing",
     "version": "17.0.42",
@@ -59,14 +59,14 @@
       "minSdk": 24,
       "compileSdk": 36,
       "targetSdk": 36,
-      "versionCode": 180007,
-      "versionName": "18.0.7"
+      "versionCode": 180008,
+      "versionName": "18.0.8"
     },
     "ios": {
       "bundleIdentifier": "com.chiltonappworks.chaos86",
       "minimumVersion": "15.0",
-      "currentProjectVersion": 180007,
-      "marketingVersion": "18.0.7",
+      "currentProjectVersion": 180008,
+      "marketingVersion": "18.0.8",
       "packageManager": "SPM"
     }
   },
@@ -110,5 +110,10 @@
     "androidNativeResource": "android/app/src/main/res/drawable-nodpi/chaos86_app_icon.png",
     "iosBrandedIconRequiredBeforeAppleDistribution": true,
     "sharedBrandSource": "public/86chaos-pwa-512-v4.png"
+  },
+  "productionParity": {
+    "branch": "main",
+    "version": "17.0.84",
+    "commit": "ab4a848058902672ee8f5114710a6af0db71a2c0"
   }
 }

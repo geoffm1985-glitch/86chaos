@@ -16,7 +16,8 @@ test('17.0.29 Spanish browser gate verifies visible translated Preferences text 
 
 test('17.0.29 Spanish browser gate remains behaviorally strict after the locator fidelity repair', () => {
   const spec = read('tests/86chaos-new-implementations/08-phase1-spanish-interface.spec.cjs');
-  assert.match(spec, /toHaveAttribute\(['\"]lang['\"],\s*['\"]es['\"]/);
+  assert.match(spec, /toHaveAttribute\(['\"]lang['\"],\s*value/);
+  assert.match(spec, /saveLanguagePreference\(page,\s*['\"]es['\"]\)/);
   assert.match(spec, /Reloj y horario/);
   assert.match(spec, /Preparación y tareas/);
   assert.match(spec, /Configuración/);
@@ -25,7 +26,8 @@ test('17.0.29 Spanish browser gate remains behaviorally strict after the locator
   assert.match(spec, /FICHAR \(ENTRADA\|SALIDA\)/);
   assert.match(spec, /Control de línea/);
   assert.match(spec, /Resumen del gerente/);
-  assert.match(spec, /selectOption\(['\"]es['\"]\)/);
+  assert.match(spec, /selectOption\(value\)/);
+  assert.match(spec, /saveLanguagePreference\(page,\s*['\"]es['\"]\)/);
 });
 
 test('17.0.29 Settings implementation still renders Preferences through the i18n key', () => {

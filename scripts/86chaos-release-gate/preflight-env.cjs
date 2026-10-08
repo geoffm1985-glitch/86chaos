@@ -5,6 +5,7 @@ const { ensureRunDir, writeJson } = require('./run-context.cjs');
 const { applyQaWorkspaceEnv, validateQaWorkspaceName } = require('./qa-workspace.cjs');
 const { assertMutationSafety } = require('./mutation-safety.cjs');
 const { captureSourceIdentity, hash, sourceBytes } = require('./source-identity.cjs');
+const { applyFirebaseEmulatorEnv, expectedFirebaseProject, getFirebaseTarget } = require('../86chaos-firebase-target.cjs');
 const {
   CANONICAL_VERCEL_PROJECT_SLUG,
   TARGET_ENV_KEYS,
@@ -21,9 +22,13 @@ const certificationMode = boolEnv('CHAOS_CERTIFICATION_MODE');
 const releaseTargetConflictKeys = certificationMode
   ? TARGET_ENV_KEYS.filter(key => key !== 'CHAOS_EXPECTED_VERSION')
   : TARGET_ENV_KEYS;
+const requestedFirebaseTarget = getFirebaseTarget(process.env);
 const targetEnvConflicts = inspectReleaseTargetEnvConflicts(root, process.env, releaseTargetConflictKeys);
-if (!targetEnvConflicts.ok) errors.push(...targetEnvConflicts.errors);
+if (!targetEnvConflicts.ok && !requestedFirebaseTarget.emulator) errors.push(...targetEnvConflicts.errors);
+if (!targetEnvConflicts.ok && requestedFirebaseTarget.emulator) warnings.push('Ignoring stale cloud target conflicts because explicit Firebase emulator mode is active; local loopback safety remains enforced.');
 const loaded = loadEnv(root);
+const firebaseTarget = applyFirebaseEmulatorEnv(process.env);
+const emulatorMode = firebaseTarget.emulator === true;
 const present = {};
 
 function value(...names) {
@@ -86,7 +91,7 @@ async function main() {
   const configuredDeploymentId=value('CHAOS_IMMUTABLE_VERCEL_DEPLOYMENT_ID','CHAOS_VERCEL_DEPLOYMENT_ID');
   const configuredDeploymentUrl=value('CHAOS_IMMUTABLE_VERCEL_URL');
   const configuredVercelProjectId=value('CHAOS_EXPECTED_VERCEL_PROJECT_ID');
-  const expectedTestProject=value('CHAOS_EXPECTED_TEST_FIREBASE_PROJECT_ID')||'chaos-test-d1601';
+  const expectedTestProject=value('CHAOS_EXPECTED_TEST_FIREBASE_PROJECT_ID')||expectedFirebaseProject(process.env);
   const qaWorkspaceName = applyQaWorkspaceEnv(process.env, runId);
   const qaNameCheck = validateQaWorkspaceName(qaWorkspaceName, runId);
   if (!qaNameCheck.ok) errors.push(...qaNameCheck.errors);
@@ -112,7 +117,7 @@ async function main() {
   try { parsedUrl = appUrl ? new URL(appUrl) : null; }
   catch (_) { errors.push(`APP_URL is not a valid absolute URL: ${appUrl}`); }
   if (parsedUrl) {
-    if (/^(localhost|127\.0\.0\.1|0\.0\.0\.0)$/i.test(parsedUrl.hostname) && !boolEnv('CHAOS_ALLOW_LOCAL_UI_ONLY')) {
+    if (/^(localhost|127\.0\.0\.1|0\.0\.0\.0)$/i.test(parsedUrl.hostname) && !boolEnv('CHAOS_ALLOW_LOCAL_UI_ONLY') && !emulatorMode) {
       errors.push('APP_URL points to localhost. A React dev server cannot fully exercise Vercel /api routes. Use the latest safe Vercel testing preview, or explicitly set CHAOS_ALLOW_LOCAL_UI_ONLY=true for a non-release diagnostic run.');
     }
     if (!/^https?:$/.test(parsedUrl.protocol)) errors.push('APP_URL must use http or https.');
@@ -123,7 +128,7 @@ async function main() {
     chaosBaseUrl: process.env.CHAOS_BASE_URL || '',
     expectedProjectSlug: value('CHAOS_EXPECTED_VERCEL_PROJECT_SLUG') || CANONICAL_VERCEL_PROJECT_SLUG,
     expectedVersion,
-    allowLocal: boolEnv('CHAOS_ALLOW_LOCAL_UI_ONLY'),
+    allowLocal: boolEnv('CHAOS_ALLOW_LOCAL_UI_ONLY') || emulatorMode,
   });
   if (!targetValidation.ok) errors.push(...targetValidation.errors);
   if (targetValidation.warnings?.length) warnings.push(...targetValidation.warnings);
@@ -183,9 +188,9 @@ async function main() {
     } catch (error) {
       errors.push(`Could not fetch application HTML from deployed preview: ${error.message}`);
     }
-    try{const response=await fetchText(`${new URL('/build-identity.json',appUrl)}?releaseGateRun=${encodeURIComponent(runId)}`);if(!response.ok)throw new Error(`HTTP ${response.status}`);clientBuildIdentity=JSON.parse(response.text||'{}');}catch(error){errors.push(`Could not fetch deployed client build identity: ${error.message}`);}
-    try{const response=await fetchText(`${new URL('/api/build-identity',appUrl)}?releaseGateRun=${encodeURIComponent(runId)}`);if(!response.ok)throw new Error(`HTTP ${response.status}`);serverBuildIdentity=JSON.parse(response.text||'{}');}catch(error){errors.push(`Could not fetch deployed server build identity: ${error.message}`);}
-    if(certificationMode&&clientBuildIdentity&&serverBuildIdentity){
+    try{const response=await fetchText(`${new URL('/build-identity.json',appUrl)}?releaseGateRun=${encodeURIComponent(runId)}`);if(!response.ok)throw new Error(`HTTP ${response.status}`);clientBuildIdentity=JSON.parse(response.text||'{}');}catch(error){(emulatorMode ? warnings : errors).push(`${emulatorMode ? 'Live verification required: ' : ''}Could not fetch deployed client build identity: ${error.message}`);}
+    try{const response=await fetchText(`${new URL('/api/build-identity',appUrl)}?releaseGateRun=${encodeURIComponent(runId)}`);if(!response.ok)throw new Error(`HTTP ${response.status}`);serverBuildIdentity=JSON.parse(response.text||'{}');}catch(error){(emulatorMode ? warnings : errors).push(`${emulatorMode ? 'Live verification required: ' : ''}Could not fetch deployed server build identity: ${error.message}`);}
+    if(certificationMode&&!emulatorMode&&clientBuildIdentity&&serverBuildIdentity){
       expectedDeploymentUrl=expectedDeploymentUrl||immutableVercelUrl(serverBuildIdentity.vercelDeploymentUrl);
       expectedDeploymentId=expectedDeploymentId||String(serverBuildIdentity.vercelDeploymentId||'').trim();
       expectedVercelProjectId=expectedVercelProjectId||String(serverBuildIdentity.vercelProjectId||'').trim();
@@ -239,7 +244,7 @@ async function main() {
     deploymentIdentityStart:{client:clientBuildIdentity,server:serverBuildIdentity},
     sourceVersion,
     deployedVersion,
-    allowLocal: boolEnv('CHAOS_ALLOW_LOCAL_UI_ONLY'),
+    allowLocal: boolEnv('CHAOS_ALLOW_LOCAL_UI_ONLY') || emulatorMode,
   });
   if (!targetValidation.ok) errors.push(...targetValidation.errors);
   if (targetValidation.warnings?.length) warnings.push(...targetValidation.warnings);
@@ -270,7 +275,7 @@ async function main() {
     projectId: firebaseProjectId || process.env.REACT_APP_FIREBASE_PROJECT_ID || process.env.REACT_APP_TEST_FIREBASE_PROJECT_ID,
     runId,
     requireAdminCredentials: boolEnv('CHAOS_ALLOW_MUTATION') || boolEnv('CHAOS_QA_AUTO_PROVISION_TEST_USERS'),
-    allowLocalEmulator: boolEnv('CHAOS_ALLOW_LOCAL_UI_ONLY')
+    allowLocalEmulator: boolEnv('CHAOS_ALLOW_LOCAL_UI_ONLY') || emulatorMode
   });
   if (!safetyForMutation.ok && (boolEnv('CHAOS_ALLOW_MUTATION') || boolEnv('CHAOS_QA_AUTO_PROVISION_TEST_USERS'))) errors.push(...safetyForMutation.errors);
 
@@ -307,6 +312,7 @@ async function main() {
     visibleVersion,
     htmlVersion,
     firebaseProjectId,
+    firebaseTarget: firebaseTarget.target,
     envFilesLoaded: loaded,
     accounts: accounts.map(a => ({ prefix: a.prefix, emailPresent: Boolean(a.email), passwordPresent: a.passwordPresent })),
     firebaseConfigResolved: Boolean(present.FIREBASE_CLIENT_CONFIG),

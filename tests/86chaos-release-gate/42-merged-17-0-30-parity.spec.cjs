@@ -1,6 +1,7 @@
 const { test, expect } = require('@playwright/test');
 const fs = require('node:fs');
 const path = require('node:path');
+const pkg = require('../../package.json');
 
 const root = process.cwd();
 const read = file => fs.readFileSync(path.join(root, file), 'utf8');
@@ -11,8 +12,8 @@ test('17.0.31 merged deployment and source preserve both branch capability sets'
   const response = await request.get(`${baseUrl}/version.json?mergedParity=${Date.now()}`, { headers: { 'Cache-Control': 'no-cache' } });
   expect(response.ok()).toBeTruthy();
   const version = await response.json();
-  expect(version.version).toBe('17.0.31');
-  expect(version.build).toBe('17.0.31');
+  expect(version.version).toBe(pkg.version);
+  expect(version.build).toBe(pkg.version);
 
   const schedule = read('src/features/schedule.jsx');
   const runner = read('RUN_86CHAOS_PLAY_STORE_RELEASE_GATE.ps1');

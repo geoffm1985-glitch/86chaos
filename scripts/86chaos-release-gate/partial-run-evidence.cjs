@@ -1,3 +1,4 @@
+const { expectedFirebaseProject } = require('../86chaos-firebase-target.cjs');
 'use strict';
 
 // Local test evidence only. It never changes restaurant data or certifies a
@@ -32,7 +33,7 @@ function checkContext(source, preflight, currentSource, target) {
   }
   if (!preflight?.ok || preflight.sourceVersion !== source.version || preflight.deployedVersion !== source.version) fail('the interrupted run has no matching successful source/Preview preflight.');
   if (target.currentSourceVersion !== source.version || target.currentDeployedVersion !== source.version) fail('the current source and Preview do not match the interrupted source.');
-  if (preflight.firebaseProjectId !== 'chaos-test-d1601' || target.firebaseProjectId !== preflight.firebaseProjectId) fail('the test workspace environment does not match.');
+  if (preflight.firebaseProjectId !== expectedFirebaseProject(process.env) || target.firebaseProjectId !== preflight.firebaseProjectId) fail('the test workspace environment does not match.');
   if (!preflight.appUrl || normalizeUrl(target.appUrl) !== normalizeUrl(preflight.appUrl) || /app\.86chaos\.com|cheers-34b8d/i.test(preflight.appUrl)) fail('the testing Preview URL does not match.');
 }
 

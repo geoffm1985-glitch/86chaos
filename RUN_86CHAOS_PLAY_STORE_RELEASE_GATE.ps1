@@ -426,11 +426,19 @@ if ($PreflightExit -ne 0) {
   $PreflightReportPath = Join-Path $RunDir 'environment-preflight.json'
   $PreflightReport = Get-Content $PreflightReportPath -Raw | ConvertFrom-Json
   $PinnedDeploymentUrl = [string]$PreflightReport.resolvedImmutableDeploymentUrl
-  if (-not $PinnedDeploymentUrl) { throw 'Preflight passed without an immutable deployment URL; refusing to run deployed tests against a mutable alias.' }
-  $env:CHAOS_VERIFIED_IMMUTABLE_DEPLOYMENT_URL = $PinnedDeploymentUrl.TrimEnd('/')
+  if ($PreflightReport.firebaseTarget -eq 'EMULATOR') {
+    $LocalTarget = [uri]$PreflightReport.appUrl
+    if ($env:YARDMASTER_FIREBASE_TARGET -ne 'emulator' -or $LocalTarget.Scheme -ne 'http' -or $LocalTarget.Host -notin @('127.0.0.1','localhost','[::1]','::1') -or $PreflightReport.firebaseProjectId -ne 'demo-86chaos' -or -not $PreflightReport.ok) { throw 'Preflight did not prove the selected local Firebase emulator target.' }
+    $ReleaseGateTargetUrl = $PreflightReport.appUrl.TrimEnd('/')
+    [Environment]::SetEnvironmentVariable('CHAOS_VERIFIED_IMMUTABLE_DEPLOYMENT_URL', $null, 'Process')
+    Write-Host "Verified local emulator release-gate target: $ReleaseGateTargetUrl (live deployment certification remains pending)." -ForegroundColor Green
+  } else {
+    if (-not $PinnedDeploymentUrl) { throw 'Preflight passed without an immutable deployment URL; refusing to run deployed tests against a mutable alias.' }
+    $env:CHAOS_VERIFIED_IMMUTABLE_DEPLOYMENT_URL = $PinnedDeploymentUrl.TrimEnd('/')
+    Write-Host "Verified immutable release-gate deployment: $env:CHAOS_VERIFIED_IMMUTABLE_DEPLOYMENT_URL" -ForegroundColor Green
+  }
   $env:APP_URL = $ReleaseGateTargetUrl
   $env:CHAOS_BASE_URL = $ReleaseGateTargetUrl
-  Write-Host "Verified immutable release-gate deployment: $env:CHAOS_VERIFIED_IMMUTABLE_DEPLOYMENT_URL" -ForegroundColor Green
   Write-Host "Testing through Firebase-authorized target: $env:APP_URL" -ForegroundColor Green
   Set-RunnerPhase 'node-version'
   $NodeExit = Run-Step "Node version" "npm run node:check --if-present"
@@ -451,7 +459,7 @@ if ($PreflightExit -ne 0) {
       Set-RunnerPhase 'install-locked-test-dependencies'
       $RunnerState.dependencyInstallAttempted = $true
       Save-RunnerState
-      $InstallExit = Run-Step "Install locked test dependencies" "node scripts/86chaos-release-gate/run-observable-command.cjs --label 'Install locked test dependencies' --heartbeat 20 --timeout 1800 -- npm ci --include=dev --no-audit --no-fund"
+      $InstallExit = Run-Step "Install locked test dependencies" "node scripts/86chaos-release-gate/yardmaster-dependency-install.cjs"
       $RunnerState.dependencyInstallPassed = ($InstallExit -eq 0)
       Save-RunnerState
       if ($InstallExit -ne 0) {
@@ -620,7 +628,7 @@ if (Test-Path $CleanupPath) {
   $SetupRestaurantId = [string]$setup.restaurantId
   if ([string]::IsNullOrWhiteSpace($SetupRestaurantId)) { $SetupRestaurantId = [string]$setup.temporaryRestaurantId }
   $WritesStarted = [bool]($setup.writesStarted -or $setup.qaDataWritesStarted -or $setup.createdRestaurant -or $setup.restaurantCreated -or $setup.membershipsCreated -or $setup.seeded -or $setup.fixtureSeedStarted)
-  $CleanupEligible = $WritesStarted -and ($SetupRunId -eq $RunId) -and ($SetupProjectId -eq 'chaos-test-d1601')
+  $CleanupEligible = $WritesStarted -and ($SetupRunId -eq $RunId) -and ($SetupProjectId -eq $ExpectedFirebaseProject)
   if ($setup.createdRestaurant -or $setup.restaurantCreated) { $CleanupEligible = $CleanupEligible -and -not [string]::IsNullOrWhiteSpace($SetupRestaurantId) }
   if ($CleanupEligible) {
     Set-RunnerPhase 'cleanup'
@@ -634,7 +642,7 @@ if (Test-Path $CleanupPath) {
     $RunnerState.cleanupAttempted = $false
     $RunnerState.cleanupCompleted = $false
     if ($SetupRunId -ne $RunId) { $RunnerState.cleanupRefusalReason = 'current-run ID did not match setup state' }
-    elseif ($SetupProjectId -ne 'chaos-test-d1601') { $RunnerState.cleanupRefusalReason = 'testing Firebase project identity was missing or unsafe' }
+    elseif ($SetupProjectId -ne $ExpectedFirebaseProject) { $RunnerState.cleanupRefusalReason = 'testing Firebase project identity was missing or unsafe' }
     elseif (($setup.createdRestaurant -or $setup.restaurantCreated) -and [string]::IsNullOrWhiteSpace($SetupRestaurantId)) { $RunnerState.cleanupRefusalReason = 'temporary restaurant ID was missing after current-run writes' }
     else { $RunnerState.cleanupRefusalReason = 'cleanup ownership evidence was incomplete' }
     Save-RunnerState

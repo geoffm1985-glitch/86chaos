@@ -49,3 +49,64 @@ test('barrier rejection does not manufacture submitted or pending reads', async 
   await assert.rejects(one, /duplicate caller/);
   assert.equal(trace.events.some(row => row.type === 'read-submit'), false);
 });
+
+
+test('a caller can retry a failed transaction after the initial concurrency barrier', async () => {
+  const trace = createTrace('application-transaction-retry');
+  const barrier = createReadBarrier(2, trace, 'initial-read', 1000);
+  const options = { maxAttempts: 3 };
+  const reads = [];
+  let failedOnce = false;
+  const db = {
+    collection() {},
+    async runTransaction(callback, receivedOptions) {
+      assert.equal(receivedOptions, options);
+      const value = await callback({ get: async ref => { reads.push(ref.path); return ref.path; } });
+      if (value === 'records/a' && !failedOnce) {
+        failedOnce = true;
+        throw Object.assign(new Error('Transaction is invalid or closed.'), { code: 3 });
+      }
+      return value;
+    },
+  };
+  const a = instrumentFirestoreDb(db, { trace, callerId: 'caller-a', beforeFirstRead: barrier });
+  const b = instrumentFirestoreDb(db, { trace, callerId: 'caller-b', beforeFirstRead: barrier });
+  const settled = await Promise.allSettled([
+    a.runTransaction(tx => tx.get({ path: 'records/a' }), options),
+    b.runTransaction(tx => tx.get({ path: 'records/b' }), options),
+  ]);
+  assert.equal(settled[0].status, 'rejected');
+  assert.equal(settled[0].reason.code, 3);
+  assert.equal(settled[1].value, 'records/b');
+  assert.equal(await a.runTransaction(tx => tx.get({ path: 'records/a' }), options), 'records/a');
+  assert.deepEqual(reads.sort(), ['records/a', 'records/a', 'records/b']);
+  assert.deepEqual(trace.events.filter(row => row.type === 'barrier-arrival').map(row => row.callerId).sort(), ['caller-a', 'caller-b']);
+  assert.equal(trace.events.filter(row => row.type === 'transaction-rollback').length, 1);
+  assert.equal(trace.events.filter(row => row.type === 'transaction-commit').length, 2);
+  assert.equal(trace.events.filter(row => row.type === 'read-submit').length, 3);
+  assert.equal(trace.events.filter(row => row.type === 'read-settle' && row.status === 'fulfilled').length, 3);
+  assert.equal(trace._activeSdkReads.size, 0);
+});
+
+test('SDK callback retries continue submitting real reads after the initial barrier', async () => {
+  const trace = createTrace('sdk-callback-retry');
+  const barrier = createReadBarrier(2, trace, 'initial-read', 1000);
+  let submittedReads = 0;
+  const db = {
+    collection() {},
+    async runTransaction(callback) {
+      const tx = { get: async ref => { submittedReads += 1; return ref.path; } };
+      await callback(tx);
+      return callback(tx);
+    },
+  };
+  const results = await Promise.all(['a', 'b'].map(id =>
+    instrumentFirestoreDb(db, { trace, callerId: id, beforeFirstRead: barrier })
+      .runTransaction(tx => tx.get({ path: 'records/' + id }))));
+  assert.deepEqual(results, ['records/a', 'records/b']);
+  assert.equal(submittedReads, 4);
+  assert.equal(trace.events.filter(row => row.type === 'barrier-arrival').length, 2);
+  assert.equal(trace.events.filter(row => row.type === 'read-submit').length, 4);
+  assert.equal(trace.events.filter(row => row.type === 'transaction-commit').every(row => row.callbackAttempts === 2), true);
+  assert.equal(trace._activeSdkReads.size, 0);
+});

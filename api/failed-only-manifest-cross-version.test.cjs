@@ -5,6 +5,7 @@ const os = require('os');
 const path = require('path');
 process.env.CHAOS_ALLOW_SOURCE_INVENTORY_FALLBACK = '1';
 
+const { expectedFirebaseProject } = require('../scripts/86chaos-firebase-target.cjs');
 const root = path.resolve(__dirname, '..');
 const {
   generateFailedOnlyManifestFromRun,
@@ -185,7 +186,7 @@ test('valid cross-version remediation preserves 16.0.133 baseline while acceptin
     currentRunDir: manifest.targetRunDir,
     currentSourceVersion: '16.0.135',
     currentDeployedVersion: '16.0.135',
-    firebaseProjectId: 'chaos-test-d1601',
+    firebaseProjectId: expectedFirebaseProject(process.env),
     appUrl: 'https://testing-preview.vercel.app',
   });
 
@@ -206,7 +207,7 @@ test('same-version diagnostic rerun is accepted when baseline and target are oth
     currentRunDir: manifest.targetRunDir,
     currentSourceVersion: '16.0.133',
     currentDeployedVersion: '16.0.133',
-    firebaseProjectId: 'chaos-test-d1601',
+    firebaseProjectId: expectedFirebaseProject(process.env),
     appUrl: 'https://testing-preview.vercel.app',
   });
   assert.equal(validation.ok, true, validation.errors.join('\n'));
@@ -219,7 +220,7 @@ test('target preview mismatch is rejected before QA seeding', () => {
     currentRunDir: manifest.targetRunDir,
     currentSourceVersion: '16.0.135',
     currentDeployedVersion: '16.0.134',
-    firebaseProjectId: 'chaos-test-d1601',
+    firebaseProjectId: expectedFirebaseProject(process.env),
     appUrl: 'https://testing-preview.vercel.app',
   });
   assert.equal(validation.ok, false);

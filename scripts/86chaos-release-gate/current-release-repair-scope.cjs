@@ -24,7 +24,7 @@ const CURRENT_RELEASE_REPAIR_SCOPE = [
   leafTitle: row.exactTestTitle,
   project,
   projects: [project],
-})));
+}))).concat(require('./runtime-crawl-repair-scope.json'));
 
 function normalizeRel(value = '') {
   return String(value || '').replace(/\\/g, '/').replace(/^\.\//, '').replace(/^tests\//, '');

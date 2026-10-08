@@ -39,19 +39,40 @@ test.describe('54 emergency Schedule + Request Off regression coverage', () => {
         if (scrollable) break;
         parent = parent.parentElement;
       }
-      const amount = Math.max(240, rect.top - top + 260);
+      const scrollportTop = parent ? parent.getBoundingClientRect().top : 0;
+      const beforeScrollTop = parent ? parent.scrollTop : window.scrollY;
+      const amount = Math.max(240, rect.top - (scrollportTop + top) + 260);
       if (parent) parent.scrollTop = Math.min(parent.scrollHeight - parent.clientHeight, parent.scrollTop + amount);
       else window.scrollBy(0, amount);
-      return { top, initialTop: rect.top, usedElementScroller: !!parent };
+      return { top, initialTop: rect.top, scrollportTop, beforeScrollTop, usedElementScroller: !!parent };
     });
     await page.waitForTimeout(300);
-    const afterTop = await sticky.evaluate(el => el.getBoundingClientRect().top);
-    expect(afterTop, 'After vertical scrolling, the day/date header must remain pinned at its computed sticky offset').toBeGreaterThanOrEqual(stickyTop - 4);
-    expect(afterTop, 'After vertical scrolling, the day/date header must remain pinned at its computed sticky offset').toBeLessThanOrEqual(stickyTop + 8);
+    const after = await sticky.evaluate((el, before) => {
+      let parent = el.parentElement;
+      while (parent) {
+        const style = getComputedStyle(parent);
+        const scrollable = /(auto|scroll)/.test(style.overflowY) && parent.scrollHeight > parent.clientHeight + 8;
+        if (scrollable) break;
+        parent = parent.parentElement;
+      }
+      const afterScrollTop = parent ? parent.scrollTop : window.scrollY;
+      const scrollDelta = Math.max(0, afterScrollTop - before.beforeScrollTop);
+      const pinnedViewportTop = before.scrollportTop + before.top;
+      return {
+        afterTop: el.getBoundingClientRect().top,
+        afterScrollTop,
+        scrollDelta,
+        pinnedViewportTop,
+        expectedTop: Math.max(pinnedViewportTop, before.initialTop - scrollDelta),
+      };
+    }, vertical);
+    const afterTop = after.afterTop;
+    expect(afterTop, 'After vertical scrolling, the day/date header must follow sticky geometry within its nested scrollport').toBeGreaterThanOrEqual(after.expectedTop - 4);
+    expect(afterTop, 'After vertical scrolling, the day/date header must follow sticky geometry within its nested scrollport').toBeLessThanOrEqual(after.expectedTop + 8);
 
     const dates = await page.getByTestId('schedule-builder-day-header-cell').evaluateAll(nodes => nodes.map(node => node.getAttribute('data-date')).filter(Boolean));
     expect(dates.length, 'Sticky header should expose the visible schedule day columns').toBeGreaterThanOrEqual(7);
-    await attachJson(testInfo, '54-sticky-schedule-header.json', { project: testInfo.project.name, position, stickyTop, afterTop, horizontal, vertical, dates: dates.slice(0, 40) });
+    await attachJson(testInfo, '54-sticky-schedule-header.json', { project: testInfo.project.name, position, stickyTop, afterTop, horizontal, vertical: { ...vertical, ...after }, dates: dates.slice(0, 40) });
   });
 
   test('Request Off partial-time UI blocks backwards ranges before a write can be attempted', async ({ page }, testInfo) => {
@@ -60,7 +81,7 @@ test.describe('54 emergency Schedule + Request Off regression coverage', () => {
     await login(page, account.email, account.password);
     await gotoTab(page, 'schedule', { settleMs: 1000, maxText: 50000 });
 
-    const requestOffTab = page.getByRole('button', { name: /^Schedule Request Off$/i }).first();
+    const requestOffTab = page.getByTestId('schedule-request-off-tab');
     await expect(requestOffTab, 'Request Off must be reachable from Time Clock & Schedule').toBeVisible({ timeout: 12000 });
     await requestOffTab.click();
     await page.waitForTimeout(700);

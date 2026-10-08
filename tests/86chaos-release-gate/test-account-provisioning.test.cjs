@@ -112,6 +112,7 @@ test('provisioner creates four distinct mocked users and writes no passwords or 
     assert.equal(new Set(report.accounts.map(a => a.uid)).size, 4);
     assert.equal([...fake.claimsByUid.values()].filter(c => c.superAdmin === true).length, 1);
     assert.ok(fake.profiles.size >= 4);
+    assert.ok([...fake.profiles.values()].every(profile => profile.preferences?.language === 'en'));
     assert.doesNotMatch(JSON.stringify(report), /UnitPass|idToken|refreshToken|private_key/i);
   });
 }));

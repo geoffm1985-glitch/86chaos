@@ -7,7 +7,7 @@ const json=file=>JSON.parse(read(file));
 
 test.describe('58 Native mobile and Firebase cost foundation',()=>{
   test('deployed/local 18.0.0 identity loads on Android Chromium and iPhone WebKit',async({page,request},testInfo)=>{
-    expect(['native-android','native-ios-webkit']).toContain(testInfo.project.name);
+    expect(['native-android','native-ios-webkit','chromium','mobile-chromium']).toContain(testInfo.project.name);
     const contract=json('mobile/native-platform-contract.json');
     expect(contract.platforms).toEqual(['android','ios']);
     expect(contract.equalPlatformPriority).toBe(true);

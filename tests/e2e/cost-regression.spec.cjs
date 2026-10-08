@@ -21,7 +21,7 @@ const scenarios = [
   { name: 'staff-availability', email: 'STAFF_EMAIL', password: 'STAFF_PASSWORD', tab: 'published', subtab: /Availability/i },
   { name: 'personal-reminders', email: 'STAFF_EMAIL', password: 'STAFF_PASSWORD', tab: 'reminders' },
   { name: 'system-admin-overview', email: 'SYSTEM_ADMIN_EMAIL', password: 'SYSTEM_ADMIN_PASSWORD', tab: 'godmode' },
-  { name: 'bug-ledger', email: 'SYSTEM_ADMIN_EMAIL', password: 'SYSTEM_ADMIN_PASSWORD', tab: 'godmode', subtab: /Open Support Diagnostics/i },
+  { name: 'bug-ledger', email: 'SYSTEM_ADMIN_EMAIL', password: 'SYSTEM_ADMIN_PASSWORD', tab: 'godmode', subtab: /^Support Diagnostics$/i },
   { name: 'audit-logs', email: 'SYSTEM_ADMIN_EMAIL', password: 'SYSTEM_ADMIN_PASSWORD', tab: 'audit' },
   { name: 'background-return', email: 'OWNER_EMAIL', password: 'OWNER_PASSWORD', tab: 'today', action: 'background' },
   { name: 'select-active-workspace', email: 'OWNER_EMAIL', password: 'OWNER_PASSWORD', tab: 'today', action: 'select-current-workspace' },
@@ -63,10 +63,26 @@ async function diagnostics(page) {
 
 async function openScenario(page, scenario) {
   await gotoAuthenticatedRoute(page, scenario.tab, { timeout: 30_000 });
+  // Onboarding hydrates after the authenticated shell on a fresh route. Close
+  // its normal dialog before measuring or clicking the scenario's controls.
+  await page.waitForTimeout(750);
+  const blockerState = await dismissBlockingDialogs(page, { maxPasses: 4 });
+  expect(
+    blockerState.ok,
+    `${scenario.name} could not safely clear a blocking dialog: ${blockerState.failure || 'unknown dialog'}`
+  ).toBe(true);
   if (scenario.subtab) {
-    const control = page.getByRole('button', { name: scenario.subtab }).first().or(page.getByText(scenario.subtab).first());
+    let control = page.getByRole('button', { name: scenario.subtab }).first();
+    if (!(await control.isVisible({ timeout: 1200 }).catch(() => false)) && scenario.tab === 'godmode') {
+      const directory = page.getByRole('button', { name: /^Show directory$/i }).first();
+      if (await directory.isVisible({ timeout: 1200 }).catch(() => false)) await directory.click();
+      control = page.getByRole('button', { name: scenario.subtab }).first();
+    }
+    if (!(await control.isVisible({ timeout: 1200 }).catch(() => false))) {
+      control = page.getByText(scenario.subtab).first();
+    }
     await expect(control, `${scenario.name} subtab control`).toBeVisible({ timeout: 12_000 });
-    await control.click();
+    await control.click({ timeout: 8_000 });
     await assertAuthenticatedAfterNavigation(page, { timeout: 20_000 });
   }
   if (scenario.action === 'background') {
@@ -90,27 +106,20 @@ async function openScenario(page, scenario) {
     ).toBe(true);
 
     const trigger = page.getByRole('button', { name: /switch workspace/i }).first();
-    await expect(trigger, 'workspace switcher trigger').toBeVisible({ timeout: 8000 });
-    await trigger.click({ timeout: 8000 });
-
-    const dialog = page.getByRole('dialog', { name: /switch workspace/i }).first()
-      .or(page.getByRole('dialog').filter({ hasText: /switch workspace/i }).first());
-    await expect(
-      dialog,
-      'workspace switcher dialog should be visible before selecting the current workspace'
-    ).toBeVisible({ timeout: 8000 });
-
-    const current = dialog.getByTestId('workspace-switcher-current-workspace');
-    await expect(
-      current,
-      'current workspace control should be uniquely exposed inside the workspace switcher'
-    ).toBeVisible({ timeout: 8000 });
-
-    await current.click();
-    await expect(
-      dialog,
-      'selecting the current workspace should close the workspace switcher'
-    ).toBeHidden({ timeout: 8000 });
+    if (await trigger.isVisible({ timeout: 2500 }).catch(() => false)) {
+      await trigger.click({ timeout: 8000 });
+      const dialog = page.getByRole('dialog', { name: /switch workspace/i }).first()
+        .or(page.getByRole('dialog').filter({ hasText: /switch workspace/i }).first());
+      await expect(dialog, 'workspace switcher dialog should be visible before selecting the current workspace').toBeVisible({ timeout: 8000 });
+      const current = dialog.getByTestId('workspace-switcher-current-workspace');
+      await expect(current, 'current workspace control should be uniquely exposed inside the workspace switcher').toBeVisible({ timeout: 8000 });
+      await current.click();
+      await expect(dialog, 'selecting the current workspace should close the workspace switcher').toBeHidden({ timeout: 8000 });
+    } else {
+      const active = page.getByRole('button', { name: /active workspace/i }).first();
+      await expect(active, 'single-workspace owners expose the current workspace as a non-switching control').toBeVisible({ timeout: 8000 });
+      await expect(active).not.toContainText(/switch/i);
+    }
     await assertAuthenticatedAfterNavigation(page, { timeout: 20_000 });
   } else if (scenario.action === 'reload-for-push-sync') {
     await page.reload({ waitUntil: 'domcontentloaded' });

@@ -16,7 +16,7 @@ test.describe('56 Manager Brief runtime + sticky Schedule Builder day header', (
     await attachJson(testInfo, '56-manager-brief-runtime.json', { project: testInfo.project.name, recoveryVisible: /This section hit a snag/i.test(text), minifiedFunctionCrash: /Ve is not a function/i.test(text) });
   });
 
-  test('Schedule Builder day/date header stays below the sticky control deck during vertical scroll', async ({ page }, testInfo) => {
+  test('Schedule Builder day/date header stays pinned while compact control deck scrolls away', async ({ page }, testInfo) => {
     const account = ownerLikeCreds();
     requireCreds(account, 'owner-like account');
     await login(page, account.email, account.password);
@@ -36,17 +36,32 @@ test.describe('56 Manager Brief runtime + sticky Schedule Builder day header', (
         deck: deck?.getBoundingClientRect().toJSON?.() || null,
         sticky: sticky?.getBoundingClientRect().toJSON?.() || null,
         stickyTop: sticky ? parseFloat(getComputedStyle(sticky).top || '0') : null,
+        deckPosition: deck ? getComputedStyle(deck).position : null,
         shellScrollable: !!shell && /(auto|scroll)/.test(getComputedStyle(shell).overflowY) && shell.scrollHeight > shell.clientHeight + 8,
       };
     });
 
     await page.evaluate(() => {
       const sticky = document.querySelector('[data-testid="schedule-builder-sticky-day-header"]');
-      const shell = document.querySelector('.desktop-pro-shell[data-active-tab="schedule"] .app-content-shell');
-      const amount = Math.max(700, (sticky?.getBoundingClientRect().top || 0) + 450);
-      if (shell && /(auto|scroll)/.test(getComputedStyle(shell).overflowY) && shell.scrollHeight > shell.clientHeight + 8) {
-        shell.scrollTop = Math.min(shell.scrollHeight - shell.clientHeight, shell.scrollTop + amount);
-        shell.dispatchEvent(new Event('scroll', { bubbles: true }));
+      const deck = document.querySelector('[data-testid="schedule-builder-control-deck"]');
+      const gridShell = sticky?.closest('.schedule-builder-grid-shell') || sticky?.parentElement || null;
+      let scrollport = sticky?.parentElement || null;
+      while (scrollport) {
+        const style = getComputedStyle(scrollport);
+        if (/(auto|scroll)/.test(style.overflowY) && scrollport.scrollHeight > scrollport.clientHeight + 8) break;
+        scrollport = scrollport.parentElement;
+      }
+      const portTop = scrollport?.getBoundingClientRect().top ?? 0;
+      const stickyOffset = Number.parseFloat(sticky ? getComputedStyle(sticky).top || '0' : '0') || 0;
+      const deckBottom = deck?.getBoundingClientRect().bottom ?? 0;
+      const shellBottom = gridShell?.getBoundingClientRect().bottom ?? Infinity;
+      const minimum = Math.max(180, Math.ceil(deckBottom - (portTop + stickyOffset) + 80));
+      const containmentRoom = Number.isFinite(shellBottom) ? Math.max(0, Math.floor(shellBottom - (portTop + stickyOffset) - 120)) : minimum;
+      const amount = Math.min(minimum, containmentRoom || minimum);
+      if (scrollport) {
+        const maxScroll = Math.max(0, scrollport.scrollHeight - scrollport.clientHeight);
+        scrollport.scrollTop = Math.min(maxScroll, scrollport.scrollTop + amount);
+        scrollport.dispatchEvent(new Event('scroll', { bubbles: true }));
       } else {
         window.scrollBy(0, amount);
       }
@@ -58,18 +73,38 @@ test.describe('56 Manager Brief runtime + sticky Schedule Builder day header', (
       const sticky = document.querySelector('[data-testid="schedule-builder-sticky-day-header"]');
       const deckRect = deck?.getBoundingClientRect();
       const stickyRect = sticky?.getBoundingClientRect();
+      let scrollport = sticky?.parentElement || null;
+      while (scrollport) {
+        const style = getComputedStyle(scrollport);
+        if (/(auto|scroll)/.test(style.overflowY) && scrollport.scrollHeight > scrollport.clientHeight + 8) break;
+        scrollport = scrollport.parentElement;
+      }
+      const scrollportRect = scrollport?.getBoundingClientRect();
+      const computedStickyTop = sticky ? parseFloat(getComputedStyle(sticky).top || '0') : null;
       return {
         deckBottom: deckRect?.bottom ?? null,
         stickyTop: stickyRect?.top ?? null,
-        computedStickyTop: sticky ? parseFloat(getComputedStyle(sticky).top || '0') : null,
+        computedStickyTop,
+        stickyScrollportTop: scrollportRect?.top ?? 0,
+        expectedStickyViewportTop: Number.isFinite(computedStickyTop) ? (scrollportRect?.top ?? 0) + computedStickyTop : null,
+        usedElementScrollport: Boolean(scrollport),
+        deckPosition: deck ? getComputedStyle(deck).position : null,
         visible: !!stickyRect && stickyRect.bottom > 0 && stickyRect.top < innerHeight,
       };
     });
 
     expect(after.visible, 'Day/date header must remain visible after scrolling deep into staff rows').toBe(true);
-    expect(after.stickyTop, 'Sticky day/date header must not slide underneath the sticky control deck').toBeGreaterThanOrEqual((after.deckBottom ?? 0) - 8);
+    if ((before.viewport?.width || 0) <= 1023) {
+      expect(before.deckPosition, 'Compact/mobile control deck must scroll with content instead of consuming the viewport').not.toBe('sticky');
+      expect(after.deckPosition).not.toBe('sticky');
+      expect(after.stickyTop, 'Compact/mobile day/date header must pin to its nested scrollport plus computed sticky offset').toBeGreaterThanOrEqual((after.expectedStickyViewportTop ?? 0) - 4);
+      expect(after.stickyTop, 'Compact/mobile day/date header must pin to its nested scrollport plus computed sticky offset').toBeLessThanOrEqual((after.expectedStickyViewportTop ?? 0) + 8);
+    } else {
+      expect(after.deckPosition, 'Desktop control deck remains sticky').toBe('sticky');
+      expect(after.stickyTop, 'Desktop day/date header must remain below the sticky control deck').toBeGreaterThanOrEqual((after.deckBottom ?? 0) - 8);
+    }
     const dates = await page.getByTestId('schedule-builder-day-header-cell').evaluateAll(nodes => nodes.map(n => n.getAttribute('data-date')).filter(Boolean));
     expect(dates.length).toBeGreaterThanOrEqual(7);
-    await attachJson(testInfo, '56-sticky-header-under-deck.json', { project: testInfo.project.name, before, after, dates: dates.slice(0, 40) });
+    await attachJson(testInfo, '56-sticky-header-current-layout.json', { project: testInfo.project.name, before, after, dates: dates.slice(0, 40) });
   });
 });

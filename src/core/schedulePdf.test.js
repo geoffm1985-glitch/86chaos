@@ -1,7 +1,7 @@
 jest.setTimeout(15000);
 import { PDFDocument } from 'pdf-lib';
 import { buildMonthSchedulePrintModel } from './schedulePrintModel';
-import { generateMonthSchedulePdf, PAGE_WIDTH, PAGE_HEIGHT, MIN_FONT_SIZE } from './schedulePdf';
+import { generateMonthSchedulePdf, schedulePdfFontSubsets, PAGE_WIDTH, PAGE_HEIGHT, MIN_FONT_SIZE } from './schedulePdf';
 
 const fs = require('fs');
 const { spawnSync } = require('child_process');
@@ -20,6 +20,12 @@ const pdfOptions = { fontkit, fontAssets: fontPaths.map(path => new Uint8Array(f
 const makeModel = count => buildMonthSchedulePrintModel({
   monthStr: '2026-08', restaurantName: 'Cheers', roleFilter: 'All', prefiltered: true,
   shifts: Array.from({ length: count }, (_, index) => ({ date: '2026-08-03', published: true, dedupeKey: `s-${index}`, employeeName: `Employee ${index}`, role: 'Cook', startTime: '10:00', endTime: '18:00' }))
+});
+
+test('browser runtime loads only font subsets used by the schedule text', () => {
+  expect(schedulePdfFontSubsets('Allen QA · 10:00 AM – 6:00 PM')).toEqual(['latin']);
+  expect(schedulePdfFontSubsets('Zoë 李')).toEqual(['latin', 'cjk-common-115']);
+  expect(schedulePdfFontSubsets('Иван Ω')).toEqual(['latin', 'cyrillic', 'greek']);
 });
 
 const extractPdfText = bytes => {

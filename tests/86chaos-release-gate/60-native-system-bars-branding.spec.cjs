@@ -8,7 +8,7 @@ const json=file=>JSON.parse(read(file));
 
 test.describe('60 Native system bars and branding',()=>{
   test('native viewport contract stays safe on Android Chromium and iPhone WebKit',async({page,request},testInfo)=>{
-    expect(['native-android','native-ios-webkit']).toContain(testInfo.project.name);
+    expect(['native-android','native-ios-webkit','chromium','mobile-chromium']).toContain(testInfo.project.name);
     const version=await (await request.get('/version.json')).json();
     const currentVersion=json('package.json').version;
     expect(version.version).toBe(currentVersion);
@@ -39,7 +39,8 @@ test.describe('60 Native system bars and branding',()=>{
     expect(bin('android/app/src/main/res/drawable-nodpi/chaos86_app_icon.png').equals(bin('public/86chaos-pwa-512-v4.png'))).toBe(true);
     expect(core).toMatch(/installNativeViewportClass/);
     expect(css).toMatch(/html\.chaos-native-ios body/);
-    expect(contract.nativeViewport.android.webViewPadding).toBe(true);
+    expect(contract.nativeViewport.android.containerPadding).toBe(true);
+    expect(contract.nativeViewport.android.webViewPadding).toBe(false);
     expect(contract.branding.androidLauncherIcon).toBe('public/86chaos-pwa-512-v4.png');
     expect(contract.branding.iosBrandedIconRequiredBeforeAppleDistribution).toBe(true);
   });

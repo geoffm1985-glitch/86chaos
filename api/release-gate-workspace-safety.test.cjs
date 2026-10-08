@@ -84,7 +84,7 @@ test('PowerShell runners trigger cleanup when partial current-run writes began',
   for (const file of ['RUN_86CHAOS_PLAY_STORE_RELEASE_GATE.ps1', 'RUN_86CHAOS_FAILED_ONLY_RELEASE_GATE.ps1']) {
     const source = require('fs').readFileSync(require('path').join(__dirname, '..', file), 'utf8');
     assert.match(source, /\$WritesStarted\s*=\s*\[bool\]\(\$setup\.writesStarted -or \$setup\.qaDataWritesStarted/, `${file} should key cleanup from first Firebase write`);
-    assert.match(source, /\$CleanupEligible\s*=\s*\$WritesStarted -and \(\$SetupRunId -eq \$RunId\) -and \(\$SetupProjectId -eq 'chaos-test-d1601'\)/, `${file} should require current run and testing project`);
+    assert.match(source, /\$CleanupEligible\s*=\s*\$WritesStarted -and \(\$SetupRunId -eq \$RunId\) -and \(\$SetupProjectId -eq \$ExpectedFirebaseProject\)/, `${file} should require current run and selected safe Firebase project`);
     assert.doesNotMatch(source, /\$setup\.attempted -and \$setup\.seeded -and \$setup\.verified -and \$setup\.runId -eq \$RunId/, `${file} must not require fully seeded and verified setup before cleanup`);
     assert.match(source, /cleanup unnecessary because no current-run Firebase writes began/, `${file} should preserve no-write cleanup skip reporting`);
   }

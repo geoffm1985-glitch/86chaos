@@ -7,7 +7,7 @@ const json=file=>JSON.parse(read(file));
 
 test.describe('59 Native packaged API bridge',()=>{
   test('Android and iPhone packaged API bridge contract stays identical',async({page,request},testInfo)=>{
-    expect(['native-android','native-ios-webkit']).toContain(testInfo.project.name);
+    expect(['native-android','native-ios-webkit','chromium','mobile-chromium']).toContain(testInfo.project.name);
     const versionResponse=await request.get('/version.json');
     expect(versionResponse.ok()).toBeTruthy();
     const deployedVersion=(await versionResponse.json()).version;
