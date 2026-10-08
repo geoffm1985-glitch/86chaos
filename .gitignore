@@ -19,3 +19,6 @@ __pycache__/
 *.log
 86chaos-release-gate-*.zip
 86chaos_*_app_only*.zip
+
+# Generated Functions source maps are build output.
+functions/lib/*.map
