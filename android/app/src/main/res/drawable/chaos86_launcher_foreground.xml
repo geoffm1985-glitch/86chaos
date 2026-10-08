@@ -1,9 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Keep the logo inside Android's adaptive-icon safe area; the launcher supplies its mask. -->
+<!-- 23% keeps all logo pixels, including the tagline corners, within the
+     72dp circular mask on a 108dp adaptive canvas. The launcher supplies its mask. -->
 <inset xmlns:android="http://schemas.android.com/apk/res/android"
-    android:insetLeft="20%"
-    android:insetTop="20%"
-    android:insetRight="20%"
-    android:insetBottom="20%">
+    android:insetLeft="23%"
+    android:insetTop="23%"
+    android:insetRight="23%"
+    android:insetBottom="23%">
     <bitmap android:src="@drawable/chaos86_launcher_artwork" android:gravity="fill" />
 </inset>

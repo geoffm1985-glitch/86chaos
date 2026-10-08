@@ -1,7 +1,7 @@
 {
   "schemaVersion": 3,
   "version": "18.0.10",
-  "sourceHash": "d2e44a232cb4b05b7f0a8c20b67b7e54f039e2ff70e0ef333c27ec1ff5c3958c",
+  "sourceHash": "fc8a1f63e55aa8cf19f0dbb376efc9a01154c99631b2cee7850c6c3e2e4709bc",
   "files": [
     {
       "file": ".gitattributes",
@@ -457,7 +457,7 @@
     },
     {
       "file": "android/app/src/main/res/drawable/chaos86_launcher_foreground.xml",
-      "sha256": "07cce0557018c9bab387e1a0021c9115374292f46adac2cc7d63b5a99eae64da"
+      "sha256": "d7b0d811e9b075e5ab5efe7c1fea7a76fadb257eeb182d0fb5ef51e1c2c157d1"
     },
     {
       "file": "android/app/src/main/res/drawable/chaos86_notification.xml",
