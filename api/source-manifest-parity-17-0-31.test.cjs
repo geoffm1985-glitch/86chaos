@@ -20,6 +20,24 @@ test('17.0.31 declares deterministic TypeScript Git line endings',()=>{
   assert.match(attrs,/^\*\.tsx text eol=lf$/m);
 });
 
+test('native Android and iOS source hashes survive Windows and Linux checkouts',()=>{
+  const lf=Buffer.from('native source line\nsecond line\n','utf8');
+  const crlf=Buffer.from('native source line\r\nsecond line\r\n','utf8');
+  for(const file of ['android/app/build.gradle','android/gradle.properties','android/app/proguard-rules.pro','android/MainActivity.java','android/AndroidManifest.xml','android/gradlew','android/gradlew.bat','ios/project.pbxproj','ios/Info.plist','ios/AppDelegate.swift','ios/Main.storyboard','ios/debug.xcconfig']){
+    assert.equal(identity.hash(identity.sourceBytes(file,crlf)),identity.hash(identity.sourceBytes(file,lf)),file);
+  }
+  for(const file of ['android/gradle/wrapper/gradle-wrapper.jar','android/icon.png']){
+    assert.notEqual(identity.hash(identity.sourceBytes(file,crlf)),identity.hash(identity.sourceBytes(file,lf)),file);
+  }
+});
+
+test('clean native checkout matches the committed source inventory',t=>{
+  const git=identity.gitIdentity(root);
+  if(git.dirty){t.skip('requires a clean committed checkout');return;}
+  const committed=identity.committedSourceFiles(root);
+  if(committed)assert.deepEqual(identity.captureSourceIdentity(root).files,committed);
+});
+
 test('17.0.31 bundled manifest exactly matches tracked certification source',()=>{
   const captured=identity.captureSourceIdentity(root);
   const bundled=identity.readBundledSourceManifest(root);

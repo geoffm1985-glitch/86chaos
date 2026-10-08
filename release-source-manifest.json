@@ -1,7 +1,7 @@
 {
   "schemaVersion": 3,
   "version": "18.0.8",
-  "sourceHash": "29d88979a48732bf2d615d065b14482201483ef0b1aaf48e70feffea95f2b728",
+  "sourceHash": "62098e2ebf9e7fd5e993dcd510908a4f6ce3a8b1826d883aba9c4efa396cdc86",
   "files": [
     {
       "file": ".gitattributes",
@@ -369,27 +369,27 @@
     },
     {
       "file": "android/app/build.gradle",
-      "sha256": "35f73fdd731459cdd22cecf72398156343e8a1c819ad5e25611d8eb1a1db3d0b"
+      "sha256": "af8114bc4c784b2080dd295493e6313de383435546d49867dd3b6c8da4f19eb6"
     },
     {
       "file": "android/app/capacitor.build.gradle",
-      "sha256": "5c496cd60926e3c6b34c31f95fcc485723d643f906650c7690842e8af2150f41"
+      "sha256": "7051cadfdbc532197d2cfd4f8a11684d81367f23cf7952e5a208f7b6aa0833e0"
     },
     {
       "file": "android/app/proguard-rules.pro",
-      "sha256": "a62624d7b48278452544f45d30648f7cc0dafc24561bd2e95074d4f5dab4313a"
+      "sha256": "1cf8c57e8f79c250b0af9c1a5a4edad71a5c348a79ab70243b6bae086c150ad2"
     },
     {
       "file": "android/app/src/androidTest/java/com/getcapacitor/myapp/ExampleInstrumentedTest.java",
-      "sha256": "f2e64983510b1f1489b71721027151f497e71008bf7dcc323c2f26156d64dd2b"
+      "sha256": "ff50b4c110a7434312f9af54171f9e8523b015836f707c9b387b76d4c38a97f8"
     },
     {
       "file": "android/app/src/main/AndroidManifest.xml",
-      "sha256": "f037ffa9de547ca13c8342d86e1febe167bae6d0faeb66894724201dfd6c79b7"
+      "sha256": "fdb3570eafc5610c8b1fd4bbbc7e72156e04bd544e699462ae7202b5ad795b10"
     },
     {
       "file": "android/app/src/main/java/com/chiltonappworks/chaos86/MainActivity.java",
-      "sha256": "ce7d9f7100f9a2a998505cf71ae80273a1ee3102d9d89ec2bc6eb68993131eb8"
+      "sha256": "32a32109ba468fece9eda6346be8415c68be213e9d88147b96818dfd51e15188"
     },
     {
       "file": "android/app/src/main/res/drawable-land-hdpi/splash.png",
@@ -437,11 +437,11 @@
     },
     {
       "file": "android/app/src/main/res/drawable-v24/ic_launcher_foreground.xml",
-      "sha256": "fe3c9a470d9dfc34dfefa1cbbaf67f16174cdd3d242a1d4f6bd09483ea38c29b"
+      "sha256": "a8514094f754b099d3e55ce1d6e0b2de79db418b2eeacb0fc2a6bb0bfadef221"
     },
     {
       "file": "android/app/src/main/res/drawable/ic_launcher_background.xml",
-      "sha256": "61acabdec7880108a9850fdc6cea1a6fc974114bae875bdcadc70078bf4e615f"
+      "sha256": "718ba51adf166bb55c3e9936bb8199a0148457f7f0191aaa2f37a94f3159d6ec"
     },
     {
       "file": "android/app/src/main/res/drawable/splash.png",
@@ -449,15 +449,15 @@
     },
     {
       "file": "android/app/src/main/res/layout/activity_main.xml",
-      "sha256": "61e5b7029215a836abe562b61d037bd5e59e68e28cbaab42b9f503ba5bf3ca57"
+      "sha256": "5d770feb791313b947020cbfc57e5c733c556dac5e9e49261a1190e527073253"
     },
     {
       "file": "android/app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml",
-      "sha256": "6be9be8d39cb250f663814bc3ac3ba570d9629be22fbebcc95d0c058e2249717"
+      "sha256": "9c3a7e0a6515c6e1a7ae834a9ae430311ebc3241f7b2e5e7f0460aa690709a7c"
     },
     {
       "file": "android/app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml",
-      "sha256": "6be9be8d39cb250f663814bc3ac3ba570d9629be22fbebcc95d0c058e2249717"
+      "sha256": "9c3a7e0a6515c6e1a7ae834a9ae430311ebc3241f7b2e5e7f0460aa690709a7c"
     },
     {
       "file": "android/app/src/main/res/mipmap-hdpi/ic_launcher.png",
@@ -521,35 +521,35 @@
     },
     {
       "file": "android/app/src/main/res/values/ic_launcher_background.xml",
-      "sha256": "1cab1aa686b81505433a474a3408f56d39a3dff8f1ff66c16d866a8fa4b806be"
+      "sha256": "cd40bafe618ff506f4088778b135cb4faa15f25e0c9b475e22d730c74b7be115"
     },
     {
       "file": "android/app/src/main/res/values/strings.xml",
-      "sha256": "47310a9aebeca56e32119bf54f167e80ae0af0e24c4d85baa95f757635b88811"
+      "sha256": "71dbb5c797745a0971c889883a058dc15f8da6d660b5edb789a3e9f89fa00ec4"
     },
     {
       "file": "android/app/src/main/res/values/styles.xml",
-      "sha256": "8207f1e42dd22d6d2fddb0bdad3ee9e7db9535a0368aae0b4daadead05112655"
+      "sha256": "18ebba36575e9461347ee67361b23caf095f158ee85dbefe1b83a4669ba5bd6c"
     },
     {
       "file": "android/app/src/main/res/xml/file_paths.xml",
-      "sha256": "a290266da65e30675e410cd8e1c17cde04de40170c9c3b900504e7a24ca79626"
+      "sha256": "a46ed43ef65c90cb6778f4581decf3556e3f0055aad8f36d69dae16f9a0e99aa"
     },
     {
       "file": "android/app/src/test/java/com/getcapacitor/myapp/ExampleUnitTest.java",
-      "sha256": "486e7e67ed195d642340a4849575d406c4414e77e21e8bfbe5ef40b796a14557"
+      "sha256": "d4045ae8fac1f0807e6b24eb34e68409a9a235df9d1a3f896fb8c9a49424363d"
     },
     {
       "file": "android/build.gradle",
-      "sha256": "735dafec431688f5202b4f4bb40e0ef9a78e3a3dccb98fcdb5b2725195564bfe"
+      "sha256": "46ade7db7afeb8049ccea59fce83095dca736ceb8c9acd79cc944e988c3357d9"
     },
     {
       "file": "android/capacitor.settings.gradle",
-      "sha256": "96e9f64b9c2131b2c4afd4839508062ffeb44f8838cbb4132465120d0b4432d9"
+      "sha256": "b488e162f552d6efb8286793c7871bbc1061c9bf5ca3a6a495fdeb8988a541c7"
     },
     {
       "file": "android/gradle.properties",
-      "sha256": "a0771d2d479ce151dacc09fab95282de4dea3c94a5f6c71b5cc40c78bbc3025e"
+      "sha256": "3bab15c5b8bc4c2f4b6cf525497d15ad4abca53a460e6dd2eb0f0135817d31e6"
     },
     {
       "file": "android/gradle/wrapper/gradle-wrapper.jar",
@@ -557,23 +557,23 @@
     },
     {
       "file": "android/gradle/wrapper/gradle-wrapper.properties",
-      "sha256": "1adf3caeedad6ae5b3a0a410e1dd94ca552d6e6f02ee68cbaf849cd5e7877d17"
+      "sha256": "9a479a85aa879bb55284fc16d0de5b81a745c3854f4e2d88c42e7debaf007435"
     },
     {
       "file": "android/gradlew",
-      "sha256": "28d2c82e7f9cca986ee8da10ba939cf9260d682f73936b2b6d2545e35360ce7b"
+      "sha256": "b187b4c52e749f5760afdd6fadc31b2a98ad35fb249bf0dff03b72650f320409"
     },
     {
       "file": "android/gradlew.bat",
-      "sha256": "1d297e00bd21de3ace22b4d7f2de1f9dfa858883d66bbf7c1ccbecccec8f4f3b"
+      "sha256": "94102713eb8fb22d032397924c0f38ab2da783ba60d07054339f1190a0c4e2cd"
     },
     {
       "file": "android/settings.gradle",
-      "sha256": "9c6c826e55d5cd4feb1f18f49ce3ab7d19f33bf30893d8750afb2c3b45872934"
+      "sha256": "6ce098d15ebd69b44c4ecd786bca1bdc366340d2459b2af4d7bb0ab317aa9669"
     },
     {
       "file": "android/variables.gradle",
-      "sha256": "80ca02724ff4a95d1192481c68b00474cb1f8c5767eabbcea00deb28049d06dd"
+      "sha256": "83d502c9ed8fcf1dd4791482067abeedbebae49fafe9cd14a8a1f5891deb0d88"
     },
     {
       "file": "api/_ai-policy.js",
@@ -1977,7 +1977,7 @@
     },
     {
       "file": "api/source-manifest-parity-17-0-31.test.cjs",
-      "sha256": "22f7e6b6a7828d0f7abb450c96e526c0e2bd83953c50dc1182286077f391b25f"
+      "sha256": "3c36d90c5a5b6eaf5f19897e50c1ba86380aa6481b58f752bf0960f0214abb1a"
     },
     {
       "file": "api/source-validator-line-ending-safety.test.cjs",
@@ -2209,15 +2209,15 @@
     },
     {
       "file": "ios/App/App.xcodeproj/project.pbxproj",
-      "sha256": "9d4342f8dc9f2cf152f95a9269cd1bfb706261e0ae70a0993493310673799055"
+      "sha256": "6e68a58ea6659ac13e5d179b11c40539754b79283e5d161e77a6ecccf84f43b8"
     },
     {
       "file": "ios/App/App.xcodeproj/project.xcworkspace/xcshareddata/IDEWorkspaceChecks.plist",
-      "sha256": "d557c2c32fc6258ec28981fa45dc847b76c9968beb90a2e26d13ef9c4ea45c30"
+      "sha256": "dfa0f9bb85b95ccba9c6811adadf8cb407fb5d52088e89db83ebc308ec448542"
     },
     {
       "file": "ios/App/App/AppDelegate.swift",
-      "sha256": "53785d9d55e942a241161010b161698901b1fe6edcb1443042055ffb3fe225e2"
+      "sha256": "481e2ad8672b14acbd3e3df65acdc6d046526ae542b7bec903cf842fc68d9e49"
     },
     {
       "file": "ios/App/App/Assets.xcassets/AppIcon.appiconset/AppIcon-512@2x.png",
@@ -2249,19 +2249,19 @@
     },
     {
       "file": "ios/App/App/Base.lproj/LaunchScreen.storyboard",
-      "sha256": "cced1b7ad3ee8bf2b775bd014e2172d050cadf4ab0b186addede4c96a01cc05d"
+      "sha256": "87a42e842164d75f39cca56a2cf743652f4d8e858f2eba12ae21a8ddcd9a21c6"
     },
     {
       "file": "ios/App/App/Base.lproj/Main.storyboard",
-      "sha256": "1beac972dcbf6e9949d16a6afe5c81c64b8f59cde83457eb94d984b5ceafe12c"
+      "sha256": "7b7dc7acc67134bfaa80e5ce9c9068ba53db5369b9b70248aa7439fc2b09daae"
     },
     {
       "file": "ios/App/App/Info.plist",
-      "sha256": "71a0d352358e83b87700f11da2a8d418c102c057fcff55a2faa20f5c6c010755"
+      "sha256": "c3b1ffb9d364594c19dba384143bb4d9292aa324f7c0cac3c9e651b8c29578b9"
     },
     {
       "file": "ios/App/App/SceneDelegate.swift",
-      "sha256": "7cb0a2e0def4c6f9ae8f6f19acb4d2a55562832dd476695fce0670cd4361aa2a"
+      "sha256": "738b9b96bb71d34d80cd8c1183cf7f8f6f2e789c64e46fb5fe6777a35ae12dfd"
     },
     {
       "file": "ios/App/CapApp-SPM/.gitignore",
@@ -2269,7 +2269,7 @@
     },
     {
       "file": "ios/App/CapApp-SPM/Package.swift",
-      "sha256": "b718abeafc4ed4092e8a4542a1825a0361fbcecc0c40d198e1492edc4de3ccd1"
+      "sha256": "27abb51a1720986b9390f7bf4ad1576eb00bb974e7ee50b7a4bbd18a3cc63603"
     },
     {
       "file": "ios/App/CapApp-SPM/README.md",
@@ -2277,11 +2277,11 @@
     },
     {
       "file": "ios/App/CapApp-SPM/Sources/CapApp-SPM/CapApp-SPM.swift",
-      "sha256": "15ceef2a868d7042fb52797f2e461da77b165e01f2da4b2d150e502ef9ded4a3"
+      "sha256": "70bf9dafddc35e3877dfb133a996f5be7ccd1e132897a98fdbf4869ff605ece9"
     },
     {
       "file": "ios/debug.xcconfig",
-      "sha256": "3601888693e169668827c9032ba524aa2d6ef77770681d12a0260783592764d6"
+      "sha256": "4838938a72b913b99cfda54a43bbe73f05893071dc6e3702b0adc44794b64272"
     },
     {
       "file": "mobile/native-platform-contract.json",
@@ -2717,7 +2717,7 @@
     },
     {
       "file": "scripts/86chaos-release-gate/source-identity.cjs",
-      "sha256": "e6a08a8616a75406ce73610eb99066ca064fa4e203c54ab0b8b1539d7beb4b1c"
+      "sha256": "ccf59780d551eca43ffa82946abb16086be3bb22d29db0b898e7601e3d82e7a6"
     },
     {
       "file": "scripts/86chaos-release-gate/source-inventory.cjs",

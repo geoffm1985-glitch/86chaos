@@ -4,8 +4,8 @@ const path = require('path');
 const crypto = require('crypto');
 const cp = require('child_process');
 
-const textExtensions = /\.(?:js|jsx|cjs|mjs|json|css|html|md|txt|ps1|cmd|yml|yaml|rules|py|toml|sh|ts|tsx)$/i;
-function sourceBytes(file, bytes) { return textExtensions.test(file) || ['.gitignore','.gitattributes','.npmrc'].includes(path.posix.basename(file)) ? Buffer.from(bytes.toString('utf8').replace(/\r\n/g, '\n')) : bytes; }
+const textExtensions = /\.(?:js|jsx|cjs|mjs|json|css|html|md|txt|ps1|cmd|yml|yaml|rules|py|toml|sh|ts|tsx|gradle|properties|pro|java|xml|bat|pbxproj|plist|swift|storyboard|xcconfig)$/i;
+function sourceBytes(file, bytes) { return textExtensions.test(file) || ['.gitignore','.gitattributes','.npmrc','gradlew'].includes(path.posix.basename(file)) ? Buffer.from(bytes.toString('utf8').replace(/\r\n/g, '\n')) : bytes; }
 const hash = bytes => crypto.createHash('sha256').update(bytes).digest('hex');
 const excludedDirectories = new Set(['.git', '.vercel', '.firebase', 'node_modules', 'build', 'coverage', 'test-results', 'playwright-report', 'release-evidence', '__pycache__', 'dist', '.cache']);
 
