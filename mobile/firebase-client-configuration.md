@@ -6,6 +6,6 @@ Google permits this configuration in source when the keys are restricted to Fire
 
 Data authorization remains enforced by Firebase Security Rules and authenticated server endpoints. Possession of a client key must not grant access to another user's or restaurant's data. Native messaging uses its platform configuration; browser authentication and data access use a separate browser key. Deleting the native configuration would break native registration without removing the key from already distributed apps or Git history.
 
-Android application restrictions must use the certificate of the actual distributed APK, and future Google Play signing may use a different identity from preview signing. Never substitute a local debug certificate for the cached CI preview certificate. API restrictions and app restrictions must preserve legitimate Android and iOS registration.
+Android application restrictions must use the certificate of the actual distributed APK, and future Google Play signing may use a different identity from preview signing. Never substitute a local debug certificate for the retained CI preview certificate. API restrictions and app restrictions must preserve legitimate Android and iOS registration.
 
 Reference: https://firebase.google.com/docs/projects/api-keys

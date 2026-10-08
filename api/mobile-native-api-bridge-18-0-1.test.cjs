@@ -44,7 +44,10 @@ test('Android preview publishing stays isolated to explicit mobile preview commi
   const pkg=json('package.json');
   assert.match(workflow,/\[android-preview\]/);
   assert.match(workflow,/assembleDebug/);
-  assert.match(workflow,/86chaos-mobile-preview-debug-keystore-v1/);
+  assert.match(workflow,/secrets\.CHAOS_MOBILE_PREVIEW_KEYSTORE_B64/);
+  assert.match(workflow,/umask 077/);
+  assert.match(workflow,/verify --print-certs/);
+  assert.match(read('android/app/build.gradle'),/System\.getenv\('CHAOS_PREVIEW_KEYSTORE'\)/);
   assert.match(workflow,new RegExp('mobile-v'+escVersion(pkg.version)+'-preview'));
   assert.match(workflow,/--prerelease/);
 });

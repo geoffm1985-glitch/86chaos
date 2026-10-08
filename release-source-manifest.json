@@ -1,7 +1,7 @@
 {
   "schemaVersion": 3,
   "version": "18.0.10",
-  "sourceHash": "f44eccfdef19648e840a3839ba5726921e8d554b1087b9967053dae44e3871b7",
+  "sourceHash": "5a68b7d896365570b7bcf488797b260063bf0e564fd778520db730cf403c82b0",
   "files": [
     {
       "file": ".gitattributes",
@@ -9,7 +9,7 @@
     },
     {
       "file": ".github/workflows/mobile-targeted-gate.yml",
-      "sha256": "3cd5a94ee1afa3e0195b6250f1b3658877175b4fdb1a13af790e8feb76ae0ec0"
+      "sha256": "700037861714ae0911efd9c2a43ab50c5b83862be8fced7a202086e9521d1d57"
     },
     {
       "file": ".github/workflows/testing-targeted-delta.yml",
@@ -305,7 +305,7 @@
     },
     {
       "file": "RELEASE_18_0_10.md",
-      "sha256": "0ab7efb02e79d73cefba73d2cc4611769bc8f9bff56482b50c956ae38da225f6"
+      "sha256": "ff3c307bc1317c152f5b01e1a47756394f524cd523ef82e322175d65833733aa"
     },
     {
       "file": "RELEASE_18_0_2.md",
@@ -377,7 +377,7 @@
     },
     {
       "file": "android/app/build.gradle",
-      "sha256": "3fc721506bfee2ab55cce173ff620a37908730ca0dc1ca173b9850354ad409d5"
+      "sha256": "8ec07cc8c980360432af00ff81655ef78e8dc488630f215151bb76e65c73174b"
     },
     {
       "file": "android/app/capacitor.build.gradle",
@@ -1197,7 +1197,7 @@
     },
     {
       "file": "api/mobile-native-api-bridge-18-0-1.test.cjs",
-      "sha256": "c1eddaeac211f1238f5d71989212a85e9d8accd11c923d6f1e42e22b432a5e4d"
+      "sha256": "c68b6c4bf3780c04283b1332c2c594991d0add9d25f2d4bd1b5cdfa5827684ba"
     },
     {
       "file": "api/mobile-native-container-insets-18-0-7.test.cjs",
@@ -2329,7 +2329,7 @@
     },
     {
       "file": "mobile/firebase-client-configuration.md",
-      "sha256": "e8ee64e16b204d8a3d184999fc79161cc9bb0f1532059d6b30936f06c3af80b7"
+      "sha256": "8f38ca624fe916bb81312e2bba12f30ae69dae9772575b39d1a69e4a5ac37486"
     },
     {
       "file": "mobile/native-platform-contract.json",

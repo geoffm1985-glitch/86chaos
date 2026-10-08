@@ -87,10 +87,15 @@ jobs:
 
       - name: Restore persistent preview signing key
         if: ${{ contains(github.event.head_commit.message, '[android-preview]') }}
-        uses: actions/cache@v4
-        with:
-          path: ~/.android/debug.keystore
-          key: 86chaos-mobile-preview-debug-keystore-v1
+        env:
+          PREVIEW_KEYSTORE_B64: ${{ secrets.CHAOS_MOBILE_PREVIEW_KEYSTORE_B64 }}
+        shell: bash
+        run: |
+          test -n "$PREVIEW_KEYSTORE_B64" || { echo "Missing retained preview signing key"; exit 1; }
+          umask 077
+          printf '%s' "$PREVIEW_KEYSTORE_B64" | base64 --decode > "$RUNNER_TEMP/86chaos-preview.keystore"
+          test -s "$RUNNER_TEMP/86chaos-preview.keystore"
+          echo "CHAOS_PREVIEW_KEYSTORE=$RUNNER_TEMP/86chaos-preview.keystore" >> "$GITHUB_ENV"
 
       - name: Build signed Android preview APK
         if: ${{ contains(github.event.head_commit.message, '[android-preview]') }}
@@ -101,6 +106,10 @@ jobs:
           chmod +x gradlew
           ./gradlew assembleDebug --no-daemon
           cd ..
+          keytool -exportcert -keystore "$CHAOS_PREVIEW_KEYSTORE" -storepass android -alias androiddebugkey -file "$RUNNER_TEMP/86chaos-preview-cert.der"
+          preview_cert_hash=$(sha256sum "$RUNNER_TEMP/86chaos-preview-cert.der" | cut -d' ' -f1)
+          apk_signer_tool=$(find "$ANDROID_HOME/build-tools" -maxdepth 2 -type f -name apksigner | sort -V | tail -n 1)
+          "$apk_signer_tool" verify --print-certs android/app/build/outputs/apk/debug/app-debug.apk | grep -F "$preview_cert_hash"
           python3 scripts/verify-native-push-apk.py android/app/build/outputs/apk/debug/app-debug.apk
           cp android/app/build/outputs/apk/debug/app-debug.apk 86Chaos-18.0.10-android-preview.apk
           sha256sum 86Chaos-18.0.10-android-preview.apk > 86Chaos-18.0.10-android-preview.apk.sha256
