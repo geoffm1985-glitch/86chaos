@@ -1,7 +1,7 @@
 {
   "schemaVersion": 3,
   "version": "18.0.8",
-  "sourceHash": "212b45a2807cf54f3491154940e946f3099b31a5f2e0268b27f4cdfe9a9e94da",
+  "sourceHash": "3eb161a9de50dc7b43e9e5310c4b285a12f27b17cab736fad6c2ab063b18fee6",
   "files": [
     {
       "file": ".gitattributes",
@@ -1773,7 +1773,7 @@
     },
     {
       "file": "api/scale-time-export-17-0-0.test.cjs",
-      "sha256": "63bd68fd638e2394e773b8d3d0227e25b603128f8f2b275f8897ae8580b73685"
+      "sha256": "492e0da8d6ed41075f39721324853a18e1d5f82ed92747321c4ec529ffcfbab5"
     },
     {
       "file": "api/scan-invoice.js",
