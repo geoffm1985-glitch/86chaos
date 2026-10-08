@@ -34,7 +34,7 @@ function scheduleGridFixture({ days = 31, events = false } = {}) {
     scheduleBuilderStickyTop: 0, scheduleBuilderHeaderScrollRef: { current: null }, scheduleBuilderBodyScrollRef: { current: null },
     syncScheduleBuilderHorizontalScroll: () => {}, sortedRoles: ['Bartender', 'Kitchen'], groupedUsers: { Bartender: [people[0]], Kitchen: [people[1]] },
     selectedEmp: '', assignDates: [], timeOffRequests: [], projectedDailyLabor: Object.fromEntries(schedulePeriodDays.map(d => [d, 0])),
-    getHoliday: () => null, getScheduleBuilderShiftsForPersonDate: (date, person) => person.id === 'allen' ? [{ id: date, startTime: '10:00', endTime: '21:00' }] : [],
+    getHoliday: date => date.endsWith('-31') ? 'Halloween' : null, getScheduleBuilderShiftsForPersonDate: (date, person) => person.id === 'allen' ? [{ id: date, startTime: '10:00', endTime: '21:00' }] : [],
     getScheduleShiftTimeStatus: () => ({ valid: true, displayRange: '10a-9p' }), getRoleColors: () => 'bg-purple-400', isBuilderShiftPublished: () => false,
     formatShortTime: value => value === '10:00' ? '10a' : '9p', formatScheduleBuilderEventTitle: value => value.title, formatScheduleBuilderEventLabel: value => value.title,
     handleCellClick: () => {}, handleDeleteSpecificShift: () => {}, openEditEventModal: () => {}, setSelectedEmp: () => {}, setAssignDates: () => {},
