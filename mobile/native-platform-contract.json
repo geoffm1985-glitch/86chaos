@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "release": "18.0.8",
+  "release": "18.0.9",
   "baseline": {
     "branch": "testing",
     "version": "17.0.42",
@@ -59,14 +59,14 @@
       "minSdk": 24,
       "compileSdk": 36,
       "targetSdk": 36,
-      "versionCode": 180008,
-      "versionName": "18.0.8"
+      "versionCode": 180009,
+      "versionName": "18.0.9"
     },
     "ios": {
       "bundleIdentifier": "com.chiltonappworks.chaos86",
       "minimumVersion": "15.0",
-      "currentProjectVersion": 180008,
-      "marketingVersion": "18.0.8",
+      "currentProjectVersion": 180009,
+      "marketingVersion": "18.0.9",
       "packageManager": "SPM"
     }
   },
@@ -115,5 +115,14 @@
     "branch": "main",
     "version": "17.0.84",
     "commit": "ab4a848058902672ee8f5114710a6af0db71a2c0"
+  },
+  "nativePush": {
+    "plugin": "@capacitor-firebase/messaging",
+    "tokenType": "FCM",
+    "projectId": "chaos-test-d1601",
+    "devicePermissionRequired": true,
+    "authenticatedSelfRepair": true,
+    "tokenRefreshListener": true,
+    "iosAPNSCredentialsRequiredBeforeAppleDistribution": true
   }
 }

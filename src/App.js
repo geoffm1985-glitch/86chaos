@@ -17,6 +17,7 @@ import { LoginScreen } from './features/auth';
 import * as runtimeReportStateModule from './core/runtimeReportState.cjs';
 import { initChaosPostHog, identifyChaosPostHogUser, resetChaosPostHogIdentity, trackChaosPageView, trackChaosPostHogEvent, trackChaosRuntimeError } from './core/posthogClient';
 import { I18nProvider, LANGUAGE_STORAGE_KEY, normalizeAppLanguage } from './core/i18n';
+import { nativePush } from './core/nativePush';
 
 const resolveCommonJsModule = (moduleValue) => {
   const candidate = moduleValue?.default && typeof moduleValue.default === 'object' ? moduleValue.default : moduleValue;
@@ -877,6 +878,8 @@ export default function App() {
   }, []);
   const [isPushRepairing, setIsPushRepairing] = useState(false);
   const [pushRepairDismissed, setPushRepairDismissed] = useState(false);
+  const [nativePushNeedsRepair, setNativePushNeedsRepair] = useState(false);
+  const nativePushSaveRef = useRef(null);
   const [pushRepairLinkRequest, setPushRepairLinkRequest] = useState({ requested: false, nonce: '' });
   const [surfaceRetryKey, setSurfaceRetryKey] = useState(0);
   const [serverAdminCheck, setServerAdminCheck] = useState({ status: WHOAMI_STATES.IDLE });
@@ -2820,10 +2823,10 @@ What I clicked / expected:
 
   const getPushDeviceId = () => {
     try {
-      const key = '86chaosPushDeviceId';
+      const key = nativePush.isNative() ? `86chaosPushDeviceId:${nativePush.platform()}` : '86chaosPushDeviceId';
       let id = localStorage.getItem(key);
       if (!id) {
-        id = `web_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+        id = `${nativePush.platform()}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
         localStorage.setItem(key, id);
       }
       return String(id).replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 80);
@@ -2848,8 +2851,8 @@ What I clicked / expected:
       field: `pushDevices.${deviceId}`,
       data: {
         token: currentToken,
-        platform: navigator.platform || 'web',
-        browser: getBrowserSummary(),
+        platform: nativePush.isNative() ? nativePush.platform() : navigator.platform || 'web',
+        browser: nativePush.isNative() ? '86 Chaos Native' : getBrowserSummary(),
         host: window.location.hostname,
         permission,
         active: true,
@@ -2884,9 +2887,77 @@ What I clicked / expected:
     return explicitRepair && (!lastSync || Date.now() - lastSync > refreshMs);
   };
 
+  const saveNativePushToken = async (token, source = 'auto') => {
+    const signedInUid = auth.currentUser?.uid;
+    if (!signedInUid || ghostTenant || isDemoMode) return false;
+    const device = buildPushDevicePatch(token, 'granted', new Date().toISOString());
+    if (source === 'auto' && !shouldWritePushDevice(device.deviceId, token, 'granted')) {
+      setNativePushNeedsRepair(false);
+      return true;
+    }
+    const key = `${signedInUid}:${getPushProfileDocId()}:${device.deviceId}:${token}`;
+    if (nativePushSaveRef.current?.key === key) return nativePushSaveRef.current.promise;
+    const promise = (async () => {
+      if (auth.currentUser?.uid !== signedInUid) return false;
+      const stamp = device.data.updatedAt;
+      await writePushProfilePatch({
+        [device.field]: device.data,
+        fcmToken: token,
+        fcmTokenUpdatedAt: stamp,
+        lastPushTokenSyncAt: stamp,
+        notificationPermission: 'granted',
+        pushTokenPermission: 'granted',
+        pushTokenHost: window.location.hostname,
+        pushTokenCanonical: true,
+        pushTokenDedupeVersion: '16.0.65',
+        pushNeedsRepair: false,
+        pushForceServiceWorkerRefresh: false,
+        pushRepairStatus: 'connected',
+        pushRepairCompletedAt: stamp,
+        pushRepairCompletedHost: window.location.hostname,
+        lastPushRepairError: null,
+        lastPushFailureCode: null
+      }, { forceServerRepair: true, repairRequestId: getPushRepairRequestId() });
+      if (auth.currentUser?.uid !== signedInUid) return false;
+      setAppUser(prev => prev?.id === liveAppUser?.id ? { ...prev, fcmToken: token, pushDevices: { ...prev.pushDevices, [device.deviceId]: device.data }, pushNeedsRepair: false, pushForceServiceWorkerRefresh: false, notificationPermission: 'granted', pushTokenPermission: 'granted', pushRepairStatus: 'connected', lastPushRepairError: null } : prev);
+      setNativePushNeedsRepair(false);
+      setPushRepairDismissed(true);
+      clearPushRepairLinkRequest('repair-success');
+      if (source !== 'auto') addToast('Notifications Connected', 'This phone is connected for 86 Chaos notifications.');
+      return true;
+    })();
+    nativePushSaveRef.current = { key, promise };
+    try { return await promise; }
+    finally { if (nativePushSaveRef.current?.promise === promise) nativePushSaveRef.current = null; }
+  };
+
+  const repairNativePushOnThisDevice = async (source, requestPermission) => {
+    setIsPushRepairing(true);
+    try {
+      const result = await nativePush.connect({ requestPermission });
+      if (result.permission !== 'granted') {
+        setNativePushNeedsRepair(true);
+        if (source !== 'auto') addToast('Notification Permission Needed', result.permission === 'denied'
+          ? 'Open your phone Settings, choose 86 Chaos, and allow notifications. Then return and tap Fix now.'
+          : 'Allow notifications on this phone to receive restaurant alerts.');
+        return false;
+      }
+      return await saveNativePushToken(result.token, source);
+    } catch (err) {
+      setNativePushNeedsRepair(true);
+      if (source !== 'auto') addToast('Notification Connection Failed', String(err?.message || err));
+      return false;
+    } finally { setIsPushRepairing(false); }
+  };
+
   const repairPushOnThisDevice = async (source = 'manual') => {
-    if (!getPushProfileDocId() || ghostTenant || isDemoMode || typeof window === 'undefined' || !('Notification' in window)) {
-      addToast('Push Repair Blocked', 'Push repair is only available from the real logged-in device.');
+    if (!getPushProfileDocId() || ghostTenant || isDemoMode || typeof window === 'undefined') {
+      addToast('Sign In Required', 'Sign in to your own restaurant account to connect notifications on this device.');
+      return false;
+    }
+    if (nativePush.isNative()) return repairNativePushOnThisDevice(source, source !== 'auto');
+    if (!('Notification' in window)) {
+      addToast('Notifications Unavailable', 'This browser does not support notifications. Use the mobile app or a supported browser.');
       return false;
     }
     setIsPushRepairing(true);
@@ -2997,7 +3068,7 @@ What I clicked / expected:
   }, []);
 
   const pushRepairRequestedByLink = Boolean(pushRepairLinkRequest.requested);
-  const pushRepairRequested = Boolean(!ghostTenant && !isDemoMode && liveAppUser?.id && (pushRepairRequestedByLink || liveAppUser?.pushNeedsRepair === true || liveAppUser?.pushForceServiceWorkerRefresh === true));
+  const pushRepairRequested = Boolean(!ghostTenant && !isDemoMode && liveAppUser?.id && (nativePushNeedsRepair || pushRepairRequestedByLink || liveAppUser?.pushNeedsRepair === true || liveAppUser?.pushForceServiceWorkerRefresh === true));
   useEffect(() => {
     if (!pushRepairRequested || typeof window === 'undefined') {
       setPushRepairDismissed(false);
@@ -3008,7 +3079,54 @@ What I clicked / expected:
 
 
   useEffect(() => {
-    if (!liveAppUser?.id || ghostTenant || isDemoMode || typeof window === 'undefined' || !('Notification' in window)) return;
+    if (!nativePush.isNative() || !liveAppUser?.id || ghostTenant || isDemoMode) return;
+    const uid = auth.currentUser?.uid;
+    let active = true;
+    let cleanup = () => {};
+    const current = () => active && Boolean(uid) && auth.currentUser?.uid === uid;
+    const start = async () => {
+      try {
+        cleanup = await nativePush.listen({
+          onNotification: notification => {
+            if (!current()) return;
+            const data = notification.data || {};
+            addToast(String(notification.title || data.title || '86 Chaos'), String(notification.body || data.body || 'You have a new restaurant notification.'));
+          },
+          onToken: async token => {
+            try {
+              if (current() && await nativePush.permission() === 'granted' && current()) await saveNativePushToken(token);
+            } catch (_) { if (current()) setNativePushNeedsRepair(true); }
+          },
+          onAction: notification => {
+            if (!current()) return;
+            try {
+              const data = notification.data || {};
+              const url = new URL(data.click_action || data.url || data.link || '/?tab=today', window.location.origin);
+              if (url.origin === window.location.origin) window.location.assign(`${url.pathname}${url.search}${url.hash}`);
+            } catch (_) {}
+          }
+        });
+        if (!current()) { await cleanup(); return; }
+        const permission = await nativePush.permission();
+        if (!current()) return;
+        if (permission !== 'granted') { setNativePushNeedsRepair(true); return; }
+        const device = liveAppUser?.pushDevices?.[getPushDeviceId()];
+        if (device?.token && !shouldWritePushDevice(getPushDeviceId(), device.token, permission)) {
+          setNativePushNeedsRepair(false);
+          return;
+        }
+        const result = await nativePush.connect();
+        if (current() && result.token) await saveNativePushToken(result.token);
+      } catch (_) { if (current()) setNativePushNeedsRepair(true); }
+    };
+    start();
+    const onResume = () => { if (document.visibilityState === 'visible' && current()) repairNativePushOnThisDevice('auto', false); };
+    document.addEventListener('visibilitychange', onResume);
+    return () => { active = false; document.removeEventListener('visibilitychange', onResume); Promise.resolve(cleanup()).catch(() => {}); };
+  }, [liveAppUser?.id, authRestoreState.uid, rId, ghostTenant, isDemoMode, liveAppUser?.pushNeedsRepair, liveAppUser?.pushForceServiceWorkerRefresh]);
+
+  useEffect(() => {
+    if (nativePush.isNative() || !liveAppUser?.id || ghostTenant || isDemoMode || typeof window === 'undefined' || !('Notification' in window)) return;
 
     const lastSyncAt = liveAppUser?.lastPushTokenSyncAt ? new Date(liveAppUser.lastPushTokenSyncAt).getTime() : 0;
     const autoSyncFreshMs = 6 * 60 * 60 * 1000;

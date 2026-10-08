@@ -43,6 +43,7 @@ const RELEASE_CRITICAL_SPECS = Object.freeze([
   'tests/86chaos-release-gate/59-native-packaged-api-bridge.spec.cjs',
   'tests/86chaos-release-gate/60-native-system-bars-branding.spec.cjs',
   'tests/86chaos-release-gate/61-native-container-insets.spec.cjs',
+  'tests/86chaos-release-gate/62-native-push-notifications.spec.cjs',
   'tests/86chaos-release-gate/58-testing-gate-17-0-43.spec.cjs',
   'tests/86chaos-release-gate/60-customer-help-version-17-0-45.spec.cjs',
   'tests/86chaos-release-gate/61-release-gate-surgical-repairs-17-0-46.spec.cjs',

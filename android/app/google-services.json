@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "534993379994",
+    "project_id": "chaos-test-d1601",
+    "storage_bucket": "chaos-test-d1601.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:534993379994:android:7b8ab2b9641abf5afe7523",
+        "android_client_info": {
+          "package_name": "com.chiltonappworks.chaos86"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC8UIeizJiH3KSbkiY2iCNNrVrULhyLapM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

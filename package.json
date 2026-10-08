@@ -1,8 +1,12 @@
 {
   "name": "86chaos",
-  "version": "18.0.8",
+  "version": "18.0.9",
   "private": true,
   "dependencies": {
+    "@capacitor-firebase/messaging": "8.5.2",
+    "@capacitor/android": "^8.5.2",
+    "@capacitor/core": "^8.5.2",
+    "@capacitor/ios": "^8.5.2",
     "@fontsource/noto-sans": "^5.3.0",
     "@fontsource/noto-sans-sc": "^5.3.0",
     "@pdf-lib/fontkit": "^1.1.1",
@@ -17,10 +21,7 @@
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-leaflet": "^4.2.1",
-    "react-scripts": "5.0.1",
-    "@capacitor/android": "^8.5.2",
-    "@capacitor/core": "^8.5.2",
-    "@capacitor/ios": "^8.5.2"
+    "react-scripts": "5.0.1"
   },
   "scripts": {
     "start": "react-scripts start",
@@ -33,7 +34,7 @@
     "deploy:check": "npm run test:ci && NODE_OPTIONS=--max-old-space-size=4096 GENERATE_SOURCEMAP=false npm run build",
     "validate:audit-repair": "node scripts/validate-repair.js",
     "rules:check": "node scripts/validate-rules.js",
-    "test:source": "node scripts/validate-18-0-8.js",
+    "test:source": "node scripts/validate-18-0-9.js",
     "validate:16.0.232": "node scripts/validate-16-0-232.js",
     "validate:16.0.233": "node scripts/validate-16-0-233.js",
     "validate:16.0.234": "node scripts/validate-16-0-234.js",
@@ -136,7 +137,7 @@
     "validate:17.0.25": "node scripts/validate-17-0-25.js",
     "test:schedule-shift-delete": "node --test api/schedule-shift-delete-17-0-25.test.cjs",
     "test:delta-clean-baseline": "node --test api/release-gate-delta-clean-baseline-17-0-25.test.cjs",
-    "test:current-release-targeted": "node --test api/mobile-native-container-insets-18-0-7.test.cjs api/mobile-native-system-bars-branding-18-0-4.test.cjs api/mobile-native-api-bridge-18-0-1.test.cjs api/mobile-native-foundation-18-0-0.test.cjs api/request-off-card-accessibility.test.cjs api/current-request-off-visibility-and-logo.test.cjs api/schedule-warning-request-off-controls.test.cjs api/request-off-runtime-safety-17-0-9.test.cjs api/request-off-workflow-visibility-16-0-188.test.cjs api/request-off-workflow-date-range-16-0-189.test.cjs api/request-off-workflow-admin-all-users-16-0-190.test.cjs api/request-off-workflow-legacy-start-date-16-0-191.test.cjs api/release-gate-maturity-16-0-208.test.cjs api/schedule-shift-assignment-emergency-17-0-27.test.cjs api/firebase-gate-reliability.test.cjs api/runtime-coverage-aggregation.test.cjs api/runtime-crawl-modal-exit.test.cjs api/release-gate-owned-full-fidelity-17-0-84.test.cjs api/release-gate-request-off-maturity-refactor-17-0-83.test.cjs api/release-gate-failed-new-lineage-repair-17-0-82.test.cjs api/release-gate-lazy-chunk-interception-17-0-81.test.cjs api/release-gate-failure-lineage-baseline-17-0-80.test.cjs api/release-gate-emulator-runtime-equivalent-baseline-17-0-79.test.cjs api/release-gate-emulator-playwright-fidelity-17-0-78.test.cjs api/release-gate-server-certification-drift-17-0-77.test.cjs api/ghost-request-off-route-source-17-0-76.test.cjs api/qa-role-fixture-emulator-target-17-0-75.test.cjs api/partial-run-evidence-emulator-target-17-0-74.test.cjs api/failed-only-repair-selection-emulator-target-17-0-73.test.cjs api/failed-only-manifest-reporter-independence-17-0-72.test.cjs api/failed-only-manifest-emulator-target-17-0-71.test.cjs api/release-gate-hostile-fixture-manifest-17-0-70.test.cjs api/release-gate-source-manifest-authority-17-0-69.test.cjs api/release-gate-failed-new-evidence-17-0-68.test.cjs api/release-gate-runtime-isolation-17-0-67.test.cjs api/release-gate-lineage-suite-prefix-17-0-66.test.cjs api/release-gate-lineage-title-migration-17-0-65.test.cjs api/release-gate-emulator-runtime-boundaries-17-0-64.test.cjs api/release-gate-yardmaster-readiness-bootstrap-17-0-63.test.cjs api/release-gate-root-source-archive-17-0-62.test.cjs api/release-gate-ignored-local-source-17-0-61.test.cjs api/release-gate-source-inventory-17-0-60.test.cjs api/release-gate-staleness-manifest-17-0-59.test.cjs api/release-gate-emulator-target-coherence-17-0-58.test.cjs api/yardmaster-firebase-bridge-17-0-57.test.cjs api/firebase-emulator-entry-import-17-0-56.test.cjs api/firebase-emulator-cra-import-17-0-55.test.cjs api/firebase-emulator-bridge-17-0-54.test.cjs api/release-gate-cascade-repair-17-0-53.test.cjs api/system-admin-firebase-cost-runtime-17-0-52.test.cjs api/system-admin-runtime-boundary-17-0-51.test.cjs api/testing-deployment-identity-file-reader-17-0-49.test.cjs api/release-gate-surgical-repairs-17-0-46.test.cjs api/customer-help-version-17-0-45.test.cjs api/testing-gate-17-0-43.test.cjs api/emergency-sticky-touch-17-0-42.test.cjs api/emergency-runtime-sticky-17-0-41.test.cjs api/emergency-schedule-requestoff-17-0-40.test.cjs api/release-integrity-17-0-39.test.cjs api/security-observability-17-0-39.test.cjs api/firebase-listener-lifecycle-17-0-39.test.cjs api/restaurant-intelligence-17-0-39.test.cjs api/purchase-history-17-0-39.test.cjs api/reminder-voice-lifecycle-17-0-39.test.cjs api/merged-release-17-0-30.test.cjs api/reminder-mobile-runtime-17-0-38.test.cjs api/firebase-admin-runtime-17-0-37.test.cjs api/firebase-admin-url-api-17-0-36.test.cjs api/device-local-reminders-17-0-35.test.cjs api/restaurant-readiness-17-0-34.test.cjs api/source-manifest-parity-17-0-31.test.cjs && node scripts/validate-18-0-8.js",
+    "test:current-release-targeted": "node --test api/mobile-native-push-18-0-9.test.cjs api/mobile-native-container-insets-18-0-7.test.cjs api/mobile-native-system-bars-branding-18-0-4.test.cjs api/mobile-native-api-bridge-18-0-1.test.cjs api/mobile-native-foundation-18-0-0.test.cjs api/request-off-card-accessibility.test.cjs api/current-request-off-visibility-and-logo.test.cjs api/schedule-warning-request-off-controls.test.cjs api/request-off-runtime-safety-17-0-9.test.cjs api/request-off-workflow-visibility-16-0-188.test.cjs api/request-off-workflow-date-range-16-0-189.test.cjs api/request-off-workflow-admin-all-users-16-0-190.test.cjs api/request-off-workflow-legacy-start-date-16-0-191.test.cjs api/release-gate-maturity-16-0-208.test.cjs api/schedule-shift-assignment-emergency-17-0-27.test.cjs api/firebase-gate-reliability.test.cjs api/runtime-coverage-aggregation.test.cjs api/runtime-crawl-modal-exit.test.cjs api/release-gate-owned-full-fidelity-17-0-84.test.cjs api/release-gate-request-off-maturity-refactor-17-0-83.test.cjs api/release-gate-failed-new-lineage-repair-17-0-82.test.cjs api/release-gate-lazy-chunk-interception-17-0-81.test.cjs api/release-gate-failure-lineage-baseline-17-0-80.test.cjs api/release-gate-emulator-runtime-equivalent-baseline-17-0-79.test.cjs api/release-gate-emulator-playwright-fidelity-17-0-78.test.cjs api/release-gate-server-certification-drift-17-0-77.test.cjs api/ghost-request-off-route-source-17-0-76.test.cjs api/qa-role-fixture-emulator-target-17-0-75.test.cjs api/partial-run-evidence-emulator-target-17-0-74.test.cjs api/failed-only-repair-selection-emulator-target-17-0-73.test.cjs api/failed-only-manifest-reporter-independence-17-0-72.test.cjs api/failed-only-manifest-emulator-target-17-0-71.test.cjs api/release-gate-hostile-fixture-manifest-17-0-70.test.cjs api/release-gate-source-manifest-authority-17-0-69.test.cjs api/release-gate-failed-new-evidence-17-0-68.test.cjs api/release-gate-runtime-isolation-17-0-67.test.cjs api/release-gate-lineage-suite-prefix-17-0-66.test.cjs api/release-gate-lineage-title-migration-17-0-65.test.cjs api/release-gate-emulator-runtime-boundaries-17-0-64.test.cjs api/release-gate-yardmaster-readiness-bootstrap-17-0-63.test.cjs api/release-gate-root-source-archive-17-0-62.test.cjs api/release-gate-ignored-local-source-17-0-61.test.cjs api/release-gate-source-inventory-17-0-60.test.cjs api/release-gate-staleness-manifest-17-0-59.test.cjs api/release-gate-emulator-target-coherence-17-0-58.test.cjs api/yardmaster-firebase-bridge-17-0-57.test.cjs api/firebase-emulator-entry-import-17-0-56.test.cjs api/firebase-emulator-cra-import-17-0-55.test.cjs api/firebase-emulator-bridge-17-0-54.test.cjs api/release-gate-cascade-repair-17-0-53.test.cjs api/system-admin-firebase-cost-runtime-17-0-52.test.cjs api/system-admin-runtime-boundary-17-0-51.test.cjs api/testing-deployment-identity-file-reader-17-0-49.test.cjs api/release-gate-surgical-repairs-17-0-46.test.cjs api/customer-help-version-17-0-45.test.cjs api/testing-gate-17-0-43.test.cjs api/emergency-sticky-touch-17-0-42.test.cjs api/emergency-runtime-sticky-17-0-41.test.cjs api/emergency-schedule-requestoff-17-0-40.test.cjs api/release-integrity-17-0-39.test.cjs api/security-observability-17-0-39.test.cjs api/firebase-listener-lifecycle-17-0-39.test.cjs api/restaurant-intelligence-17-0-39.test.cjs api/purchase-history-17-0-39.test.cjs api/reminder-voice-lifecycle-17-0-39.test.cjs api/merged-release-17-0-30.test.cjs api/reminder-mobile-runtime-17-0-38.test.cjs api/firebase-admin-runtime-17-0-37.test.cjs api/firebase-admin-url-api-17-0-36.test.cjs api/device-local-reminders-17-0-35.test.cjs api/restaurant-readiness-17-0-34.test.cjs api/source-manifest-parity-17-0-31.test.cjs && node scripts/validate-18-0-9.js",
     "test:repair:17.0.25": "npm run test:current-release-targeted",
     "validate:17.0.26": "node scripts/validate-17-0-26.js",
     "test:i18n-phase1": "node --test api/i18n-phase1-17-0-26.test.cjs",
@@ -264,7 +265,7 @@
     "validate:17.0.84": "node scripts/validate-17-0-84.js",
     "test:repair:17.0.84": "npm run test:current-release-targeted",
     "validate:18.0.0": "node scripts/validate-18-0-0.js",
-    "test:mobile-foundation": "node --test api/mobile-native-container-insets-18-0-7.test.cjs api/mobile-native-system-bars-branding-18-0-4.test.cjs api/mobile-native-api-bridge-18-0-1.test.cjs api/mobile-native-foundation-18-0-0.test.cjs",
+    "test:mobile-foundation": "node --test api/mobile-native-push-18-0-9.test.cjs api/mobile-native-container-insets-18-0-7.test.cjs api/mobile-native-system-bars-branding-18-0-4.test.cjs api/mobile-native-api-bridge-18-0-1.test.cjs api/mobile-native-foundation-18-0-0.test.cjs",
     "test:mobile-release-gate": "playwright test --config=playwright.mobile-foundation.config.cjs",
     "test:repair:18.0.0": "npm run test:current-release-targeted",
     "validate:18.0.1": "node scripts/validate-18-0-1.js",
@@ -281,8 +282,9 @@
     "test:repair:18.0.6": "npm run test:current-release-targeted",
     "validate:18.0.7": "node scripts/validate-18-0-7.js",
     "test:repair:18.0.7": "npm run test:current-release-targeted",
-    "validate:18.0.8": "node scripts/validate-18-0-8.js",
-    "test:repair:18.0.8": "npm run test:current-release-targeted"
+    "validate:18.0.9": "node scripts/validate-18-0-9.js",
+    "test:repair:18.0.9": "npm run test:current-release-targeted",
+    "test:mobile-push-emulator": "node scripts/run-mobile-push-emulator.cjs"
   },
   "browserslist": {
     "production": [
@@ -304,6 +306,7 @@
   "devDependencies": {
     "@babel/parser": "7.29.7",
     "@babel/traverse": "7.29.7",
+    "@capacitor/cli": "^8.5.2",
     "@firebase/rules-unit-testing": "^3.0.3",
     "@playwright/test": "^1.49.1",
     "@testing-library/jest-dom": "^6.6.3",
@@ -311,12 +314,14 @@
     "@testing-library/user-event": "^14.6.1",
     "eslint": "^8.57.1",
     "firebase-tools": "15.24.0",
-    "pdfjs-dist": "^4.10.38",
-    "@capacitor/cli": "^8.5.2"
+    "pdfjs-dist": "^4.10.38"
   },
   "overrides": {
     "jwks-rsa": {
       "jose": "4.15.9"
+    },
+    "@capacitor-firebase/messaging": {
+      "firebase": "$firebase"
     }
   }
 }

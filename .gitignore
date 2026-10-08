@@ -22,3 +22,6 @@ __pycache__/
 
 # Generated Functions source maps are build output.
 functions/lib/*.map
+
+# Capacitor generates local Swift package links to installed npm dependencies.
+ios/App/CapApp-SPM/symlinks/
