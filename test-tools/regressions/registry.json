@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "release": "18.0.9",
+  "release": "18.0.10",
   "defects": [
     {
       "defectId": "RG-API-WRAPPER-FIDELITY",

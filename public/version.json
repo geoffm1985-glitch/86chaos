@@ -1,21 +1,21 @@
 {
-  "version": "18.0.9",
-  "name": "86 Chaos 18.0.9",
-  "build": "18.0.9",
-  "label": "86 Chaos 18.0.9",
-  "releasedAt": "2026-10-08T20:21:47.008Z",
-  "releaseTitle": "Native notification registration repair",
+  "version": "18.0.10",
+  "name": "86 Chaos 18.0.10",
+  "build": "18.0.10",
+  "label": "86 Chaos 18.0.10",
+  "releasedAt": "2026-10-08T22:40:00.424Z",
+  "releaseTitle": "Borderless native launcher icon",
   "notes": [
-    "Native notification permission and FCM token registration use the phone APIs.",
-    "Tokens are saved through the authenticated self-repair endpoint and updated on rotation.",
-    "Permission denial gives phone notification settings guidance.",
-    "Includes production 17.0.84 and previous Android insets and branding fixes."
+    "Larger borderless Android adaptive launcher icon.",
+    "Branded fallback icons remain available on Android 7.",
+    "Includes the existing native notification integration and production 17.0.84.",
+    "Firebase native client-key alerts verified as restricted public configuration."
   ],
-  "title": "86 Chaos 18.0.9",
-  "summary": "Connects Android and iOS native notification permission and FCM registration to secure device-token repair.",
-  "description": "Repairs notification setup in the mobile app without relying on browser Notification APIs.",
+  "title": "86 Chaos 18.0.10",
+  "summary": "Larger borderless Android adaptive launcher artwork, preserving native notifications and production feature parity.",
+  "description": "Android launcher artwork uses a transparent foreground and a dark adaptive background without the embedded silver frame.",
   "highlights": [
-    "Android and iOS versions align to 18.0.9 / build 180009.",
+    "Android and iOS versions align to 18.0.10 / build 180010.",
     "Uses the existing testing Firebase project.",
     "Notification taps open app routes; foreground alerts appear in the app."
   ]

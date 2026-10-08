@@ -1,7 +1,7 @@
 {
   "schemaVersion": 3,
-  "version": "18.0.9",
-  "sourceHash": "92cadac83fcb05c97acb31c58eb97606e0db724002716dae31a2729e4ec9335f",
+  "version": "18.0.10",
+  "sourceHash": "d2e44a232cb4b05b7f0a8c20b67b7e54f039e2ff70e0ef333c27ec1ff5c3958c",
   "files": [
     {
       "file": ".gitattributes",
@@ -9,7 +9,7 @@
     },
     {
       "file": ".github/workflows/mobile-targeted-gate.yml",
-      "sha256": "e290d999213f1da21c7f6c3664cf33e2a29ab7492eb2a7a807fc2965d17477b9"
+      "sha256": "3cd5a94ee1afa3e0195b6250f1b3658877175b4fdb1a13af790e8feb76ae0ec0"
     },
     {
       "file": ".github/workflows/testing-targeted-delta.yml",
@@ -304,6 +304,10 @@
       "sha256": "5026ae4b4feefe69212646105d126f4fd46baed7d542d73bda2963ee8f2f7e37"
     },
     {
+      "file": "RELEASE_18_0_10.md",
+      "sha256": "0ab7efb02e79d73cefba73d2cc4611769bc8f9bff56482b50c956ae38da225f6"
+    },
+    {
       "file": "RELEASE_18_0_2.md",
       "sha256": "a48c45fb08e0cbf89becbbdac0061b5c94636d2625ff8c64520aabbce78d0cf5"
     },
@@ -373,7 +377,7 @@
     },
     {
       "file": "android/app/build.gradle",
-      "sha256": "e39f9c488a78c3b0dfb1db815a3502e0f508a58c2c859f1ccfd9c6848cd80f94"
+      "sha256": "3fc721506bfee2ab55cce173ff620a37908730ca0dc1ca173b9850354ad409d5"
     },
     {
       "file": "android/app/capacitor.build.gradle",
@@ -393,7 +397,7 @@
     },
     {
       "file": "android/app/src/main/AndroidManifest.xml",
-      "sha256": "fbad7dc8ab0b11a3eff8ddd43a25b371ce82fbe0c870e165892bdce1d4b38b44"
+      "sha256": "d090df979c37950ad8a48fa537484f02a0f267bc26afe4711a9f993a2e260517"
     },
     {
       "file": "android/app/src/main/java/com/chiltonappworks/chaos86/MainActivity.java",
@@ -424,6 +428,10 @@
       "sha256": "89c12d7606d774b56ce0a87c9c23042da64cdbcc34932cad8a722b29a5dff400"
     },
     {
+      "file": "android/app/src/main/res/drawable-nodpi/chaos86_launcher_artwork.png",
+      "sha256": "53087c53ee8930d4b8b742f2fffa8f6526694430f9487794710eadea56dc2b7c"
+    },
+    {
       "file": "android/app/src/main/res/drawable-port-hdpi/splash.png",
       "sha256": "c5015f4ba3628392b538386c5e210f0b94f352a3160adab934fd0311972137ca"
     },
@@ -448,6 +456,10 @@
       "sha256": "a8514094f754b099d3e55ce1d6e0b2de79db418b2eeacb0fc2a6bb0bfadef221"
     },
     {
+      "file": "android/app/src/main/res/drawable/chaos86_launcher_foreground.xml",
+      "sha256": "07cce0557018c9bab387e1a0021c9115374292f46adac2cc7d63b5a99eae64da"
+    },
+    {
       "file": "android/app/src/main/res/drawable/chaos86_notification.xml",
       "sha256": "3d14f78cca7991f165faa154d85ec4e1a821589d0697c74ed60941bc2e07cd74"
     },
@@ -465,11 +477,19 @@
     },
     {
       "file": "android/app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml",
-      "sha256": "9c3a7e0a6515c6e1a7ae834a9ae430311ebc3241f7b2e5e7f0460aa690709a7c"
+      "sha256": "56f4efec5f54e911649a05f3daabf266fab7b344dcc3781b6b16f971e43251e0"
     },
     {
       "file": "android/app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml",
-      "sha256": "9c3a7e0a6515c6e1a7ae834a9ae430311ebc3241f7b2e5e7f0460aa690709a7c"
+      "sha256": "56f4efec5f54e911649a05f3daabf266fab7b344dcc3781b6b16f971e43251e0"
+    },
+    {
+      "file": "android/app/src/main/res/mipmap-anydpi/ic_launcher.xml",
+      "sha256": "96f6a46bcd8421c2c094e04505dcdae29156b0cfff29f84c1b85fabd599f337c"
+    },
+    {
+      "file": "android/app/src/main/res/mipmap-anydpi/ic_launcher_round.xml",
+      "sha256": "9424884ec85e30684d4b1f554f44f54cf9446dd4d0224417c08187130ed99e5b"
     },
     {
       "file": "android/app/src/main/res/mipmap-hdpi/ic_launcher.png",
@@ -533,7 +553,7 @@
     },
     {
       "file": "android/app/src/main/res/values/ic_launcher_background.xml",
-      "sha256": "cd40bafe618ff506f4088778b135cb4faa15f25e0c9b475e22d730c74b7be115"
+      "sha256": "e9b61711202eb0a5adc8b02c0ee5cbba3fdfeba8915c391015d9d59bb1245f8a"
     },
     {
       "file": "android/app/src/main/res/values/strings.xml",
@@ -677,7 +697,7 @@
     },
     {
       "file": "api/_pos-bridge-config.js",
-      "sha256": "a987432f24e5b95854ad58db48b2b802287db2445bc7d36befc3e474050d85e8"
+      "sha256": "f83b9d4a46518d0a28495833c486414f4c795f9de2afca961066bc04e054e6d2"
     },
     {
       "file": "api/_pos-bridge-events.js",
@@ -813,7 +833,7 @@
     },
     {
       "file": "api/_version.js",
-      "sha256": "ac5018f90ab904386129dcaff16461018b3ada7e5008b5ab0d4adb8f015ecdb3"
+      "sha256": "1ec79b21352d03f97c66dd52c91f421ad7ea372e77619ea2a659dcce354178b7"
     },
     {
       "file": "api/account-deletion-request.js",
@@ -1193,7 +1213,7 @@
     },
     {
       "file": "api/mobile-native-system-bars-branding-18-0-4.test.cjs",
-      "sha256": "c8afeba176d0511bb1f9bfe650cb1dbfe49622c6788600311ea322eeee4dc89c"
+      "sha256": "7a501593b68ec29a1afd26e95f0208c92ed29de9b221723525598d8337e3b48b"
     },
     {
       "file": "api/mobile-ui-and-failed-current-16-0-162.test.cjs",
@@ -2225,7 +2245,7 @@
     },
     {
       "file": "ios/App/App.xcodeproj/project.pbxproj",
-      "sha256": "611ef058d18034ee268e77f5049b4a010dbe2dd56d0ce797ad4839c0c291e262"
+      "sha256": "4045e956c6aa52637555d59a86f98ff0f471cef689b158adafe32a82b48cf194"
     },
     {
       "file": "ios/App/App.xcodeproj/project.xcworkspace/xcshareddata/IDEWorkspaceChecks.plist",
@@ -2308,16 +2328,20 @@
       "sha256": "4838938a72b913b99cfda54a43bbe73f05893071dc6e3702b0adc44794b64272"
     },
     {
+      "file": "mobile/firebase-client-configuration.md",
+      "sha256": "e8ee64e16b204d8a3d184999fc79161cc9bb0f1532059d6b30936f06c3af80b7"
+    },
+    {
       "file": "mobile/native-platform-contract.json",
-      "sha256": "aef6f14ae27c585d8dae0b2371a33dcad7e517984c50697956186376fea8c577"
+      "sha256": "f9400562b22a08032b44f6471ea8c26e7e2bcc11e9564efc98b2f9b120450175"
     },
     {
       "file": "package-lock.json",
-      "sha256": "1fd9460bbfe864a5639cc9dad630bb3b0d204d49c58c32a7545ef7c9dddd7d48"
+      "sha256": "095362cbdf3d5d450061e5b0649163aa06dd0fc2c1aa45f61d6e4ec516cd412e"
     },
     {
       "file": "package.json",
-      "sha256": "57a57ede1c00ca631f502dcea735e087a026b83b0fb448412dc2a0e4a7d2a83a"
+      "sha256": "a721e5ce2029b490311e90ebbc73b16338ec78e369e58824f23c920d017da929"
     },
     {
       "file": "playwright.config.js",
@@ -2541,7 +2565,7 @@
     },
     {
       "file": "public/version.json",
-      "sha256": "e4bb57ec39f33928798b6d2323c9b2c85b7927f00c6155bb893f2df0b1a448e4"
+      "sha256": "aa05735f764bac3393d74f11d88dd21709b72ac9a165623e06fb8639958254fc"
     },
     {
       "file": "public/wisco.png",
@@ -3868,6 +3892,10 @@
       "sha256": "0960b181a31df3b09d06cfdf6c95b775f0f7b14760f8d986b89cf045155504cb"
     },
     {
+      "file": "scripts/validate-18-0-10.js",
+      "sha256": "233cd84f217d9d98217c5479b7699d7e85e0ec5538cab626691a9f1d49740a3a"
+    },
+    {
       "file": "scripts/validate-18-0-2.js",
       "sha256": "6be6271b8cae46fdf7fc1c196df79e099c3fab9236d08d6d4ef90b2674bd5734"
     },
@@ -3933,7 +3961,7 @@
     },
     {
       "file": "scripts/verify-native-push-apk.py",
-      "sha256": "6633550afc884b3b9a3e6c429181798d25ec21e6611fca5d9abc6511a475694b"
+      "sha256": "3ab144fa61a284160f43259528376c895f4c3e517cbc09f33142b98b8c3e4d69"
     },
     {
       "file": "scripts/verify-repository-safety.cjs",
@@ -4081,7 +4109,7 @@
     },
     {
       "file": "src/core/appCore.js",
-      "sha256": "588bea605555d629d6cf13ea3b9b52ecaddacceb797bee36ac95732b8a3b1de4"
+      "sha256": "4b7ce85b96374712f548360e01f3882aae877644600014c3f82e4133aee624f9"
     },
     {
       "file": "src/core/csvSafety.test.js",
@@ -4089,11 +4117,11 @@
     },
     {
       "file": "src/core/customerHelpKnowledge.cjs",
-      "sha256": "9e7354c3cf3b5d362270790bec575d9a4dd693b7f4c6f223540aed5588c5c88c"
+      "sha256": "f775609e88880c45d341819b947eeb893746db1a8cf2284574ce286ca7e61440"
     },
     {
       "file": "src/core/customerHelpKnowledge.js",
-      "sha256": "e9706430683991b0f04842c902e3783a7e68babe09af4817806a862e356d179a"
+      "sha256": "17d98e2313ffbe7ac57c2a21f04342d8fd9acb32045769d1d4b9ca568dd3beb1"
     },
     {
       "file": "src/core/fileCompression.js",
@@ -4561,11 +4589,11 @@
     },
     {
       "file": "test-tools/certification/cost-performance-baselines.json",
-      "sha256": "dc3884f1c9f7f8185626635cbbc0461b3c98badab101738647fa7490344d166c"
+      "sha256": "ae094e51ce0180d9cb36bf0613bb82cc4108c4a19da40c6bc37c897e18807a5a"
     },
     {
       "file": "test-tools/certification/groups.json",
-      "sha256": "24d61da2baa8b36780a1abb6f6cf84f6ec62066fa8cf2d495a73aff7c714c1b2"
+      "sha256": "31d8f5eb71dcb323d2ebd332f077f9b52e9de2cb9312dd38d7ee5189f4724c1b"
     },
     {
       "file": "test-tools/certification/permission-matrix.json",
@@ -4621,7 +4649,7 @@
     },
     {
       "file": "test-tools/regressions/registry.json",
-      "sha256": "c3766e55dcb57361bfdc79dd8dfddbda164b722d66668b5edf8b3af48ad0ca3c"
+      "sha256": "9cc35d22f543efd3eb36e4c7b2b4b63d12fe305291fdcbf358b45947cf6a51a4"
     },
     {
       "file": "test-tools/reporters/chaos-release-gate-reporter.cjs",

@@ -21,9 +21,19 @@ test('18.0.x Android WebView respects status navigation and cutout insets',()=>{
 
 test('18.0.x Android launcher uses the branded 86 Chaos asset instead of Capacitor defaults',()=>{
   const manifest=read('android/app/src/main/AndroidManifest.xml');
-  assert.match(manifest,/android:icon="@drawable\/chaos86_app_icon"/);
-  assert.match(manifest,/android:roundIcon="@drawable\/chaos86_app_icon"/);
-  assert.ok(bin('android/app/src/main/res/drawable-nodpi/chaos86_app_icon.png').equals(bin('public/86chaos-pwa-512-v4.png')));
+  assert.match(manifest,/android:icon="@mipmap\/ic_launcher"/);
+  assert.match(manifest,/android:roundIcon="@mipmap\/ic_launcher_round"/);
+  for (const name of ['ic_launcher', 'ic_launcher_round']) {
+    const adaptive=read(`android/app/src/main/res/mipmap-anydpi-v26/${name}.xml`);
+    assert.match(adaptive,/<adaptive-icon/);
+    assert.match(adaptive,/@drawable\/chaos86_launcher_foreground/);
+    assert.match(read(`android/app/src/main/res/mipmap-anydpi/${name}.xml`),/@drawable\/chaos86_launcher_artwork/);
+  }
+  assert.match(read('android/app/src/main/res/drawable/chaos86_launcher_foreground.xml'),/@drawable\/chaos86_launcher_artwork/);
+  assert.match(read('android/app/src/main/res/values/ic_launcher_background.xml'),/#12161A/);
+  const artwork=bin('android/app/src/main/res/drawable-nodpi/chaos86_launcher_artwork.png');
+  assert.equal(artwork.readUInt32BE(0),0x89504e47);
+  assert.equal(artwork[25],6,'Foreground artwork must have true alpha transparency');
 });
 
 test('native Android and iPhone runtime paths are explicitly marked for safe-area behavior',()=>{
