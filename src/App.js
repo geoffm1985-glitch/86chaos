@@ -4,7 +4,7 @@ import { addDoc, collection, doc, onSnapshot, updateDoc } from 'firebase/firesto
 import { getToken, onMessage } from 'firebase/messaging';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import 'leaflet/dist/leaflet.css';
-import { T, db, auth, messagingReady, isFirebaseMessagingUnsupportedError, firebaseConfig, CURRENT_VERSION, MASTER_ADMIN_EMAIL, useLiveCollection, useLiveCollectionState, useLiveDocumentState, secureFetch, waitForAuthCurrentUser, getToday, getMonthStr, formatDate, formatDisplayFullDate, formatDisplayMonth, logAudit, setActiveTimeFormat, getOfflineQueue, replayOfflineQueue, startLowCostPresenceSession, useLowCostPresenceSummary, clearTenantListenerCache, recordScheduleOperationDiagnostic } from './core/appCore';
+import { T, db, auth, messagingReady, isFirebaseMessagingUnsupportedError, firebaseConfig, CURRENT_VERSION, MASTER_ADMIN_EMAIL, useLiveCollection, useLiveCollectionState, useLiveDocumentState, secureFetch, waitForAuthCurrentUser, getToday, getMonthStr, formatDate, formatDisplayFullDate, formatDisplayMonth, logAudit, setActiveTimeFormat, getOfflineQueue, replayOfflineQueue, startLowCostPresenceSession, useLowCostPresenceSummary, clearTenantListenerCache, releaseAbandonedRouteListeners, recordScheduleOperationDiagnostic } from './core/appCore';
 import { buildAlertFingerprint, useRememberedAlert } from './core/alertMemory';
 import { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, GlobalSearchModal, KitchenTVMode, UndoBar, VoiceCommandDock } from './components/common';
 import { LockedFeatureScreen } from './components/PlanGate';
@@ -1303,6 +1303,22 @@ const [currentDate, setCurrentDate] = useState(getToday());
     }
   }, [firebaseConfig?.projectId, rId, authenticatedUid, ghostTenant?.id]);
 
+  useEffect(() => {
+    if (!rId || !authenticatedUid) return undefined;
+    // Let React unsubscribe the previous route's hooks first. The cleanup then
+    // closes only registrations with no remaining consumers; shared listeners
+    // used by the new route stay alive and cached snapshots remain bounded.
+    const timer = setTimeout(() => {
+      releaseAbandonedRouteListeners({
+        projectId: firebaseConfig?.projectId || 'default',
+        restaurantId: rId,
+        viewerUid: authenticatedUid,
+        route: activeTabState
+      });
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [activeTabState, firebaseConfig?.projectId, rId, authenticatedUid]);
+
   const accountProfileDocId = appUser?.profileDocId || authenticatedUid;
   const directAccountUserState = useLiveDocumentState('users', accountProfileDocId, { enabled: Boolean(accountProfileDocId && appUser?.id !== 'dev-backdoor'), debugLabel: 'app:current-user-security' });
   const directAccountUser = directAccountUserState.data;
@@ -1570,14 +1586,36 @@ if (liveAppUser && clientData) {
      };
   }
   setActiveTimeFormat(liveAppUser?.preferences?.timeFormat || '12h');
-  const appLanguage = normalizeAppLanguage(
-    liveAppUser?.preferences?.language ||
-    appUser?.preferences?.language ||
+  const remoteAppLanguageSource = liveAppUser?.preferences?.language || appUser?.preferences?.language || '';
+  const [appLanguage, setAppLanguage] = useState(() => normalizeAppLanguage(
+    remoteAppLanguageSource ||
     (typeof window !== 'undefined' ? window.localStorage?.getItem(LANGUAGE_STORAGE_KEY) : '') ||
     'en'
-  );
+  ));
   useEffect(() => {
-    try { window.localStorage?.setItem(LANGUAGE_STORAGE_KEY, appLanguage); } catch (_) {}
+    if (!remoteAppLanguageSource) return;
+    const remoteLanguage = normalizeAppLanguage(remoteAppLanguageSource);
+    setAppLanguage(current => current === remoteLanguage ? current : remoteLanguage);
+    try { window.localStorage?.setItem(LANGUAGE_STORAGE_KEY, remoteLanguage); } catch (_) {}
+  }, [remoteAppLanguageSource, liveAppUser?.id, appUser?.id]);
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    const syncStoredLanguage = () => {
+      try {
+        const storedLanguage = window.localStorage?.getItem(LANGUAGE_STORAGE_KEY);
+        if (!storedLanguage) return;
+        const nextLanguage = normalizeAppLanguage(storedLanguage);
+        setAppLanguage(current => current === nextLanguage ? current : nextLanguage);
+      } catch (_) {}
+    };
+    const timer = window.setInterval(syncStoredLanguage, 200);
+    window.addEventListener('storage', syncStoredLanguage);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener('storage', syncStoredLanguage);
+    };
+  }, []);
+  useEffect(() => {
     if (typeof document !== 'undefined') {
       document.documentElement.lang = appLanguage === 'es' ? 'es' : 'en';
       document.documentElement.dataset.chaosLanguage = appLanguage;

@@ -22,7 +22,7 @@ const commands = [
   { group: 'schedule publication Firestore concurrency', command: 'npm run test:schedule-publish:emulator', required: true },
   { group: 'recovery drill', command: 'npm run test:release:recovery', required: true },
   { group: 'scale and completeness boundaries', command: 'npm run test:release:scale', required: true },
-  { group: 'server tests', command: 'npm run test:server', required: true },
+  { group: 'server tests', command: 'node scripts/run-isolated-server-tests.cjs', required: true },
   { group: 'client tests', command: 'npm run test:client -- --runInBand', required: true },
   { group: 'production build', command: 'npm run build', required: true }
 ];

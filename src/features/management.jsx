@@ -9,7 +9,7 @@ import { getAuth, signInWithEmailAndPassword, sendPasswordResetEmail, createUser
 import { getToken, onMessage } from 'firebase/messaging';
 import { ref, uploadBytes, getBlob, getDownloadURL, deleteObject } from 'firebase/storage';
 import { MapContainer, TileLayer, Marker, Circle, useMap } from 'react-leaflet';
-import { T, db, storage, auth, messaging, firebaseConfig, secureFetch, MASTER_ADMIN_EMAIL, EVENT_TAGS, CURRENT_VERSION, useLiveCollection, formatDate, getToday, getMonthStr, formatDisplayDate, formatDisplayFullDate, formatDisplayMonth, getDaysInMonth, formatShortTime, formatClockTime, formatClockDateTime, getAvatar, generateTempPass, getExpDate, getHoliday, logAudit, customMapIcon, getRestaurantExportPrefix, safeFilenamePart, downloadCsvRows, downloadTextFile, openPrintableReport, buildPermissionPreview, buildImportBridgeTemplates, buildV14ClientGuardrailReport, recordScheduleOperationDiagnostic } from '../core/appCore';
+import { T, db, storage, auth, messaging, firebaseConfig, secureFetch, MASTER_ADMIN_EMAIL, EVENT_TAGS, CURRENT_VERSION, useLiveCollection, getFirebaseUsageDiagnostics, formatDate, getToday, getMonthStr, formatDisplayDate, formatDisplayFullDate, formatDisplayMonth, getDaysInMonth, formatShortTime, formatClockTime, formatClockDateTime, getAvatar, generateTempPass, getExpDate, getHoliday, logAudit, customMapIcon, getRestaurantExportPrefix, safeFilenamePart, downloadCsvRows, downloadTextFile, openPrintableReport, buildPermissionPreview, buildImportBridgeTemplates, buildV14ClientGuardrailReport, recordScheduleOperationDiagnostic } from '../core/appCore';
 import { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, MapClickListener, SmartEmptyState, MiniProblemCard, getHomeProfile, calculatePunchHours, getWeekStart, getWeekDates, roleMatches, toLocalTimeInput, makeLocalIso, PunchTable, StatusTile, FriendlyEmpty, GlobalSearchModal, QuickActionDock, KitchenTVMode, ChangeLogModal, UndoBar } from '../components/common';
 import { SYSTEM_TRAINING_MANUAL_CHAPTERS } from './trainingManual';
 import { usePlanAccess } from '../hooks/usePlanAccess';
@@ -20,6 +20,7 @@ import { HELP_SUBJECTS, HELP_SUBTOPICS, HELP_DEEP_LINKS, CUSTOMER_HELP_ARTICLES,
 import * as adminSafetyModule from '../core/systemAdminDataSafety.cjs';
 import { roleNameKey } from '../core/rosterRoleIdentity';
 import { useI18n, normalizeAppLanguage, LANGUAGE_STORAGE_KEY } from '../core/i18n';
+import { buildFirebaseCostDiagnostics } from '../core/firebaseCostDiagnostics.js';
 
 
 const resolveAdminSafetyModule = (moduleValue) => {
@@ -35,8 +36,10 @@ const fallbackTimestampToIso = (value) => {
       const date = value.toDate();
       return date instanceof Date && Number.isFinite(date.getTime()) ? date.toISOString() : '';
     }
-    if (typeof value.seconds === 'number') {
-      const date = new Date((value.seconds * 1000) + Math.floor((Number(value.nanoseconds || 0) || 0) / 1000000));
+    const seconds = typeof value.seconds === 'number' ? value.seconds : (typeof value._seconds === 'number' ? value._seconds : null);
+    if (seconds != null) {
+      const nanos = value.nanoseconds ?? value._nanoseconds ?? value.nanos ?? 0;
+      const date = new Date((seconds * 1000) + Math.floor((Number(nanos) || 0) / 1000000));
       return Number.isFinite(date.getTime()) ? date.toISOString() : '';
     }
   } catch (_) {}
@@ -73,6 +76,9 @@ const fallbackNormalizeRecord = (collectionName) => (id = '', data = {}, diagnos
 const normalizeAuditLog = typeof adminSafety.normalizeAuditLog === 'function' ? adminSafety.normalizeAuditLog : fallbackNormalizeRecord('auditLogs');
 const normalizeCrashReport = typeof adminSafety.normalizeCrashReport === 'function' ? adminSafety.normalizeCrashReport : fallbackNormalizeRecord('crashReports');
 const normalizeRestaurantRecord = typeof adminSafety.normalizeRestaurantRecord === 'function' ? adminSafety.normalizeRestaurantRecord : fallbackNormalizeRecord('restaurants');
+const normalizeSystemAdminStatusRecord = typeof adminSafety.normalizeSystemAdminStatusRecord === 'function' ? adminSafety.normalizeSystemAdminStatusRecord : ((collection, id, data, diagnostics = []) => fallbackNormalizeRecord(collection)(id, data, diagnostics));
+const normalizeSystemAdminAlert = typeof adminSafety.normalizeSystemAdminAlert === 'function' ? adminSafety.normalizeSystemAdminAlert : fallbackNormalizeRecord('restaurantAdminAlerts');
+const normalizeSystemAdminUser = typeof adminSafety.normalizeSystemAdminUser === 'function' ? adminSafety.normalizeSystemAdminUser : fallbackNormalizeRecord('superAdmins');
 const normalizeTierPriceMap = typeof adminSafety.normalizeTierPriceMap === 'function' ? adminSafety.normalizeTierPriceMap : ((value = {}, fallback = { shift: 49, operations: 99, smart_kitchen: 179, owner_pro: 299 }) => Object.fromEntries(Object.entries(fallback).map(([key, defaultValue]) => [key, adminFiniteNumber(value?.[key], defaultValue)])));
 const safeDiagnostic = typeof adminSafety.safeDiagnostic === 'function' ? adminSafety.safeDiagnostic : ((collection, id, field, reason) => ({ collection: adminSafeText(collection, 'unknown').slice(0, 80), id: adminSafeText(id, 'unknown').slice(0, 160), field: adminSafeText(field, '*').slice(0, 120), reason: adminSafeText(reason, 'Malformed live data skipped.').slice(0, 240) }));
 
@@ -4172,6 +4178,7 @@ firebase deploy --only functions --project YOUR_PRODUCTION_PROJECT_ID
   const [presenceSnapshotError, setPresenceSnapshotError] = useState('');
   const [presenceSnapshotWarning, setPresenceSnapshotWarning] = useState('');
   const [securityReport, setSecurityReport] = useState(null);
+  const firebaseCostReport = useMemo(() => buildFirebaseCostDiagnostics(getFirebaseUsageDiagnostics?.() || {}, { rtdbKnown:false }), [securityReport, subTab]);
   const [isSecurityLoading, setIsSecurityLoading] = useState(false);
   const [securityError, setSecurityError] = useState(''); 
   const [restoreDrillStatus, setRestoreDrillStatus] = useState(null);
@@ -4272,7 +4279,7 @@ const [editingRest, setEditingRest] = useState(null);
   useEffect(() => {
     let cancelled = false;
     getDoc(doc(db, 'system', 'dataRetention')).then(snapshot => {
-      if (!cancelled && snapshot.exists()) setRetentionConfig({ id: snapshot.id, ...snapshot.data() });
+      if (!cancelled && snapshot.exists()) setRetentionConfig(normalizeSystemAdminStatusRecord('dataRetention', snapshot.id, snapshot.data(), []));
     }).catch(err => console.warn('Data retention config load failed', err?.message || err));
     return () => { cancelled = true; };
   }, []);
@@ -4346,6 +4353,16 @@ const [editingRest, setEditingRest] = useState(null);
     }
   };
 
+  const downloadSecurityDiagnostics = () => {
+    if (!securityReport) return addToast('Security Diagnostics', 'Refresh Security Center before exporting evidence.');
+    const blob=new Blob([JSON.stringify(securityReport,null,2)],{type:'application/json'});
+    const url=URL.createObjectURL(blob);
+    const anchor=document.createElement('a');
+    anchor.href=url;anchor.download=`86chaos-security-diagnostics-${CURRENT_VERSION}.json`;anchor.click();
+    setTimeout(()=>URL.revokeObjectURL(url),5000);
+    addToast('Sanitized Export Ready','The download contains redacted diagnostic evidence and no secret values.');
+  };
+
 
   const loadRestoreDrillStatus = async ({ silent = true } = {}) => {
     setIsRestoreDrillBusy(true);
@@ -4353,9 +4370,10 @@ const [editingRest, setEditingRest] = useState(null);
       const response = await secureFetch('/api/restore-drill', { method: 'GET' });
       const data = await response.json().catch(() => ({}));
       if (!response.ok || data?.ok === false) throw new Error(data?.error || 'Restore drill status failed.');
-      setRestoreDrillStatus(data.restoreDrillStatus || null);
-      if (!silent) addToast('Restore Drill Loaded', data.restoreDrillStatus?.lastDrillAt ? `Last drill: ${formatBackupTimestamp(data.restoreDrillStatus.lastDrillAt)}` : 'No restore drill recorded yet.');
-      return data.restoreDrillStatus || null;
+      const safeRestoreDrillStatus = data.restoreDrillStatus ? normalizeSystemAdminStatusRecord('restoreDrillStatus', data.restoreDrillStatus.id || 'restoreDrillStatus', data.restoreDrillStatus, []) : null;
+      setRestoreDrillStatus(safeRestoreDrillStatus);
+      if (!silent) addToast('Restore Drill Loaded', safeRestoreDrillStatus?.lastDrillAt ? `Last drill: ${formatBackupTimestamp(safeRestoreDrillStatus.lastDrillAt)}` : 'No restore drill recorded yet.');
+      return safeRestoreDrillStatus;
     } catch (err) {
       if (!silent) addToast('Restore Drill Error', err.message || 'Could not load restore drill status.');
       return null;
@@ -4381,8 +4399,8 @@ const [editingRest, setEditingRest] = useState(null);
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok || data?.ok === false) throw new Error(data?.error || 'Restore drill record failed.');
-      setRestoreDrillStatus(data.restoreDrillStatus || null);
-      addToast('Restore Drill Recorded', data.message || 'Monthly restore drill status was updated.');
+      setRestoreDrillStatus(data.restoreDrillStatus ? normalizeSystemAdminStatusRecord('restoreDrillStatus', data.restoreDrillStatus.id || 'restoreDrillStatus', data.restoreDrillStatus, []) : null);
+      addToast('Restore Drill Recorded', adminSafeText(data.message, 'Monthly restore drill status was updated.'));
     } catch (err) {
       addToast('Restore Drill Error', err.message || 'Could not record restore drill.');
     } finally {
@@ -4683,10 +4701,10 @@ const LEGACY_JULY_2026_SCHEDULE = [
       unsubs.push(unsub);
     };
 
-    listen('superAdmins', query(collection(db, 'users'), where('isSuperAdmin', '==', true), firestoreLimit(25)), setSuperAdmins);
+    listen('superAdmins', query(collection(db, 'users'), where('isSuperAdmin', '==', true), firestoreLimit(25)), setSuperAdmins, mapDocs('superAdmins', normalizeSystemAdminUser));
     listenDoc('pricing', doc(db, 'system', 'pricing'), setTierPrices, (raw) => normalizeTierPriceMap(raw, defaultTierPrices), defaultTierPrices);
-    listenDoc('restoreDrillStatus', doc(db, 'system', 'restoreDrillStatus'), setRestoreDrillStatus);
-    listenDoc('operationsReview', doc(db, 'system', 'operationsReview'), setOperationsReview);
+    listenDoc('restoreDrillStatus', doc(db, 'system', 'restoreDrillStatus'), setRestoreDrillStatus, (raw) => raw ? normalizeSystemAdminStatusRecord('restoreDrillStatus', raw.id || 'restoreDrillStatus', raw, []) : null, null);
+    listenDoc('operationsReview', doc(db, 'system', 'operationsReview'), setOperationsReview, (raw) => raw ? normalizeSystemAdminStatusRecord('operationsReview', raw.id || 'operationsReview', raw, []) : null, null);
 
     if (['overview', 'tenants', 'ops', 'push'].includes(subTab)) {
       loadSystemAdminWorkspaceRoster({ refreshing: false });
@@ -4718,7 +4736,7 @@ const LEGACY_JULY_2026_SCHEDULE = [
     }
 
     if (['overview', 'ops'].includes(subTab)) {
-      listen('restaurantAdminAlerts', query(collection(db, 'restaurantAdminAlerts'), where('status', '==', 'open'), orderBy('updatedAt', 'desc'), firestoreLimit(40)), setAutomationQueue);
+      listen('restaurantAdminAlerts', query(collection(db, 'restaurantAdminAlerts'), where('status', '==', 'open'), orderBy('updatedAt', 'desc'), firestoreLimit(40)), setAutomationQueue, mapDocs('restaurantAdminAlerts', normalizeSystemAdminAlert));
     } else {
       setAutomationQueue([]);
     }
@@ -6323,9 +6341,9 @@ const activeTrials = restaurants.filter(r => resolveSubscription(r, appUser).sta
   const commandWidgets = [
     { title: 'System Status', value: platformStatus, detail: `${adminRiskQueue.length} action item(s)`, jump: 'overview', tone: platformStatus === 'Clean' ? 'emerald' : platformStatus === 'Monitoring' ? 'amber' : 'red' },
     { title: 'Online / Last Seen', value: presenceSnapshot.fetchedAt ? onlineUsers.length : '—', detail: presenceSnapshot.fetchedAt ? `${onlineUsers.length} online now • fetched ${timeAgo(presenceSnapshot.fetchedAt)}` : 'Open Online / Last Seen and press Refresh Snapshot', jump: 'live', tone: presenceSnapshot.fetchedAt ? (onlineUsers.length ? 'emerald' : 'amber') : 'blue' },
-    { title: 'Backup Status', value: backupStatusLabel, detail: `${backupStatus?.lastIntegrityStatus || backupStatus?.backupIntegrity?.status || 'integrity not checked'} • Next ${nextBackupCountdown}`, jump: 'health', tone: backupIsStale ? 'amber' : 'emerald' },
-    { title: 'Restore Drill', value: restoreDrillLabel, detail: restoreDrillStatus?.status || 'Monthly safe-restore proof', jump: 'forensics', tone: restoreDrillStale ? 'amber' : 'emerald' },
-    { title: 'Push Health', value: `${pushEnabledUsers.length}/${allUsers.length}`, detail: `${stalePushUsers.length} stale • last result ${backupStatus?.lastPushResult || 'not logged'}`, jump: 'push', tone: stalePushUsers.length ? 'amber' : 'emerald' },
+    { title: 'Backup Status', value: backupStatusLabel, detail: `${adminSafeText(backupStatus?.lastIntegrityStatus || backupStatus?.backupIntegrity?.status, 'integrity not checked')} • Next ${nextBackupCountdown}`, jump: 'health', tone: backupIsStale ? 'amber' : 'emerald' },
+    { title: 'Restore Drill', value: restoreDrillLabel, detail: adminSafeText(restoreDrillStatus?.status, 'Monthly safe-restore proof'), jump: 'forensics', tone: restoreDrillStale ? 'amber' : 'emerald' },
+    { title: 'Push Health', value: `${pushEnabledUsers.length}/${allUsers.length}`, detail: `${stalePushUsers.length} stale • last result ${adminSafeText(backupStatus?.lastPushResult, 'not logged')}`, jump: 'push', tone: stalePushUsers.length ? 'amber' : 'emerald' },
     { title: 'Recent Admin Actions', value: auditLogs.length ? auditLogs.slice(0, 10).length : 0, detail: auditLogs[0] ? `${auditLogs[0].action || 'Action'} by ${auditLogs[0].userName || 'unknown'}` : 'No audit actions loaded', jump: 'forensics', tone: 'blue' },
     { title: 'Deployment Readiness', value: deploymentReady ? 'READY' : 'CHECK', detail: `${deploymentChecks.filter(c => c.ok).length}/${deploymentChecks.length} checks passing`, jump: 'deployment', tone: deploymentReady ? 'emerald' : 'red' }
   ];
@@ -9204,7 +9222,7 @@ Type RESTORE to continue.`);
                     {check.error && <div className="sm:col-span-2 text-[10px] font-bold text-red-300">{check.error}</div>}
                   </div>
                 ))}
-                {(healthSnapshot?.apiRouteManifest || []).length > 0 && <div className="p-3 bg-[#0B0E11]/60 border-t border-[#2A353D]"><div className="text-[10px] font-black uppercase tracking-widest text-[#D4A381] mb-2">Full Vercel API Route Manifest</div><div className="grid sm:grid-cols-2 gap-1.5 max-h-72 overflow-y-auto custom-scrollbar">{healthSnapshot.apiRouteManifest.map(route => <div key={route.route} className="flex items-center justify-between gap-2 bg-[#12161A] border border-[#2A353D] rounded-lg px-2 py-1.5"><span className="text-[10px] font-mono text-slate-300 truncate">{route.route}</span><span className={`text-[8px] font-black uppercase tracking-widest ${route.status === 'ready' ? 'text-emerald-300' : 'text-red-300'}`}>{route.status}</span></div>)}</div></div>}
+                {(healthSnapshot?.apiRouteManifest || []).length > 0 && <div className="p-3 bg-[#0B0E11]/60 border-t border-[#2A353D]"><div className="text-[10px] font-black uppercase tracking-widest text-[#D4A381] mb-2">Full Vercel API Route Manifest</div><div role="region" aria-label="Full Vercel API route manifest" tabIndex={0} className="grid sm:grid-cols-2 gap-1.5 max-h-72 overflow-y-auto custom-scrollbar focus:outline-none focus:ring-2 focus:ring-[#D4A381]">{healthSnapshot.apiRouteManifest.map(route => <div key={route.route} className="flex items-center justify-between gap-2 bg-[#12161A] border border-[#2A353D] rounded-lg px-2 py-1.5"><span className="text-[10px] font-mono text-slate-300 truncate">{route.route}</span><span className={`text-[8px] font-black uppercase tracking-widest ${route.status === 'ready' ? 'text-emerald-300' : 'text-red-300'}`}>{route.status}</span></div>)}</div></div>}
               </div>
             </div>
 
@@ -9340,7 +9358,7 @@ Type RESTORE to continue.`);
                 <h2 className="text-3xl font-black text-white mt-1 flex items-center gap-2"><Shield size={28} className="text-blue-300"/> Security Center</h2>
                 <p className="text-xs text-slate-400 font-bold mt-1">One-button security snapshot for rules, App Check, MFA risk, env vars, cron, rate limits, and suspicious activity.</p>
               </div>
-              <button onClick={() => loadSecurityCenter()} disabled={isSecurityLoading} className={`${T.btn} flex items-center gap-2 justify-center`}>{isSecurityLoading ? <Loader2 className="animate-spin" size={16}/> : <Shield size={16}/>} Refresh Security Center</button>
+              <div className="flex flex-col sm:flex-row gap-2"><button onClick={() => loadSecurityCenter()} disabled={isSecurityLoading} className={`${T.btn} flex items-center gap-2 justify-center`}>{isSecurityLoading ? <Loader2 className="animate-spin" size={16}/> : <Shield size={16}/>} Refresh Security Center</button><button type="button" onClick={downloadSecurityDiagnostics} disabled={!securityReport} className={T.btnAlt}>Download sanitized diagnostics</button></div>
             </div>
           </div>
 
@@ -9354,6 +9372,22 @@ Type RESTORE to continue.`);
             <StatusTile label="Restore Drill" value={restoreDrillStatus?.lastDrillAt ? formatBackupTimestamp(restoreDrillStatus.lastDrillAt) : 'Not recorded'} />
             <StatusTile label="Deletion Requests" value={activeAccountDeletionRequests.length} />
             <StatusTile label="Version" value={securityReport?.app?.version || CURRENT_VERSION || 'Unknown'} />
+          </div>
+
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+            <div data-testid="security-maturity-diagnostics" className={`${T.card} overflow-hidden`}>
+              <div className={T.th}>Actionable Security Maturity</div>
+              {(securityReport?.maturity?.checks || []).length === 0 ? <SmartEmptyState title="Not checked yet" desc="Refresh Security Center to verify MFA, App Check, rules, environment, credentials, OAuth state, and deployment identity." /> : securityReport.maturity.checks.map(check => <div key={check.id} className={`${T.row}`}><div className="flex items-center justify-between gap-3"><div className="font-black text-white text-sm">{check.id.replace(/-/g,' ')}</div><SignalPip tone={['healthy','verified','configured','clean'].includes(check.status) ? 'emerald' : check.status === 'unknown' ? 'amber' : 'red'} label={check.status} /></div><div className="text-[10px] text-slate-400 font-bold mt-1">{check.action}</div></div>)}
+              {securityReport?.maturity?.secrets && <div className={`${T.row} text-xs font-bold text-emerald-200`}>Secret values exposed: No • Server-only: Yes • Redaction applied: Yes</div>}
+              <div data-testid="backup-recovery-maturity" className={`${T.row} text-xs font-bold text-slate-300`}><div className="font-black text-white">Backup / Recovery: {securityReport?.maturity?.backupRecovery?.state || 'unknown'}</div><div className="mt-1">Last successful: {securityReport?.maturity?.backupRecovery?.lastSuccessfulBackupAt || 'unknown'} • Age: {securityReport?.maturity?.backupRecovery?.backupAgeHours ?? 'unknown'} hours • Verification: {securityReport?.maturity?.backupRecovery?.verification || 'unknown'} • Restore readiness: {securityReport?.maturity?.backupRecovery?.restoreReadiness || 'not-proven'}</div>{securityReport?.maturity?.backupRecovery?.failureExplanation && <div className="text-red-200 mt-1">Last failure: {securityReport.maturity.backupRecovery.failureExplanation}</div>}<div className="text-slate-500 mt-1">Destructive restore is never automatic.</div></div>
+              <div data-testid="deployment-environment-identity" className={`${T.row} text-[10px] font-bold text-slate-400`}>Environment: {securityReport?.deploymentIdentity?.environment || 'unknown'} • Firebase: {securityReport?.deploymentIdentity?.firebaseProject || 'unknown'} • Version: {securityReport?.deploymentIdentity?.version || CURRENT_VERSION} • Commit: {securityReport?.deploymentIdentity?.commit ? String(securityReport.deploymentIdentity.commit).slice(0,12) : 'unknown'} • Deployment: {securityReport?.deploymentIdentity?.deploymentId || 'unknown'}</div>
+            </div>
+            <div data-testid="firebase-cost-observability" className={`${T.card} overflow-hidden`}>
+              <div className={T.th}>Firebase / RTDB Cost Observability</div>
+              <div className={`${T.row} grid grid-cols-2 gap-2 text-xs`}><div><div className="text-slate-500 uppercase tracking-widest text-[8px] font-black">Active listeners</div><div className="font-black text-white text-lg">{firebaseCostReport.firestore.activeListeners}</div></div><div><div className="text-slate-500 uppercase tracking-widest text-[8px] font-black">Documents observed</div><div className="font-black text-white text-lg">{firebaseCostReport.firestore.documentsObserved}</div></div><div><div className="text-slate-500 uppercase tracking-widest text-[8px] font-black">Writes</div><div className="font-black text-white">{firebaseCostReport.firestore.writesCompleted}/{firebaseCostReport.firestore.writesInitiated}</div></div><div><div className="text-slate-500 uppercase tracking-widest text-[8px] font-black">No-op writes avoided</div><div className="font-black text-emerald-300">{firebaseCostReport.firestore.skippedNoOpWrites}</div></div></div>
+              <div className={`${T.row} text-xs font-bold text-slate-300`}>Duplicate listeners: {firebaseCostReport.findings.duplicateListeners.length} • Abandoned: {firebaseCostReport.findings.abandonedListeners.length} • High-read queries: {firebaseCostReport.findings.highReadQueries.length} • Repeated fallbacks: {firebaseCostReport.findings.repeatedFallbackReads.length}</div>
+              <div className={`${T.row} text-[10px] font-bold text-slate-500`}>This is aggregate browser-session evidence only. It never logs complete customer records. RTDB counters remain Unknown until a bounded presence snapshot is measured.</div>
+            </div>
           </div>
 
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
@@ -10075,7 +10109,7 @@ another@email.com"></textarea>
               </div>
               <span className="text-[9px] font-black uppercase tracking-widest text-purple-300 bg-purple-900/20 border border-purple-900/50 rounded-lg px-2 py-1">{adminAuditSessionGroups.length} session group(s)</span>
             </div>
-            <div className="max-h-[420px] overflow-y-auto custom-scrollbar divide-y divide-[#2A353D]">
+            <div role="region" aria-label="Administrator session timeline" tabIndex={0} className="max-h-[420px] overflow-y-auto custom-scrollbar divide-y divide-[#2A353D] focus:outline-none focus:ring-2 focus:ring-[#D4A381]">
               {adminAuditSessionGroups.length === 0 && <div className="p-6 text-center text-xs font-bold text-slate-500">No administrator actions found yet.</div>}
               {adminAuditSessionGroups.map(group => (
                 <div key={group.id} className="p-4 space-y-3">
@@ -10255,7 +10289,7 @@ another@email.com"></textarea>
               </div>
               <div className="text-[10px] font-black uppercase tracking-widest text-slate-500 mt-2">Showing {filteredAuditLogs.length} of {auditLogs.length} audit record(s)</div>
             </div>
-            <div className={`divide-y ${T.border} max-h-[70vh] overflow-y-auto custom-scrollbar`}>
+            <div role="region" aria-label="Global forensics and ghost audit records" tabIndex={0} className={`divide-y ${T.border} max-h-[70vh] overflow-y-auto custom-scrollbar focus:outline-none focus:ring-2 focus:ring-[#D4A381]`}>
               {filteredAuditLogs.length === 0 && <div className="p-8 text-center text-slate-500 font-bold">No forensic data matches the current filters.</div>}
               {filteredAuditLogs.map(log => (
                 <div key={log.id} className={`${T.row} flex flex-col gap-1`}>
@@ -10369,7 +10403,7 @@ another@email.com"></textarea>
             <div className="space-y-2 max-h-[560px] overflow-y-auto custom-scrollbar">
               {automationQueue.length ? automationQueue.slice(0, 50).map(item => (
                 <div key={item.id} className="rounded-2xl border border-[#2A353D] bg-[#12161A] p-3 flex flex-col lg:flex-row lg:items-center justify-between gap-3">
-                  <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><span className="font-black text-white">{item.title}</span><span className="text-[8px] uppercase tracking-widest font-black rounded-full border border-purple-500/30 bg-purple-950/20 text-purple-200 px-2 py-0.5">{item.type}</span><span className="text-[8px] uppercase tracking-widest font-black rounded-full border border-[#2A353D] text-slate-400 px-2 py-0.5">{item.status || 'open'}</span></div><div className="text-[11px] text-slate-400 font-bold mt-1">{item.restaurantName || item.restaurantId}</div><div className="text-xs text-slate-300 font-bold leading-5 mt-1">{item.detail}</div></div>
+                  <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><span className="font-black text-white">{adminSafeText(item.title, 'Admin alert')}</span><span className="text-[8px] uppercase tracking-widest font-black rounded-full border border-purple-500/30 bg-purple-950/20 text-purple-200 px-2 py-0.5">{adminSafeText(item.type, 'alert')}</span><span className="text-[8px] uppercase tracking-widest font-black rounded-full border border-[#2A353D] text-slate-400 px-2 py-0.5">{adminSafeText(item.status, 'open')}</span></div><div className="text-[11px] text-slate-400 font-bold mt-1">{adminSafeText(item.restaurantName || item.restaurantId, 'Workspace')}</div><div className="text-xs text-slate-300 font-bold leading-5 mt-1">{adminSafeText(item.detail, '')}</div></div>
                   <div className="shrink-0 rounded-xl border border-purple-500/20 bg-purple-950/10 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-purple-200">Restaurant Review Only</div>
                 </div>
               )) : <p className="text-xs text-slate-500 font-bold">No approval items yet.</p>}

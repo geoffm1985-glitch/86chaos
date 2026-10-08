@@ -5,13 +5,29 @@ const fs = require('node:fs');
 const path = require('node:path');
 const root = path.resolve(__dirname, '..');
 const read = file => fs.readFileSync(path.join(root, file), 'utf8');
+const { assertCurrentReleaseIdentity } = require('./_current-release-identity.cjs');
 
-test('16.0.208 mobile login readiness retries and fails explicitly instead of misreporting seed visibility', () => {
+test('16.0.208 mobile login readiness retries and fails explicitly instead of misreporting seed visibility', async () => {
   const helpers = read('tests/86chaos-full-audit/utils/audit-helpers.cjs');
   assert.match(helpers, /const fillAndSubmit = async/);
-  assert.match(helpers, /waitPastLogin/);
-  assert.match(helpers, /Retry once/);
-  assert.match(helpers, /Login did not leave the login screen/);
+  assert.match(helpers, /submitAuditLogin\(\{/);
+  assert.match(helpers, /submit: fillAndSubmit/);
+  assert.match(helpers, /wait: \(\) => waitPastLogin/);
+  const { submitAuditLogin } = require('../tests/86chaos-full-audit/utils/firebase-transport-recovery.cjs');
+  for (const persistent of [false, true]) {
+    let submissions = 0;
+    const states = persistent ? ['Login Unlocking', 'Login Unlocking'] : ['Login Unlocking', 'Authenticated workspace'];
+    const run = () => submitAuditLogin({
+      submit: async () => { submissions++; },
+      wait: async () => states.shift(),
+      isLogin: text => text.startsWith('Login'),
+      refresh: async () => { assert.fail('Pending login must not refresh'); },
+      pause: async () => { assert.fail('Pending login must not pause'); },
+    });
+    if (persistent) await assert.rejects(run, /Login did not leave the login screen/);
+    else assert.equal(await run(), 'Authenticated workspace');
+    assert.equal(submissions, 2);
+  }
 });
 
 test('16.0.208 responsive nested-state discovery opens the mobile System Administrator directory before declaring states missing', () => {
@@ -40,19 +56,6 @@ test('16.0.208 accessibility fixes preserve real surfaces with focusable scroll 
   assert.match(operations, /text-red-200 font-black animate-pulse/);
 });
 
-test('16.0.208 historical maturity assertions coexist with current 17.0.48 version metadata', () => {
-  const pkg = JSON.parse(read('package.json'));
-  const lock = JSON.parse(read('package-lock.json'));
-  const version = JSON.parse(read('public/version.json'));
-  const apiVersion = read('api/_version.js');
-  const appCore = read('src/core/appCore.js');
-  assert.equal(pkg.version, '17.0.48');
-  assert.equal(lock.version, '17.0.48');
-  assert.equal(lock.packages[''].version, '17.0.48');
-  assert.equal(pkg.scripts['test:source'], 'node scripts/validate-17-0-33.js');
-  assert.equal(version.version, '17.0.48');
-  assert.equal(version.build, '17.0.48');
-  assert.match(apiVersion, /APP_VERSION = '17.0.48'/);
-  assert.match(apiVersion, /SECURITY_SCHEMA_VERSION = '17.0.48'/);
-  assert.match(appCore, /CURRENT_VERSION = '17.0.48'/);
+test('16.0.208 historical maturity assertions coexist with advancing current release identity', () => {
+  assert.equal(assertCurrentReleaseIdentity(root), require('../package.json').version);
 });

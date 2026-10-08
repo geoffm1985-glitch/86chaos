@@ -1,18 +1,31 @@
 {
-  "version": "17.0.48",
-  "name": "86 Chaos 17.0.48",
-  "build": "17.0.48",
-  "label": "86 Chaos 17.0.48",
-  "releasedAt": "2026-09-28T20:10:00Z",
-  "releaseTitle": "Emergency Schedule Publish Permission Repair",
+  "version": "17.0.84",
+  "name": "86 Chaos 17.0.84",
+  "build": "17.0.84",
+  "label": "86 Chaos 17.0.84",
+  "releasedAt": "2026-10-05T03:41:00.000Z",
+  "releaseTitle": "Owned Full-Gate Fidelity Repair",
   "notes": [
-    "Built from the production 17.0.33 source, not from the newer testing feature line.",
-    "Removes workspaceId-only Schedule Publish candidate reads that Firestore denies for normal tenant users.",
-    "Preserves the canonical restaurantId + date and restaurantId + scheduleDateKey authoritative reads and the fail-closed no-write path.",
-    "Adds narrowly scoped source, Firestore-emulator, and Release Gate coverage for this permission repair only.",
-    "17.0.48 supersedes the failed 17.0.47 candidate by provisioning Java 21 for the targeted Firestore emulator; application behavior is otherwise unchanged from the hotfix."
+    "Keeps the Ghost Request Off conflict/cancel fixture deterministic by explicitly disabling cutoff policy in the disposable QA restaurant only.",
+    "Allows exactly one export/import audit re-authentication when the emulator handoff transiently returns the login surface; repeated logout still fails.",
+    "Accepts either a healthy app after the designed one-shot chunk recovery navigation or a usable recovery action, while retaining blank-screen and reload-loop guards.",
+    "Uses the shipped Log Out flow before System Administrator runtime-coverage traversal and verifies the signed-out state survives reload.",
+    "Adds targeted Node, Play Store/release-gate Playwright, and independent Playwright coverage for all captured 17.0.83 full-gate failures."
   ],
-  "title": "86 Chaos 17.0.48",
-  "summary": "Repairs Schedule Builder publishing for normal tenant users and supplies the Java 21 runtime required by the targeted Firestore-emulator verification.",
-  "description": "Production-baseline emergency hotfix built from the 17.0.33 production source. Schedule publishing now performs only restaurantId-scoped authoritative candidate reads that satisfy the existing tenant security rule. The testing-only targeted workflow now provisions Java 21 so the Firestore emulator can run."
+  "title": "86 Chaos 17.0.84",
+  "summary": "Repairs four certification-harness fidelity failures exposed by the first owned 17.0.83 full Playwright gate.",
+  "description": "The owned 17.0.83 full gate reached Playwright and exposed deterministic-fixture, emulator auth handoff, chunk-recovery sampling, and Firebase identity-switch coverage defects. 17.0.84 repairs only those QA/certification boundaries and version identity; production Request Off, chunk recovery, and authorization behavior are unchanged.",
+  "highlights": [
+    "Owned full-gate fidelity repair",
+    "Deterministic Ghost Request Off fixture",
+    "Real System Administrator runtime-coverage identity"
+  ],
+  "changes": [
+    "Bumps release identity from 17.0.83 to 17.0.84.",
+    "Explicitly disables Request Off cutoff policy in the disposable full-audit QA restaurant fixture.",
+    "Adds a one-time authenticated retry to the export/import audit and fails on any repeated login fallback.",
+    "Measures stale-chunk success after the designed one-shot navigation as either healthy recovered app or usable recovery UI.",
+    "Performs a real application logout before System Administrator runtime-coverage traversal.",
+    "Adds exact 17.0.84 Node and Playwright regressions and seals the completed source tree."
+  ]
 }

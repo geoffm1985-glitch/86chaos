@@ -1,0 +1,26 @@
+'use strict';
+const fs = require('node:fs');
+const path = require('node:path');
+const assert = require('node:assert/strict');
+const root = path.resolve(__dirname, '..');
+const read = f => fs.readFileSync(path.join(root,f),'utf8');
+const json = f => JSON.parse(read(f));
+const exists = f => fs.existsSync(path.join(root,f));
+const version='17.0.77';
+const pkg=json('package.json'), lock=json('package-lock.json');
+assert.equal(pkg.version,version); assert.equal(lock.version,version); assert.equal(lock.packages[''].version,version);
+assert.equal(json('public/version.json').version,version); assert.match(read('src/core/appCore.js'),/CURRENT_VERSION = '17\.0\.77'/); assert.match(read('api/_version.js'),/17\.0\.77/);
+for (const f of ['test-tools/certification/groups.json','test-tools/certification/cost-performance-baselines.json','test-tools/regressions/registry.json']) assert.equal(json(f).release,version);
+assert.match(read('src/core/customerHelpKnowledge.cjs'),/CUSTOMER_HELP_VERSION = '17\.0\.77'/); assert.match(read('src/core/customerHelpKnowledge.js'),/CUSTOMER_HELP_VERSION = '17\.0\.77'/);
+assert.equal(pkg.scripts['test:source'],'node scripts/validate-17-0-77.js'); assert.equal(pkg.scripts['validate:17.0.77'],'node scripts/validate-17-0-77.js'); assert.equal(pkg.scripts['test:repair:17.0.77'],'npm run test:current-release-targeted');
+assert.match(pkg.scripts['test:current-release-targeted'],/release-gate-server-certification-drift-17-0-77\.test\.cjs/); assert.ok(pkg.scripts['test:current-release-targeted'].endsWith('node scripts/validate-17-0-77.js'));
+const nodeRegression='api/release-gate-server-certification-drift-17-0-77.test.cjs'; const releaseSpec='tests/86chaos-release-gate/89-server-certification-drift-17-0-77.spec.cjs'; const e2eSpec='tests/e2e/server-certification-drift-17-0-77.spec.cjs';
+for (const f of [nodeRegression,releaseSpec,e2eSpec,'RELEASE_17_0_77.md']) assert.equal(exists(f),true,f+' exists');
+const universe=require('./86chaos-release-gate/release-test-universe.cjs'); assert.ok(universe.RELEASE_CRITICAL_SPECS.includes(releaseSpec));
+const workflow=read('.github/workflows/testing-targeted-delta.yml'); assert.match(workflow,/89-server-certification-drift-17-0-77\.spec\.cjs/); assert.match(workflow,/tests\/e2e\/server-certification-drift-17-0-77\.spec\.cjs/);
+assert.ok(json('test-tools/regressions/registry.json').regressions.some(r=>r.defectId==='RG-SERVER-CERTIFICATION-DRIFT-17077'));
+assert.match(read('api/release-gate-maturity-16-0-209.test.cjs'),/schedule-copilot-warnings-tab/); assert.match(read('api/release-gate-runner-observability.test.cjs'),/yardmaster-dependency-install/);
+const identityApi=require('./86chaos-release-gate/source-identity.cjs'); const identity=identityApi.captureSourceIdentity(root); const manifest=json('release-source-manifest.json');
+assert.equal(manifest.version,version); assert.equal(manifest.sourceHash,identity.sourceHash,'bundled release source manifest matches current 17.0.77 source'); assert.deepEqual(manifest.files,identity.files,'bundled manifest file inventory matches completed 17.0.77 tree');
+for (const f of ['api/release-gate-hostile-fixture-manifest-17-0-70.test.cjs','api/release-gate-maturity-16-0-207.test.cjs','api/release-gate-maturity-16-0-209.test.cjs','api/release-gate-runner-observability.test.cjs','api/schedule-warning-request-off-controls.test.cjs','api/spanish-release-gate-fidelity-17-0-29.test.cjs',nodeRegression,releaseSpec,e2eSpec]) { const row=manifest.files.find(x=>x.file===f); assert.ok(row,f+' is sealed in manifest'); assert.equal(row.sha256,identityApi.hash(identityApi.sourceBytes(row.file,fs.readFileSync(path.join(root,row.file))))); }
+console.log('86 Chaos 17.0.77 server certification drift repair validation PASS');

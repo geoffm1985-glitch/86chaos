@@ -13,8 +13,10 @@ const {
   BASE_URL,
 } = require('../86chaos-full-audit/utils/audit-helpers.cjs');
 const { readFirebaseConfig, readConfiguredAccounts, signInAccount, buildFirebaseAuthFetchOptions } = require('../../scripts/86chaos-release-gate/verify-role-accounts.cjs');
+const { expectedFirebaseProject } = require('../../scripts/86chaos-firebase-target.cjs');
+const { scheduleFixtureDateFromSeed, scheduleRequestOffConflictAnchorFromSeed } = require('./utils/schedule-request-off-fixture-anchor.cjs');
 
-const QA_TEST_PROJECT_ID = 'chaos-test-d1601';
+const QA_TEST_PROJECT_ID = expectedFirebaseProject(process.env);
 
 let qaRequestOffResetAuthPromise = null;
 async function getQaRequestOffResetAuth() {
@@ -36,17 +38,8 @@ async function getQaRequestOffResetAuth() {
   return qaRequestOffResetAuthPromise;
 }
 
-function scheduleFixtureDateFromSeed(seed = {}) {
-  const fixture = seed?.profile?.expectations?.fixture || seed?.profile?.fixture || {};
-  const overCoverageDate = (fixture.shifts || []).find(row => row?.employeeName === 'Chuck QA' && row?.role === 'Bartender' && String(row?.startTime || '').toLowerCase() === '10a')?.date;
-  // The warning fixtures are built inside the fixture's Monday-based current
-  // week. Using a Sunday anchor can advance the UI's Sunday-based Schedule
-  // Tools window and hide the very records this test is meant to verify.
-  return fixture.currentWeekStart || overCoverageDate || fixture.anchor || seed?.ghostRequestOffConflictDate || '2026-08-04';
-}
-
-async function installSeededScheduleClock(page, seed = {}) {
-  const fixtureDate = scheduleFixtureDateFromSeed(seed);
+async function installSeededScheduleClock(page, seed = {}, fixtureDateOverride = '') {
+  const fixtureDate = fixtureDateOverride || scheduleFixtureDateFromSeed(seed);
   await page.addInitScript(({ fixtureDate }) => {
     const RealDate = Date;
     const fixedNow = new RealDate(`${fixtureDate}T12:00:00`);
@@ -65,8 +58,8 @@ async function installSeededScheduleClock(page, seed = {}) {
   }, { fixtureDate });
 }
 
-async function openSchedule(page, seed = {}) {
-  await installSeededScheduleClock(page, seed);
+async function openSchedule(page, seed = {}, fixtureDateOverride = '') {
+  await installSeededScheduleClock(page, seed, fixtureDateOverride);
   const account = ownerLikeCreds();
   requireCreds(account, 'manager/owner account');
   await login(page, account.email, account.password);
@@ -79,11 +72,7 @@ async function openSchedule(page, seed = {}) {
 }
 
 async function openWarnings(page) {
-  const warningsControl = page
-    .getByRole('tab', { name: /^Warnings$/i })
-    .or(page.getByRole('button', { name: /^Open Warnings$/i }))
-    .or(page.getByRole('button', { name: /^Warnings$/i }))
-    .first();
+  const warningsControl = page.getByTestId('schedule-copilot-warnings-tab');
   if (!await warningsControl.isVisible().catch(() => false)) {
     const openCopilot = page.getByRole('button', { name: /^Open Copilot Tools$/i }).first();
     await expect(openCopilot, 'Schedule Copilot should already be open or expose Open Copilot Tools').toBeVisible({ timeout: 10000 });
@@ -102,7 +91,7 @@ async function openManagerRequestOff(page, seed = {}) {
   await login(page, account.email, account.password);
   await gotoTab(page, 'published', { settleMs: 1400, maxText: 60000 });
   await dismissBlockingDialogs(page, { maxPasses: 4 }).catch(() => null);
-  const requestOffTab = page.getByRole('button', { name: /^Schedule Request Off$/i }).first();
+  const requestOffTab = page.getByTestId('schedule-request-off-tab');
   await expect(requestOffTab, 'Request Off subtab should be visible inside Time Clock & Schedule').toBeVisible({ timeout: 15000 });
   await requestOffTab.click();
   await expect(page.locator('body'), 'Request-Off Workflow should render before manager Request Off assertions').toContainText(/Request-Off Workflow/i, { timeout: 15000 });
@@ -215,8 +204,9 @@ test.describe('16.0.153 Schedule warnings and Request Off management', () => {
   test('Schedule Builder requested-off warning shows employee name and never Someone', async ({ page }, testInfo) => {
     const seed = await ensureSeeded(testInfo);
     await resetSeededRequestOffFixture(seed, 'allen');
-    await openSchedule(page, seed);
+    await openSchedule(page, seed, scheduleRequestOffConflictAnchorFromSeed(seed));
     await openWarnings(page);
+    await expect(page.locator('body'), 'Seeded Request Off conflict must hydrate before identity assertions run').toContainText(/(?:Allen QA|Sara QA).*scheduled on requested-off date/i, { timeout: 45_000 });
     const text = await bodyText(page, 60000);
     await attachJson(testInfo, '16-0-153-request-off-warning-text.json', { text: text.slice(0, 12000) });
     expect(text, 'Requested-off warning must not use the old unresolved fallback').not.toMatch(/Someone is scheduled on requested-off date/i);

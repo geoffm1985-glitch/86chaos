@@ -17,6 +17,7 @@ import { PLATFORM_ADMIN_ACCESS_STATES, resolvePlatformAdminAccessState } from '.
 import { requestPersonalReminderRefresh, usePersonalReminderRows } from '../core/personalReminderQueries';
 import { FEATURE_KEYS } from '../config/plans';
 import { useI18n } from '../core/i18n';
+import { validatePartialRequestOffTimeRange } from '../core/requestOffValidation';
 
 
 const buildReminderQueueFields = (scheduledAt, status = 'scheduled') => ({
@@ -2273,33 +2274,15 @@ const VoiceCommandDockBase = ({ appUser, inventoryItems = [], recipes = [], user
         const policyResult = Array.isArray(policyPayload?.results) ? policyPayload.results[0] : null;
         if (!policyResponse.ok || policyPayload?.ok === false) { addToast('Request Off Unavailable', policyPayload?.error || 'Request Off policy could not be verified.'); return; }
         if (policyResult?.allowed === false) { addToast(policyResult.code === 'blackout' ? 'Blackout Date' : 'Request Off Closed', policyResult.reason || 'Normal Request Off submissions are closed for this date.'); return; }
-        const nowIso = new Date().toISOString();
+        const partialValidation = validatePartialRequestOffTimeRange({ isPartial: !!actionToRun.isPartial, startTime: actionToRun.startTime || '', endTime: actionToRun.endTime || '' });
+        if (!partialValidation.valid) { addToast('Invalid Partial Time', partialValidation.message); return; }
         const existing = (await getDocs(query(collection(db, 'timeOffRequests'), where('restaurantId', '==', appUser.restaurantId), where('userId', '==', appUser.id || ''), where('date', '==', actionToRun.date)))).docs
           .map(d => ({ id:d.id, ...d.data() }))
           .find(r => !['cancelled','canceled','archived','processed'].includes(String(r.status || '').toLowerCase()));
         if (existing) { addToast('Already Requested', 'You already have an active request for that date.'); setActiveTab('published'); if (setScheduleSubTabTarget) setScheduleSubTabTarget({ subTab:'time-off', id:Date.now() }); if (closeWhenDone) setOpen(false); return; }
-        const requestRef = await addDoc(collection(db, 'timeOffRequests'), {
-          restaurantId:appUser.restaurantId,
-          workspaceId:appUser.restaurantId,
-          userId:appUser.id || '',
-          employeeId:appUser.id || '',
-          userName:appUser.name || appUser.email || 'Employee',
-          employeeName:appUser.name || appUser.email || 'Employee',
-          date:actionToRun.date,
-          isPartial:!!actionToRun.isPartial,
-          startTime:actionToRun.startTime || '',
-          endTime:actionToRun.endTime || '',
-          status:'pending',
-          archived:false,
-          processed:false,
-          submittedAt:nowIso,
-          createdAt:nowIso,
-          updatedAt:nowIso,
-          createdBy:appUser.id || '',
-          source:'86_voice_request_off',
-          voiceCommand:sourceText
-        });
-        rememberVoiceUndo(`request off: ${actionToRun.date}`, [{ kind:'delete', collectionName:'timeOffRequests', id:requestRef.id }]);
+        const createResponse = await secureFetch('/api/time-off-request', { method:'POST', headers:{ 'Content-Type':'application/json' }, body:JSON.stringify({ action:'create', restaurantId:appUser.restaurantId, dates:[actionToRun.date], isPartial:!!actionToRun.isPartial, startTime:actionToRun.startTime || '', endTime:actionToRun.endTime || '', source:'86_voice_request_off' }) });
+        const createPayload = await createResponse.json().catch(() => ({}));
+        if (!createResponse.ok || createPayload?.ok === false) { addToast('Request Off Unavailable', createPayload?.error || 'The Request Off request could not be saved.'); return; }
         await logAudit(appUser, 'VOICE_REQUEST_OFF', appUser.name || appUser.email || 'Employee', actionToRun.date);
         addToast('Request Off Submitted', `Request submitted for ${formatDisplayDate(actionToRun.date)}.`);
         if (setCurrentDate) setCurrentDate(actionToRun.date);

@@ -360,11 +360,24 @@ function Stop-BeforePlaywright {
   Write-Host $Reason -ForegroundColor Red
 }
 
+function Set-VerifiedScopedEmulatorTarget {
+  param([object]$Report, [string]$Selection = $env:YARDMASTER_FIREBASE_TARGET)
+  if ($Selection -ne 'emulator') { return }
+  $local = [uri]$Report.appUrl
+  if (-not $Report.ok -or $Report.firebaseTarget -ne 'EMULATOR' -or $Report.firebaseProjectId -ne 'demo-86chaos' -or $local.Scheme -ne 'http' -or $local.Host -notin @('127.0.0.1','localhost','[::1]','::1')) { throw 'Scoped preflight did not prove the selected local Firebase emulator target.' }
+  foreach ($key in @('APP_URL','CHAOS_BASE_URL','PLAYWRIGHT_BASE_URL','BASE_URL','TEST_BASE_URL','RELEASE_GATE_BASE_URL','CHAOS_TEST_BASE_URL')) {
+    [Environment]::SetEnvironmentVariable($key, $Report.appUrl.TrimEnd('/'), 'Process')
+  }
+  [Environment]::SetEnvironmentVariable('CHAOS_VERIFIED_IMMUTABLE_DEPLOYMENT_URL', $null, 'Process')
+}
+
 Set-RunnerPhase 'environment-preflight'
 $PreflightExit = Run-Step "Environment preflight" "node scripts/86chaos-release-gate/preflight-env.cjs"
 if ($PreflightExit -ne 0) {
   Stop-BeforePlaywright "Release gate blocked before dependency installation because environment/deployment preflight failed."
 } else {
+  $ScopedPreflight = Get-Content (Join-Path $RunDir 'environment-preflight.json') -Raw | ConvertFrom-Json
+  Set-VerifiedScopedEmulatorTarget -Report $ScopedPreflight
   Set-RunnerPhase 'node-version'
   $NodeExit = Run-Step "Node version" "npm run node:check --if-present"
   if ($NodeExit -ne 0) {
@@ -378,7 +391,7 @@ if ($PreflightExit -ne 0) {
       Set-RunnerPhase 'install-locked-test-dependencies'
       $RunnerState.dependencyInstallAttempted = $true
       Save-RunnerState
-      $InstallExit = Run-Step "Install locked test dependencies" "npm ci --include=dev --no-audit --no-fund"
+      $InstallExit = Run-Step "Install locked test dependencies" "node scripts/86chaos-release-gate/yardmaster-dependency-install.cjs"
       $RunnerState.dependencyInstallPassed = ($InstallExit -eq 0)
       Save-RunnerState
       if ($InstallExit -ne 0) {
@@ -546,7 +559,7 @@ if ((Test-Path $SetupStatePath) -and -not (Test-Path $CleanupPath)) {
   if ([string]::IsNullOrWhiteSpace($SetupRestaurantId)) { $SetupRestaurantId = [string]$setup.temporaryRestaurantId }
 
   $WritesStarted = [bool]($setup.writesStarted -or $setup.qaDataWritesStarted -or $setup.createdRestaurant -or $setup.restaurantCreated -or $setup.membershipsCreated -or $setup.seeded -or $setup.fixtureSeedStarted)
-  $CleanupEligible = $WritesStarted -and ($SetupRunId -eq $RunId) -and ($SetupProjectId -eq 'chaos-test-d1601')
+  $CleanupEligible = $WritesStarted -and ($SetupRunId -eq $RunId) -and ($SetupProjectId -eq $ExpectedFirebaseProject)
   if ($setup.createdRestaurant -or $setup.restaurantCreated) { $CleanupEligible = $CleanupEligible -and -not [string]::IsNullOrWhiteSpace($SetupRestaurantId) }
 
   if ($CleanupEligible) {
@@ -561,7 +574,7 @@ if ((Test-Path $SetupStatePath) -and -not (Test-Path $CleanupPath)) {
     $RunnerState.cleanupAttempted = $false
     $RunnerState.cleanupCompleted = $false
     if ($SetupRunId -ne $RunId) { $RunnerState.cleanupRefusalReason = 'current-run ID did not match setup state' }
-    elseif ($SetupProjectId -ne 'chaos-test-d1601') { $RunnerState.cleanupRefusalReason = 'testing Firebase project identity was missing or unsafe' }
+    elseif ($SetupProjectId -ne $ExpectedFirebaseProject) { $RunnerState.cleanupRefusalReason = 'testing Firebase project identity was missing or unsafe' }
     elseif (($setup.createdRestaurant -or $setup.restaurantCreated) -and [string]::IsNullOrWhiteSpace($SetupRestaurantId)) { $RunnerState.cleanupRefusalReason = 'temporary restaurant ID was missing after current-run writes' }
     else { $RunnerState.cleanupRefusalReason = 'cleanup ownership evidence was incomplete' }
     Save-RunnerState

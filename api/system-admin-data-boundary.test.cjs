@@ -46,3 +46,31 @@ test('malformed restaurant record is sanitized, not thrown', () => {
   assert.equal(typeof row.name, 'string');
   assert.equal(typeof row.lastActive, 'string');
 });
+
+
+test('Admin SDK timestamp JSON and System Administrator live status records normalize before React render', () => {
+  const adminTimestamp = { _seconds: 1785540560, _nanoseconds: 125000000 };
+  assert.equal(safety.adminSafeText(adminTimestamp).startsWith('2026-'), true);
+  const restore = safety.normalizeSystemAdminStatusRecord('restoreDrillStatus', 'restoreDrillStatus', {
+    status: { label: 'passed' },
+    restoreProjectId: { id: 'demo-restore' },
+    sourceBackupPath: { message: 'gs://safe-backup' },
+    lastDrillAt: adminTimestamp
+  });
+  assert.equal(typeof restore.status, 'string');
+  assert.equal(typeof restore.restoreProjectId, 'string');
+  assert.equal(typeof restore.sourceBackupPath, 'string');
+  assert.equal(typeof restore.lastDrillAt, 'string');
+});
+
+test('restaurant admin alerts cannot pass raw object fields into System Administrator React children', () => {
+  const alert = safety.normalizeSystemAdminAlert('alert-1', {
+    title: { message: 'Review inventory' },
+    type: { label: 'inventory' },
+    status: { status: 'open' },
+    restaurantName: { name: 'Cheers' },
+    detail: { message: 'Check count variance' },
+    updatedAt: { _seconds: 1785540560, _nanoseconds: 0 }
+  });
+  for (const field of ['title', 'type', 'status', 'restaurantName', 'detail', 'updatedAt']) assert.equal(typeof alert[field], 'string', field);
+});

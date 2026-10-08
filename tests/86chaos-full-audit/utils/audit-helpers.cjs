@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const { expect } = require('@playwright/test');
+const { submitAuditLogin, createFirestoreListenRecovery } = require('./firebase-transport-recovery.cjs');
 let runContext = null;
 try { runContext = require('../../../scripts/86chaos-release-gate/run-context.cjs'); } catch (_) { runContext = null; }
 const { parseHost, isProductionHost, isTestingPreviewHost } = require('../../../scripts/86chaos-release-gate/mutation-safety.cjs');
@@ -166,7 +167,7 @@ async function renderedRouteIdentityReady(page, tab, spec, text) {
 
 const FATAL_TEXT_RE = /Application error|Unhandled Runtime Error|Minified React error|Cannot read properties of undefined|Cannot read property|undefined is not a function|ReferenceError|TypeError:|Something went wrong|White screen/i;
 const BAD_VALUE_RE = /\bInvalid Date\b(?!s)|Infinity|undefined undefined|null null|Inactive -\d+ days|\$NaN|NaN%|(?:^|[^A-Za-z])NaN(?:[^A-Za-z]|$)/i;
-const PERMISSION_GATE_RE = /permission gate|not authorized|not available|Your role does not include|internal-only|access denied/i;
+const PERMISSION_GATE_RE = /Plan & Permission Gate|Your role does not include this tool|This tool is not available for your account right now|not authorized|internal-only|access denied/i;
 const LOGIN_RE = /Email Address\s*Password|Unlock System|Sign In|Log In|Forgot Password/i;
 const STAFF_FORBIDDEN_RE = /System Administrator|Backup Center|Security Center|Forensics|QuickBooks Integration Hub|Python Automation|Pay Rate|Hourly Rate|Owner Pro/i;
 const STAFF_ACTION_RE = /Backup Now|Restore Backup|Security Diagnostics|Delete User|Log Out Everyone|Run Python|Approve & Send|Send to QuickBooks|Post to QuickBooks/i;
@@ -222,14 +223,29 @@ function isIgnorableStaticAssetFailure(text = '') {
   return /ERR_ABORTED|ERR_CONNECTION_RESET|net::ERR_FAILED/i.test(text) && /\/(6136|6139|6240|wisco|app-icon|notification-badge)\.(jpg|png|webp|ico)/i.test(text);
 }
 
+function isExpectedEmulatorFirebaseAuthBootstrapNoise(text = '') {
+  const emulatorSelected = [
+    process.env.YARDMASTER_FIREBASE_TARGET,
+    process.env.CHAOS_FIREBASE_TARGET,
+    process.env.REACT_APP_86CHAOS_FIREBASE_TARGET,
+  ].some(value => String(value || '').trim().toLowerCase() === 'emulator');
+  if (!emulatorSelected) return false;
+  const value = String(text || '');
+  return /https:\/\/apis\.google\.com\/js\/api\.js/i.test(value)
+    && /content security policy|\bcsp\b|blocked/i.test(value);
+}
+
 function watchForProblems(page, problems, options = {}) {
   const nonfatal4xx = [];
-  const seen = new Set();
+  const transportRecovery = options.recoverFirestoreListen ? createFirestoreListenRecovery(problems) : null;
+  const seen = new Map();
   const pushProblem = (row) => {
     const key = `${row.type}|${row.status || ''}|${row.url || ''}|${row.message || row.failure || ''}`;
-    if (seen.has(key)) return;
-    seen.add(key);
+    const prior = seen.get(key);
+    if (prior && problems.includes(prior)) return prior;
+    seen.set(key, row);
     problems.push(row);
+    return row;
   };
   page.on('pageerror', (error) => pushProblem({ type: 'page-error', message: error.message, stack: String(error.stack || '').slice(0, 2500) }));
   page.on('console', (msg) => {
@@ -238,11 +254,14 @@ function watchForProblems(page, problems, options = {}) {
     if (/favicon|ResizeObserver|ERR_ABORTED|401|403|net::ERR_BLOCKED_BY_CLIENT|analytics/i.test(text)) return;
     if (/Failed to load resource:.*status of (400|404)/i.test(text)) return;
     if (isIgnorableStaticAssetFailure(text)) return;
-    pushProblem({ type: 'console-error', message: text.slice(0, 1600) });
+    if (isExpectedEmulatorFirebaseAuthBootstrapNoise(text)) return;
+    const row = pushProblem({ type: 'console-error', message: text.slice(0, 1600) });
+    transportRecovery?.track(row, msg.location()?.url || '');
   });
   page.on('response', async (response) => {
     const status = response.status();
     const url = response.url();
+    transportRecovery?.response(url, status);
     if (/hot-update|sockjs|favicon/i.test(url)) return;
     if (status === 400 || status === 404) {
       const controlled = isControlledValidationResponse(response);
@@ -261,9 +280,18 @@ function watchForProblems(page, problems, options = {}) {
     const failure = request.failure()?.errorText || '';
     if (/favicon|hot-update|sockjs|jwe|ERR_ABORTED/i.test(`${failure} ${url}`)) return;
     if (isIgnorableStaticAssetFailure(`${failure} ${url}`)) return;
-    pushProblem({ type: 'requestfailed', url: url.split('?')[0].slice(0, 260), failure });
+    if (isExpectedEmulatorFirebaseAuthBootstrapNoise(`${failure} ${url}`)) return;
+    const row = pushProblem({ type: 'requestfailed', url: url.split('?')[0].slice(0, 260), failure });
+    transportRecovery?.track(row, url);
   });
-  return { nonfatal4xx };
+  return {
+    nonfatal4xx,
+    recoveredTransports: transportRecovery?.recoveries || [],
+    async waitForTransportRecovery(timeoutMs = 8000) {
+      const deadline = Date.now() + timeoutMs;
+      while (transportRecovery?.pending() && Date.now() < deadline) await page.waitForTimeout(250);
+    }
+  };
 }
 
 function summarizeProblems(problems) {
@@ -457,14 +485,14 @@ async function login(page, email, password, options = {}) {
     return latest || await bodyText(page, 16000);
   };
 
-  await fillAndSubmit();
-  text = await waitPastLogin(22000);
-  if (LOGIN_RE.test(text) && !/invalid|wrong|error|failed|not attached/i.test(text)) {
-    // Mobile Chromium occasionally leaves the first submit on the login surface without an error
-    // while the button/actionability transition settles. Retry once, then fail loudly.
-    await fillAndSubmit();
-    text = await waitPastLogin(22000);
-  }
+  text = await submitAuditLogin({
+    submit: fillAndSubmit,
+    wait: () => waitPastLogin(22000),
+    isLogin: value => LOGIN_RE.test(value),
+    pause: () => page.waitForTimeout(1500),
+    refresh: () => page.goto(appUrl(options.tab || 'today'), { waitUntil: 'domcontentloaded', timeout: 45000 }),
+    onRecovery: options.onAuthRecovery,
+  });
 
   await dismissBlockingDialogs(page, { maxPasses: 6 }).catch(() => null);
   await chooseQaWorkspace(page);
@@ -758,5 +786,6 @@ module.exports = {
   dismissBlockingDialogs,
   visibleDialogSnapshot,
   neutralizeTestingPreviewOverlays,
+  isExpectedEmulatorFirebaseAuthBootstrapNoise,
   QA_WORKSPACE_NAME,
 };

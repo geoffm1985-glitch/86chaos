@@ -31,7 +31,11 @@ test.describe('32 nested-state WCAG accessibility',()=>{
          const state=states[stateIndex];
          if(routeGated){findings.push({route:route.tab,state:state.map(String),gated:true});continue;}
          const traversalPath=stateIndex>0?await recoverSiblingStatePath(page,states[stateIndex-1],state,route.tab):state;
-         const applied=await applyStatePath(page,traversalPath,{strict:false});
+         let applied=await applyStatePath(page,traversalPath,{strict:false});
+         if(!applied.ok&&state.length){
+           await gotoTab(page,route.tab,{settleMs:350,timeout:8000,maxText:14000,force:true});
+           applied=await applyStatePath(page,state,{strict:false});
+         }
          if(!applied.ok){findings.push({route:route.tab,state:state.map(String),missing:true});continue;}
          const result=await axe(page);
          const blocking=result.violations.filter(v=>v.impact==='serious'||v.impact==='critical').map(simplify);

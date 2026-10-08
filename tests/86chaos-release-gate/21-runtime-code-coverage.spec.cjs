@@ -4,24 +4,20 @@ const {
   attachJson, PERMISSION_GATE_RE,
 } = require('../86chaos-full-audit/utils/audit-helpers.cjs');
 const { ROUTE_STATES } = require('./exhaustive-surface-matrix.cjs');
-const { applyStatePath } = require('./utils/exhaustive-ui-helpers.cjs');
-
-function mergeRanges(ranges) {
-  const sorted = ranges.filter(r => r.count > 0 && r.endOffset > r.startOffset).map(r => [r.startOffset, r.endOffset]).sort((a,b)=>a[0]-b[0]);
-  const merged=[];
-  for (const range of sorted) { const last=merged[merged.length-1]; if(!last || range[0]>last[1]) merged.push(range); else last[1]=Math.max(last[1],range[1]); }
-  return merged;
-}
-function sumRanges(ranges){return ranges.reduce((s,[a,b])=>s+Math.max(0,b-a),0);}
+const { applyStatePath, recoverSiblingStatePath } = require('./utils/exhaustive-ui-helpers.cjs');
+const { summarizeScriptCoverage } = require('./utils/runtime-coverage-summary.cjs');
 
 async function traverseRouteStates(page, route) {
   const text = await gotoTab(page, route.tab, { settleMs: 500, maxText: 18000 });
   if (PERMISSION_GATE_RE.test(text)) return { gated:true, states:0 };
   let states=1;
+  let previous=[];
   for (const state of ROUTE_STATES[route.tab] || []) {
-    await gotoTab(page, route.tab, { settleMs: 250, force:true });
-    const res = await applyStatePath(page, state, { strict:false });
+    const traversal = await recoverSiblingStatePath(page, previous, state, route.tab);
+    const res = await applyStatePath(page, traversal, { strict:false });
     if (res.ok) states++;
+    previous=state;
+    console.log('[runtime-coverage] ' + route.tab + ' > ' + state.map(String).join(' > ') + ': ' + (res.ok ? 'visited' : 'missing'));
   }
   return { gated:false, states };
 }
@@ -42,32 +38,31 @@ test.describe('21 ultimate Chromium runtime execution coverage', () => {
 
     const sys=creds('SYSTEM_ADMIN');
     if (sys.email && sys.password) {
-      await page.context().clearCookies().catch(()=>{});
-      await page.goto('about:blank');
+      await gotoTab(page, 'godmode', { settleMs: 500, maxText: 12000 });
+      const logout = page.getByRole('button', { name: /open sign out|log out/i }).first();
+      await expect(logout, 'Owner session must expose a real app logout before switching runtime-coverage identities').toBeVisible({ timeout: 12000 });
+      await logout.click();
+      const emailBox = page.getByRole('textbox', { name: /^Email Address$/i }).first();
+      await expect(emailBox, 'Owner logout must reach the login surface before System Administrator coverage begins').toBeVisible({ timeout: 12000 });
+      await page.reload({ waitUntil: 'domcontentloaded', timeout: 45000 });
+      await expect(emailBox, 'A reload after logout must stay signed out instead of restoring the owner Firebase session').toBeVisible({ timeout: 12000 });
       await login(page, sys.email, sys.password);
       const god=ROUTE_SPECS.find(r=>r.tab==='godmode');
-      if (god) traversed.push({ route:'godmode', ...(await traverseRouteStates(page, god)) });
+      if (god) {
+        const godResult = await traverseRouteStates(page, god);
+        expect(godResult.gated, 'Verified System Administrator must actually enter godmode before runtime coverage is scored').toBe(false);
+        traversed.push({ route:'godmode', ...godResult });
+      }
     }
 
     const js=await page.coverage.stopJSCoverage();
     const css=await page.coverage.stopCSSCoverage();
     const base=new URL(process.env.APP_URL || process.env.CHAOS_BASE_URL || process.env.BASE_URL);
     const appScripts=js.filter(entry=>{try{const u=new URL(entry.url);return u.host===base.host && (/\/static\/js\//.test(u.pathname)||/\/assets\//.test(u.pathname)||/\/src\//.test(u.pathname));}catch(_){return false;}});
-    const perScript=appScripts.map(entry=>{
-      const ranges=mergeRanges(entry.functions.flatMap(fn=>fn.ranges||[]));
-      const totalBytes=Buffer.byteLength(entry.source||'','utf8');
-      const coveredBytes=sumRanges(ranges);
-      const namedFns=(entry.functions||[]).filter(fn=>fn.functionName && !/^\(anonymous\)$/.test(fn.functionName));
-      const coveredFns=namedFns.filter(fn=>(fn.ranges||[]).some(r=>r.count>0)).length;
-      const uncoveredFunctions=namedFns.filter(fn=>!(fn.ranges||[]).some(r=>r.count>0)).map(fn=>fn.functionName).slice(0,500);
-      return {url:entry.url,totalBytes,coveredBytes,bytePercent:totalBytes?Number((coveredBytes/totalBytes*100).toFixed(2)):0,totalFunctions:namedFns.length,coveredFunctions:coveredFns,functionPercent:namedFns.length?Number((coveredFns/namedFns.length*100).toFixed(2)):100,uncoveredFunctions};
-    });
-    const totals=perScript.reduce((a,r)=>({totalBytes:a.totalBytes+r.totalBytes,coveredBytes:a.coveredBytes+r.coveredBytes,totalFunctions:a.totalFunctions+r.totalFunctions,coveredFunctions:a.coveredFunctions+r.coveredFunctions}),{totalBytes:0,coveredBytes:0,totalFunctions:0,coveredFunctions:0});
-    totals.bytePercent=totals.totalBytes?Number((totals.coveredBytes/totals.totalBytes*100).toFixed(2)):0;
-    totals.functionPercent=totals.totalFunctions?Number((totals.coveredFunctions/totals.totalFunctions*100).toFixed(2)):100;
+    const { perScript, totals, aggregation } = summarizeScriptCoverage(appScripts);
     const byteThreshold=Number(process.env.CHAOS_MIN_RUNTIME_JS_COVERAGE || 90);
     const fnThreshold=Number(process.env.CHAOS_MIN_RUNTIME_FUNCTION_COVERAGE || 90);
-    await attachJson(testInfo,'21-ultimate-runtime-coverage.json',{byteThreshold,fnThreshold,totals,traversed,perScript:perScript.sort((a,b)=>a.functionPercent-b.functionPercent),cssFiles:css.map(x=>x.url)});
+    await attachJson(testInfo,'21-ultimate-runtime-coverage.json',{byteThreshold,fnThreshold,totals,aggregation,traversed,perScript:perScript.sort((a,b)=>a.functionPercent-b.functionPercent),cssFiles:css.map(x=>x.url)});
     expect(appScripts.length,'Coverage must capture real app scripts').toBeGreaterThan(0);
     expect(totals.bytePercent,`Runtime application JavaScript byte coverage must be >= ${byteThreshold}%`).toBeGreaterThanOrEqual(byteThreshold);
     // Named-function coverage remains diagnostic. Many mutation/error callbacks are intentionally not invoked by this non-destructive crawl.

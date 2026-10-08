@@ -97,7 +97,7 @@ function collectFixture({ results = rows(), staleSource = false, preflightFailed
   const write = (name, value) => fs.writeFileSync(path.join(runDir, name), JSON.stringify(value));
   const common = { ok: true, runId };
   try {
-    write('runner-state.json', { ...common, mode: 'full', playwrightStarted: true, dependencyInstallAttempted: true, dependencyInstallPassed: true,
+    write('runner-state.json', { ...common, mode: 'full', playwrightStarted: true, playwrightCompleted: true, finalExitCode: 0, dependencyInstallAttempted: true, dependencyInstallPassed: true,
       rolePreflightStarted: true, rolePreflightPassed: true, qaSeedAttempted: true, qaSeedVerified: true, cleanupAttempted: true, cleanupCompleted: true, currentPhase: 'report-collection' });
     write('environment-preflight.json', { ...common, expectedVersion: version, sourceVersion: version, deployedVersion: version,
       ...(preflightFailed ? { ok: false, errors: ['Fixture environment preflight failed.'] } : {}) });

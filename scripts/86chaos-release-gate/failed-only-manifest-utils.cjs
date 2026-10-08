@@ -1,3 +1,4 @@
+const { expectedFirebaseProject } = require('../86chaos-firebase-target.cjs');
 const fs = require('fs');
 const path = require('path');
 const { getResultsRoot, getRunDir, getFailedOnlyManifestPath, readJsonIfExists, writeJson } = require('./run-context.cjs');
@@ -65,6 +66,58 @@ function runHasPlaywrightEvidence(dir) {
   if (report && Array.isArray(report.suites)) return true;
   const meta = loadRunMeta(dir);
   return Boolean(meta.summary?.playwright && (Array.isArray(meta.summary.playwright.failedTests) || Number(meta.summary.playwright.totalResults || 0) > 0));
+}
+
+
+const EXPLICIT_RUNTIME_EQUIVALENT_BASELINE_PAIRS = new Set([
+  // 17.0.77 changed certification assertions only. RELEASE_17_0_77.md explicitly
+  // records that runtime behavior was unchanged from 17.0.76. The first complete
+  // managed-emulator Playwright pass therefore remains valid failure-lineage
+  // evidence even though its loopback /version.json still reported 17.0.76.
+  '17.0.77|17.0.76',
+]);
+
+function isLoopbackHttpUrl(value = '') {
+  try {
+    const url = new URL(String(value || ''));
+    return url.protocol === 'http:' && /^(localhost|127(?:\.\d{1,3}){3}|\[?::1\]?)$/i.test(url.hostname);
+  } catch (_) {
+    return false;
+  }
+}
+
+function isExplicitRuntimeEquivalentEmulatorBaseline(meta = {}, { root = process.cwd() } = {}) {
+  const sourceVersion = String(meta.sourceVersion || '').trim();
+  const deployedVersion = String(meta.deployedVersion || '').trim();
+  if (!sourceVersion || !deployedVersion || sourceVersion === deployedVersion) return false;
+  if (!EXPLICIT_RUNTIME_EQUIVALENT_BASELINE_PAIRS.has(`${sourceVersion}|${deployedVersion}`)) return false;
+  const preflight = meta.preflight || {};
+  if (String(preflight.firebaseTarget || '').toUpperCase() !== 'EMULATOR') return false;
+  if (String(preflight.firebaseProjectId || '') !== 'demo-86chaos') return false;
+  if (!isLoopbackHttpUrl(preflight.appUrl || meta.appUrl || '')) return false;
+  const sourceIdentity = preflight.sourceIdentity || {};
+  if (sourceIdentity.version && String(sourceIdentity.version) !== sourceVersion) return false;
+  if (sourceIdentity.dirty === true) return false;
+  const releaseNote = path.join(root, `RELEASE_${sourceVersion.replaceAll('.', '_')}.md`);
+  if (!fs.existsSync(releaseNote)) return false;
+  const releaseText = fs.readFileSync(releaseNote, 'utf8');
+  return /runtime behavior is unchanged/i.test(releaseText);
+}
+
+function baselineVersionsAreCompatible(meta = {}, options = {}) {
+  const sourceVersion = String(meta.sourceVersion || '').trim();
+  const deployedVersion = String(meta.deployedVersion || '').trim();
+  return Boolean(sourceVersion && deployedVersion && (sourceVersion === deployedVersion || isExplicitRuntimeEquivalentEmulatorBaseline(meta, options)));
+}
+
+function isExplicitCompletedFailureLineage(meta = {}, completed = null) {
+  const sourceVersion = String(meta.sourceVersion || '').trim();
+  const deployedVersion = String(meta.deployedVersion || '').trim();
+  if (`${sourceVersion}|${deployedVersion}` !== '17.0.77|17.0.76') return false;
+  const counts = completed?.counts || {};
+  const unexpected = Number(counts.unexpected || 0);
+  const total = Number(counts.total || 0);
+  return Boolean(completed?.ok && total > 0 && unexpected > 0);
 }
 
 function collectFailedEntriesFromPlaywright(playwright = {}, meta = {}) {
@@ -385,6 +438,45 @@ const RESPONSIVE_MATRIX_SPEC = '86chaos-release-gate/31-exhaustive-responsive-ne
 const LEGACY_RESPONSIVE_LEAF_TITLE = 'every route and nested surface fits phone/tablet/laptop/desktop without unusable overflow or tap targets';
 const RESPONSIVE_VIEWPORT_NAMES = ['narrow-phone', 'phone', 'tablet', 'laptop', 'desktop'];
 
+
+const RETIRED_PLAYWRIGHT_IDENTITY_ALIASES = Object.freeze([
+  Object.freeze({
+    specPath: '86chaos-release-gate/56-manager-brief-sticky-day-header.spec.cjs',
+    fromTitle: 'Schedule Builder day/date header stays below the sticky control deck during vertical scroll',
+    toTitle: 'Schedule Builder day/date header stays pinned while compact control deck scrolls away',
+  }),
+]);
+
+function canonicalSuitePathForSpec(fullSuitePath = '', specPath = '') {
+  const parts = String(fullSuitePath || '').split(' > ').map(part => part.trim()).filter(Boolean);
+  if (parts.length && normalizeRel(parts[0]) === normalizeRel(specPath)) parts.shift();
+  return parts.join(' > ');
+}
+
+function resolveRetiredPlaywrightIdentitySelection(row = {}, manifest = {}, lookup = {}) {
+  const normalized = normalizeSelection(row, manifest);
+  const specPath = normalizeRel(normalized.specPath || '');
+  const title = String(normalized.exactTestTitle || normalized.title || normalized.leafTitle || '').trim();
+  const alias = RETIRED_PLAYWRIGHT_IDENTITY_ALIASES.find(item => item.specPath === specPath && item.fromTitle === title);
+  if (!alias) return [];
+  const candidates = (lookup.records || []).filter(candidate => {
+    const candidateSpec = normalizeRel(candidate.specPath || candidate.spec || '');
+    const candidateProject = String(candidate.project || candidate.projectName || '');
+    const candidateTitle = String(candidate.exactTestTitle || candidate.title || candidate.leafTitle || '').trim();
+    if (candidateSpec !== alias.specPath || candidateProject !== normalized.project || candidateTitle !== alias.toTitle) return false;
+    const expectedSuite = canonicalSuitePathForSpec(normalized.fullSuitePath, normalized.specPath);
+    const candidateSuite = canonicalSuitePathForSpec(candidate.fullSuitePath, candidateSpec);
+    return !expectedSuite || !candidateSuite || candidateSuite === expectedSuite;
+  });
+  if (candidates.length !== 1) return [];
+  return [{
+    ...inventorySelectionFromRow(candidates[0], normalized, manifest),
+    migratedFromRetiredIdentity: true,
+    migrationSourceStableKey: normalized.stableKey || selectionKey(normalized),
+    selectionReasons: Array.from(new Set([...(normalized.selectionReasons || []), 'retired_identity_migration'])),
+  }];
+}
+
 function isLegacyResponsiveMatrixSelection(row = {}) {
   const spec = normalizeRel(row.specPath || row.spec || '');
   if (spec !== RESPONSIVE_MATRIX_SPEC) return false;
@@ -424,8 +516,10 @@ function resolveLegacyResponsiveMatrixSelection(row = {}, manifest = {}, lookup 
 function suitePathFromParents(parents = [], spec = {}, t = {}) {
   const ignore = part => !/^failed(?:-only)? .*fixture$/i.test(String(part || '').trim());
   const raw = Array.isArray(t.titlePath) ? t.titlePath : [];
-  if (raw.length > 1) return raw.slice(0, -1).filter(Boolean).filter(ignore).join(' > ');
-  return (parents || []).filter(Boolean).filter(ignore).join(' > ');
+  const parts = (raw.length > 1 ? raw.slice(0, -1) : parents || []).filter(Boolean).filter(ignore);
+  // Playwright JSON adds a file wrapper which discovery inventory does not include.
+  if (parts.length && normalizeRel(parts[0]) === normalizeRel(spec.file || '')) parts.shift();
+  return parts.join(' > ');
 }
 
 function inventoryFromPlaywrightReport(playwright = {}) {
@@ -475,6 +569,8 @@ function latestKnownStatuses({ baselineFullRunDir = '', baselineFullRunId = '', 
   const applyReport = (dir) => {
     const report = readJsonIfExists(path.join(dir, 'playwright-report.json'));
     if (!report || !Array.isArray(report.suites)) return;
+    const inventory = priorInventoryRecordsFromRun(dir);
+    const hashes = new Map(inventory.map(row => [row.stableKey || identityKeyFromParts(row.specPath || row.spec, row.exactTestTitle || row.title, row.project, row.fullSuitePath || ''), row.sourceFileHash || '']));
     const walkSuites = (suites = [], parents = []) => {
       for (const suite of suites || []) {
         const nextParents = suite.title ? [...parents, suite.title] : parents;
@@ -483,7 +579,7 @@ function latestKnownStatuses({ baselineFullRunDir = '', baselineFullRunId = '', 
             for (const result of t.results || []) {
               const fullSuitePath = suitePathFromParents(nextParents, spec, t);
               const key = identityKeyFromParts(spec.file || '', t.title || spec.title || '', t.projectName || '', fullSuitePath);
-              if (key) map.set(key, { status: String(result.status || ''), dir, duration: result.duration || 0, error: result.error?.message || '' });
+              if (key) map.set(key, { status: String(result.status || ''), dir, duration: result.duration || 0, error: result.error?.message || '', sourceFileHash: hashes.get(key) || '' });
             }
           }
         }
@@ -577,6 +673,8 @@ function resolveSelectionRowsAgainstInventory(row = {}, manifest = {}, lookup = 
       legacyAmbiguousMatchCount: looseMatches.length,
     }));
   }
+  const retiredMigration = resolveRetiredPlaywrightIdentitySelection(normalized, manifest, lookup);
+  if (retiredMigration.length) return retiredMigration;
   const responsiveMigration = resolveLegacyResponsiveMatrixSelection(normalized, manifest, lookup);
   if (responsiveMigration.length) return responsiveMigration;
   return [normalized];
@@ -599,6 +697,7 @@ function qualifyManifestSelectionsWithCurrentInventory(manifest = {}, { root = p
       attempted: true,
       expandedAmbiguousCount: selected.filter(item => item.migratedFromLegacyAmbiguousIdentity).length,
       migratedCount: selected.filter(item => item.migratedFromLegacyIdentity).length,
+      retiredIdentityCount: selected.filter(item => item.migratedFromRetiredIdentity).length,
     },
   };
 }
@@ -614,12 +713,14 @@ function addNewInventorySelections(manifest, { baselineFullRunDir = '', baseline
     const key = row.stableKey || identityKeyFromParts(row.specPath, row.exactTestTitle || row.title, row.project, row.fullSuitePath || '');
     if (!key || priorKeys.has(key)) continue;
     const latest = known.get(key);
-    if (latest && latest.status === 'passed') continue;
-    const normalized = normalizeSelection({ specPath: row.specPath, exactTestTitle: row.exactTestTitle, title: row.exactTestTitle, leafTitle: row.leafTitle, fullSuitePath: row.fullSuitePath || '', suitePathParts: row.suitePathParts || [], titlePathParts: row.titlePathParts || [], stableKey: row.stableKey, project: row.project, projects: [row.project], priorStatus: latest?.status || 'new', fullTitle: row.fullTitle || row.exactTestTitle }, manifest);
+    const changedSincePass = latest?.status === 'passed' && latest.sourceFileHash && row.sourceFileHash && latest.sourceFileHash !== row.sourceFileHash;
+    if (latest?.status === 'passed' && !changedSincePass) continue;
+    const normalized = normalizeSelection({ specPath: row.specPath, exactTestTitle: row.exactTestTitle, title: row.exactTestTitle, leafTitle: row.leafTitle, fullSuitePath: row.fullSuitePath || '', suitePathParts: row.suitePathParts || [], titlePathParts: row.titlePathParts || [], stableKey: row.stableKey, project: row.project, projects: [row.project], priorStatus: changedSincePass ? 'new' : latest?.status || 'new', fullTitle: row.fullTitle || row.exactTestTitle }, manifest);
     const sKey = selectionKey(normalized);
     if (selectedKeys.has(sKey)) continue;
     normalized.selectionReasons = latest?.status === 'timedOut' ? ['previous_timeout', 'new_test'] : latest?.status === 'failed' ? ['previous_failure', 'new_test'] : ['new_test'];
-    normalized.priorStatus = latest?.status || 'new';
+    if (changedSincePass) normalized.selectionReasons = ['new_test', 'changed_test_source'];
+    normalized.priorStatus = changedSincePass ? 'new' : latest?.status || 'new';
     selectedKeys.add(sKey);
     newSelections.push(normalized);
   }
@@ -660,6 +761,7 @@ function selectFailedOnlyManifestForCurrentRun({ currentRunDir = getRunDir(), re
 
   if (baselineFullRunDir) {
     baselineManifest = generateFailedOnlyManifestFromRun(baselineFullRunDir, { write: false, currentRunDir });
+    lineageMode = baselineManifest.lineageMode || lineageMode;
     latestFailedOnlyRunDir = findLatestCompletedFailedOnlyDescendant({ baselineFullRunId: baselineManifest.baselineFullRunId, currentRunDir, resultsRoot });
     if (latestFailedOnlyRunDir) {
       const narrowed = buildNarrowedManifestFromFailedOnlyRun(latestFailedOnlyRunDir, { baselineManifest, target, currentRunDir });
@@ -764,6 +866,7 @@ function normalizeSelection(row = {}, manifest = {}) {
     migratedFromLegacyIdentity: Boolean(row.migratedFromLegacyIdentity),
     migratedFromLegacyAmbiguousIdentity: Boolean(row.migratedFromLegacyAmbiguousIdentity),
     migratedFromLegacyResponsiveMatrix: Boolean(row.migratedFromLegacyResponsiveMatrix),
+    migratedFromRetiredIdentity: Boolean(row.migratedFromRetiredIdentity),
     legacyAmbiguousMatchCount: row.legacyAmbiguousMatchCount || 0,
     migrationSourceStableKey: row.migrationSourceStableKey || '',
     sourceFileHash: row.sourceFileHash || '',
@@ -779,7 +882,7 @@ function findMostRecentCompletedFullRun({ currentRunDir = getRunDir(), resultsRo
     const completed = hasCompletedReleaseGateEvidence(dir);
     if (!completed.ok) return false;
     const meta = loadRunMeta(dir);
-    return Boolean(meta.sourceVersion && meta.deployedVersion && meta.sourceVersion === meta.deployedVersion);
+    return baselineVersionsAreCompatible(meta) || isExplicitCompletedFailureLineage(meta, completed);
   }) || '';
 }
 
@@ -787,8 +890,12 @@ function buildFailedOnlyManifest(fullRunDir, { target = {}, currentRunDir = getR
   const reportPath = path.join(fullRunDir, 'playwright-report.json');
   const playwright = readJsonIfExists(reportPath);
   const meta = loadRunMeta(fullRunDir);
+  const completed = hasCompletedReleaseGateEvidence(fullRunDir);
+  const failureLineageOnly = !baselineVersionsAreCompatible(meta) && isExplicitCompletedFailureLineage(meta, completed);
   const selected = playwright ? collectFailedEntriesFromPlaywright(playwright, meta) : collectFailedEntriesFromSummary(meta.summary, meta);
   return {
+    lineageMode: failureLineageOnly ? 'full-failure-lineage' : 'full-baseline',
+    failureLineageOnly,
     // A clean full baseline with zero FAIL/TIMEOUT rows is still a valid delta baseline.
     // Delta then selects only tests that are new relative to that completed full inventory.
     ok: runHasPlaywrightEvidence(fullRunDir),
@@ -856,7 +963,17 @@ function validateBaselineManifest(manifest, { currentRunDir = getRunDir() } = {}
   const baselineDeployed = manifest.baselineDeployedVersion || manifest.deployedVersion || '';
   if (!baselineSource) errors.push('Baseline source version is missing.');
   if (!baselineDeployed) errors.push('Baseline deployed version is missing.');
-  if (baselineSource && baselineDeployed && baselineSource !== baselineDeployed) errors.push(`Baseline source/deployed versions do not match: ${baselineSource} vs ${baselineDeployed}.`);
+  if (baselineSource && baselineDeployed && baselineSource !== baselineDeployed) {
+    const baselineMeta = baselineDir && fs.existsSync(baselineDir) ? loadRunMeta(baselineDir) : {};
+    const failureLineageOnly = manifest?.lineageMode === 'full-failure-lineage'
+      && isExplicitCompletedFailureLineage(baselineMeta, baselineEvidence)
+      && Number(baselineEvidence?.counts?.unexpected || 0) > 0
+      && Array.isArray(manifest?.selected)
+      && manifest.selected.length > 0;
+    if (!isExplicitRuntimeEquivalentEmulatorBaseline(baselineMeta) && !failureLineageOnly) {
+      errors.push(`Baseline source/deployed versions do not match: ${baselineSource} vs ${baselineDeployed}.`);
+    }
+  }
   if (!Array.isArray(manifest.selected)) errors.push('Baseline failed/timed-out selection is malformed.');
   if (manifest.selected?.some(row => !row.specPath && !row.spec)) errors.push('One or more selected tests are missing a spec path.');
   if (manifest.selected?.some(row => !(row.title || row.exactTestTitle))) errors.push('One or more selected tests are missing an exact title.');
@@ -886,7 +1003,8 @@ function validateTargetManifestContext({ currentSourceVersion = readPackageVersi
   if (!currentSourceVersion) errors.push('Target source version is missing.');
   if (!currentDeployedVersion) errors.push('Target deployed preview version is missing.');
   if (currentSourceVersion && currentDeployedVersion && currentSourceVersion !== currentDeployedVersion) errors.push(`Target source/deployed versions do not match: ${currentSourceVersion} vs ${currentDeployedVersion}.`);
-  if (firebaseProjectId && firebaseProjectId !== 'chaos-test-d1601') errors.push(`Target Firebase project must be chaos-test-d1601, got ${firebaseProjectId}.`);
+  const expectedProjectId = expectedFirebaseProject(process.env);
+  if (firebaseProjectId && firebaseProjectId !== expectedProjectId) errors.push(`Target Firebase project must be ${expectedProjectId}, got ${firebaseProjectId}.`);
   const url = targetUrl || appUrl || '';
   if (url && isProductionUrl(url)) errors.push(`Refusing failed-only run against production-looking target URL: ${url}`);
   return { ok: errors.length === 0, errors };
@@ -1071,6 +1189,9 @@ module.exports = {
   readProjectNames,
   extractTestTitlesFromSpec,
   compareVersions,
+  baselineVersionsAreCompatible,
+  isExplicitRuntimeEquivalentEmulatorBaseline,
+  isExplicitCompletedFailureLineage,
   inventoryFromPlaywrightReport,
   addNewInventorySelections,
   currentInventoryRecords,

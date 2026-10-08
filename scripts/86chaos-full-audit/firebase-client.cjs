@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const { env, boolEnv } = require('./env-loader.cjs');
+const { getFirebaseTarget, applyFirebaseEmulatorEnv } = require('../86chaos-firebase-target.cjs');
 
 function extractObjectLiteral(text, exportName) {
   const idx = text.indexOf(`export const ${exportName}`);
@@ -97,6 +98,16 @@ function resolveExpression(expr, constants) {
 }
 
 function readFirebaseConfig() {
+  const target = getFirebaseTarget(process.env);
+  if (target.emulator) return {
+    apiKey: 'demo-api-key',
+    authDomain: `${target.projectId}.firebaseapp.com`,
+    projectId: target.projectId,
+    storageBucket: `${target.projectId}.appspot.com`,
+    messagingSenderId: '000000000000',
+    appId: '1:000000000000:web:86chaosemulator',
+    databaseURL: `https://${target.projectId}-default-rtdb.firebaseio.com`,
+  };
   const explicit = {
     apiKey: env('REACT_APP_FIREBASE_API_KEY', 'REACT_APP_TEST_FIREBASE_API_KEY'),
     authDomain: env('REACT_APP_FIREBASE_AUTH_DOMAIN', 'REACT_APP_TEST_FIREBASE_AUTH_DOMAIN'),
@@ -128,14 +139,30 @@ function readFirebaseConfig() {
 }
 
 async function initFirebase() {
+  const target = applyFirebaseEmulatorEnv(process.env);
   const { initializeApp, getApps } = await import('firebase/app');
-  const { getAuth, signInWithEmailAndPassword } = await import('firebase/auth');
+  const authSdk = await import('firebase/auth');
   const firestore = await import('firebase/firestore');
+  const storageSdk = await import('firebase/storage');
+  const databaseSdk = await import('firebase/database');
+  const functionsSdk = await import('firebase/functions');
   const config = readFirebaseConfig();
-  const app = getApps().length ? getApps()[0] : initializeApp(config);
-  const auth = getAuth(app);
+  const existing = getApps()[0] || null;
+  if (existing && existing.options?.projectId !== config.projectId) throw new Error(`Firebase app already targets ${existing.options?.projectId}; refusing target switch to ${config.projectId}.`);
+  const app = existing || initializeApp(config);
+  const auth = authSdk.getAuth(app);
   const db = firestore.getFirestore(app);
-  return { app, auth, db, config, firestore, signInWithEmailAndPassword };
+  const storage = storageSdk.getStorage(app);
+  const database = databaseSdk.getDatabase(app);
+  const functions = functionsSdk.getFunctions(app, process.env.REACT_APP_FIREBASE_FUNCTIONS_REGION || 'us-central1');
+  if (target.emulator) {
+    firestore.connectFirestoreEmulator(db, target.host, target.ports.firestore);
+    authSdk.connectAuthEmulator(auth, `http://${target.host}:${target.ports.auth}`, { disableWarnings: true });
+    functionsSdk.connectFunctionsEmulator(functions, target.host, target.ports.functions);
+    databaseSdk.connectDatabaseEmulator(database, target.host, target.ports.database);
+    storageSdk.connectStorageEmulator(storage, target.host, target.ports.storage);
+  }
+  return { app, auth, db, storage, database, functions, config, target, firestore, signInWithEmailAndPassword: authSdk.signInWithEmailAndPassword };
 }
 
 async function signInOwner(firebase) {

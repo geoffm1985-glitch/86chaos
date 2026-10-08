@@ -1,11 +1,18 @@
 const { test, expect } = require('@playwright/test');
 const { attachJson } = require('../86chaos-full-audit/utils/audit-helpers.cjs');
+const { isManagedYardmasterEmulator } = require('./utils/yardmaster-runtime-target.cjs');
+const fs = require('node:fs');
 
 test.describe('25 Android PWA and store-wrapper installability gate', () => {
   test('manifest, icons, viewport, HTTPS, and service-worker foundations are valid', async ({ page, request }, testInfo) => {
     const base = process.env.APP_URL || process.env.CHAOS_BASE_URL || process.env.BASE_URL;
     const root = new URL('/', base);
-    expect(root.protocol, 'A release candidate must use HTTPS except an explicitly non-release localhost diagnostic').toBe('https:');
+    const managedEmulator = isManagedYardmasterEmulator(process.env, base);
+    if (managedEmulator) {
+      expect(root.protocol, 'The managed emulator is an explicitly non-release loopback diagnostic').toBe('http:');
+    } else {
+      expect(root.protocol, 'A release candidate must use HTTPS except an explicitly non-release localhost diagnostic').toBe('https:');
+    }
 
     await page.goto(root.toString(), { waitUntil: 'domcontentloaded', timeout: 60000 });
     const shell = await page.evaluate(() => ({
@@ -41,18 +48,33 @@ test.describe('25 Android PWA and store-wrapper installability gate', () => {
       iconResults.push({ src: icon.src, sizes: icon.sizes, type: icon.type, status: response.status(), contentType: response.headers()['content-type'] || '' });
     }
 
-    const registration = await page.evaluate(async () => {
-      if (!('serviceWorker' in navigator)) return { supported: false };
-      const ready = await Promise.race([
-        navigator.serviceWorker.ready.then(reg => ({ supported: true, scope: reg.scope, active: Boolean(reg.active) })),
-        new Promise(resolve => setTimeout(() => resolve({ supported: true, timeout: true }), 10000)),
-      ]);
-      return ready;
-    });
+    const registration = managedEmulator
+      ? await page.evaluate(async () => {
+          if (!('serviceWorker' in navigator)) return { supported: false, registrations: 0 };
+          const registrations = await navigator.serviceWorker.getRegistrations();
+          return { supported: true, registrations: registrations.length, active: registrations.some(reg => Boolean(reg.active)) };
+        })
+      : await page.evaluate(async () => {
+          if (!('serviceWorker' in navigator)) return { supported: false };
+          const ready = await Promise.race([
+            navigator.serviceWorker.ready.then(reg => ({ supported: true, scope: reg.scope, active: Boolean(reg.active) })),
+            new Promise(resolve => setTimeout(() => resolve({ supported: true, timeout: true }), 10000)),
+          ]);
+          return ready;
+        });
 
-    await attachJson(testInfo, '25-pwa-installability.json', { shell, manifest, checks, iconResults, registration });
+    const emulatorIsolation = managedEmulator ? {
+      liveOnlyRegistration: /firebaseRuntimeTarget === ['"]LIVE['"][\s\S]*navigator\.serviceWorker\.register/.test(fs.readFileSync('src/index.js', 'utf8')),
+      workerBlockedByLocalCsp: /worker-src 'none'/.test(fs.readFileSync('scripts/yardmaster-readiness.cjs', 'utf8')),
+    } : null;
+    await attachJson(testInfo, '25-pwa-installability.json', { shell, manifest, checks, iconResults, registration, managedEmulator, emulatorIsolation });
     expect(Object.entries(checks).filter(([, ok]) => !ok).map(([name]) => name), 'Manifest is missing required installability fields').toEqual([]);
     expect(iconResults.filter(row => row.status !== 200), 'Every declared manifest icon must load').toEqual([]);
-    expect(registration.active, 'The deployed release candidate must activate a service worker').toBe(true);
+    if (managedEmulator) {
+      expect(registration.active, 'Managed emulator must not activate the production messaging service worker').toBe(false);
+      expect(emulatorIsolation, 'Managed emulator must prove its intentional worker isolation contract').toEqual({ liveOnlyRegistration: true, workerBlockedByLocalCsp: true });
+    } else {
+      expect(registration.active, 'The deployed release candidate must activate a service worker').toBe(true);
+    }
   });
 });

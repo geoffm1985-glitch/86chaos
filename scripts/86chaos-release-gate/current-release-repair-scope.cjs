@@ -1,7 +1,7 @@
 'use strict';
 
-const CURRENT_RELEASE_VERSION = '17.0.48';
-const CURRENT_RELEASE_CARRY_FORWARD_NOTE = '17.0.48 is an emergency production-baseline hotfix built from 17.0.33 that repairs Schedule Publish Firestore candidate-read authorization without carrying forward newer testing-branch feature work.';
+const CURRENT_RELEASE_VERSION = require('../../package.json').version;
+const CURRENT_RELEASE_CARRY_FORWARD_NOTE = `${CURRENT_RELEASE_VERSION} preserves the complete protected feature line while advancing the current release-gate scope.`;
 const CURRENT_RELEASE_REPAIR_SCOPE = [
   {
     specPath: '86chaos-new-implementations/08-phase1-spanish-interface.spec.cjs',
@@ -24,7 +24,7 @@ const CURRENT_RELEASE_REPAIR_SCOPE = [
   leafTitle: row.exactTestTitle,
   project,
   projects: [project],
-})));
+}))).concat(require('./runtime-crawl-repair-scope.json'));
 
 function normalizeRel(value = '') {
   return String(value || '').replace(/\\/g, '/').replace(/^\.\//, '').replace(/^tests\//, '');

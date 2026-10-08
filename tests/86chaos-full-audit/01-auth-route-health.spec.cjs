@@ -7,7 +7,7 @@ test.describe('01 auth and every-route health', () => {
     const account = ownerLikeCreds();
     requireCreds(account, 'owner-like account');
     const problems = [];
-    watchForProblems(page, problems);
+    const watcher = watchForProblems(page, problems, { recoverFirestoreListen: true });
     const loginText = await login(page, account.email, account.password);
     await expectVersion(page);
     expect(loginText).not.toMatch(/Application error|Unhandled Runtime Error|Invalid Date|(?:^|[^A-Za-z])NaN(?:[^A-Za-z]|$)/i);
@@ -20,7 +20,8 @@ test.describe('01 auth and every-route health', () => {
       await expectNoFatal(page, `${route.label} route`);
       if (!route.optional && !gated) expect(text, `${route.label} should show expected route content`).toMatch(route.expect);
     }
-    await attachJson(testInfo, '01-route-results.json', { account: account.label, results, problems: summarizeProblems(problems) });
+    await watcher.waitForTransportRecovery();
+    await attachJson(testInfo, '01-route-results.json', { account: account.label, results, problems: summarizeProblems(problems), recoveredTransports: watcher.recoveredTransports });
     expect(problems, 'Routes should not generate browser page errors or HTTP 5xx').toEqual([]);
   });
 

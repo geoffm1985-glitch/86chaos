@@ -5,7 +5,7 @@ async function openScheduleBuilder(page) {
   await gotoTab(page, 'schedule', { force: true, settleMs: 0, timeout: 15000, maxText: 60000 });
   const dialogState = await dismissBlockingDialogs(page, { maxPasses: 4 });
   if (!dialogState.ok) throw new Error(`Schedule Builder remained blocked by a dialog: ${dialogState.failure}`);
-  const table = page.locator('.schedule-builder-desktop-table').first();
+  const table = page.getByTestId('schedule-builder-body-scroll').locator('.schedule-builder-desktop-table').first();
   if (await table.isVisible().catch(() => false)) return table;
   const builder = page.getByRole('button', { name: /^Schedule Builder$/i }).first();
   await expect(builder, 'Schedule Builder control should remain discoverable').toBeVisible({ timeout: 15000 });

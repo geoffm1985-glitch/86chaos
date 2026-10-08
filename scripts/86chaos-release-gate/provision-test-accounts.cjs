@@ -8,6 +8,7 @@ const { loadEnv } = require('../86chaos-full-audit/env-loader.cjs');
 const { assertMutationSafety } = require('./mutation-safety.cjs');
 const { EXPECTED_FIREBASE_PROJECT, ROLE_DEFINITIONS, readConfiguredAccounts, validateLocalRoleEnv, analyzeRoleRows, verifyRoleAccounts } = require('./verify-role-accounts.cjs');
 const { roleForKey } = require('./qa-role-definitions.cjs');
+const { applyFirebaseEmulatorEnv } = require('../86chaos-firebase-target.cjs');
 
 const PROTECTED_ROOT_EMAILS = new Set(['geoffm1985@gmail.com']);
 const SAFE_TEMP_EMAIL_RE = /(^86chaos[.+_-]?qa|[.+_-]86chaos[.+_-]?qa|release[.+_-]?gate|qa[.+_-]?release)/i;
@@ -45,6 +46,7 @@ function profileForAccount(account, uid, runId) {
     systemAdministrator: role.expectedPlatformAuthority,
     firestoreSuperAdmin: role.expectedSuperAdmin,
     firestoreSystemAdministrator: role.expectedPlatformAuthority,
+    preferences: { language: 'en' },
     qaOwned: true,
     testingOnly: true,
     qaRunId: runId,
@@ -257,6 +259,7 @@ async function writeProfile(db, account, uid, runId) {
 async function provisionTestAccounts(options = {}) {
   const root = options.root || process.cwd();
   if (options.loadEnvironment !== false) loadEnv(root);
+  applyFirebaseEmulatorEnv(process.env);
   const { runId, runDir } = ensureRunDir();
   const out = options.reportPath || getRunFile('test-account-provisioning.json', runId);
   const enabled = options.enabled !== undefined ? options.enabled : !bool(process.env.CHAOS_QA_DISABLE_AUTO_PROVISION_TEST_USERS);

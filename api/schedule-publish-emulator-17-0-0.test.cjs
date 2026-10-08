@@ -2,7 +2,7 @@
 
 const test=require('node:test');
 const assert=require('node:assert/strict');
-const admin=require('firebase-admin');
+const admin=require('./_firebase-admin-compat');
 const core=require('./_schedule-publish-core.cjs');
 const service=require('./_schedule-publish-service.cjs');
 

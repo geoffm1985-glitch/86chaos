@@ -9,6 +9,7 @@ const {
   readConfiguredAccounts,
   buildFirebaseAuthFetchOptions,
 } = require('./verify-role-accounts.cjs');
+const { firebaseAuthRestUrl, applyFirebaseEmulatorEnv } = require('../86chaos-firebase-target.cjs');
 
 const PRODUCTION_FIREBASE_PROJECT = 'cheers-34b8d';
 const SERVER_BOUNDARY_REPORT = 'server-firebase-boundary-preflight.json';
@@ -139,7 +140,7 @@ async function fetchDetailedJson(url, options = {}, fetchImpl = global.fetch) {
 }
 
 async function signInAccount(account, config, fetchImpl = global.fetch) {
-  const url = `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${encodeURIComponent(config.apiKey)}`;
+  const url = firebaseAuthRestUrl(config.apiKey, 'signInWithPassword', process.env);
   const { response, text, data } = await fetchDetailedJson(url, buildFirebaseAuthFetchOptions({
     method: 'POST',
     body: JSON.stringify({ email: account.email, password: account.password, returnSecureToken: true }),
@@ -164,6 +165,7 @@ function chooseProbeAccount(accounts = []) {
 async function runServerFirebaseBoundaryPreflight(options = {}) {
   const root = options.root || process.cwd();
   if (options.loadEnvironment !== false) loadEnv(root);
+  const firebaseTarget = applyFirebaseEmulatorEnv(process.env);
   const { runId, runDir } = ensureRunDir();
   const expectedProject = options.expectedProject || EXPECTED_FIREBASE_PROJECT;
   const fetchImpl = options.fetchImpl || global.fetch;
@@ -171,6 +173,28 @@ async function runServerFirebaseBoundaryPreflight(options = {}) {
   const appUrlValue = appUrl();
   let config = null;
   let report = null;
+
+  if (firebaseTarget.emulator) {
+    report = {
+      ok: true,
+      skipped: true,
+      liveVerificationRequired: true,
+      runId,
+      generatedAt: new Date().toISOString(),
+      phase: 'server-firebase-boundary-preflight-emulator',
+      expectedFirebaseProjectId: firebaseTarget.projectId,
+      clientFirebaseProjectId: firebaseTarget.projectId,
+      deployedServerFirebaseProjectId: '',
+      credentialSourceName: 'Firebase Emulator Suite',
+      beforeMutation: true,
+      testAccountProvisioningAttempted: false,
+      qaMutationAllowed: true,
+      errors: [],
+      note: 'Deployed Vercel Firebase Admin identity is cloud-only verification and is intentionally not simulated by the Firebase Emulator Suite.'
+    };
+    writeJson(out, report);
+    return { report, out };
+  }
 
   try {
     config = options.config || readFirebaseConfig();

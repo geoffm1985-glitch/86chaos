@@ -18,8 +18,10 @@ function timestampToDate(value) {
     const date = value.toDate();
     return date instanceof Date && Number.isFinite(date.getTime()) ? date : null;
   }
-  if (typeof value.seconds === 'number') {
-    const ms = value.seconds * 1000 + Math.floor((Number(value.nanoseconds || 0) || 0) / 1000000);
+  const seconds = typeof value.seconds === 'number' ? value.seconds : (typeof value._seconds === 'number' ? value._seconds : null);
+  if (seconds != null) {
+    const nanos = value.nanoseconds ?? value._nanoseconds ?? value.nanos ?? 0;
+    const ms = seconds * 1000 + Math.floor((Number(nanos) || 0) / 1000000);
     const date = new Date(ms);
     return Number.isFinite(date.getTime()) ? date : null;
   }
@@ -88,6 +90,27 @@ function normalizeAdminRecord(collection = 'records', id = '', data = {}, diagno
   return normalized;
 }
 
+
+function normalizeSystemAdminStatusRecord(collection = 'system', id = '', data = {}, diagnostics = []) {
+  const record = normalizeAdminRecord(collection, id, data, diagnostics);
+  for (const field of [
+    'status', 'result', 'restoreProjectId', 'sourceBackupPath', 'lastReviewedBy',
+    'platformStatus', 'backupStatus', 'version', 'lastPushResult', 'title', 'message',
+    'detail', 'type', 'restaurantName', 'restaurantId', 'workspaceId', 'email', 'name', 'role'
+  ]) {
+    if (Object.prototype.hasOwnProperty.call(record, field)) record[field] = adminSafeText(record[field], '');
+  }
+  return record;
+}
+
+function normalizeSystemAdminAlert(id = '', data = {}, diagnostics = []) {
+  return normalizeSystemAdminStatusRecord('restaurantAdminAlerts', id, data, diagnostics);
+}
+
+function normalizeSystemAdminUser(id = '', data = {}, diagnostics = []) {
+  return normalizeSystemAdminStatusRecord('superAdmins', id, data, diagnostics);
+}
+
 function normalizeCrashReport(id = '', data = {}, diagnostics = []) {
   const record = normalizeAdminRecord('crashReports', id, data, diagnostics);
   for (const field of ['errorName', 'errorMessage', 'message', 'route', 'activeTab', 'appVersion', 'deploymentId', 'browser', 'userAgent']) {
@@ -131,6 +154,9 @@ module.exports = {
   normalizeAuditLog,
   normalizeCrashReport,
   normalizeRestaurantRecord,
+  normalizeSystemAdminAlert,
+  normalizeSystemAdminStatusRecord,
+  normalizeSystemAdminUser,
   normalizeTierPriceMap,
   safeArray,
   safeDiagnostic,

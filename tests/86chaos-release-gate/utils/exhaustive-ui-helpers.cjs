@@ -3,6 +3,7 @@ const { expect } = require('@playwright/test');
 const {
   bodyText,
   attachJson,
+  visibleDialogSnapshot,
   dismissBlockingDialogs,
   neutralizeTestingPreviewOverlays,
   FATAL_TEXT_RE,
@@ -33,7 +34,7 @@ async function firstVisibleFromLocator(locator, { limit = 20, timeout = 500 } = 
   for (let i = 0; i < count; i += 1) {
     const candidate = locator.nth(i);
     if (await candidate.isVisible({ timeout }).catch(() => false)) {
-      await candidate.scrollIntoViewIfNeeded().catch(() => {});
+      await candidate.scrollIntoViewIfNeeded({ timeout: 1200 }).catch(() => {});
       return candidate;
     }
   }
@@ -127,7 +128,7 @@ async function findStateControl(page, label) {
   for (const index of indexes) {
     const candidate = page.locator(STATE_INTERACTIVE_SELECTOR).nth(index);
     if (await candidate.isVisible({ timeout: 350 }).catch(() => false)) {
-      await candidate.scrollIntoViewIfNeeded().catch(() => {});
+      await candidate.scrollIntoViewIfNeeded({ timeout: 1200 }).catch(() => {});
       return candidate;
     }
   }
@@ -216,6 +217,29 @@ async function stateLabelAlreadyVisible(page, label) {
 
 
 
+// These action/title pairs come from the shipped Schedule Builder and HR Modal
+// components. A new unrelated dialog is not evidence that a state click worked.
+const STATE_DIALOG_SURFACES = [
+  ['Event', /^(?:Add|Edit) Special Event$/i],
+  ['Edit Presets', /^Manage Custom Shifts$/i],
+  ['Copy Month', /^Auto-Populate Schedule$/i],
+  ['Publish Manual', /^Publish a Training Manual$/i],
+  ['Assign Checklist', /^Assign Onboarding Checklist$/i],
+  ['Add Certification', /^Add Certification$/i],
+  ['Add Confidential Note', /^Add Confidential Performance Note$/i],
+];
+
+function stateDialogTitlePattern(label) {
+  return STATE_DIALOG_SURFACES.find(([action]) => rx(label).test(action))?.[1] || null;
+}
+
+function newlyOpenedStateDialog(label, before = [], after = []) {
+  const expectedTitle = stateDialogTitlePattern(label);
+  if (!expectedTitle) return null;
+  const previousTitles = new Set(before.map(dialog => dialog.title));
+  return after.find(dialog => expectedTitle.test(dialog.title) && !previousTitles.has(dialog.title)) || null;
+}
+
 async function applyStatePath(page, path, { strict = true } = {}) {
   const steps = [];
   for (const label of path || []) {
@@ -228,18 +252,32 @@ async function applyStatePath(page, path, { strict = true } = {}) {
       if (strict) throw new Error(`Expected exhaustive sub-surface control not found: ${String(label)}`);
       return { ok: false, steps, missing: String(label) };
     }
-    await c.scrollIntoViewIfNeeded().catch(() => {});
-    await c.click({ timeout: 5000 }).catch(async (err) => {
+    const dialogTitlePattern = stateDialogTitlePattern(label);
+    const dialogsBeforeClick = dialogTitlePattern ? await visibleDialogSnapshot(page) : [];
+    let openedDialog = null;
+    try {
+      await c.click({ timeout: 5000 });
+    } catch (err) {
       const msg = String(err?.message || err);
-      if (!/intercepts pointer events|not stable|timeout/i.test(msg)) throw err;
-      await c.evaluate(el => el.click());
-    });
+      if (!/intercepts pointer events|not stable|timeout|detached/i.test(msg)) throw err;
+      // A completed click may replace its trigger with a selected tab or open
+      // its declared dialog before acknowledgement arrives. Prove that state
+      // before considering a retry of the old trigger.
+      openedDialog = dialogTitlePattern
+        ? newlyOpenedStateDialog(label, dialogsBeforeClick, await visibleDialogSnapshot(page))
+        : null;
+      if (!openedDialog && !await stateLabelAlreadyVisible(page, label)) {
+        const fresh = await waitForStateControl(page, label);
+        if (!fresh) throw new Error('State control disappeared before activation: ' + String(label), { cause: err });
+        await fresh.click({ timeout: 5000 });
+      }
+    }
     await settleReactFrames(page);
     await dismissBlockingDialogs(page, { maxPasses: 4 }).catch(() => null);
     await neutralizeTestingPreviewOverlays(page).catch(() => null);
     const after = await bodyText(page, 16000);
     if (FATAL_TEXT_RE.test(after) || BAD_VALUE_RE.test(after)) throw new Error(`State click ${String(label)} produced broken UI.`);
-    steps.push({ label: String(label), active: await stateLabelAlreadyVisible(page, label) });
+    steps.push({ label: String(label), active: Boolean(openedDialog) || await stateLabelAlreadyVisible(page, label), ...(openedDialog ? { openedDialogTitle: openedDialog.title } : {}) });
   }
   return { ok: true, steps };
 }
@@ -247,7 +285,7 @@ async function applyStatePath(page, path, { strict = true } = {}) {
 async function resetRouteRoot(page, route) {
   const target = String(route || 'today');
   const neutral = target === 'today' ? 'messages' : 'today';
-  await page.evaluate(async ({ neutralTab, targetTab }) => {
+  const routeReset = async () => page.evaluate(async ({ neutralTab, targetTab }) => {
     const navigate = async tab => {
       const url = new URL(window.location.href);
       url.searchParams.set('tab', tab);
@@ -259,6 +297,14 @@ async function resetRouteRoot(page, route) {
     await navigate(neutralTab);
     await navigate(targetTab);
   }, { neutralTab: neutral, targetTab: target });
+  try {
+    await routeReset();
+  } catch (error) {
+    if (!/Execution context was destroyed|most likely because of a navigation/i.test(String(error?.message || error))) throw error;
+    await page.waitForLoadState('domcontentloaded', { timeout: 10000 }).catch(() => null);
+    await settleReactFrames(page).catch(() => null);
+    await routeReset();
+  }
   await dismissBlockingDialogs(page, { maxPasses: 2 }).catch(() => null);
   await neutralizeTestingPreviewOverlays(page).catch(() => null);
 }
@@ -279,17 +325,46 @@ async function visibleAncestorExitControl(page) {
   return null;
 }
 
+async function recoverExitedStateModal(page, nextLabel) {
+  const modal = page.locator('.chaos-modal-backdrop:visible, [role="dialog"]:visible').first();
+  if (!await modal.isVisible().catch(() => false)) return false;
+  const raw = String(nextLabel || '');
+  const escaped = raw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const name = nextLabel instanceof RegExp ? nextLabel : new RegExp('^(?:Open\\s+)?' + escaped + '$', 'i');
+  for (const role of ['tab', 'button', 'link', 'menuitem']) {
+    if (await modal.getByRole(role, { name }).first().isVisible().catch(() => false)) return true;
+  }
+  // Leave a completed form through its own non-mutating exit. A visible
+  // background navigation button is not actionable through a modal backdrop.
+  // The shared Modal names its header exit "Close <dialog title>".
+  // Search only this modal and skip hidden or disabled duplicate exits.
+  const exits = modal.getByRole('button', { name: /^(?:Cancel|Close(?:\s+.+)?)$/i });
+  let exit = null;
+  for (let index = 0, count = await exits.count(); index < count; index += 1) {
+    const candidate = exits.nth(index);
+    if (await candidate.isVisible().catch(() => false) && await candidate.isEnabled().catch(() => false)) {
+      exit = candidate;
+      break;
+    }
+  }
+  if (!exit) throw new Error('Cannot safely leave nested state modal before ' + raw);
+  await exit.click({ timeout: 2500 });
+  await modal.waitFor({ state: 'hidden', timeout: 3500 });
+  await settleReactFrames(page);
+  return false;
+}
+
 async function recoverSiblingStatePath(page, previousPath = [], nextPath = [], route = 'today') {
   const previous = Array.isArray(previousPath) ? previousPath : [];
   const next = Array.isArray(nextPath) ? nextPath : [];
   if (!next.length) return [];
 
-  await dismissBlockingDialogs(page, { maxPasses: 2 }).catch(() => null);
-  await neutralizeTestingPreviewOverlays(page).catch(() => null);
-
   const commonDepth = sharedStatePathDepth(previous, next);
   const siblingPath = next.slice(commonDepth);
-  const siblingLabel = siblingPath[0];
+  const siblingLabel = siblingPath[0] || next[0];
+  const continuingModal = await recoverExitedStateModal(page, siblingLabel);
+  if (!continuingModal) await dismissBlockingDialogs(page, { maxPasses: 2 }).catch(() => null);
+  await neutralizeTestingPreviewOverlays(page).catch(() => null);
   if (siblingLabel && await findStateControl(page, siblingLabel)) return siblingPath;
   if (commonDepth > 0 && await findStateControl(page, next[0])) return next;
 
@@ -751,4 +826,4 @@ async function auditState(page, testInfo, identity, options = {}) {
   return result;
 }
 
-module.exports = { rx, findStateControl, applyStatePath, recoverSiblingStatePath, collectControls, classifyControl, assertHealthy, auditState, formControlSelectorFor, locatorFromFormDescriptor };
+module.exports = { newlyOpenedStateDialog, recoverExitedStateModal, rx, findStateControl, applyStatePath, recoverSiblingStatePath, collectControls, classifyControl, assertHealthy, auditState, formControlSelectorFor, locatorFromFormDescriptor };

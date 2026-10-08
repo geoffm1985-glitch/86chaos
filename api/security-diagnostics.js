@@ -1,12 +1,18 @@
-const admin = require('firebase-admin');
+const admin = require('./_firebase-admin-compat');
 const { getAdminAppForRequest, projectCredentialStatus } = require('./_firebase-project-admin');
 const { requireMfaIfEnforced, masterEmails } = require('./_chaos-admin');
+const { redactText, redactDiagnostic, sanitizedCorrelationId, classifyDiagnosticError, buildSecurityMaturityReport } = require('./_security-maturity.cjs');
 
 function initAdmin(req) {
   return getAdminAppForRequest(req, { requireCredentials: true });
 }
 
 const norm = (value = '') => String(value || '').toLowerCase().trim();
+const maskEmail = (value = '') => {
+  const [name = '', domain = ''] = String(value || '').split('@');
+  if (!domain) return '';
+  return `${name.slice(0, 2) || '*'}***@${domain}`;
+};
 const hasEnv = (name) => Boolean(process.env[name] && String(process.env[name]).trim());
 const parseDate = (value) => {
   if (!value) return null;
@@ -22,6 +28,13 @@ const boolEnv = (name) => /^(1|true|yes|enforce)$/i.test(String(process.env[name
 const { APP_VERSION, SECURITY_SCHEMA_VERSION } = require('./_version');
 const SECURITY_BUILD_VERSION = APP_VERSION;
 const mfaEnforcementEnabled = () => boolEnv('MFA_ENFORCE_ELEVATED_ROLES') || boolEnv('FIREBASE_MFA_ENFORCE_ELEVATED_ROLES') || boolEnv('REACT_APP_MFA_ENFORCE_ELEVATED_ROLES');
+const expectedEnvironmentKind = req => {
+  const host=norm(req.headers['x-forwarded-host'] || req.headers.host || '');
+  const branch=norm(process.env.VERCEL_GIT_COMMIT_REF || process.env.CHAOS_EXPECTED_BRANCH || '');
+  if (host === 'testing.86chaos.com' || branch === 'testing') return 'testing';
+  if (host === 'app.86chaos.com' || branch === 'main' || branch === 'production') return 'production';
+  return 'unknown';
+};
 const decodedHasMfa = (decoded = {}) => Boolean(decoded.firebase?.sign_in_second_factor || decoded.firebase?.second_factor_identifier || decoded.sign_in_second_factor || decoded.mfa === true);
 const authUserHasMfa = async (app, user) => {
   if (userHasMfaFlag(user)) return true;
@@ -44,7 +57,7 @@ async function verifyOptionalAppCheck(app, req) {
     await app.appCheck().verifyToken(header);
     return { configured: true, enforcedByApi: enforce, headerReceived: true, tokenValid: true, status: 'valid' };
   } catch (err) {
-    return { configured: true, enforcedByApi: enforce, headerReceived: true, tokenValid: false, status: 'invalid', error: err.message };
+    return { configured: true, enforcedByApi: enforce, headerReceived: true, tokenValid: false, status: 'invalid', error: redactText(err.message) };
   }
 }
 
@@ -80,14 +93,14 @@ module.exports = async function handler(req, res) {
     const riskyUsers = elevatedMfaPairs
       .filter(row => !row.hasMfa)
       .slice(0, 50)
-      .map(({ user }) => ({ id: user.id, name: user.name || '', email: user.email || '', role: user.role || user.accountRole || '', restaurantId: user.restaurantId || user.activeRestaurantId || '', risk: 'MFA missing for elevated account' }));
+      .map(({ user }) => ({ id: user.id, name: user.name || '', email: maskEmail(user.email), role: user.role || user.accountRole || '', restaurantId: user.restaurantId || user.activeRestaurantId || '', risk: 'MFA missing for elevated account' }));
 
     const suspiciousTerms = /(permission_denied|denied|failed|invalid|unauthorized|security|scan_failed|upload|delete|bulk|danger|repair)/i;
     const suspiciousEvents = auditSnap.docs
       .map(d => ({ id: d.id, ...d.data() }))
       .filter(row => suspiciousTerms.test(`${row.action || ''} ${row.details || ''} ${row.target || ''}`))
       .slice(0, 40)
-      .map(row => ({ id: row.id, action: row.action || '', target: row.target || '', userName: row.userName || row.userEmail || '', restaurantId: row.restaurantId || '', timestamp: row.timestamp || '' }));
+      .map(row => ({ id: row.id, action: row.action || '', target: row.target || '', userName: row.userName || maskEmail(row.userEmail), restaurantId: row.restaurantId || '', timestamp: row.timestamp || '' }));
 
     const rateLimited = rateSnap.docs
       .map(d => ({ id: d.id, ...d.data() }))
@@ -155,6 +168,31 @@ module.exports = async function handler(req, res) {
       riskyUsers,
       suspiciousActivity: { count: suspiciousEvents.length, events: suspiciousEvents }
     };
+    const environmentKind=expectedEnvironmentKind(req);
+    const expectedFirebaseProject=environmentKind === 'testing' ? process.env.REACT_APP_TEST_FIREBASE_PROJECT_ID : environmentKind === 'production' ? process.env.REACT_APP_PROD_FIREBASE_PROJECT_ID : '';
+    report.deploymentIdentity={
+      version:SECURITY_BUILD_VERSION,
+      commit:String(process.env.VERCEL_GIT_COMMIT_SHA || ''),
+      branch:String(process.env.VERCEL_GIT_COMMIT_REF || ''),
+      deploymentId:String(process.env.VERCEL_DEPLOYMENT_ID || ''),
+      deploymentUrl:String(process.env.VERCEL_URL || ''),
+      environment:environmentKind,
+      firebaseProject:runtimeProjectId,
+      expectedFirebaseProject:expectedFirebaseProject || 'unknown'
+    };
+    report.maturity = buildSecurityMaturityReport({
+      correlationId:req.headers['x-correlation-id'] || req.headers['x-request-id'] || '',
+      caller:{ ...caller, role:caller.role || caller.accountRole, restaurantId:caller.restaurantId || caller.activeRestaurantId },
+      expectedFirebaseProject,
+      environment:report.security.environmentSeparation,
+      mfa:report.security.mfa,
+      appCheck:report.security.appCheck,
+      firestoreRules:report.security.firestoreRules,
+      storageRules:report.security.storageRules,
+      backupStatus,
+      oauthStateProtected:Boolean(securityStatus.oauthStateSingleUse && securityStatus.oauthStateTenantBound),
+      deploymentIdentityVerified:Boolean(process.env.VERCEL_GIT_COMMIT_SHA && process.env.VERCEL_DEPLOYMENT_ID && environmentKind !== 'unknown' && expectedFirebaseProject && expectedFirebaseProject === runtimeProjectId)
+    });
 
     await db.collection('system').doc('securityDiagnostics').set({
       lastRunAt: report.generatedAt,
@@ -169,8 +207,9 @@ module.exports = async function handler(req, res) {
       restoreDrillAt: restoreDrillStatus.lastDrillAt || ''
     }, { merge: true }).catch(() => null);
 
-    res.status(200).json(report);
+    res.status(200).json(redactDiagnostic(report));
   } catch (err) {
-    res.status(500).json({ ok: false, error: err.message });
+    const correlationId=sanitizedCorrelationId(req.headers['x-correlation-id'] || req.headers['x-request-id'] || 'security-diagnostics');
+    res.status(500).json({ ok:false, error:redactText(err.message), errorCategory:classifyDiagnosticError(err), correlationId });
   }
 };

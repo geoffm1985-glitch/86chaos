@@ -82,6 +82,105 @@ function warningShiftContext(shift = {}) {
   return `${start}-${end} • ${role}`;
 }
 
+function parseScheduleClockMinutes(value = '') {
+  const raw = cleanText(value).toUpperCase();
+  if (!raw) return null;
+  if (raw === 'OPEN') return 0;
+  if (raw === 'CLOSE' || raw === 'CL') return 24 * 60;
+  const match = raw.match(/^(\d{1,2})(?::(\d{2}))?\s*(A|P|AM|PM)?$/);
+  if (!match) return null;
+  let hour = Number.parseInt(match[1], 10);
+  const minute = Number.parseInt(match[2] || '0', 10);
+  const meridian = match[3] || '';
+  if (!Number.isFinite(hour) || !Number.isFinite(minute) || minute < 0 || minute > 59) return null;
+  if (meridian) {
+    if (hour < 1 || hour > 12) return null;
+    if (meridian.startsWith('P') && hour < 12) hour += 12;
+    if (meridian.startsWith('A') && hour === 12) hour = 0;
+  } else if (hour === 24 && minute === 0) {
+    return 24 * 60;
+  } else if (hour < 0 || hour > 23) return null;
+  return (hour * 60) + minute;
+}
+
+function previousDateKey(dateKey = '') {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(cleanText(dateKey))) return '';
+  const date = new Date(`${dateKey}T12:00:00Z`);
+  if (Number.isNaN(date.getTime())) return '';
+  date.setUTCDate(date.getUTCDate() - 1);
+  return date.toISOString().slice(0, 10);
+}
+
+function coverageIdentityKey(shift = {}, index = 0) {
+  return firstNonEmpty(shift, SUBJECT_ID_FIELDS)
+    || firstNonEmpty(shift, SUBJECT_EMAIL_FIELDS)
+    || firstNonEmpty(shift, SUBJECT_NAME_FIELDS)
+    || cleanText(shift.id)
+    || `anonymous-shift-${index}`;
+}
+
+function buildCoverageInterval(shift = {}, targetDate = '', index = 0) {
+  const shiftDate = cleanText(shift?.date || shift?.scheduleDateKey || '');
+  const priorDate = previousDateKey(targetDate);
+  if (shiftDate !== targetDate && shiftDate !== priorDate) return null;
+  const start = parseScheduleClockMinutes(shift.startTime);
+  const rawEnd = parseScheduleClockMinutes(shift.endTime);
+  if (start === null || rawEnd === null || rawEnd === start) return null;
+  let end = rawEnd;
+  if (end <= start) end += 24 * 60;
+  let offset = 0;
+  if (shiftDate === priorDate) offset = -(24 * 60);
+  const absoluteStart = start + offset;
+  const absoluteEnd = end + offset;
+  if (absoluteEnd <= 0 || absoluteStart >= 48 * 60) return null;
+  return { start: absoluteStart, end: absoluteEnd, key: coverageIdentityKey(shift, index) };
+}
+
+function measureCoverageForTarget({ date = '', role = '', target = {}, shifts = [], roleMatcher = defaultRoleMatcher } = {}) {
+  const matching = safeRecordArray(shifts).filter(shift => {
+    try { return roleMatcher(shift?.role || shift?.targetRole, role); }
+    catch (_) { return false; }
+  });
+  const targetStart = parseScheduleClockMinutes(target?.startTime);
+  let targetEnd = parseScheduleClockMinutes(target?.endTime);
+  if (targetStart === null || targetEnd === null || targetEnd === targetStart) {
+    const sameDay = matching.filter(shift => cleanText(shift?.date || shift?.scheduleDateKey || '') === date);
+    return { minimum: new Set(sameDay.map(coverageIdentityKey)).size, maximum: new Set(sameDay.map(coverageIdentityKey)).size, windowValid: false };
+  }
+  if (targetEnd <= targetStart) targetEnd += 24 * 60;
+  const intervals = matching.map((shift, index) => buildCoverageInterval(shift, date, index)).filter(Boolean)
+    .map(interval => ({ ...interval, start: Math.max(interval.start, targetStart), end: Math.min(interval.end, targetEnd) }))
+    .filter(interval => interval.end > interval.start);
+  const boundaries = Array.from(new Set([targetStart, targetEnd, ...intervals.flatMap(interval => [interval.start, interval.end])])).sort((a, b) => a - b);
+  let minimum = Number.POSITIVE_INFINITY;
+  let maximum = 0;
+  for (let index = 0; index < boundaries.length - 1; index += 1) {
+    const start = boundaries[index];
+    const end = boundaries[index + 1];
+    if (end <= start || end <= targetStart || start >= targetEnd) continue;
+    const midpoint = start + ((end - start) / 2);
+    const people = new Set(intervals.filter(interval => interval.start <= midpoint && interval.end > midpoint).map(interval => interval.key));
+    minimum = Math.min(minimum, people.size);
+    maximum = Math.max(maximum, people.size);
+  }
+  if (!Number.isFinite(minimum)) minimum = 0;
+  return { minimum, maximum, windowValid: true };
+}
+
+function sortScheduleWarningsChronologically(rows = []) {
+  return [...safeRecordArray(rows)].sort((a, b) => {
+    const aDate = cleanText(a?.date || a?.startDate || a?.periodStart || '9999-12-31');
+    const bDate = cleanText(b?.date || b?.startDate || b?.periodStart || '9999-12-31');
+    if (aDate !== bDate) return aDate.localeCompare(bDate);
+    const aStart = parseScheduleClockMinutes(a?.startTime);
+    const bStart = parseScheduleClockMinutes(b?.startTime);
+    if (aStart !== bStart) return (aStart ?? Number.MAX_SAFE_INTEGER) - (bStart ?? Number.MAX_SAFE_INTEGER);
+    const roleCompare = cleanText(a?.role).localeCompare(cleanText(b?.role));
+    if (roleCompare) return roleCompare;
+    return cleanText(a?.message || a?.type).localeCompare(cleanText(b?.message || b?.type));
+  });
+}
+
 function buildCoverageVarianceRows(options = {}) {
   const safeOptions = options && typeof options === 'object' ? options : {};
   const coverageTargets = safeOptions.coverageTargets || [];
@@ -105,18 +204,12 @@ function buildCoverageVarianceRows(options = {}) {
         catch (_) { return false; }
       });
       for (const date of matchingDates) {
-        const existing = shifts.filter(shift => {
-          try {
-            const shiftDate = cleanText(shift?.date || shift?.scheduleDateKey || '');
-            return shiftDate === date
-              && roleMatcher(shift?.role, role)
-              && (!target?.startTime || shift?.startTime === target.startTime);
-          } catch (_) {
-            return false;
-          }
-        }).length;
+        const coverage = measureCoverageForTarget({ date, role, target, shifts, roleMatcher });
+        const underTarget = coverage.minimum < targetCount;
+        const overTarget = !underTarget && coverage.maximum > targetCount;
+        if (!underTarget && !overTarget) continue;
+        const existing = underTarget ? coverage.minimum : coverage.maximum;
         const delta = existing - targetCount;
-        if (delta === 0) continue;
         rows.push({
           ...target,
           id: target?.id || `${dayIndex}-${role}-${target?.startTime || ''}-${target?.endTime || ''}`,
@@ -127,6 +220,9 @@ function buildCoverageVarianceRows(options = {}) {
           count: targetCount,
           target: targetCount,
           existing,
+          minimumCoverage: coverage.minimum,
+          maximumCoverage: coverage.maximum,
+          coverageWindowValid: coverage.windowValid,
           delta,
           type: delta < 0 ? 'under' : 'over',
           needed: delta < 0 ? Math.abs(delta) : 0,
@@ -137,7 +233,7 @@ function buildCoverageVarianceRows(options = {}) {
       // A malformed legacy target must not take down Schedule Builder.
     }
   }
-  return rows;
+  return sortScheduleWarningsChronologically(rows);
 }
 
 function buildScheduleConflictWarningRows(options = {}) {
@@ -228,6 +324,8 @@ function buildScheduleConflictWarningRows(options = {}) {
           type: 'request-off-conflict',
           alertId: `schedule-${weekStart}-request-off-${shift.id || shift.employeeId || shift.scheduleUserId || shift.date}-${shift.date}`,
           fingerprint,
+          date: cleanText(shift.date),
+          startTime: cleanText(shift.startTime),
           message: `${employeeLabel} is scheduled on requested-off date ${displayDate}.`,
           detail,
         });
@@ -265,6 +363,7 @@ function buildScheduleConflictWarningRows(options = {}) {
           type: 'schedule-load',
           alertId: `schedule-${periodKey}-load-${userId}`,
           fingerprint,
+          date: cleanText(period.start || periodKey),
           message: `${userName} has ${count} shifts scheduled ${rangeLabel}.`,
           detail: '',
         });
@@ -275,12 +374,12 @@ function buildScheduleConflictWarningRows(options = {}) {
   }
 
   const seen = new Set();
-  return warnings.filter(warning => {
+  return sortScheduleWarningsChronologically(warnings.filter(warning => {
     const key = `${warning.type}|${warning.message}|${warning.detail}`;
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
-  });
+  }));
 }
 
 function requestWorkspaceId(request = {}) {
@@ -312,6 +411,9 @@ const scheduleWarningControlsShared = {
   warningShiftContext,
   safeRecordArray,
   asFunction,
+  parseScheduleClockMinutes,
+  measureCoverageForTarget,
+  sortScheduleWarningsChronologically,
   buildCoverageVarianceRows,
   buildScheduleConflictWarningRows,
   isRequestOffBulkEligible,
@@ -325,3 +427,4 @@ const scheduleWarningControlsShared = {
     writable: true,
   });
 })(typeof globalThis !== 'undefined' ? globalThis : undefined);
+if (typeof module !== 'undefined' && module.exports) module.exports = scheduleWarningControlsShared;

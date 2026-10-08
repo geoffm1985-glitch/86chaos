@@ -51,7 +51,7 @@ const ROUTE_STATES = {
   ],
   'menu-intelligence': [],
   'ai-tools': [],
-  prep: [[/^prep$/i], [/line.?check/i], [/daily/i], [/weekly/i], [/monthly/i]],
+  prep: [[/^food prep$/i], [/line.?check/i], [/daily/i], [/weekly/i], [/monthly/i]],
   recipes: [],
   messages: [],
   reminders: [],

@@ -1,4 +1,4 @@
-const admin = require('firebase-admin');
+const admin = require('./_firebase-admin-compat');
 const { getAdminAppForRequest } = require('./_firebase-project-admin');
 
 function initAdmin(req) {

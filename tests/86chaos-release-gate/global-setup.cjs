@@ -7,6 +7,7 @@ const { provisionTestAccounts } = require('../../scripts/86chaos-release-gate/pr
 const { loadEnv } = require('../../scripts/86chaos-full-audit/env-loader.cjs');
 const { applyQaWorkspaceEnv, validateQaWorkspaceName } = require('../../scripts/86chaos-release-gate/qa-workspace.cjs');
 const { assertMutationSafety, isProductionHost, parseHost } = require('../../scripts/86chaos-release-gate/mutation-safety.cjs');
+const { applyFirebaseEmulatorEnv } = require('../../scripts/86chaos-firebase-target.cjs');
 
 function bool(value) { return /^(1|true|yes)$/i.test(String(value || '')); }
 function isSafeTestingUrl(value = '') {
@@ -47,6 +48,7 @@ function updateRunnerState(runId, patch) {
 module.exports = async () => {
   const root = process.cwd();
   loadEnv(root);
+  const firebaseTarget = applyFirebaseEmulatorEnv(process.env);
   const { runId, runDir } = ensureRunDir();
   const setupStatePath = getSetupStatePath(runId);
   const seedReportPath = getSeedReportPath(runId);
@@ -138,7 +140,7 @@ module.exports = async () => {
     throw new Error(state.errors.join('\n'));
   }
   const roleVerifiedProjectId = applyVerifiedRoleProjectEnv(verifiedRoleProjectId(roleReport));
-  const mutationSafety = assertMutationSafety({ env: process.env, appUrl, runId, projectId: roleVerifiedProjectId, requireAdminCredentials: false });
+  const mutationSafety = assertMutationSafety({ env: process.env, appUrl, runId, projectId: roleVerifiedProjectId, requireAdminCredentials: false, allowLocalEmulator: firebaseTarget.emulator });
   state.mutationSafety = mutationSafety;
   if (!mutationSafety.ok) {
     state.errors.push(...mutationSafety.errors);

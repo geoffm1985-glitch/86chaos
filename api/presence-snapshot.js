@@ -1,5 +1,6 @@
 const { withPresenceTimeout, presenceDiagnostic } = require('./_presence-diagnostics.cjs');
 const { initAdmin, authorize, writeAudit, clean } = require('./_chaos-admin');
+const { getFirebaseTarget } = require('../scripts/86chaos-firebase-target.cjs');
 
 function parseTimeMs(value) {
   if (!value) return 0;
@@ -82,6 +83,11 @@ function databaseUrlFromApp(app) {
 }
 
 async function readRtdbStatusSummaryViaRest(app, refPath, timeoutMs) {
+  const target = getFirebaseTarget(process.env);
+  if (target.emulator) {
+    const snap = await withTimeout(app.database().ref(refPath || 'statusSummary').once('value'), timeoutMs, 'RTDB emulator read');
+    return snap.val() || {};
+  }
   const databaseURL = databaseUrlFromApp(app);
   if (!databaseURL) throw new Error('Realtime Database URL is not configured for this Firebase Admin app.');
   const credential = app?.options?.credential;

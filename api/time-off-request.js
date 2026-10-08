@@ -4,6 +4,7 @@ const { admin, getAdminAppForRequest, readBody, requireAppCheckIfEnforced, readW
 const { decidePlatformAdminAuthority } = require('./_platform-admin-authority.cjs');
 const { enforceRateLimit, sendRateLimited } = require('./_rate-limit');
 const { normalizePolicy, evaluatePolicyDate, callerCanConfigurePolicy } = require('./_time-off-policy.cjs');
+const { validatePartialRequestOffTimeRange } = require('../src/core/requestOffValidation.shared.js');
 
 const ACTIVE_CONFLICT_STATUSES = new Set(['pending', 'approved']);
 const TERMINAL_CONFLICT_STATUSES = new Set(['denied', 'rejected', 'cancelled', 'canceled', 'archived', 'processed', 'completed']);
@@ -517,9 +518,12 @@ async function handleGhostList(ctx, body) {
   return { ok: true, action: 'ghost-list', restaurantId: ctx.restaurantId, target: { userId: targetIdentity.authUid || targetIdentity.userId, scheduleUserId: targetIdentity.scheduleUserId, displayName: targetIdentity.name }, requests };
 }
 
-function buildRequestPayload(ctx, target, date, body = {}) {
+function buildRequestPayload(ctx, target, date, body = {}, options = {}) {
   const nowIso = new Date().toISOString();
   const isPartial = body.isPartial === true;
+  const timeValidation = validatePartialRequestOffTimeRange({ isPartial, startTime: body.startTime, endTime: body.endTime });
+  if (!timeValidation.valid) throw Object.assign(new Error(timeValidation.message), { status: 400, code: timeValidation.code });
+  const ghostMode = options.ghostMode === true;
   return {
     restaurantId: ctx.restaurantId,
     workspaceId: ctx.restaurantId,
@@ -549,14 +553,16 @@ function buildRequestPayload(ctx, target, date, body = {}) {
     createdBy: target.authUid || target.userId,
     requestedBy: target.authUid || target.userId,
     requestedByName: target.name || 'Employee',
-    source: 'ghost_time_off_request',
-    submittedViaGhostMode: true,
-    ghostRealUserId: ctx.uid,
-    ghostRealUserName: cleanString(ctx.workspaceProfile?.name || ctx.user?.name || ctx.email || 'System Administrator', 140),
-    ghostTargetUserId: target.authUid || target.userId,
-    ghostTargetUserName: target.name || 'Employee',
-    submittedByAdminUid: ctx.uid,
-    ghostSubmittedAt: nowIso
+    source: ghostMode ? 'ghost_time_off_request' : 'time_off_request_api',
+    submittedViaGhostMode: ghostMode,
+    ...(ghostMode ? {
+      ghostRealUserId: ctx.uid,
+      ghostRealUserName: cleanString(ctx.workspaceProfile?.name || ctx.user?.name || ctx.email || 'System Administrator', 140),
+      ghostTargetUserId: target.authUid || target.userId,
+      ghostTargetUserName: target.name || 'Employee',
+      submittedByAdminUid: ctx.uid,
+      ghostSubmittedAt: nowIso
+    } : {})
   };
 }
 
@@ -588,13 +594,35 @@ async function writeGhostAudit(ctx, action, target, details = {}) {
   } catch (_) {}
 }
 
+async function assertRequestOffCreateAllowed(ctx, body, dates) {
+  const timeValidation = validatePartialRequestOffTimeRange({ isPartial: body.isPartial === true, startTime: body.startTime, endTime: body.endTime });
+  if (!timeValidation.valid) throw Object.assign(new Error(timeValidation.message), { status: 400, code: timeValidation.code });
+  const policyCheck = await handlePolicyCheck(ctx, { dates });
+  const blocked = (policyCheck.results || []).find(row => row?.allowed === false);
+  if (blocked) throw Object.assign(new Error(blocked.reason || 'Request Off submissions are closed for this date.'), { status: 409, code: blocked.code || 'request-off-policy-blocked' });
+}
+
+async function handleCreate(ctx, body) {
+  const target = callerIdentity(ctx);
+  const dates = parseDateList(body);
+  await assertRequestOffCreateAllowed(ctx, body, dates);
+  const refs = [];
+  for (const date of dates) {
+    const payload = buildRequestPayload(ctx, target, date, body, { ghostMode: false });
+    const ref = await ctx.db.collection('timeOffRequests').add(payload);
+    refs.push(ref.id);
+  }
+  return { ok: true, action: 'create', requestIds: refs, created: refs.length };
+}
+
 async function handleGhostCreate(ctx, body) {
   if (!ctx.isSystemAdmin) throw Object.assign(new Error('System Administrator authority is required for Ghost Mode Request Off.'), { status: 403, code: 'ghost-admin-required' });
   const target = await resolveTargetIdentity(ctx, body);
   const dates = parseDateList(body);
+  await assertRequestOffCreateAllowed(ctx, body, dates);
   const refs = [];
   for (const date of dates) {
-    const payload = buildRequestPayload(ctx, target, date, body);
+    const payload = buildRequestPayload(ctx, target, date, body, { ghostMode: true });
     const ref = await ctx.db.collection('timeOffRequests').add(payload);
     refs.push(ref.id);
   }
@@ -708,6 +736,7 @@ async function routeAction(ctx, body = {}) {
   if (action === 'policy-check') return handlePolicyCheck(ctx, body);
   if (action === 'policy-save') return handlePolicySave(ctx, body);
   if (action === 'workflow-list') return handleWorkflowList(ctx, body);
+  if (action === 'create') return handleCreate(ctx, body);
   if (action === 'ghost-list') return handleGhostList(ctx, body);
   if (action === 'ghost-create') return handleGhostCreate(ctx, body);
   if (action === 'ghost-cancel') return handleGhostCancel(ctx, body);
@@ -768,6 +797,10 @@ module.exports._test = {
   loadCallerContext,
   buildTargetIdentity,
   buildRequestPayload,
+  assertRequestOffCreateAllowed,
+  handleCreate,
+  handleGhostCreate,
+  handleGhostCancel,
   workspaceToday,
   loadRestaurantPolicyContext,
   handlePolicyCheck,

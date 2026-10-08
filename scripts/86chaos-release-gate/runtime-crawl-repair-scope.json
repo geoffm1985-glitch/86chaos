@@ -1,0 +1,641 @@
+[
+  {
+    "specPath": "86chaos-release-gate/21-runtime-code-coverage.spec.cjs",
+    "fullSuitePath": "21 ultimate Chromium runtime execution coverage",
+    "exactTestTitle": "source-derived route/state crawl executes a high share of shipped application code and functions",
+    "project": "chromium",
+    "projects": [
+      "chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/28-exhaustive-route-state-control-graph.spec.cjs",
+    "fullSuitePath": "28 ultimate route + nested-state + control graph",
+    "exactTestTitle": "every real route, declared nested surface, field, and safe control is rendered and probeable",
+    "project": "chromium",
+    "projects": [
+      "chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/31-exhaustive-responsive-nested-layout.spec.cjs",
+    "fullSuitePath": "31 exhaustive responsive layout across nested states",
+    "exactTestTitle": "every route and nested surface fits phone/tablet/laptop/desktop without unusable overflow or tap targets [narrow-phone]",
+    "project": "chromium",
+    "projects": [
+      "chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/31-exhaustive-responsive-nested-layout.spec.cjs",
+    "fullSuitePath": "31 exhaustive responsive layout across nested states",
+    "exactTestTitle": "every route and nested surface fits phone/tablet/laptop/desktop without unusable overflow or tap targets [phone]",
+    "project": "chromium",
+    "projects": [
+      "chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/31-exhaustive-responsive-nested-layout.spec.cjs",
+    "fullSuitePath": "31 exhaustive responsive layout across nested states",
+    "exactTestTitle": "every route and nested surface fits phone/tablet/laptop/desktop without unusable overflow or tap targets [tablet]",
+    "project": "chromium",
+    "projects": [
+      "chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/31-exhaustive-responsive-nested-layout.spec.cjs",
+    "fullSuitePath": "31 exhaustive responsive layout across nested states",
+    "exactTestTitle": "every route and nested surface fits phone/tablet/laptop/desktop without unusable overflow or tap targets [laptop]",
+    "project": "chromium",
+    "projects": [
+      "chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/31-exhaustive-responsive-nested-layout.spec.cjs",
+    "fullSuitePath": "31 exhaustive responsive layout across nested states",
+    "exactTestTitle": "every route and nested surface fits phone/tablet/laptop/desktop without unusable overflow or tap targets [desktop]",
+    "project": "chromium",
+    "projects": [
+      "chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/32-exhaustive-nested-accessibility.spec.cjs",
+    "fullSuitePath": "32 nested-state WCAG accessibility",
+    "exactTestTitle": "every declared nested surface has zero serious/critical WCAG violations on desktop and mobile projects",
+    "project": "chromium",
+    "projects": [
+      "chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/57-sticky-header-touch-handoff.spec.cjs",
+    "fullSuitePath": "57 Schedule Builder direct-touch sticky header handoff",
+    "exactTestTitle": "mobile direct-touch drag keeps day header below sticky control deck",
+    "project": "chromium",
+    "projects": [
+      "chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/69-yardmaster-firebase-bridge-17-0-57.spec.cjs",
+    "fullSuitePath": "17.0.57 Yardmaster Firebase bridge",
+    "exactTestTitle": "root bridge is discoverable and names existing complete gate scripts",
+    "project": "chromium",
+    "projects": [
+      "chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/69-yardmaster-firebase-bridge-17-0-57.spec.cjs",
+    "fullSuitePath": "17.0.57 Yardmaster Firebase bridge",
+    "exactTestTitle": "local Yardmaster observes actual SDK readiness and blocks live Firebase",
+    "project": "chromium",
+    "projects": [
+      "chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/76-emulator-runtime-boundaries-17-0-64.spec.cjs",
+    "fullSuitePath": "17.0.64 emulator runtime-boundary cascade repair",
+    "exactTestTitle": "selected emulator project, storage readiness path, and compact Schedule CSS stay fail-closed",
+    "project": "chromium",
+    "projects": [
+      "chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/76-emulator-runtime-boundaries-17-0-64.spec.cjs",
+    "fullSuitePath": "17.0.64 emulator runtime-boundary cascade repair",
+    "exactTestTitle": "System Administrator emulator route has no Firestore internal assertion, Storage-root 501, or CRA runtime overlay",
+    "project": "chromium",
+    "projects": [
+      "chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/28-exhaustive-route-state-control-graph.spec.cjs",
+    "fullSuitePath": "28 ultimate route + nested-state + control graph",
+    "exactTestTitle": "every real route, declared nested surface, field, and safe control is rendered and probeable",
+    "project": "mobile-chromium",
+    "projects": [
+      "mobile-chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/31-exhaustive-responsive-nested-layout.spec.cjs",
+    "fullSuitePath": "31 exhaustive responsive layout across nested states",
+    "exactTestTitle": "every route and nested surface fits phone/tablet/laptop/desktop without unusable overflow or tap targets [narrow-phone]",
+    "project": "mobile-chromium",
+    "projects": [
+      "mobile-chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/31-exhaustive-responsive-nested-layout.spec.cjs",
+    "fullSuitePath": "31 exhaustive responsive layout across nested states",
+    "exactTestTitle": "every route and nested surface fits phone/tablet/laptop/desktop without unusable overflow or tap targets [phone]",
+    "project": "mobile-chromium",
+    "projects": [
+      "mobile-chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/31-exhaustive-responsive-nested-layout.spec.cjs",
+    "fullSuitePath": "31 exhaustive responsive layout across nested states",
+    "exactTestTitle": "every route and nested surface fits phone/tablet/laptop/desktop without unusable overflow or tap targets [tablet]",
+    "project": "mobile-chromium",
+    "projects": [
+      "mobile-chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/31-exhaustive-responsive-nested-layout.spec.cjs",
+    "fullSuitePath": "31 exhaustive responsive layout across nested states",
+    "exactTestTitle": "every route and nested surface fits phone/tablet/laptop/desktop without unusable overflow or tap targets [laptop]",
+    "project": "mobile-chromium",
+    "projects": [
+      "mobile-chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/31-exhaustive-responsive-nested-layout.spec.cjs",
+    "fullSuitePath": "31 exhaustive responsive layout across nested states",
+    "exactTestTitle": "every route and nested surface fits phone/tablet/laptop/desktop without unusable overflow or tap targets [desktop]",
+    "project": "mobile-chromium",
+    "projects": [
+      "mobile-chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/32-exhaustive-nested-accessibility.spec.cjs",
+    "fullSuitePath": "32 nested-state WCAG accessibility",
+    "exactTestTitle": "every declared nested surface has zero serious/critical WCAG violations on desktop and mobile projects",
+    "project": "mobile-chromium",
+    "projects": [
+      "mobile-chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/57-sticky-header-touch-handoff.spec.cjs",
+    "fullSuitePath": "57 Schedule Builder direct-touch sticky header handoff",
+    "exactTestTitle": "mobile direct-touch drag keeps day header below sticky control deck",
+    "project": "mobile-chromium",
+    "projects": [
+      "mobile-chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/69-yardmaster-firebase-bridge-17-0-57.spec.cjs",
+    "fullSuitePath": "17.0.57 Yardmaster Firebase bridge",
+    "exactTestTitle": "root bridge is discoverable and names existing complete gate scripts",
+    "project": "mobile-chromium",
+    "projects": [
+      "mobile-chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/69-yardmaster-firebase-bridge-17-0-57.spec.cjs",
+    "fullSuitePath": "17.0.57 Yardmaster Firebase bridge",
+    "exactTestTitle": "local Yardmaster observes actual SDK readiness and blocks live Firebase",
+    "project": "mobile-chromium",
+    "projects": [
+      "mobile-chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/76-emulator-runtime-boundaries-17-0-64.spec.cjs",
+    "fullSuitePath": "17.0.64 emulator runtime-boundary cascade repair",
+    "exactTestTitle": "selected emulator project, storage readiness path, and compact Schedule CSS stay fail-closed",
+    "project": "mobile-chromium",
+    "projects": [
+      "mobile-chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/76-emulator-runtime-boundaries-17-0-64.spec.cjs",
+    "fullSuitePath": "17.0.64 emulator runtime-boundary cascade repair",
+    "exactTestTitle": "System Administrator emulator route has no Firestore internal assertion, Storage-root 501, or CRA runtime overlay",
+    "project": "mobile-chromium",
+    "projects": [
+      "mobile-chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/97-runtime-crawl-recovery.spec.cjs",
+    "fullSuitePath": "runtime crawl bounded role replacement recovery",
+    "exactTestTitle": "a completed Drag Board click survives a delayed acknowledgement without waiting on the vanished button",
+    "project": "chromium",
+    "projects": [
+      "chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/97-runtime-crawl-recovery.spec.cjs",
+    "fullSuitePath": "runtime crawl bounded role replacement recovery",
+    "exactTestTitle": "a vanished control without selected-state evidence fails promptly instead of claiming coverage",
+    "project": "chromium",
+    "projects": [
+      "chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/97-runtime-crawl-recovery.spec.cjs",
+    "fullSuitePath": "runtime crawl bounded role replacement recovery",
+    "exactTestTitle": "sibling recovery visits real tabs without reopening and closing their shared parent",
+    "project": "chromium",
+    "projects": [
+      "chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/97-runtime-crawl-recovery.spec.cjs",
+    "fullSuitePath": "runtime crawl bounded role replacement recovery",
+    "exactTestTitle": "sibling navigation cancels only the exited modal and never publishes or clicks background exits",
+    "project": "chromium",
+    "projects": [
+      "chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/97-runtime-crawl-recovery.spec.cjs",
+    "fullSuitePath": "runtime crawl bounded role replacement recovery",
+    "exactTestTitle": "a requested child inside the current modal stays available until its state is audited",
+    "project": "chromium",
+    "projects": [
+      "chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/97-runtime-crawl-recovery.spec.cjs",
+    "fullSuitePath": "runtime crawl bounded role replacement recovery",
+    "exactTestTitle": "a modal without a safe exit remains a failure instead of forcing a background click",
+    "project": "chromium",
+    "projects": [
+      "chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/97-runtime-crawl-recovery.spec.cjs",
+    "fullSuitePath": "runtime crawl bounded role replacement recovery",
+    "exactTestTitle": "a completed Drag Board click survives a delayed acknowledgement without waiting on the vanished button",
+    "project": "mobile-chromium",
+    "projects": [
+      "mobile-chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/97-runtime-crawl-recovery.spec.cjs",
+    "fullSuitePath": "runtime crawl bounded role replacement recovery",
+    "exactTestTitle": "a vanished control without selected-state evidence fails promptly instead of claiming coverage",
+    "project": "mobile-chromium",
+    "projects": [
+      "mobile-chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/97-runtime-crawl-recovery.spec.cjs",
+    "fullSuitePath": "runtime crawl bounded role replacement recovery",
+    "exactTestTitle": "sibling recovery visits real tabs without reopening and closing their shared parent",
+    "project": "mobile-chromium",
+    "projects": [
+      "mobile-chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/97-runtime-crawl-recovery.spec.cjs",
+    "fullSuitePath": "runtime crawl bounded role replacement recovery",
+    "exactTestTitle": "sibling navigation cancels only the exited modal and never publishes or clicks background exits",
+    "project": "mobile-chromium",
+    "projects": [
+      "mobile-chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/97-runtime-crawl-recovery.spec.cjs",
+    "fullSuitePath": "runtime crawl bounded role replacement recovery",
+    "exactTestTitle": "a requested child inside the current modal stays available until its state is audited",
+    "project": "mobile-chromium",
+    "projects": [
+      "mobile-chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/97-runtime-crawl-recovery.spec.cjs",
+    "fullSuitePath": "runtime crawl bounded role replacement recovery",
+    "exactTestTitle": "a modal without a safe exit remains a failure instead of forcing a background click",
+    "project": "mobile-chromium",
+    "projects": [
+      "mobile-chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/97-runtime-crawl-recovery.spec.cjs",
+    "fullSuitePath": "runtime crawl bounded role replacement recovery",
+    "exactTestTitle": "sibling navigation uses the shared Modal titled close button without publishing or clicking a background exit",
+    "project": "chromium",
+    "projects": [
+      "chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/97-runtime-crawl-recovery.spec.cjs",
+    "fullSuitePath": "runtime crawl bounded role replacement recovery",
+    "exactTestTitle": "sibling navigation skips hidden and disabled modal exits to use the enabled titled close control",
+    "project": "chromium",
+    "projects": [
+      "chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/97-runtime-crawl-recovery.spec.cjs",
+    "fullSuitePath": "runtime crawl bounded role replacement recovery",
+    "exactTestTitle": "sibling navigation uses the shared Modal titled close button without publishing or clicking a background exit",
+    "project": "mobile-chromium",
+    "projects": [
+      "mobile-chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/97-runtime-crawl-recovery.spec.cjs",
+    "fullSuitePath": "runtime crawl bounded role replacement recovery",
+    "exactTestTitle": "sibling navigation skips hidden and disabled modal exits to use the enabled titled close control",
+    "project": "mobile-chromium",
+    "projects": [
+      "mobile-chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/97-runtime-crawl-recovery.spec.cjs",
+    "fullSuitePath": "runtime crawl bounded role replacement recovery",
+    "exactTestTitle": "an Event click with delayed acknowledgement proves its newly opened dialog without retrying the covered trigger",
+    "project": "chromium",
+    "projects": [
+      "chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/97-runtime-crawl-recovery.spec.cjs",
+    "fullSuitePath": "runtime crawl bounded role replacement recovery",
+    "exactTestTitle": "an Event click with delayed acknowledgement proves its newly opened dialog without retrying the covered trigger",
+    "project": "mobile-chromium",
+    "projects": [
+      "mobile-chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/97-runtime-crawl-recovery.spec.cjs",
+    "fullSuitePath": "runtime crawl bounded role replacement recovery",
+    "exactTestTitle": "a Edit Presets click with delayed acknowledgement proves its declared dialog without repeating the action",
+    "project": "chromium",
+    "projects": [
+      "chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/97-runtime-crawl-recovery.spec.cjs",
+    "fullSuitePath": "runtime crawl bounded role replacement recovery",
+    "exactTestTitle": "a Copy Month click with delayed acknowledgement proves its declared dialog without repeating the action",
+    "project": "chromium",
+    "projects": [
+      "chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/97-runtime-crawl-recovery.spec.cjs",
+    "fullSuitePath": "runtime crawl bounded role replacement recovery",
+    "exactTestTitle": "a Publish Manual click with delayed acknowledgement proves its declared dialog without repeating the action",
+    "project": "chromium",
+    "projects": [
+      "chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/97-runtime-crawl-recovery.spec.cjs",
+    "fullSuitePath": "runtime crawl bounded role replacement recovery",
+    "exactTestTitle": "a Assign Checklist click with delayed acknowledgement proves its declared dialog without repeating the action",
+    "project": "chromium",
+    "projects": [
+      "chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/97-runtime-crawl-recovery.spec.cjs",
+    "fullSuitePath": "runtime crawl bounded role replacement recovery",
+    "exactTestTitle": "a Add Certification click with delayed acknowledgement proves its declared dialog without repeating the action",
+    "project": "chromium",
+    "projects": [
+      "chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/97-runtime-crawl-recovery.spec.cjs",
+    "fullSuitePath": "runtime crawl bounded role replacement recovery",
+    "exactTestTitle": "a Add Confidential Note click with delayed acknowledgement proves its declared dialog without repeating the action",
+    "project": "chromium",
+    "projects": [
+      "chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/97-runtime-crawl-recovery.spec.cjs",
+    "fullSuitePath": "runtime crawl bounded role replacement recovery",
+    "exactTestTitle": "a Edit Presets click with delayed acknowledgement proves its declared dialog without repeating the action",
+    "project": "mobile-chromium",
+    "projects": [
+      "mobile-chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/97-runtime-crawl-recovery.spec.cjs",
+    "fullSuitePath": "runtime crawl bounded role replacement recovery",
+    "exactTestTitle": "a Copy Month click with delayed acknowledgement proves its declared dialog without repeating the action",
+    "project": "mobile-chromium",
+    "projects": [
+      "mobile-chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/97-runtime-crawl-recovery.spec.cjs",
+    "fullSuitePath": "runtime crawl bounded role replacement recovery",
+    "exactTestTitle": "a Publish Manual click with delayed acknowledgement proves its declared dialog without repeating the action",
+    "project": "mobile-chromium",
+    "projects": [
+      "mobile-chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/97-runtime-crawl-recovery.spec.cjs",
+    "fullSuitePath": "runtime crawl bounded role replacement recovery",
+    "exactTestTitle": "a Assign Checklist click with delayed acknowledgement proves its declared dialog without repeating the action",
+    "project": "mobile-chromium",
+    "projects": [
+      "mobile-chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/97-runtime-crawl-recovery.spec.cjs",
+    "fullSuitePath": "runtime crawl bounded role replacement recovery",
+    "exactTestTitle": "a Add Certification click with delayed acknowledgement proves its declared dialog without repeating the action",
+    "project": "mobile-chromium",
+    "projects": [
+      "mobile-chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/97-runtime-crawl-recovery.spec.cjs",
+    "fullSuitePath": "runtime crawl bounded role replacement recovery",
+    "exactTestTitle": "a Add Confidential Note click with delayed acknowledgement proves its declared dialog without repeating the action",
+    "project": "mobile-chromium",
+    "projects": [
+      "mobile-chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/97-runtime-crawl-recovery.spec.cjs",
+    "fullSuitePath": "runtime crawl bounded role replacement recovery",
+    "exactTestTitle": "runtime coverage merges identical script captures across a real document reload",
+    "project": "chromium",
+    "projects": [
+      "chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/97-runtime-crawl-recovery.spec.cjs",
+    "fullSuitePath": "runtime crawl bounded role replacement recovery",
+    "exactTestTitle": "runtime coverage merges identical script captures across a real document reload",
+    "project": "mobile-chromium",
+    "projects": [
+      "mobile-chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/98-firebase-gate-reliability.spec.cjs",
+    "fullSuitePath": "Firebase release-gate recovery boundaries",
+    "exactTestTitle": "temporary Firebase Auth failure retries once on a fresh login document",
+    "project": "chromium",
+    "projects": [
+      "chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/98-firebase-gate-reliability.spec.cjs",
+    "fullSuitePath": "Firebase release-gate recovery boundaries",
+    "exactTestTitle": "persistent Firebase Auth service failure remains blocking after one retry",
+    "project": "chromium",
+    "projects": [
+      "chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/98-firebase-gate-reliability.spec.cjs",
+    "fullSuitePath": "Firebase release-gate recovery boundaries",
+    "exactTestTitle": "invalid credentials never trigger a transient Auth retry",
+    "project": "chromium",
+    "projects": [
+      "chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/98-firebase-gate-reliability.spec.cjs",
+    "fullSuitePath": "Firebase release-gate recovery boundaries",
+    "exactTestTitle": "a closed Firestore Listen stream requires a successful reconnect",
+    "project": "chromium",
+    "projects": [
+      "chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/98-firebase-gate-reliability.spec.cjs",
+    "fullSuitePath": "Firebase release-gate recovery boundaries",
+    "exactTestTitle": "an unrecovered Firestore Listen stream remains a route-health failure",
+    "project": "chromium",
+    "projects": [
+      "chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/98-firebase-gate-reliability.spec.cjs",
+    "fullSuitePath": "Firebase release-gate recovery boundaries",
+    "exactTestTitle": "temporary Firebase Auth failure retries once on a fresh login document",
+    "project": "mobile-chromium",
+    "projects": [
+      "mobile-chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/98-firebase-gate-reliability.spec.cjs",
+    "fullSuitePath": "Firebase release-gate recovery boundaries",
+    "exactTestTitle": "persistent Firebase Auth service failure remains blocking after one retry",
+    "project": "mobile-chromium",
+    "projects": [
+      "mobile-chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/98-firebase-gate-reliability.spec.cjs",
+    "fullSuitePath": "Firebase release-gate recovery boundaries",
+    "exactTestTitle": "invalid credentials never trigger a transient Auth retry",
+    "project": "mobile-chromium",
+    "projects": [
+      "mobile-chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/98-firebase-gate-reliability.spec.cjs",
+    "fullSuitePath": "Firebase release-gate recovery boundaries",
+    "exactTestTitle": "a closed Firestore Listen stream requires a successful reconnect",
+    "project": "mobile-chromium",
+    "projects": [
+      "mobile-chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/98-firebase-gate-reliability.spec.cjs",
+    "fullSuitePath": "Firebase release-gate recovery boundaries",
+    "exactTestTitle": "an unrecovered Firestore Listen stream remains a route-health failure",
+    "project": "mobile-chromium",
+    "projects": [
+      "mobile-chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/99-request-off-card-accessibility.spec.cjs",
+    "fullSuitePath": "Request Off card accessibility",
+    "exactTestTitle": "pending manager request cards expose named actionable controls",
+    "project": "chromium",
+    "projects": [
+      "chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/99-request-off-card-accessibility.spec.cjs",
+    "fullSuitePath": "Request Off card accessibility",
+    "exactTestTitle": "archived and employee cards preserve their allowed actions",
+    "project": "chromium",
+    "projects": [
+      "chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/99-request-off-card-accessibility.spec.cjs",
+    "fullSuitePath": "Request Off card accessibility",
+    "exactTestTitle": "pending manager request cards expose named actionable controls",
+    "project": "mobile-chromium",
+    "projects": [
+      "mobile-chromium"
+    ]
+  },
+  {
+    "specPath": "86chaos-release-gate/99-request-off-card-accessibility.spec.cjs",
+    "fullSuitePath": "Request Off card accessibility",
+    "exactTestTitle": "archived and employee cards preserve their allowed actions",
+    "project": "mobile-chromium",
+    "projects": [
+      "mobile-chromium"
+    ]
+  }
+]
