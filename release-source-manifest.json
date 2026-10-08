@@ -1,7 +1,7 @@
 {
   "schemaVersion": 3,
   "version": "18.0.8",
-  "sourceHash": "4e5fc55f67c90dd0c76e112f905086c7da46b9edb7dad1157e0e7ba8f965f645",
+  "sourceHash": "212b45a2807cf54f3491154940e946f3099b31a5f2e0268b27f4cdfe9a9e94da",
   "files": [
     {
       "file": ".gitattributes",
@@ -2317,7 +2317,7 @@
     },
     {
       "file": "playwright.mobile-foundation.config.cjs",
-      "sha256": "bbdf198f736c92fc61b60f3b73af17a4d49cb0d4195c1e03cdf8abce2ba11b5b"
+      "sha256": "4e9cfa1456291a905c89937f0b027ce868c1bc340c2378afee2abc21c5582ccb"
     },
     {
       "file": "playwright.play-store-release.config.cjs",
