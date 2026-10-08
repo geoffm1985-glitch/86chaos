@@ -4015,7 +4015,7 @@ const handleExportTimesheets = () => {
               {parseInt(d.split('-')[2])}
             </div>
             {hasAlert && (
-              <div className="absolute top-full left-1/2 -translate-x-1/2 mt-1 w-32 bg-[#1A2126] border border-[#D4A381] text-white text-[10px] p-2 rounded shadow-2xl opacity-0 invisible group-hover:opacity-100 group-hover:visible z-50 pointer-events-none transition-all">
+              <div className="schedule-builder-day-tooltip absolute top-full left-1/2 -translate-x-1/2 mt-1 w-32 bg-[#1A2126] border border-[#D4A381] text-white text-[10px] p-2 rounded shadow-2xl opacity-0 invisible group-hover:opacity-100 group-hover:visible z-50 pointer-events-none transition-all">
                 {holiday && <div className="text-amber-400 font-black mb-1 leading-tight">{holiday}</div>}
                 {dayEvents.map(ev => (
                   <div key={ev.id} className="text-red-400 font-bold leading-tight mt-1 border-t border-[#2A353D] pt-1">
@@ -4031,11 +4031,11 @@ const handleExportTimesheets = () => {
     </tr>
   );
 
-  const scheduleBuilderTableStyle = { '--schedule-builder-min-width': `${82 + (schedulePeriodDays.length * 56)}px` };
+  const scheduleBuilderTableStyle = { '--schedule-builder-day-count': schedulePeriodDays.length };
   const renderScheduleBuilderColgroup = () => (
     <colgroup>
       <col className="schedule-builder-staff-column" />
-      {schedulePeriodDays.map(d => <col key={`schedule-col-${d}`} />)}
+      {schedulePeriodDays.map(d => <col key={`schedule-col-${d}`} className="schedule-builder-day-column" />)}
     </colgroup>
   );
 

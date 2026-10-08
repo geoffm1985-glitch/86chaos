@@ -1,7 +1,7 @@
 {
   "schemaVersion": 3,
   "version": "17.0.84",
-  "sourceHash": "1c73cb1587a4396e98b9a9d999e74346c9ada9e1945400bbf24ad2faca242b35",
+  "sourceHash": "c53be6dd491b018ad2178c5ad6490c73884efa8bafe7a77531067768d228faaa",
   "files": [
     {
       "file": ".gitattributes",
@@ -4057,7 +4057,7 @@
     },
     {
       "file": "src/features/schedule.jsx",
-      "sha256": "a88b06ded61f4fd8a18885a17fb3d2d62d2cb5776f1e6d347cbf3136da1e5bd4"
+      "sha256": "29e9d7af7734218d3009d97a2b6bb8ecf978ba067fd8e200f0a8bb3f677ac5ca"
     },
     {
       "file": "src/features/trainingManual.js",
@@ -4097,7 +4097,7 @@
     },
     {
       "file": "src/styles.css",
-      "sha256": "bab3466aa67b23838c141532035f7b0749f0798578d909facaea67ad93efd46b"
+      "sha256": "96a08bc3671a0d27fd1c4cf3c773a95b57a3b18451188a511cd99a4ca8f63701"
     },
     {
       "file": "storage.rules",
@@ -4860,8 +4860,16 @@
       "sha256": "088c8cc956abefcc35d34ae4331f09c2e7be199a3bea52e0514c794a9ade43a5"
     },
     {
+      "file": "tests/fixtures/schedule-builder-grid-fixture.cjs",
+      "sha256": "fc7a5ff1697456f197f8dd2993ec6cf7a8f97bafae01c301acdea7d3180663b7"
+    },
+    {
       "file": "tests/layout/mobile-voice-17-0-5.spec.cjs",
       "sha256": "966c8f16059f7c19fe784035d879a3ea82a065e9bb4de24f4c845658b9aec751"
+    },
+    {
+      "file": "tests/layout/schedule-builder-date-alignment.spec.cjs",
+      "sha256": "1f6daf7b8428bee7c8a8aca69363720fe95157dd1443f693c1ce2b5369d58467"
     },
     {
       "file": "vercel.json",
