@@ -20,7 +20,7 @@ function buildSmartPrepRecommendations(input = {}) {
     const itemId = text(row.menuItemId || row.recipeId || row.itemId || row.itemName || row.name);
     if (!itemId) continue;
     const key = dateKey(row.businessDate || row.date || row.createdAt);
-    if (!key || key >= targetDate || weekday(key) !== targetWeekday) continue;
+    if (!key || key >= targetDate || weekday(key) !== targetWeekday || (new Date(targetDate)-new Date(key))/86400000 > 112) continue;
     if (!grouped.has(itemId)) grouped.set(itemId, new Map());
     const byDate = grouped.get(itemId);
     byDate.set(key, (byDate.get(key) || 0) + number(row.quantity ?? row.qty ?? row.count ?? row.units));
@@ -32,8 +32,9 @@ function buildSmartPrepRecommendations(input = {}) {
     const samples = [...history.entries()].sort(([a],[b]) => a.localeCompare(b));
     const recipe = recipes.find(row => text(row.id || row.name || row.title) === itemId) || {};
     const label = text(recipe.name || recipe.title || sales.find(row => text(row.menuItemId || row.recipeId || row.itemId || row.itemName || row.name) === itemId)?.itemName || itemId);
-    if (samples.length < minimumDays) {
-      recommendations.push({ id:`smart-prep:${itemId}`, workspaceId, itemId, itemName:label, state:'insufficient-data', recommendedQuantity:null, recommendedRange:null, reason:`Only ${samples.length} comparable day${samples.length === 1 ? '' : 's'} are available; ${minimumDays} are required.`, dataWindow:{ comparableDays:samples.length, dates:samples.map(([date]) => date) }, confidence:0, dataQuality:'insufficient', stock86Impact:'unknown', reviewRequired:true, mutationAllowed:false });
+    const stale=samples.length && (new Date(targetDate)-new Date(samples.at(-1)[0]))/86400000 > 28;
+    if (samples.length < minimumDays || stale) {
+      recommendations.push({ id:`smart-prep:${itemId}`, workspaceId, itemId, itemName:label, state:'insufficient-data', recommendedQuantity:null, recommendedRange:null, reason:stale ? 'Comparable item sales are more than 28 days old; review recent source history.' : `Only ${samples.length} comparable day${samples.length === 1 ? '' : 's'} are available; ${minimumDays} are required.`, dataWindow:{ comparableDays:samples.length, dates:samples.map(([date]) => date) }, confidence:0, dataQuality:'insufficient', stock86Impact:'unknown', reviewRequired:true, mutationAllowed:false });
       continue;
     }
     const quantities = samples.map(([,quantity]) => quantity).sort((a,b) => a-b);

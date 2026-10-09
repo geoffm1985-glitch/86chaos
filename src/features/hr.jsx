@@ -1,4 +1,5 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { readTrainingDraft } from '../core/intelligenceConnections';
 import {
   Award,
   BookOpen,
@@ -315,11 +316,15 @@ const ManualUploadModal = ({ open, onClose, appUser, manuals, addToast }) => {
   );
 };
 
-const AddOnboardingModal = ({ open, onClose, appUser, users, addToast }) => {
+const AddOnboardingModal = ({ open, onClose, appUser, users, addToast, trainingDraft = null }) => {
   const [userId, setUserId] = useState('');
   const [dueDate, setDueDate] = useState('');
   const [tasksText, setTasksText] = useState(DEFAULT_ONBOARDING_TASKS.join('\n'));
   const [saving, setSaving] = useState(false);
+  useEffect(() => {
+    if (open && trainingDraft) setTasksText(`${trainingDraft.title}\nReview the recorded evidence with the employee and confirm the corrective workflow.`);
+    else if (open) setTasksText(DEFAULT_ONBOARDING_TASKS.join('\n'));
+  },[open,trainingDraft]);
   const eligibleUsers = users.filter(user => employeeAuthUid(user) && employeeAuthUid(user) !== 'unknown');
   const submit = async (event) => {
     event.preventDefault();
@@ -345,7 +350,8 @@ const AddOnboardingModal = ({ open, onClose, appUser, users, addToast }) => {
             completed: false,
             assignedById: currentUid(appUser),
             assignedByName: appUser.name || appUser.email || 'Manager',
-            createdAt: nowIso()
+            createdAt: nowIso(),
+            ...(trainingDraft ? { source:'operational_training_review',sourceEvidenceIds:trainingDraft.evidenceIds,sourceReason:trainingDraft.reason } : {})
           }
         });
       }
@@ -361,6 +367,7 @@ const AddOnboardingModal = ({ open, onClose, appUser, users, addToast }) => {
   return (
     <Modal isOpen={open} onClose={onClose} title="Assign Onboarding Checklist" sizeClass="max-w-4xl">
       <form className="space-y-4" onSubmit={submit}>
+        {trainingDraft && <div data-testid="training-evidence-review" className="rounded-xl border border-amber-400/25 p-3 text-sm text-slate-300"><strong>{trainingDraft.title}</strong><p>{trainingDraft.reason}</p><p>Evidence: {trainingDraft.evidenceIds.join(', ')}. Suggested roles: {trainingDraft.roleScope.join(', ')}. Review the tasks and select an employee before assigning.</p></div>}
         <div className="grid gap-4 sm:grid-cols-2">
           <label><span className={T.label}>Employee</span><select className={T.input} value={userId} onChange={e => setUserId(e.target.value)}><option value="">Select employee</option>{eligibleUsers.map(user => <option key={employeeAuthUid(user)} value={employeeAuthUid(user)}>{user.name || user.email || employeeAuthUid(user)}</option>)}</select></label>
           <label><span className={T.label}>Target completion date</span><input className={T.input} type="date" value={dueDate} onChange={e => setDueDate(e.target.value)} /></label>
@@ -455,6 +462,17 @@ export const TabHrTraining = ({ appUser, users = [], addToast }) => {
   const [activeTab, setActiveTab] = useState('overview');
   const [manualModal, setManualModal] = useState(false);
   const [onboardingModal, setOnboardingModal] = useState(false);
+  const [trainingDraft, setTrainingDraft] = useState(null);
+  useEffect(() => {
+    if (!manager || !restaurantId) return;
+    try {
+      const value = sessionStorage.getItem('operationalTrainingReview');
+      if (!value) return;
+      sessionStorage.removeItem('operationalTrainingReview');
+      const draft = readTrainingDraft(JSON.parse(value),restaurantId,appUser);
+      if (draft) { setTrainingDraft(draft);setActiveTab('onboarding');setOnboardingModal(true); }
+    } catch (_) { /* An invalid or expired handoff does not create an assignment. */ }
+  },[manager,restaurantId,appUser]);
   const [certModal, setCertModal] = useState(false);
   const [performanceModal, setPerformanceModal] = useState(false);
   const [busyId, setBusyId] = useState('');
@@ -627,7 +645,7 @@ export const TabHrTraining = ({ appUser, users = [], addToast }) => {
       </>}
 
       <ManualUploadModal open={manualModal} onClose={() => setManualModal(false)} appUser={appUser} manuals={manuals} addToast={addToast} />
-      <AddOnboardingModal open={onboardingModal} onClose={() => setOnboardingModal(false)} appUser={appUser} users={users} addToast={addToast} />
+      <AddOnboardingModal open={onboardingModal} onClose={() => { setOnboardingModal(false);setTrainingDraft(null); }} appUser={appUser} users={users} addToast={addToast} trainingDraft={trainingDraft} />
       <AddCertificationModal open={certModal} onClose={() => setCertModal(false)} appUser={appUser} users={users} addToast={addToast} />
       {manager && <AddPerformanceNoteModal open={performanceModal} onClose={() => setPerformanceModal(false)} appUser={appUser} users={users} addToast={addToast} />}
     </div>

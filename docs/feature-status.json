@@ -3,9 +3,11 @@
   "reviewedAt": "2026-10-08",
   "scope": "testing",
   "sourceBaseline": {
-    "version": "17.0.84",
+    "version": "17.0.85",
     "branch": "testing",
-    "commit": "425b2e9442171654ad78f360c0521327b258326a"
+    "commit": null,
+    "parentCommit": "931413b8c9a339dd49510504d0d1bc09ca22042a",
+    "identity": "Resolve the testing source commit containing RELEASE_17_0_85.md and the sealed release-source-manifest.json; no current full certification is claimed."
   },
   "productionBaseline": {
     "version": "17.0.84",
@@ -52,63 +54,146 @@
       "label": "Shared needs-attention and Restaurant Readiness",
       "implementation": "foundation-present",
       "certification": "not-currently-certified",
-      "source": ["src/core/needsAttention.js", "src/core/restaurantReadiness.js", "src/features/operations.jsx"],
-      "coverage": ["api/restaurant-intelligence-17-0-39.test.cjs", "tests/86chaos-release-gate/48-needs-attention-readiness-2.spec.cjs"],
+      "source": [
+        "src/core/needsAttention.js",
+        "src/core/restaurantReadiness.js",
+        "src/features/operations.jsx"
+      ],
+      "coverage": [
+        "api/restaurant-intelligence-17-0-39.test.cjs",
+        "tests/86chaos-release-gate/48-needs-attention-readiness-2.spec.cjs"
+      ],
       "remaining": "Expand real source connections and validate completeness, permissions, and direct review actions."
     },
     {
       "id": "restaurant-knowledge-graph",
       "label": "Connected restaurant knowledge graph",
-      "implementation": "foundation-present",
+      "implementation": "foundation-validated",
       "certification": "not-currently-certified",
-      "source": ["src/core/restaurantKnowledgeGraph.js", "src/features/operations.jsx"],
-      "coverage": ["api/restaurant-intelligence-17-0-39.test.cjs", "tests/86chaos-release-gate/49-restaurant-intelligence-review-boundaries.spec.cjs"],
-      "remaining": "Validate approved receiving/cost changes propagate through ingredient, recipe, and menu relationships."
+      "source": [
+        "src/core/restaurantKnowledgeGraph.js",
+        "src/features/operations.jsx"
+      ],
+      "coverage": [
+        "api/restaurant-intelligence-17-0-39.test.cjs",
+        "tests/86chaos-release-gate/49-restaurant-intelligence-review-boundaries.spec.cjs",
+        "api/intelligence-connections-17-0-85.test.cjs",
+        "src/core/purchasingWorkflow.test.js",
+        "test-tools/intelligence-purchasing-emulator.test.cjs",
+        "tests/86chaos-release-gate/98-intelligence-connections-17-0-85.spec.cjs"
+      ],
+      "remaining": "Transactional purchasing tests verify updated ingredient and approved recipe costs reach menu cost, margin and graph inputs; complete deployed/device certification remains pending."
     },
     {
       "id": "operational-history",
       "label": "Operational History",
-      "implementation": "expansion-needed",
+      "implementation": "implemented",
       "certification": "not-currently-certified",
-      "source": ["src/core/operationalHistoryIntelligence.js", "src/features/operations.jsx"],
-      "coverage": ["api/purchase-history-17-0-39.test.cjs", "tests/86chaos-release-gate/49-restaurant-intelligence-review-boundaries.spec.cjs"],
-      "remaining": "Manager Brief passes empty readinessSnapshots and errors arrays, and omits receivingHistory. Connect real, bounded, workspace-scoped evidence with explicit loading/error/completeness states."
+      "source": [
+        "src/core/operationalHistoryIntelligence.js",
+        "src/features/operations.jsx"
+      ],
+      "coverage": [
+        "api/purchase-history-17-0-39.test.cjs",
+        "tests/86chaos-release-gate/49-restaurant-intelligence-review-boundaries.spec.cjs",
+        "api/intelligence-connections-17-0-85.test.cjs",
+        "src/core/purchasingWorkflow.test.js",
+        "test-tools/intelligence-purchasing-emulator.test.cjs",
+        "tests/86chaos-release-gate/98-intelligence-connections-17-0-85.spec.cjs"
+      ],
+      "remaining": "Readiness, receiving and classified error connections implemented. Existing prep/waste/maintenance/alerts remain bounded loaded sources, not a certified complete historical archive."
     },
     {
       "id": "predictive-smart-prep",
       "label": "Predictive Smart Prep",
-      "implementation": "expansion-needed",
+      "implementation": "implemented",
       "certification": "not-currently-certified",
-      "source": ["src/core/smartPrepIntelligence.js", "src/features/operations.jsx", "src/App.js"],
-      "coverage": ["api/restaurant-intelligence-17-0-39.test.cjs", "tests/86chaos-release-gate/49-restaurant-intelligence-review-boundaries.spec.cjs"],
-      "remaining": "Provide dependable item-level history across enough comparable weekdays. Current sales subscription covers the displayed month (45 rows; fallback 20) and Manager Brief only flattens nested item arrays. Validate item mapping, timestamps, completeness, and units; missing data must never become predicted zero."
+      "source": [
+        "src/core/smartPrepIntelligence.js",
+        "src/features/operations.jsx",
+        "src/App.js"
+      ],
+      "coverage": [
+        "api/restaurant-intelligence-17-0-39.test.cjs",
+        "tests/86chaos-release-gate/49-restaurant-intelligence-review-boundaries.spec.cjs",
+        "api/intelligence-connections-17-0-85.test.cjs",
+        "src/core/purchasingWorkflow.test.js",
+        "test-tools/intelligence-purchasing-emulator.test.cjs",
+        "tests/86chaos-release-gate/98-intelligence-connections-17-0-85.spec.cjs"
+      ],
+      "remaining": "Reviewed item-sales import, stable-line receipts, recipe identity and sold-serving checks implemented. Requires at least three fresh comparable weekdays; bulk conversion and automatic POS synchronization remain outside this batch."
     },
     {
       "id": "purchasing-costing",
       "label": "Purchasing reconciliation, approval, inventory, and costing",
-      "implementation": "expansion-needed",
+      "implementation": "workflow-validated",
       "certification": "not-currently-certified",
-      "source": ["src/core/purchaseReconciliation.cjs", "src/features/inventory.jsx", "api/_invoice-approval.js", "src/core/restaurantKnowledgeGraph.js"],
-      "coverage": ["api/purchase-history-17-0-39.test.cjs", "tests/86chaos-release-gate/50-purchase-reconciliation-browser.spec.cjs"],
-      "remaining": "Existing reconciliation classification and browser navigation checks do not prove the full approval-to-stock-to-recipe-cost-to-menu-impact flow. Add transaction, duplicate, unit conversion, permission, failure/recovery, and downstream costing verification."
+      "source": [
+        "src/core/purchaseReconciliation.cjs",
+        "src/features/inventory.jsx",
+        "api/_invoice-approval.js",
+        "src/core/restaurantKnowledgeGraph.js"
+      ],
+      "coverage": [
+        "api/purchase-history-17-0-39.test.cjs",
+        "tests/86chaos-release-gate/50-purchase-reconciliation-browser.spec.cjs",
+        "api/intelligence-connections-17-0-85.test.cjs",
+        "src/core/purchasingWorkflow.test.js",
+        "test-tools/intelligence-purchasing-emulator.test.cjs",
+        "tests/86chaos-release-gate/98-intelligence-connections-17-0-85.spec.cjs"
+      ],
+      "remaining": "Approval → received stock/current cost → reviewed recipe yield → menu impact verified with actual business functions and real Firestore transactions. Full deployed/device certification remains pending."
     },
     {
       "id": "forecast-schedule-copilot",
       "label": "Forecast-aware Schedule Copilot recommendations",
-      "implementation": "planned-expansion",
-      "certification": "not-implemented",
-      "source": ["src/features/schedule.jsx", "src/core/restaurantAiInsights.js"],
-      "coverage": [],
-      "remaining": "Connect explainable demand forecasts to date/role coverage recommendations, with quality and freshness checks. Preserve availability, Request Off, staffing limits, and explicit draft review; never automatically publish shifts."
+      "implementation": "implemented",
+      "certification": "not-currently-certified",
+      "source": [
+        "src/features/schedule.jsx",
+        "src/core/restaurantAiInsights.js"
+      ],
+      "coverage": [
+        "api/intelligence-connections-17-0-85.test.cjs",
+        "src/core/purchasingWorkflow.test.js",
+        "test-tools/intelligence-purchasing-emulator.test.cjs",
+        "tests/86chaos-release-gate/98-intelligence-connections-17-0-85.spec.cjs"
+      ],
+      "remaining": "Configured coverage plus comparable-day demand evidence, explicit reviewed drafts, conflicts and idempotency implemented. Full deployed/device certification remains pending."
     },
     {
       "id": "training-time-clock-awareness",
       "label": "Operational training and Time Clock awareness",
-      "implementation": "planned-expansion",
-      "certification": "not-implemented",
-      "source": ["src/core/operationalHistoryIntelligence.js", "src/features/hr.jsx", "src/features/operations.jsx"],
-      "coverage": [],
-      "remaining": "Connect repeated operational causes and readiness gaps to role-specific training review, and expose grounded Time Clock anomalies to permitted managers. Validate employee identity, shift/date scope, privacy, and human review; never auto-assign coaching or alter punches/payroll."
+      "implementation": "implemented",
+      "certification": "not-currently-certified",
+      "source": [
+        "src/core/operationalHistoryIntelligence.js",
+        "src/features/hr.jsx",
+        "src/features/operations.jsx"
+      ],
+      "coverage": [
+        "api/intelligence-connections-17-0-85.test.cjs",
+        "src/core/purchasingWorkflow.test.js",
+        "test-tools/intelligence-purchasing-emulator.test.cjs",
+        "tests/86chaos-release-gate/98-intelligence-connections-17-0-85.spec.cjs"
+      ],
+      "remaining": "Evidence-linked HR checklist review and private long-open/duplicate punch awareness implemented. Manager submission required; full deployed/device certification remains pending."
     }
-  ]
+  ],
+  "authorization": {
+    "scope": "This items 2/3/4 implementation batch on testing",
+    "instruction": "Implement",
+    "exception": "Proceed before outstanding full certification for this batch only; certification remains required for release.",
+    "date": "2026-10-08"
+  },
+  "validation": {
+    "nodeBusinessAndApi": "PASS: 68 business/API/listener tests, including workspace timezone boundaries; zero skips.",
+    "reactBusinessAndComponents": "PASS: 19 tests covering purchasing/costing, review components, import failure/retry/permissions, and listener query isolation.",
+    "firestoreEmulator": "PASS: actual approval/costing/import/read/duplicate/conflict transactions, demo-86chaos-intelligence loopback only.",
+    "build": "PASS: production build including server-verified intelligence listeners. Final preview/context reset will also be built by the exact testing deployment.",
+    "browser": "Pending exact testing deployment",
+    "fullCertification": "Not run for 17.0.85; outstanding real-device evidence is not supplied by these tests.",
+    "syntaxAndLint": "PASS: API/script syntax (713 files) and changed-file ESLint (zero errors).",
+    "targetedRelease": "Running the repository-wide targeted release command; final result pending."
+  }
 }

@@ -22,6 +22,12 @@ import { canViewAttentionItem } from '../core/needsAttention.js';
 import { buildRestaurantKnowledgeGraph } from '../core/restaurantKnowledgeGraph.js';
 import { buildSmartPrepRecommendations } from '../core/smartPrepIntelligence.js';
 import { buildOperationalHistory } from '../core/operationalHistoryIntelligence.js';
+import { sourceCompleteness, normalizeItemSalesHistory, buildReadinessSnapshot, buildHistoryInputs, buildTrainingDraft, buildClockAwareness } from '../core/intelligenceConnections';
+import { useDemandHistory } from '../hooks/useDemandHistory';
+import { useItemDemandHistory } from '../hooks/useItemDemandHistory';
+import ItemSalesHistoryReview from '../components/ItemSalesHistoryReview';
+import { DemandHistoryStatus, ClockReviewPanel, TrainingReviewPanel } from '../components/IntelligenceReviewPanels';
+import { hasAnyPermission, canUserWriteCollection } from '../core/appCore';
 import { classifyInvoiceRow, inferInvoiceProductFields, invoiceProductKey, invoiceRowText, isPurchasedInvoiceLine, LEADING_PURCHASE_RE, normalizeInvoiceName as normalizeName, normalizeInvoiceSku as normalizeSku } from '../core/invoiceRowClassification';
 import { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, MapClickListener, SmartEmptyState, MiniProblemCard, getHomeProfile, calculatePunchHours, getWeekStart, getWeekDates, roleMatches, toLocalTimeInput, makeLocalIso, PunchTable, StatusTile, FriendlyEmpty, GlobalSearchModal, QuickActionDock, KitchenTVMode, ChangeLogModal, UndoBar } from '../components/common';
 import { usePlanAccess } from '../hooks/usePlanAccess';
@@ -2137,6 +2143,15 @@ const TabToday = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequ
   const [briefOpsCopied, setBriefOpsCopied] = useState(false);
   const [attentionExplain, setAttentionExplain] = useState(null);
   const today = getToday();
+  const [savingReadiness, setSavingReadiness] = useState(false);
+  const demandHistoryState = useDemandHistory(appUser,today,canUseManagerBrief);
+  const itemDemandHistoryState = useItemDemandHistory(appUser,canUseManagerBrief);
+  const historyStart = new Date(`${today}T12:00:00Z`);
+  historyStart.setUTCDate(historyStart.getUTCDate()-180);
+  const readinessHistoryState = useLiveCollectionState('events',appUser?.restaurantId,{ enabled:Boolean(canUseManagerBrief && appUser?.restaurantId),whereClauses:[['date','>=',historyStart.toISOString().slice(0,10)],['date','<=',today]],orderByField:'date',orderDirection:'desc',requireServerSnapshot:true,limitCount:500,debugLabel:'today:operational-history:events' });
+  const clockHistoryStart = new Date(`${today}T12:00:00Z`);
+  clockHistoryStart.setUTCDate(clockHistoryStart.getUTCDate()-14);
+  const clockHistoryState = useLiveCollectionState('timePunches',appUser?.restaurantId,{ enabled:Boolean(canUseManagerBrief && canUseLabor && hasAnyPermission(appUser,['labor','laborRead','wageView','wageEdit'])),whereClauses:[['date','>=',clockHistoryStart.toISOString().slice(0,10)],['date','<=',today]],orderByField:'date',orderDirection:'desc',requireServerSnapshot:true,limitCount:200,debugLabel:'today:clock-awareness' });
   const profile = getHomeProfile(appUser);
   const safeTodayWrite = (args) => safeWriteWithQueue({ user: appUser, addToast, ...args });
   const canReviewRestaurantAdminAlerts = Boolean(appUser?.isOwner || appUser?.owner || appUser?.accountOwner || appUser?.workspaceOwner || appUser?.isAdmin || appUser?.permissions?.settings || appUser?.permissions?.team);
@@ -2170,7 +2185,8 @@ const TabToday = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequ
   }, [currentOpsIntel?.id, currentOpsIntel?.generatedAt, briefOpsLoading]);
   const briefVendors = useLiveCollection('vendors', appUser?.restaurantId, { enabled:Boolean(appUser?.restaurantId && canUseManagerBrief && canUseBasicInventory), limitCount:80, fallbackLimitCount:30, debugLabel:'today:intelligence:vendors' });
   const briefWasteLogs = useLiveCollection('wasteLogs', appUser?.restaurantId, { enabled:Boolean(appUser?.restaurantId && canUseManagerBrief && canUseBasicInventory), limitCount:90, fallbackLimitCount:30, debugLabel:'today:intelligence:waste' });
-  const briefInvoices = useLiveCollection('invoices', appUser?.restaurantId, { enabled:Boolean(appUser?.restaurantId && canUseManagerBrief && canReviewRestaurantAdminAlerts), limitCount:80, fallbackLimitCount:25, debugLabel:'today:intelligence:invoices' });
+  const briefInvoicesState = useLiveCollectionState('invoices', appUser?.restaurantId, { enabled:Boolean(appUser?.restaurantId && canUseManagerBrief && canReviewRestaurantAdminAlerts), requireServerSnapshot:true,limitCount:80, fallbackLimitCount:25, debugLabel:'today:intelligence:invoices' });
+  const briefInvoices = briefInvoicesState.data;
   const briefVendorProducts = useMemo(() => (briefInvoices || []).flatMap(invoice => (invoice.lines || invoice.items || invoice.rows || []).map((line,index) => ({ id:line.vendorProductId || line.productCode || line.sku || `${invoice.id || invoice.invoiceNumber || 'invoice'}:${index}`, name:line.itemName || line.description || line.productName || line.sku || 'Vendor product', vendorId:line.vendorId || invoice.vendorId, inventoryItemId:line.inventoryItemId || line.matchedInventoryItemId, aliases:[line.productCode,line.sku,line.originalDescription].filter(Boolean), packSize:line.packSize || line.packageSize, splitCase:line.splitCase === true, unit:line.invoiceUnit || line.uom, restaurantId:invoice.restaurantId || appUser?.restaurantId }))), [briefInvoices, appUser?.restaurantId]);
   const briefAvailabilityRecords = [];
   const briefReminders = [];
@@ -2204,12 +2220,33 @@ const TabToday = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequ
   const visibleAttentionItems = useMemo(() => (restaurantReadiness.attentionItems || []).filter(item => canViewAttentionItem(item, appUser)).slice(0, 10), [restaurantReadiness.attentionItems, appUser]);
   const menuRowsForGraph = useMemo(() => (menuDependencies || []).map(link => ({ id:link.menuItemId || link.menuItemName, name:link.menuItemName || link.menuItemId, restaurantId:link.restaurantId || appUser?.restaurantId, recipeIds:link.recipeIds || link.recipeId || [] })), [menuDependencies, appUser?.restaurantId]);
   const knowledgeGraph = useMemo(() => buildRestaurantKnowledgeGraph({ workspaceId:appUser?.restaurantId, menuItems:menuRowsForGraph, recipes, inventoryItems, menuDependencies, vendors:briefVendors, vendorProducts:briefVendorProducts, invoices:briefInvoices }), [appUser?.restaurantId, menuRowsForGraph, recipes, inventoryItems, menuDependencies, briefVendors, briefVendorProducts, briefInvoices]);
-  const smartPrepSales = useMemo(() => (sales || []).flatMap(sale => {
-    const lineItems = sale.lineItems || sale.items || sale.menuItems || [];
-    return Array.isArray(lineItems) ? lineItems.map(item => ({ ...item, restaurantId:sale.restaurantId || appUser?.restaurantId, businessDate:sale.businessDate || sale.date || sale.createdAt })) : [];
-  }), [sales, appUser?.restaurantId]);
+  const smartPrepHistory = useMemo(() => ({...normalizeItemSalesHistory({workspaceId:appUser?.restaurantId,sales:[...demandHistoryState.data,...itemDemandHistoryState.data],recipes,menuDependencies,targetDate:today,sourceState:{...demandHistoryState,resolved:demandHistoryState.resolved && itemDemandHistoryState.resolved,error:demandHistoryState.error || itemDemandHistoryState.error,stale:demandHistoryState.stale || itemDemandHistoryState.stale},limit:demandHistoryState.limit}),allowed:demandHistoryState.allowed}),[appUser?.restaurantId,demandHistoryState,itemDemandHistoryState,recipes,menuDependencies,today]);
+  const smartPrepSales = smartPrepHistory.complete ? smartPrepHistory.rows : [];
   const smartPrepReport = useMemo(() => buildSmartPrepRecommendations({ workspaceId:appUser?.restaurantId, targetDate:today, salesHistory:smartPrepSales, recipes, inventoryItems, prepItems, wasteLogs:briefWasteLogs, outageEvents:(events || []).filter(event => event.commandCenterAlert || /86/.test(String(event.type || event.title || ''))) }), [appUser?.restaurantId, today, smartPrepSales, recipes, inventoryItems, prepItems, briefWasteLogs, events]);
-  const operationalHistory = useMemo(() => buildOperationalHistory({ workspaceId:appUser?.restaurantId, actor:appUser, now:`${today}T23:59:59Z`, readinessSnapshots:[], outageEvents:(events || []).filter(event => event.commandCenterAlert || /86/.test(String(event.type || event.title || ''))), prepHistory:prepItems, invoiceHistory:briefInvoices, wasteLogs:briefWasteLogs, maintenanceLogs, incidents:restaurantAdminAlerts, errors:[], retentionDays:180 }), [appUser, today, events, prepItems, briefInvoices, briefWasteLogs, maintenanceLogs, restaurantAdminAlerts]);
+  const connectedHistory = useMemo(() => buildHistoryInputs({workspaceId:appUser?.restaurantId,events:readinessHistoryState.data,invoices:briefInvoices,alerts:restaurantAdminAlerts}),[appUser?.restaurantId,readinessHistoryState.data,briefInvoices,restaurantAdminAlerts]);
+  const operationalHistory = useMemo(() => buildOperationalHistory({ workspaceId:appUser?.restaurantId, actor:appUser, now:`${today}T23:59:59Z`, ...connectedHistory, outageEvents:(readinessHistoryState.data || []).filter(event => event.commandCenterAlert || /86/.test(String(event.type || event.title || ''))), prepHistory:prepItems, invoiceHistory:briefInvoices, wasteLogs:briefWasteLogs, maintenanceLogs, incidents:restaurantAdminAlerts, retentionDays:180 }), [appUser, today, connectedHistory, readinessHistoryState.data, prepItems, briefInvoices, briefWasteLogs, maintenanceLogs, restaurantAdminAlerts]);
+  const historyQuality = sourceCompleteness(readinessHistoryState,500);
+  const receivingQuality = sourceCompleteness(briefInvoicesState,80);
+  const clockAwareness = canUseLabor ? buildClockAwareness({workspaceId:appUser?.restaurantId,actor:appUser,timePunches:clockHistoryState.data,users,sourceState:clockHistoryState}) : {allowed:false};
+  const canReviewTraining = hasAnyPermission(appUser,['hr']);
+  const reviewOperationalTraining = (opportunity) => {
+    try {
+      const draft = buildTrainingDraft({actor:appUser,workspaceId:appUser.restaurantId,opportunity});
+      sessionStorage.setItem('operationalTrainingReview',JSON.stringify(draft));
+      setActiveTab('hr-training');
+    } catch (error) { addToast('Training Review Unavailable',error.message); }
+  };
+  const saveReadinessObservation = async () => {
+    if (savingReadiness || !historyQuality.complete || !canUserWriteCollection(appUser,'events')) return;
+    setSavingReadiness(true);
+    try {
+      const snapshot = buildReadinessSnapshot({actor:appUser,workspaceId:appUser.restaurantId,date:today,readiness:restaurantReadiness,existingSnapshots:readinessHistoryState.data});
+      if (!snapshot) { addToast('Readiness Already Saved','Today’s current shared readiness observation is already recorded.');return; }
+      const result = await safeTodayWrite({action:'set',collectionName:'events',docId:`readiness_${appUser.restaurantId}_${today}`,data:snapshot,label:'Save readiness observation'});
+      addToast(result?.queued ? 'Readiness Save Queued' : 'Readiness Saved',result?.queued ? 'The observation will be saved when the connection recovers.' : 'Today’s shared operations summary is recorded for History.');
+    } catch (error) { addToast('Readiness Not Saved',error.message); }
+    finally { setSavingReadiness(false); }
+  };
   const openReadinessCategory = (row = {}) => {
     const action = row.action || {};
     try {
@@ -2501,6 +2538,9 @@ const TabToday = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequ
     {canUseManagerBrief && <section data-testid="restaurant-intelligence-v17-0-39" className="grid grid-cols-1 lg:grid-cols-2 gap-3">
       <div data-testid="smart-prep-production" className={`${T.card} brief-card p-4 border-emerald-500/25`}>
         <div className="text-[9px] font-black uppercase tracking-widest text-emerald-300">Smart Prep • Review Only</div><h2 className="font-black text-white text-lg mt-1">Demand-backed prep recommendation</h2>
+        <DemandHistoryStatus history={smartPrepHistory}/>
+        {itemDemandHistoryState.error && <button type="button" onClick={itemDemandHistoryState.reload} className={`${T.btnAlt} mt-2`}>Retry item history</button>}
+        <ItemSalesHistoryReview key={`${appUser.restaurantId}:${appUser.uid || appUser.id}`} appUser={appUser} recipes={recipes.filter(recipe=>recipe.restaurantId===appUser.restaurantId)} onImported={itemDemandHistoryState.reload} addToast={addToast}/>
         {smartPrepReport.recommendations.length ? <div className="mt-3 space-y-2">{smartPrepReport.recommendations.slice(0,3).map(row => <button type="button" key={row.id} onClick={openPrepPlan} className="w-full rounded-xl border border-[#2A353D] bg-[#12161A] p-3 text-left"><div className="font-black text-white text-sm">{row.itemName}</div><div className="text-xs text-slate-300 mt-1 font-bold">{row.state === 'insufficient-data' ? 'Not enough data to predict' : row.state === 'predicted-zero' ? 'Predicted zero additional prep' : `Review ${row.recommendedQuantity}${row.recommendedRange ? ` (${row.recommendedRange[0]}–${row.recommendedRange[1]})` : ''}`}</div><div className="text-[10px] text-slate-500 mt-1">{row.reason}</div></button>)}</div> : <p className="text-xs text-slate-400 font-bold mt-3">No menu-item sales history is loaded. This is “not enough data,” never a predicted zero.</p>}
         <p className="text-[9px] text-slate-500 font-black uppercase tracking-widest mt-3">No automatic ordering, inventory changes, or recipe/menu edits.</p>
       </div>
@@ -2514,8 +2554,9 @@ const TabToday = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequ
         <div className="text-[9px] font-black uppercase tracking-widest text-purple-300">PO ↔ Receiving ↔ Invoice</div><h2 className="font-black text-white text-lg mt-1">Deterministic reconciliation</h2><p className="text-xs text-slate-300 font-bold mt-2">Invoice review now classifies quantity, pack, price, substitution, backorder, missing receiving, duplicate suspicion, catch weight, split case, and low-confidence matches.</p><button type="button" onClick={() => { sessionStorage.setItem('inventoryFocus','invoices'); setActiveTab('inventory'); }} className={`${T.btnAlt} mt-3 w-full`}>Open invoice review</button><p className="text-[9px] text-slate-500 font-black uppercase tracking-widest mt-2">Never pays bills, posts accounting, orders product, or changes ambiguous inventory.</p>
       </div>
       <div data-testid="operational-history-intelligence" className={`${T.card} brief-card p-4 border-orange-500/25`}>
-        <div className="text-[9px] font-black uppercase tracking-widest text-orange-300">Operational History Intelligence</div><h2 className="font-black text-white text-lg mt-1">Repeated causes and training signals</h2>{operationalHistory.allowed ? <><div className="mt-3 text-sm font-black text-white">{operationalHistory.events.length} bounded events • {operationalHistory.trends.length} repeated patterns</div>{operationalHistory.trainingOpportunities.slice(0,2).map(row => <div key={row.id} className="mt-2 rounded-xl border border-[#2A353D] bg-[#12161A] p-3"><div className="text-sm font-black text-white">{row.title}</div><div className="text-xs text-slate-400 mt-1">{row.reason}</div></div>)}</> : <p className="text-xs text-slate-400 font-bold mt-3">Manager, admin, or owner permission is required.</p>}<p className="text-[9px] text-slate-500 font-black uppercase tracking-widest mt-3">180-day bounded, tenant-filtered analysis. No automatic training assignment.</p>
+        <div className="text-[9px] font-black uppercase tracking-widest text-orange-300">Operational History Intelligence</div><h2 className="font-black text-white text-lg mt-1">Repeated causes and training signals</h2>{operationalHistory.allowed ? <><div className="mt-3 text-sm font-black text-white">{operationalHistory.events.length} bounded events • {operationalHistory.trends.length} repeated patterns</div><p data-testid="operational-history-sources" className="mt-2 text-xs text-slate-400">{connectedHistory.readinessSnapshots.length} readiness observations · {connectedHistory.receivingHistory.length} approved receiving rows · {connectedHistory.errors.length} classified error records.</p>{(!historyQuality.complete || !receivingQuality.complete) && <p role="status" className="mt-2 text-xs text-amber-200">History coverage incomplete: {[...historyQuality.reasons,...receivingQuality.reasons].join(' ')}</p>}<TrainingReviewPanel opportunities={operationalHistory.trainingOpportunities} allowed={canReviewTraining} onReview={reviewOperationalTraining}/>{canUserWriteCollection(appUser,'events') && <button data-testid="save-readiness-observation" type="button" disabled={savingReadiness || !historyQuality.complete} onClick={saveReadinessObservation} className={`${T.btnAlt} mt-3 w-full disabled:opacity-50`}>{savingReadiness ? 'Saving readiness…' : 'Save readiness observation'}</button>}</> : <p className="text-xs text-slate-400 font-bold mt-3">Manager, admin, or owner permission is required.</p>}<p className="text-[9px] text-slate-500 font-black uppercase tracking-widest mt-3">180-day bounded, tenant-filtered analysis. No automatic training assignment.</p>
       </div>
+      <ClockReviewPanel report={clockAwareness} onReview={() => setActiveTab('labor')}/>
     </section>}
 
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">

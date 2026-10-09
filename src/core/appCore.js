@@ -467,7 +467,7 @@ export const MASTER_ADMIN_EMAIL = (process.env.REACT_APP_MASTER_ADMIN_EMAIL || '
 export const EVENT_TAGS = ['Standard Day', 'Packers Game', 'Brewers Game', 'Live Music', 'Severe Weather', 'Private Catering', 'Holiday'];
 
 // --- VERSION TRACKING ---
-export const CURRENT_VERSION = '17.0.84';
+export const CURRENT_VERSION = '17.0.85';
 
 // --- Helpers ---
 const usePageVisible = () => {
@@ -796,7 +796,7 @@ function releaseLiveDocumentEntry(key, entry, options = {}) {
   if (options.cache === false) liveDocumentSessionCache.delete(key);
 }
 
-export const makeLiveCollectionKey = ({ coll, restId, whereClauses, orderByField, orderDirection, limitCount, cursor = null, viewerUid = currentViewerUid() }) => stableJson({
+export const makeLiveCollectionKey = ({ coll, restId, whereClauses, orderByField, orderDirection, limitCount, cursor = null, viewerUid = currentViewerUid(), requireServerSnapshot = false }) => stableJson({
   projectId: firebaseConfig?.projectId || 'default',
   viewerUid: viewerUid || 'anonymous',
   coll,
@@ -805,7 +805,8 @@ export const makeLiveCollectionKey = ({ coll, restId, whereClauses, orderByField
   orderByField: orderByField || '',
   orderDirection: orderDirection || 'asc',
   limitCount: Number(limitCount || 0) || null,
-  cursor: cursor || null
+  cursor: cursor || null,
+  ...(requireServerSnapshot ? {requireServerSnapshot:true} : {})
 });
 
 const annotateListenerDiagnostics = (key, patch = {}) => {
@@ -816,7 +817,7 @@ const annotateListenerDiagnostics = (key, patch = {}) => {
 };
 
 
-const acquireSharedLiveCollection = ({ coll, restId, constraints, key, setData, debugLabel = '', viewerUid = currentViewerUid() }) => {
+const acquireSharedLiveCollection = ({ coll, restId, constraints, key, setData, debugLabel = '', viewerUid = currentViewerUid(), requireServerSnapshot = false }) => {
   let entry = liveCollectionRegistry.get(key);
   const diagnostics = getFirestoreDiagnostics();
   if (!entry) {
@@ -872,9 +873,15 @@ const acquireSharedLiveCollection = ({ coll, restId, constraints, key, setData, 
     });
     entry.unsubscribe = onSnapshot(
       query(collection(db, coll), ...constraints),
+      ...(requireServerSnapshot ? [{includeMetadataChanges:true}] : []),
       snap => {
         if (entry.closed === true || liveCollectionRegistry.get(key) !== entry) return;
         const docs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        if (requireServerSnapshot && (snap.metadata?.fromCache || snap.metadata?.hasPendingWrites)) {
+          entry.data=docs;entry.stale=true;entry.hasCachedSnapshot=true;entry.initialSnapshotSeen=false;
+          entry.subscribers.forEach(row=>row.fn(docs,{resolved:true,stale:true,cached:true,error:null,fromServer:false}));
+          return;
+        }
         const isInitial = !entry.initialSnapshotSeen;
         entry.initialSnapshotSeen = true;
         entry.hasCachedSnapshot = true;
@@ -923,7 +930,7 @@ const acquireSharedLiveCollection = ({ coll, restId, constraints, key, setData, 
         else console.error(`Live collection error for ${coll} / ${restId}${debugLabel ? ` [${debugLabel}]` : ''}:`, err);
         entry.lastError = message;
         entry.stale = true;
-        annotateListenerDiagnostics(key, { debugLabel: debugLabel || '', consumerLabels: entryConsumerLabels(entry), lastError: message, lastErrorAt: new Date().toISOString(), stale: true, cached: entry.hasCachedSnapshot === true });
+        annotateListenerDiagnostics(key, { debugLabel: debugLabel || '', consumerLabels: entryConsumerLabels(entry), lastError: message, lastErrorAt: new Date().toISOString(), stale: true, cached: entry.hasCachedSnapshot === true && !entry.initialSnapshotSeen });
         // Preserve last valid data. Do not push an empty array for transient errors.
         entry.subscribers.forEach(row => row.fn(entry.data || [], { resolved: true, stale: true, error: message, fromServer: false }));
       }
@@ -954,7 +961,7 @@ const acquireSharedLiveCollection = ({ coll, restId, constraints, key, setData, 
   }
   const subscriber = makeSubscriberRecord(setData, debugLabel);
   entry.subscribers.add(subscriber);
-  setData(entry.data || [], { resolved: entry.initialSnapshotSeen === true, stale: entry.stale === true, error: entry.lastError || null, cached: entry.hasCachedSnapshot === true });
+  setData(entry.data || [], { resolved: entry.initialSnapshotSeen === true, stale: entry.stale === true, error: entry.lastError || null, cached: entry.hasCachedSnapshot === true && !entry.initialSnapshotSeen });
   annotateListenerDiagnostics(key, { debugLabel: debugLabel || '', subscriberCount: entry.subscribers.size, consumerLabels: entryConsumerLabels(entry), cached: entry.hasCachedSnapshot && !entry.initialSnapshotSeen, stale: entry.stale === true });
 
   return () => {
@@ -1053,7 +1060,8 @@ export const useLiveCollectionState = (coll, restId, options = {}) => {
     orderDirection = 'asc',
     fallbackLimitCount = 75,
     pauseWhenHidden = true,
-    debugLabel = ''
+    debugLabel = '',
+    requireServerSnapshot = false
   } = options || {};
   const pageVisible = usePageVisible();
   const debugLabelRef = React.useRef(debugLabel || '');
@@ -1072,9 +1080,9 @@ export const useLiveCollectionState = (coll, restId, options = {}) => {
     });
     if (orderByField) constraints.push(orderBy(orderByField, orderDirection || 'asc'));
     if (limitCount && Number(limitCount) > 0) constraints.push(firestoreLimit(Number(limitCount)));
-    const key = makeLiveCollectionKey({ coll, restId, whereClauses, orderByField, orderDirection, limitCount, viewerUid });
-    return acquireSharedLiveCollection({ coll, restId, constraints, key, setData: setter, debugLabel: debugLabelRef.current, viewerUid });
-  }, [coll, restId, enabled, limitCount, orderByField, orderDirection, pauseWhenHidden, pageVisible, viewerUid, stableJson(normalizeWhereClausesForKey(whereClauses || []))]);
+    const key = makeLiveCollectionKey({ coll, restId, whereClauses, orderByField, orderDirection, limitCount, viewerUid, requireServerSnapshot });
+    return acquireSharedLiveCollection({ coll, restId, constraints, key, setData: setter, debugLabel: debugLabelRef.current, viewerUid, requireServerSnapshot });
+  }, [coll, restId, enabled, limitCount, orderByField, orderDirection, pauseWhenHidden, pageVisible, viewerUid, requireServerSnapshot, stableJson(normalizeWhereClausesForKey(whereClauses || []))]);
   return state;
 };
 

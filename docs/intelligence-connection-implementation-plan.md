@@ -2,7 +2,7 @@
 
 Scope: items 3 and 4 from conversation `01a11a3f-9706-7173-ab80-f0679d56f5bc`, implemented on `testing`. The October 2 review's original text was not recovered; the scope below uses the explicit recommendations in that conversation. No experimental or mobile code import is required.
 
-Feature implementation remains subject to the certification sequence recorded in issue #175 until Geoffrey explicitly changes it. This plan records unfinished work; it does not claim the workflows are implemented.
+Implemented in 17.0.85 on testing following Geoffrey’s explicit “Implement” instruction for this batch before full certification. The criteria below describe the implemented scope and remaining certification requirements; see RELEASE_17_0_85.md and feature-status.json for limits and executed evidence. The standing certification rule still applies to release.
 
 ## Operational History connections
 

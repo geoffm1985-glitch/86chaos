@@ -1,6 +1,6 @@
 # Daily briefing and weekly review: verified feature status
 
-Reviewed October 8, 2026 against `testing` 17.0.84, commit `425b2e9442171654ad78f360c0521327b258326a`. [feature-status.json](feature-status.json) records source paths, coverage, remaining work, branch/version references, and certification evidence. Recheck those references before every briefing; this is a dated inventory, not a live certification claim.
+Reviewed October 8, 2026 against `testing` 17.0.85 (application changes based on `931413b8c9a339dd49510504d0d1bc09ca22042a`; resolve the exact release commit and source hash from the release identity). [feature-status.json](feature-status.json) records source paths, coverage, remaining work, branch/version references, and certification evidence. Recheck those references before every briefing; this is a dated inventory, not a live certification claim.
 
 ## What already exists
 
@@ -10,17 +10,17 @@ Shared needs-attention, Restaurant Readiness, the connected restaurant knowledge
 | --- | --- | --- |
 | Needs-attention and Readiness | Shared deterministic cards, category scoring, review actions | Complete source coverage, permissions, and completeness validation |
 | Restaurant knowledge graph | Menu, recipe, inventory, vendor/product, invoice, cost relationships | Validate downstream changes after reviewed receiving/approval |
-| Operational History | Bounded operating-event trends and training opportunities | Readiness and errors are empty inputs; receiving history is not connected |
-| Predictive Smart Prep | Comparable-weekday demand, current prep/waste adjustment, insufficient-data handling | Dependable item-level mapping and a history window spanning enough comparable days |
-| Purchasing reconciliation | Deterministic discrepancy classification and invoice review navigation | Full approval, idempotent inventory/cost changes, recipe costing, menu impact, and recovery proof |
-| Forecast-aware Schedule Copilot | Existing scheduling tools and separate intelligence foundations | Complete forecast-to-date/role recommendation workflow |
-| Training/Time Clock awareness | HR tools, Time Clock, and operational training foundations | Connected coaching and clock-anomaly review workflows |
+| Operational History | Bounded operating-event trends and training opportunities | Readiness observations, approved receiving and classified errors connected; existing other sources remain bounded |
+| Predictive Smart Prep | Comparable-weekday demand, current prep/waste adjustment, insufficient-data handling | Reviewed item-sales import and bounded 112-day window implemented; fresh comparable samples and serving mappings required |
+| Purchasing reconciliation | Deterministic discrepancy classification and invoice review navigation | Business-function and real Firestore transaction validation added; deployed/device certification pending |
+| Forecast-aware Schedule Copilot | Existing scheduling tools and separate intelligence foundations | Explainable configured date/role coverage and explicit unpublished draft review implemented |
+| Training/Time Clock awareness | HR tools, Time Clock, and operational training foundations | Evidence-linked HR checklist and private open-punch review implemented |
 
 ## Certification truth
 
 The latest complete recorded full run, `2026-10-07T13-36-35`, tested 17.0.84 at `c62c206eceb7fefffc8b000ecb516c05902da4b9`: **581 PASS, 0 FAIL, 0 TIMEOUT, 12 expected SKIP, 0 unexpected SKIP**. Its final result is **FAILED**, because the mandatory real-device group has no valid source-bound evidence. It also predates the latest Schedule Builder fixes. The current testing source has no qualifying full certification in the evidence reviewed here.
 
-Passing targeted tests, the presence of code, and the absence of failing browser tests do not establish certification. Keep the [standing rule in issue #175](https://github.com/geoffm1985-glitch/86chaos/issues/175) intact unless Geoffrey explicitly changes its sequencing requirement. Physical-device evidence cannot be inferred from desktop/mobile browser tests.
+Passing targeted tests, the presence of code, and the absence of failing browser tests do not establish certification. Geoffrey explicitly authorized this 17.0.85 implementation batch before the outstanding certification. The [standing rule in issue #175](https://github.com/geoffm1985-glitch/86chaos/issues/175) continues to require full certification for release. Physical-device evidence cannot be inferred from desktop/mobile browser tests.
 
 ## Branch and APK context
 
