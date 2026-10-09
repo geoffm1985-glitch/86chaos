@@ -1,7 +1,7 @@
 {
   "schemaVersion": 3,
   "version": "17.0.86",
-  "sourceHash": "722acc254509da34f3136b6a496f0e6eff5a1b77eb40591838193c09754b4132",
+  "sourceHash": "a8d204e68afa020961a262fa2c04eedf1235ad1d9557f7c3114099e038493cc0",
   "files": [
     {
       "file": ".gitattributes",
@@ -293,7 +293,7 @@
     },
     {
       "file": "RELEASE_17_0_86.md",
-      "sha256": "e4469699c2a99793d26e5c97ff8eda1ee315505851b4d89c0a96eee267ad9b23"
+      "sha256": "34b2a670cec8a0ac3a24dc711626a88f8803989282f65246ffb6406371998f58"
     },
     {
       "file": "RELEASE_17_0_9.md",
@@ -326,6 +326,10 @@
     {
       "file": "RUN_86CHAOS_PLAY_STORE_RELEASE_GATE.ps1",
       "sha256": "bb710be17fff7da4795adcc43b1032fce5e8001c7a7a11078e92f4d0b197b8ed"
+    },
+    {
+      "file": "START_86CHAOS_PLAY_STORE_RELEASE_GATE_BACKGROUND.ps1",
+      "sha256": "f0f0706a381c5f3ea0190bd47bfb6e319eaea453bc436a5dc41b494c539c2540"
     },
     {
       "file": "api/_ai-policy.js",
@@ -1665,7 +1669,7 @@
     },
     {
       "file": "api/server-emulator-isolation.test.cjs",
-      "sha256": "0eac86871c0b315d77842516dfa72536a43f47a420353b54930aea3a109b558b"
+      "sha256": "80fa94a979d9863ac8da99f026ba8496bb9d58c0b3d64bb48358323d5dbb6443"
     },
     {
       "file": "api/server-firebase-boundary-preflight.test.cjs",
@@ -1929,7 +1933,7 @@
     },
     {
       "file": "docs/feature-status.json",
-      "sha256": "7c4af3b02e25f8521f694ef5c1c6e5dcc0a9256120e0d28f53fecb07c9980bff"
+      "sha256": "e630962bb9f95ef5943fd409f1008441f9497ead838d176154aec1f0e8926aba"
     },
     {
       "file": "docs/firebase-emulator-bridge-17.0.54.md",
@@ -2380,6 +2384,10 @@
       "sha256": "161657deaa676f6b7414cf5c054639667a57dee05bb539be6f7dfe8f66c1fd2f"
     },
     {
+      "file": "scripts/86chaos-release-gate/run-background-full-gate.ps1",
+      "sha256": "f532ea46548eb6ae091194676cde30ef5e9e0c6e02ddfce06098a88281dd4ef4"
+    },
+    {
       "file": "scripts/86chaos-release-gate/run-context.cjs",
       "sha256": "6a1ab5227b9076023160f79b8b90676d9201f78b9e24dbf485c558e72fd58874"
     },
@@ -2505,7 +2513,7 @@
     },
     {
       "file": "scripts/run-isolated-server-tests.cjs",
-      "sha256": "ab262ca455e51bdd9a0fc320946612b7e8cb60e4a5f6c7a1926ec3ca2e163ca5"
+      "sha256": "2c82403f5f7bfc2c9ac1614641032575b5b11e6e95e23b5329ef7fa057e595f0"
     },
     {
       "file": "scripts/run-pos-bridge-emulator-tests.cjs",

@@ -33,6 +33,15 @@ function childEnvironment(inherited) {
   return env;
 }
 
+function serverTestArguments(files=[],env=process.env) {
+  // Checkpoint regressions launch real inventory/prepare subprocesses. Running
+  // several copies together can starve their bounded deadlines on Windows.
+  const configured=env.CHAOS_SERVER_TEST_CONCURRENCY;
+  const concurrency=configured==null||configured==='' ? (process.platform==='win32'?1:Math.min(2,os.availableParallelism())) : Number(configured);
+  if(!Number.isInteger(concurrency)||concurrency<1||concurrency>32)throw new Error('CHAOS_SERVER_TEST_CONCURRENCY must be an integer from 1 to 32.');
+  return ['--test',`--test-concurrency=${concurrency}`,...(files.length?files:['api/*.test.cjs'])];
+}
+
 async function run({testFiles=[],env=process.env,root=process.cwd()}={}) {
   const [firestore,storage,hub,logging]=await reservePorts(4);
   const tempRoot=path.resolve(os.tmpdir());
@@ -60,8 +69,10 @@ if(require.main===module) {
   if(process.argv.includes('--child')) {
     const env=childEnvironment(process.env),files=JSON.parse(env.CHAOS_SERVER_TEST_FILES||'[]');
     delete env.CHAOS_SERVER_TEST_FILES;
-    const result=cp.spawnSync(process.execPath,['--test',...(files.length?files:['api/*.test.cjs'])],{cwd:process.cwd(),env,stdio:'inherit',windowsHide:true});
+    const args=serverTestArguments(files,env);
+    console.log(`Server test file concurrency: ${args[1].split('=')[1]}; complete selected file set retained.`);
+    const result=cp.spawnSync(process.execPath,args,{cwd:process.cwd(),env,stdio:'inherit',windowsHide:true});
     process.exitCode=result.status??1;
   } else run().then(code=>{process.exitCode=code;}).catch(error=>{console.error(error.message);process.exitCode=1;});
 }
-module.exports={run,childEnvironment};
+module.exports={run,childEnvironment,serverTestArguments};

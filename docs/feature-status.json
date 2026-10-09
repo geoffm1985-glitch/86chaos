@@ -204,7 +204,7 @@
     "browser": "Run after deployment against the authorized testing domain; source-bound results are stored in test-results/operational-17-0-86. Unique preview hostnames are blocked by the existing Firebase referrer restriction.",
     "syntaxAndLint": "PASS: changed-file ESLint zero errors (262 warnings in the existing feature files); source validator and sealed manifest parity pass.",
     "targetedRelease": "PASS: 277 legacy/current regressions after rerunning the two immutable-source checkpoint checks, plus 35 connection and 25 completion Node checks, 30 React checks and 2 real Firestore workflows. The initial broad run refused two checkpoints while source edits were ongoing; frozen rerun passed.",
-    "fullCertification": "Not run for 17.0.86. The previous full gate was cancelled by user request. No physical-device certification claim.",
+    "fullCertification": "Incomplete: full-gate attempts were interrupted, and a restarted server stage passed 1,171 checks with one checkpoint subprocess timeout. The durable launcher and bounded server concurrency fix require a new complete gate. No physical-device certification claim.",
     "evidenceDirectory": "test-results/operational-17-0-86"
   },
   "previousSourceBaseline": {
@@ -237,5 +237,15 @@
       "catalogMaxReviewRows": 100
     },
     "deferredIntegrations": "Existing provider-specific POS/payments/payroll/GL/reservations, hardware and enterprise procurement scope remains deferred."
+  },
+  "releaseGateExecution": {
+    "launcher": "START_86CHAOS_PLAY_STORE_RELEASE_GATE_BACKGROUND.ps1",
+    "supervisor": "scripts/86chaos-release-gate/run-background-full-gate.ps1",
+    "processOwnership": "Windows Task Scheduler, current user, on demand, no recurring trigger",
+    "logs": "Separate native stdout/stderr and supervisor/runner PID/exit-code record in .cache/full-release-gate-background.json",
+    "serverConcurrency": "One test file at a time on Windows; at most two by default on other hosts; validated CHAOS_SERVER_TEST_CONCURRENCY override; full selection and existing deadlines retained",
+    "runnerRegressionChecks": "PASS: four emulator-isolation/concurrency checks, including actual serialized Node test files",
+    "failedAttempt": "2026-10-09T10-28-20: 1,171 server checks passed; one historical checkpoint child hit its 100-second subprocess deadline under parallel load. Failed evidence retained.",
+    "currentFullGate": "Pending after the corrected source is deployed; a launch flag alone is not proof that Playwright tests execute."
   }
 }
