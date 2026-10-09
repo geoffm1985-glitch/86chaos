@@ -1,7 +1,7 @@
 {
   "schemaVersion": 3,
   "version": "17.0.85",
-  "sourceHash": "0abc2a7b5271ad73628b3309de38e9751ba747223ce20b8e966ec0bb9fc72df1",
+  "sourceHash": "7b760dfbbad3347d3d89a375740741a7f4f1101cf8eaebfedfd6069d0671b43d",
   "files": [
     {
       "file": ".gitattributes",
@@ -1905,11 +1905,11 @@
     },
     {
       "file": "docs/daily-briefing-feature-status.md",
-      "sha256": "6402440e16d9fc5de0c5cefeee82a82a99ba286f3bfee9ac4f952fd391c54f7f"
+      "sha256": "86cf09b32efa08fdb84d68a4daacacb82aa40ee61a1cf7d2d518026e905d2215"
     },
     {
       "file": "docs/feature-status.json",
-      "sha256": "3341f7a2b2a85a2d0f9362735e4480ca693f20b86e730f30bd347ddc2d150dd4"
+      "sha256": "407ad56768e834de73e28eb8d28480197cc262b75602c75c491807da1b4a6ff2"
     },
     {
       "file": "docs/firebase-emulator-bridge-17.0.54.md",
@@ -4781,7 +4781,7 @@
     },
     {
       "file": "tests/86chaos-release-gate/98-intelligence-connections-17-0-85.spec.cjs",
-      "sha256": "620f99fe5af92f28389c88b8b0eac0293441cdb03dc28e63639f4fbbdda944f5"
+      "sha256": "be44028d29eacc2d10e803e69531991966870cfb4b5f9844e7e3aa8961c1888b"
     },
     {
       "file": "tests/86chaos-release-gate/99-request-off-card-accessibility.spec.cjs",

@@ -1,6 +1,6 @@
 # Daily briefing and weekly review: verified feature status
 
-Reviewed October 8, 2026 against `testing` 17.0.85 (application changes based on `931413b8c9a339dd49510504d0d1bc09ca22042a`; resolve the exact release commit and source hash from the release identity). [feature-status.json](feature-status.json) records source paths, coverage, remaining work, branch/version references, and certification evidence. Recheck those references before every briefing; this is a dated inventory, not a live certification claim.
+Reviewed October 8, 2026 against `testing` 17.0.85 (application implementation/deployment `3f5faf21b01d54b52650a35ff05e6210f15de55a`; subsequent test-selector/documentation updates retain the same application behavior). [feature-status.json](feature-status.json) records source paths, coverage, remaining work, branch/version references, and certification evidence. Recheck those references before every briefing; this is a dated inventory, not a live certification claim.
 
 ## What already exists
 
@@ -10,11 +10,13 @@ Shared needs-attention, Restaurant Readiness, the connected restaurant knowledge
 | --- | --- | --- |
 | Needs-attention and Readiness | Shared deterministic cards, category scoring, review actions | Complete source coverage, permissions, and completeness validation |
 | Restaurant knowledge graph | Menu, recipe, inventory, vendor/product, invoice, cost relationships | Validate downstream changes after reviewed receiving/approval |
-| Operational History | Bounded operating-event trends and training opportunities | Readiness observations, approved receiving and classified errors connected; existing other sources remain bounded |
-| Predictive Smart Prep | Comparable-weekday demand, current prep/waste adjustment, insufficient-data handling | Reviewed item-sales import and bounded 112-day window implemented; fresh comparable samples and serving mappings required |
+| Operational History | Bounded trends with saved readiness, approved receiving, classified errors and training review | Readiness observations, approved receiving and classified errors connected; existing other sources remain bounded |
+| Predictive Smart Prep | Reviewed item-sales import, comparable-weekday demand, current prep/waste and insufficient-data handling | Reviewed item-sales import and bounded 112-day window implemented; fresh comparable samples and serving mappings required |
 | Purchasing reconciliation | Deterministic discrepancy classification and invoice review navigation | Business-function and real Firestore transaction validation added; deployed/device certification pending |
-| Forecast-aware Schedule Copilot | Existing scheduling tools and separate intelligence foundations | Explainable configured date/role coverage and explicit unpublished draft review implemented |
-| Training/Time Clock awareness | HR tools, Time Clock, and operational training foundations | Evidence-linked HR checklist and private open-punch review implemented |
+| Forecast-aware Schedule Copilot | Explained demand-aware date/role coverage and reviewed unpublished drafts | Explainable configured date/role coverage and explicit unpublished draft review implemented |
+| Training/Time Clock awareness | Evidence-linked HR checklist review and authorized open-punch exception review | Evidence-linked HR checklist and private open-punch review implemented |
+
+Targeted checks passed on the committed application: **311 Node + 19 React tests**, zero failures/skips. A real loopback Firestore transaction scenario passed. **Six desktop/mobile Chromium checks** passed against the exact application deployment, including import preview/error handling, history/clock navigation, forecast review, and permission boundaries. A corrected test selector and these status notes are subsequent test/documentation changes. See issue #175 for the latest run status.
 
 ## Certification truth
 

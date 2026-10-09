@@ -5,9 +5,10 @@
   "sourceBaseline": {
     "version": "17.0.85",
     "branch": "testing",
-    "commit": null,
+    "commit": "3f5faf21b01d54b52650a35ff05e6210f15de55a",
     "parentCommit": "931413b8c9a339dd49510504d0d1bc09ca22042a",
-    "identity": "Resolve the testing source commit containing RELEASE_17_0_85.md and the sealed release-source-manifest.json; no current full certification is claimed."
+    "identity": "Verified application implementation/deployment commit. Subsequent test-selector and documentation changes do not establish full certification.",
+    "sourceHash": "0abc2a7b5271ad73628b3309de38e9751ba747223ce20b8e966ec0bb9fc72df1"
   },
   "productionBaseline": {
     "version": "17.0.84",
@@ -190,10 +191,11 @@
     "nodeBusinessAndApi": "PASS: 68 business/API/listener tests, including workspace timezone boundaries; zero skips.",
     "reactBusinessAndComponents": "PASS: 19 tests covering purchasing/costing, review components, import failure/retry/permissions, and listener query isolation.",
     "firestoreEmulator": "PASS: actual approval/costing/import/read/duplicate/conflict transactions, demo-86chaos-intelligence loopback only.",
-    "build": "PASS: production build including server-verified intelligence listeners. Final preview/context reset will also be built by the exact testing deployment.",
-    "browser": "Pending exact testing deployment",
+    "build": "PASS: production compilation, server-verified listeners, and READY Vercel preview dpl_6rcxVAi8ZukEQzFy81tiTL8xxSdu. Testing URL version/commit/hash verified.",
+    "browser": "PASS: 6 desktop/mobile Chromium checks against the exact 17.0.85 application commit/hash above, using an existing QA workspace in read-only mode. The forecast selector uses its actual tab accessibility role.",
     "fullCertification": "Not run for 17.0.85; outstanding real-device evidence is not supplied by these tests.",
     "syntaxAndLint": "PASS: API/script syntax (713 files) and changed-file ESLint (zero errors).",
-    "targetedRelease": "Running the repository-wide targeted release command; final result pending."
+    "targetedRelease": "PASS on the committed implementation: 311 Node + 19 React tests; zero failures/skips.",
+    "evidenceDirectory": "test-results/intelligence-17-0-85"
   }
 }

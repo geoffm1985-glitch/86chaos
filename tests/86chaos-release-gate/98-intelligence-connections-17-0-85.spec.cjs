@@ -20,7 +20,7 @@ test.describe('98 intelligence connections 17.0.85',()=>{
   });
   test('Schedule Copilot exposes forecast evidence and leaves publication under manager control',async({page})=>{
     test.setTimeout(6*60*1000);const account=ownerLikeCreds();requireCreds(account,'owner-like account');const problems=[];watchForProblems(page,problems);
-    await login(page,account.email,account.password);await gotoTab(page,'schedule',{settleMs:1500});await page.getByRole('button',{name:'Open Copilot Tools',exact:true}).click();await page.getByRole('button',{name:'Demand forecast',exact:true}).click();
+    await login(page,account.email,account.password);await gotoTab(page,'schedule',{settleMs:1500});await page.getByRole('button',{name:'Open Copilot Tools',exact:true}).click();await page.getByRole('tab',{name:'Demand forecast',exact:true}).click();
     const forecast=page.getByTestId('schedule-demand-forecast');await expect(forecast).toBeVisible();await expect(forecast).toContainText(/drafts only after review/);await expect(forecast).toContainText(/No automatic publishing/);
     expect(problems.filter(row=>['page-error','http-5xx'].includes(row.type)),JSON.stringify(problems,null,2)).toEqual([]);
   });
