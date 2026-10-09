@@ -13,3 +13,5 @@ Coverage includes new Node business/API tests, React review-component tests, tra
 Operational source coverage remains bounded: historical prep/waste/maintenance and alerts use the existing loaded sources; a complete 180-day archive is not implied. Clock review covers verified loaded punches from the last 14 days. Forecasts are conservative local calculations, not a trained predictive model. POS processing remains staged. Scheduled briefing prompts were not available to edit.
 
 Full Play Store certification remains pending on this changed source. The previous 17.0.84 full run cannot certify 17.0.85; missing real-device/signing/push/POS/printer evidence remains required.
+
+Full-gate preflight identified an exception-response blocker in the demand-history API. The route now returns controlled validation, permission, conflict, or server-error messages and rejects arbitrary exception status codes; regression coverage injects unexpected SDK exceptions to verify private details never reach clients.

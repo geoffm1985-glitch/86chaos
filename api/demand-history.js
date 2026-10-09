@@ -25,5 +25,13 @@ module.exports=async function handler(req,res) {
     const currentDate=workspaceBusinessDate(workspace.data() || {});
     const result=body.action==='import' ? await importDemandRows({db,ctx,rows:body.rows,approved:body.approved,currentDate}) : await readDemandRows({db,ctx,currentDate});
     return res.status(200).json({ok:true,...result});
-  } catch(error) {return res.status(error.statusCode || 500).json({ok:false,error:error.statusCode ? error.message : 'Demand history could not be verified.'});}
+  } catch(error) {
+    const publicErrors={
+      400:'Review the demand history dates, quantities, recipe matches, and explicit approval.',
+      403:'Demand history permission is required for this workspace.',
+      409:'Demand history conflicts with existing workspace or source records. Refresh and review before retrying.'
+    };
+    const status=Object.hasOwn(publicErrors,error?.statusCode) ? Number(error.statusCode) : 500;
+    return res.status(status).json({ok:false,error:publicErrors[status] || 'Demand history could not be verified.'});
+  }
 };

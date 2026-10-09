@@ -14,3 +14,21 @@ test('missing approval, foreign recipes, bulk units, demo and limited roles cann
 test('read permission and workspace context are explicit',()=>{assert.doesNotThrow(()=>assertDemandPermission({...ctx,user:{},permissions:{laborRead:true}}));assert.throws(()=>assertDemandPermission({...ctx,user:{},permissions:{team:true}}));assert.throws(()=>assertDemandPermission({...ctx,uid:''}));});
 test('invalid dates, refunds, booleans, incomplete IDs and unbounded rows fail closed; actual zero remains valid',()=>{for(const change of [{businessDate:'2026-02-30'},{businessDate:'2026-10-09'},{businessDate:'2026-01-01'},{quantity:-1},{quantity:true},{quantity:''},{sourceId:''},{recipeId:'../foreign'}])assert.throws(()=>normalizeDemandRows([{...row,...change}],'2026-10-08'));assert.throws(()=>normalizeDemandRows(Array(201).fill(row),'2026-10-08'));assert.equal(normalizeDemandRows([{...row,quantity:0}],'2026-10-08')[0].quantity,0);});
 test('new endpoint returns bounded errors and authentication failures without initializing production credentials',async()=>{const handler=require('./demand-history');for(const [request,status] of [[{method:'GET'},405],[{method:'POST',body:{action:'read',restaurantId:'r1'}},401],[{method:'POST',body:'broken'},400],[{method:'POST',body:{action:'read',restaurantId:'r1'},headers:{'content-encoding':'gzip'}},415],[{method:'POST',body:'x'.repeat(256001)},413]]){const response={setHeader(){},status(value){this.code=value;return this;},json(value){this.body=value;return this;}};await handler({...request,headers:request.headers || {}},response);assert.equal(response.code,status);assert.equal(response.body.ok,false);}});
+test('demand history exceptions never expose SDK messages or accept arbitrary response statuses',async()=>{
+  const adminPath=require.resolve('./_chaos-admin');const routePath=require.resolve('./demand-history');
+  const originalAdmin=require.cache[adminPath];const originalRoute=require.cache[routePath];
+  try {
+    for(const statusCode of [400,403,409,500,503,777,undefined]) {
+      require.cache[adminPath]={id:adminPath,filename:adminPath,loaded:true,exports:{initAdmin(){throw Object.assign(new Error('private SDK credential and workspace details'),{statusCode});}}};
+      delete require.cache[routePath];const handler=require('./demand-history');
+      const response={setHeader(){},status(value){this.code=value;return this;},json(value){this.body=value;return this;}};
+      await handler({method:'POST',headers:{authorization:'Bearer test-token'},body:{action:'read',restaurantId:'r1'}},response);
+      assert.equal(response.code,[400,403,409].includes(statusCode) ? statusCode : 500);
+      assert.equal(response.body.ok,false);assert.doesNotMatch(JSON.stringify(response.body),/private|SDK|credential|details/);
+      if(response.code===500)assert.equal(response.body.error,'Demand history could not be verified.');
+    }
+  } finally {
+    if(originalAdmin)require.cache[adminPath]=originalAdmin;else delete require.cache[adminPath];
+    if(originalRoute)require.cache[routePath]=originalRoute;else delete require.cache[routePath];
+  }
+});
