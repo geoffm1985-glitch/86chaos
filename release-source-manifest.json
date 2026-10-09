@@ -1,7 +1,7 @@
 {
   "schemaVersion": 5,
   "version": "18.0.12",
-  "sourceHash": "c12a0380b31b1176f8fd63545efd366c770009fcb8036d0de4ed7a38938a01d7",
+  "sourceHash": "6742e41e7b2a2e04a70c460dceaa1334945f133f995e4d337d73daa0e1d719d8",
   "files": [
     {
       "file": ".gitattributes",
@@ -9,7 +9,7 @@
     },
     {
       "file": ".github/workflows/mobile-targeted-gate.yml",
-      "sha256": "a9ef9dc9db0c0ade5fe0b5e753da3736e6f4682f1c7c09f38f80f2400f015daf"
+      "sha256": "acd123f34914b0a588c9e683468c41504c4d26a4dd2e27e3da9b9c52cce8fc63"
     },
     {
       "file": ".github/workflows/testing-targeted-delta.yml",
@@ -1261,7 +1261,7 @@
     },
     {
       "file": "api/mobile-capabilities.js",
-      "sha256": "595d59445a25544f7d1664af49713eaff114451f0cb28a0f44e91fb434b5af05"
+      "sha256": "3a01008e7ee91603fb55380e8b70806023544a930ce2e6f6669c97de5d33b0d8"
     },
     {
       "file": "api/mobile-native-api-bridge-18-0-1.test.cjs",
@@ -2441,7 +2441,7 @@
     },
     {
       "file": "package.json",
-      "sha256": "e86d22e9cbfe8feaf4bb0d3c26a571ba62543d4a472d938f7f5c7e25b2a9233b"
+      "sha256": "35f61f405ce9524bfe571e4b8f0ef24003d8525e0df35ddd863a07f7c0df90ef"
     },
     {
       "file": "playwright.config.js",
@@ -4109,7 +4109,7 @@
     },
     {
       "file": "src/App.js",
-      "sha256": "957e69b38b0e32cc015c6c3312b422990d2b50d674fbd8464b97cf5875afb4f5"
+      "sha256": "5d8343d4c03c0891978bf320cf35b47c3e91fe8e419b2edfb5f783411a5c40d2"
     },
     {
       "file": "src/components/CheersLogo.js",
@@ -4150,6 +4150,14 @@
     {
       "file": "src/components/Modal.js",
       "sha256": "17780875ce0f86982b289f808d7564c039bb853c0d01b5d3ddb2ce89c094cc82"
+    },
+    {
+      "file": "src/components/NativeNotificationConnection.jsx",
+      "sha256": "77b54f02a1baa8a92d61fb2b5439edf15a25b3f3286c64ae5be437a933d03c6d"
+    },
+    {
+      "file": "src/components/NativeNotificationConnection.test.jsx",
+      "sha256": "845c33e0174d648e7587bf219ba9d090f219626b30ce5e633858389c1465f2cf"
     },
     {
       "file": "src/components/OperationalCompletion.test.jsx",
@@ -4721,7 +4729,7 @@
     },
     {
       "file": "src/features/management.jsx",
-      "sha256": "29026ff7f98ee2dd18406383c484617425f0b6dcffc24d216820218702a0d397"
+      "sha256": "ae37cd75bcfc742a16985ccd6ac47ac59825d7c18e689b7b10efddf651f54932"
     },
     {
       "file": "src/features/operations.jsx",

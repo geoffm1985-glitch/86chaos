@@ -100,15 +100,19 @@ jobs:
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           script: |
+            cd android
+            chmod +x gradlew
+            ./gradlew assembleDebug assembleDebugAndroidTest --no-daemon
+            adb shell settings put secure location_mode 3
             adb emu geo fix -87.63 41.88
-            cd android && chmod +x gradlew && ./gradlew connectedDebugAndroidTest --no-daemon -Pandroid.testInstrumentationRunnerArguments.class=com.chiltonappworks.chaos86.NativeCapabilitiesTest
+            ./gradlew connectedDebugAndroidTest --no-daemon -Pandroid.testInstrumentationRunnerArguments.class=com.chiltonappworks.chaos86.NativeCapabilitiesTest
 
       - name: Require matching mobile backend before distributing APK
         shell: bash
         run: |
           for i in $(seq 1 60); do
             if curl --fail --silent https://86chaos-git-mobile-cheers-portal-s-projects.vercel.app/api/mobile-capabilities > /tmp/86chaos-mobile-capabilities.json; then
-              if node -e "const d=require('/tmp/86chaos-mobile-capabilities.json'); if(d.version!==require('./package.json').version || !d.productionCredentialsConfigured || d.projectId!=='cheers-34b8d')process.exit(1)"; then exit 0; fi
+              if node -e "const d=require('/tmp/86chaos-mobile-capabilities.json'); if(d.version!==require('./package.json').version || d.commit!==process.env.GITHUB_SHA || !d.productionCredentialsConfigured || d.projectId!=='cheers-34b8d')process.exit(1)"; then exit 0; fi
             fi
             sleep 10
           done

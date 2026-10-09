@@ -295,7 +295,7 @@
     "test:operational-completion": "node --test api/operational-completion-17-0-86.test.cjs && react-scripts test --watchAll=false --runInBand src/components/OperationalCompletion.test.jsx && npm run test:intelligence-connections:emulator",
     "validate:18.0.12": "node scripts/validate-18-0-12.js",
     "test:repair:18.0.12": "npm run test:current-release-targeted",
-    "test:mobile-capabilities": "node --test api/mobile-native-http-18-0-12.test.cjs api/mobile-native-speech-18-0-12.test.cjs && react-scripts test --watchAll=false --runInBand src/core/nativeCapabilities.test.js src/core/schedulePdfDelivery.test.js src/core/schedulePdf.test.js"
+    "test:mobile-capabilities": "node --test api/mobile-native-http-18-0-12.test.cjs api/mobile-native-speech-18-0-12.test.cjs && react-scripts test --watchAll=false --runInBand src/core/nativeCapabilities.test.js src/core/schedulePdfDelivery.test.js src/core/schedulePdf.test.js src/components/NativeNotificationConnection.test.jsx"
   },
   "browserslist": {
     "production": [

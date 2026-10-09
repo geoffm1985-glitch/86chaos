@@ -1,4 +1,5 @@
 import { NativeCapabilities, isNativeAndroid } from '../core/nativeCapabilities';
+import NativeNotificationConnection from '../components/NativeNotificationConnection';
 import { firestoreHealthEvidence, restoreDrillNeedsAttention, deploymentEvidenceChecks } from '../core/adminHealthEvidence';
 import PosImportReview from '../components/PosImportReview';
 import Shift4IntegrationPanel from '../components/Shift4IntegrationPanel';
@@ -1029,7 +1030,7 @@ const prepareRestaurantLogoUpload = async (file) => {
   }
 };
 
-const TabSettings = ({ appUser, addToast, users = [], clientData = {}, presenceSelf = null }) => {
+const TabSettings = ({ appUser, addToast, users = [], clientData = {}, presenceSelf = null, onEnableNotifications }) => {
   const { t } = useI18n();
   const [subTab, setSubTab] = useState('profile');
   const [newOwnerId, setNewOwnerId] = useState('');
@@ -2604,6 +2605,7 @@ const Toggle = ({ label, desc, checked, onChange, disabled = false }) => (
         <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
           <form onSubmit={handleSavePrefs} className={`${T.card} p-3 sm:p-5 space-y-5`}>
             
+            {isNativeAndroid() ? <NativeNotificationConnection key={appUser?.id} onConnect={onEnableNotifications}/> : <>
             {/* SLEEK CONNECTION STATUS BAR */}
             <div className="p-3 bg-[#0B0E11] border border-[#2A353D] rounded-xl flex justify-between items-center gap-3">
               <div>
@@ -2624,6 +2626,7 @@ const Toggle = ({ label, desc, checked, onChange, disabled = false }) => (
               )}
             </div>
 
+            </>}
             <div>
               <h2 className="text-base font-black text-white mb-1"><Bell className={`inline mr-2 ${T.copper}`} size={16}/> Alerts & Routing</h2>
               <p className="text-[10px] text-slate-400 font-medium mb-4">Control exactly when and how 86 Chaos pings your device.</p>
