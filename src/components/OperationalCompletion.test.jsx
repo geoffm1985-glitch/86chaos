@@ -25,6 +25,18 @@ test('exhausted history with undated records can be explicitly refreshed after s
   const load=jest.fn();render(<HistorySourceReview history={{sources:{prep:{resolved:true,data:[],scanned:1,undated:1,complete:false,nextCursor:''}},load}} sources={[{key:'prep',label:'Prep history'}]}/>);
   fireEvent.click(screen.getByRole('button',{name:'Refresh prep history'}));expect(load).toHaveBeenCalledWith('prep',true);expect(screen.getByText(/Coverage incomplete/)).toBeTruthy();
 });
+
+test('history accessibility names follow retry/refresh state despite the automatic label guard',()=>{
+  const load=jest.fn(),sources=[{key:'prep',label:'Prep history'}];
+  const {rerender}=render(<HistorySourceReview history={{sources:{},load}} sources={sources}/>);
+  const button=screen.getByRole('button',{name:'Load prep history'});
+  // The production guard supplies a label only when the component omits one.
+  if(!button.hasAttribute('aria-label'))button.setAttribute('aria-label','Open Load prep history');
+  rerender(<HistorySourceReview history={{sources:{prep:{resolved:true,error:'Offline',complete:false}},load}} sources={sources}/>);
+  fireEvent.click(screen.getByRole('button',{name:'Retry prep history'}));expect(load).toHaveBeenCalledWith('prep',false);
+  rerender(<HistorySourceReview history={{sources:{prep:{resolved:true,data:[],complete:true}},load}} sources={sources}/>);
+  expect(screen.getByRole('button',{name:'Refresh prep history'})).toBeTruthy();
+});
 test('paged hook retains prior rows through failure and retries the same cursor',async()=>{
   secureFetch.mockResolvedValueOnce(result({source:'prep',data:[{id:'one'}],nextCursor:'one',scanned:100,undated:0,hasMore:true})).mockRejectedValueOnce(new Error('Offline')).mockResolvedValueOnce(result({source:'prep',data:[{id:'two'}],nextCursor:'',scanned:102,undated:0,hasMore:false}));
   const {result:hook}=renderHook(()=>useOperationalHistory(owner,true));expect(secureFetch).not.toHaveBeenCalled();

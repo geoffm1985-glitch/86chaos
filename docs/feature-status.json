@@ -197,13 +197,13 @@
     "date": "2026-10-09"
   },
   "validation": {
-    "nodeBusinessAndApi": "PASS: 24 operational completion checks and 35 intelligence connection checks, zero failures/skips. Separate business/API/help group: 46 pass.",
-    "reactBusinessAndComponents": "PASS: 29 checks across five suites, zero failures/skips.",
+    "nodeBusinessAndApi": "PASS: 337 legacy/current, connection and operational completion Node checks after the frozen checkpoint rerun; final operational handler group has 25 passes.",
+    "reactBusinessAndComponents": "PASS: 30 React checks across five suites, including accessible Load/Retry/Refresh state transitions.",
     "firestoreEmulator": "PASS: 2 actual Firestore workflows, including PO/partial receiving through menu margin, 86 risk and order suggestions; demo-86chaos-intelligence loopback only.",
-    "build": "PASS: local production compilation. Final committed preview build and browser checks pending.",
-    "browser": "Pending exact committed 17.0.86 preview checks.",
+    "build": "PASS: local production compilation and READY 17.0.86 application preview. Final source-bound deployment status is recorded in the validation artifacts.",
+    "browser": "Run after deployment against the authorized testing domain; source-bound results are stored in test-results/operational-17-0-86. Unique preview hostnames are blocked by the existing Firebase referrer restriction.",
     "syntaxAndLint": "PASS: changed-file ESLint zero errors (262 warnings in the existing feature files); source validator and sealed manifest parity pass.",
-    "targetedRelease": "PASS: 277 legacy/current regressions after rerunning the two immutable-source checkpoint checks, plus 35 connection and 24 completion Node checks, 29 React checks and 2 real Firestore workflow checks. The first broad run correctly refused two checkpoints while source edits were ongoing; frozen rerun passed.",
+    "targetedRelease": "PASS: 277 legacy/current regressions after rerunning the two immutable-source checkpoint checks, plus 35 connection and 25 completion Node checks, 30 React checks and 2 real Firestore workflows. The initial broad run refused two checkpoints while source edits were ongoing; frozen rerun passed.",
     "fullCertification": "Not run for 17.0.86. The previous full gate was cancelled by user request. No physical-device certification claim.",
     "evidenceDirectory": "test-results/operational-17-0-86"
   },

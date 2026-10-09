@@ -1,7 +1,7 @@
 {
   "schemaVersion": 3,
   "version": "17.0.86",
-  "sourceHash": "25ed3f43214cdf5f101f809d662aeb82f35dd3751a0ae66596124a7420549aac",
+  "sourceHash": "4e6b16bcbe982f9043c57bef66e04f8707f3f1cbf78ddd68d427f296b2103b5c",
   "files": [
     {
       "file": ".gitattributes",
@@ -1929,7 +1929,7 @@
     },
     {
       "file": "docs/feature-status.json",
-      "sha256": "905b74969cc3fad1e0767517392e80e19805847ab7defeaa13fc4df7d31fec6a"
+      "sha256": "7c4af3b02e25f8521f694ef5c1c6e5dcc0a9256120e0d28f53fecb07c9980bff"
     },
     {
       "file": "docs/firebase-emulator-bridge-17.0.54.md",
@@ -3605,7 +3605,7 @@
     },
     {
       "file": "src/components/IntelligenceReviewPanels.jsx",
-      "sha256": "17a520096b5ae028cc3b62445f683d9d6c269e9fdd04a012835057b94e0f5be5"
+      "sha256": "8b756ce9a852a943615724ad5e4264a94ecd0a78e1c6245d842b30d4d0bd8458"
     },
     {
       "file": "src/components/IntelligenceReviewPanels.test.jsx",
@@ -3633,7 +3633,7 @@
     },
     {
       "file": "src/components/OperationalCompletion.test.jsx",
-      "sha256": "d2c82e6a83b359194dc263a255a6145c231dfeaea6997bb07a83365a0c38edd8"
+      "sha256": "f9cc7a18d6c0258408fb5ea0ffa90b657810c63d35ed67d066c5074f0e0e4d92"
     },
     {
       "file": "src/components/PlanGate.jsx",
@@ -3705,7 +3705,7 @@
     },
     {
       "file": "src/components/VendorCatalogReview.jsx",
-      "sha256": "c696d68c3926e04657f64bccec1bfa18560f2f9d3814705d76844653d0de6c3e"
+      "sha256": "55baabc6b8d1da9a45d6a4670ce173c7bf959b747b619e2fa2c2662523d333db"
     },
     {
       "file": "src/components/common.jsx",
