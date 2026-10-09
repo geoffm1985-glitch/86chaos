@@ -1,7 +1,7 @@
 {
   "schemaVersion": 3,
   "version": "17.0.84",
-  "sourceHash": "c53be6dd491b018ad2178c5ad6490c73884efa8bafe7a77531067768d228faaa",
+  "sourceHash": "386a5edee9f01b815112fa3c9491e27fc4363101f0af1ff0a41c3236d0ea8002",
   "files": [
     {
       "file": ".gitattributes",
@@ -1880,8 +1880,20 @@
       "sha256": "5ba2863e5d6d36e45fdcf7440a95570778ea0c9e408cc48f0be8afa619cbd5f0"
     },
     {
+      "file": "docs/daily-briefing-feature-status.md",
+      "sha256": "832be3dcbb21a77b173db2e94d75474174ce0185f29fc6ea0e22b2fe6a2b502c"
+    },
+    {
+      "file": "docs/feature-status.json",
+      "sha256": "f7a7d5ecd91d4d0b7906abaa520991fb5482108d0d1c13938a9f49ebdaef8fb4"
+    },
+    {
       "file": "docs/firebase-emulator-bridge-17.0.54.md",
       "sha256": "d9789b7d485819ea219be394e1ce6b08fe181c8a2798b50d656fdc843a7a4cff"
+    },
+    {
+      "file": "docs/intelligence-connection-implementation-plan.md",
+      "sha256": "30dc3cd8829f9d6dff7fa08871e6da52fea7b19fa4b83f1e684d18a6a7ed9716"
     },
     {
       "file": "docs/yardmaster-firebase-bridge-17.0.57.md",
