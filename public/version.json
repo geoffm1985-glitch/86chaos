@@ -1,27 +1,28 @@
 {
-  "version": "17.0.85",
-  "name": "86 Chaos 17.0.85",
-  "build": "17.0.85",
-  "label": "86 Chaos 17.0.85",
-  "title": "86 Chaos 17.0.85",
-  "releasedAt": "2026-10-09T02:51:51.811Z",
-  "releaseTitle": "Reviewed Intelligence Connections",
-  "summary": "Connects real demand and operational evidence to manager-reviewed prep, schedule, training and clock decisions.",
-  "description": "Testing-only implementation with explicit review, workspace permissions and bounded source completeness. Full Play Store certification remains pending.",
+  "version": "17.0.86",
+  "name": "86 Chaos 17.0.86",
+  "build": "17.0.86",
+  "label": "86 Chaos 17.0.86",
+  "title": "86 Chaos 17.0.86",
+  "releasedAt": "2026-10-09T06:43:52.341414Z",
+  "releaseTitle": "Operational Evidence and Reviewed Workflows",
+  "summary": "Connects verified operational evidence, paged history, vendor catalogs, serving conversions, attendance and training follow-up.",
+  "description": "Testing branch implementation with explicit review and source coverage. Full release certification remains pending.",
   "notes": [
-    "Connects readiness observations, approved receiving and classified errors to Operational History.",
-    "Adds reviewed item-sales history with recipe matching and stable source-line deduplication; Daily Close totals never become item demand.",
-    "Adds explainable demand coverage to Schedule Copilot, with reviewed unpublished drafts and existing staffing conflicts.",
-    "Connects training opportunities to reviewed HR checklists and exposes manager-only open-punch review.",
-    "Validates invoice approval through inventory, recipe yield costs and menu impact, including rollback and retries."
+    "Readiness uses structured food-safety checks, backup summaries, setup gaps and source quality.",
+    "History loads bounded pages with visible window, scan and timestamp coverage.",
+    "Reviewed catalog evidence supports product research without stock or cost changes.",
+    "Reviewed bulk serving conversions connect sold servings to production quantities.",
+    "Attendance policy and overnight shift/punch review retain manager control; training follow-up uses completed checklists and later source evidence.",
+    "Real Firestore transactions verify PO, partial receiving, stock, recipe and menu costs, 86 risk and ordering suggestions."
   ],
   "highlights": [
-    "Reviewed item-sales history",
-    "Forecast-aware Schedule Copilot",
-    "Operational training and Time Clock review"
+    "Verified readiness and paged history",
+    "Reviewed catalog and serving conversions",
+    "Attendance policy and training follow-up"
   ],
   "changes": [
-    "17.0.85 release identity on testing",
-    "Targeted business, component, emulator and desktop/mobile browser coverage"
+    "17.0.86 release identity on testing",
+    "Targeted business, component, emulator and browser coverage"
   ]
 }

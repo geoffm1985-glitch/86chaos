@@ -28,6 +28,7 @@ function hasAuthority(actor, workspaceId, permissions) {
 function sourceCompleteness(state = {}, limit = 400) {
   const reasons = [];
   if (state.resolved !== true) reasons.push('History is still loading.');
+  if (state.allowed === false || state.complete === false || state.truncated) reasons.push('History coverage or permission is incomplete.');
   if (state.error) reasons.push('History could not be verified; retry when the connection recovers.');
   if (state.stale || state.cached) reasons.push('History has not been verified by the server.');
   if (list(state.data).length >= limit) reasons.push('The history row limit was reached; the loaded window may be incomplete.');
@@ -65,13 +66,14 @@ function normalizeItemSalesHistory({ workspaceId, sales, recipes, menuDependenci
       if (candidates.size !== 1 || quantity === null || quantity < 0 || quantity > 100000 || !['each','ea','units','unit','portion','portions','serving','servings','count'].includes(unit)) { rejectedRows++; continue; }
       const recipeId = [...candidates][0];
       const matchedRecipe=recipeRows.find(recipe=>recipe.id===recipeId);
-      if (matchedRecipe?.batchYieldUnit && !['each','ea','portion','portions','serving','servings'].includes(nameKey(matchedRecipe.batchYieldUnit))) { rejectedRows++; continue; }
+      const conversion = globalThis.__86ChaosOperationalEvidence.reviewedServingConversion(matchedRecipe,item.servingConversion || {});
+      if (!conversion.ready) { rejectedRows++;continue; }
       const sourceId = text(sale.sourceId || sale.receiptId || sale.id);
       if (!sourceId) { rejectedRows++; continue; }
       const sourceLineId = `${sourceId}:${item.sourceLineId || item.lineId || index}`;
       if (seen.has(sourceLineId)) continue;
       seen.add(sourceLineId);
-      rows.push({ id:sourceLineId, restaurantId:workspaceId, businessDate:date, recipeId, itemId:recipeId, quantity, unit:'each', sourceId, sourceLineId });
+      rows.push({ id:sourceLineId, restaurantId:workspaceId, businessDate:date, recipeId, itemId:recipeId, quantity, unit:'each', sourceId, sourceLineId, ...(conversion.bulk ? {servingConversion:item.servingConversion} : {}) });
     };
   }
   if (rejectedRows) quality.reasons.push(`${rejectedRows} item row(s) have unresolved identity, quantity, or units.`);
@@ -146,7 +148,7 @@ function buildScheduleForecast({ workspaceId, actor, currentDate, dates, sales, 
 function buildTrainingDraft({ actor, workspaceId, opportunity, now = new Date().toISOString() } = {}) {
   if (!hasAuthority(actor,workspaceId,['hr'])) throw new Error('HR permission is required to review operational training.');
   if (!belongs(opportunity || {},workspaceId)) throw new Error('Training evidence belongs to another workspace.');
-  return { workspaceId,title:text(opportunity.title).slice(0,160),reason:text(opportunity.reason).slice(0,500),evidenceIds:list(opportunity.evidenceIds).map(text).slice(0,20),roleScope:list(opportunity.roleScope).map(text).slice(0,10),createdAt:isoTime(now),automaticAssignment:false };
+  return { workspaceId,title:text(opportunity.title).slice(0,160),reason:text(opportunity.reason).slice(0,500),evidenceIds:list(opportunity.evidenceIds).map(text).slice(0,20),roleScope:list(opportunity.roleScope).map(text).slice(0,10),createdAt:isoTime(now),automaticAssignment:false,cause:text(opportunity.cause).slice(0,160),category:text(opportunity.category).slice(0,40) };
 }
 function forecastDraftId(row,workspaceId,slot) {
   if (row.workspaceId !== workspaceId || !row.targetId || !dateKey(row.date) || !Number.isInteger(slot) || slot < 0 || slot >= 50) throw new Error('Invalid forecast draft identity.');
@@ -195,7 +197,7 @@ function readTrainingDraft(draft,workspaceId,actor,now = new Date().toISOString(
   if (!Number.isFinite(age) || age < 0 || age > 10*60000) return null;
   return buildTrainingDraft({actor,workspaceId,opportunity:draft,now:draft.createdAt});
 }
-function buildClockAwareness({ workspaceId,actor,timePunches,users,now = new Date().toISOString(),sourceState,limit = 200 } = {}) {
+function buildClockAwareness({ workspaceId,actor,timePunches,users,shifts,shiftSourceState,attendancePolicy,now = new Date().toISOString(),sourceState,limit = 200 } = {}) {
   const allowed = hasAuthority(actor,workspaceId,['labor','laborRead','wageView','wageEdit']);
   const quality = sourceCompleteness(sourceState,limit);
   if (!allowed) return { allowed:false,complete:false,findings:[],mutationAllowed:false };
@@ -211,8 +213,15 @@ function buildClockAwareness({ workspaceId,actor,timePunches,users,now = new Dat
     if (Number.isFinite(hours) && hours > 12 && quality.complete) findings.push({id:`clock:long:${row.id}`,kind:'long-open-punch',employeeId,evidenceIds:[row.id],reason:`An open punch is ${Math.floor(hours)} hours old. Verify whether a clock-out is missing.`});
   }
   if (quality.complete) for (const [employeeId,group] of groups) if (group.length > 1) findings.push({id:`clock:duplicate:${employeeId}`,kind:'duplicate-active-punch',employeeId,evidenceIds:group.map(row=>row.id),reason:`${group.length} active punches share this employee identity. Review before payroll.`});
+  let attendance = {findings:[],reasons:[],policyConfigured:false};
+  if (shifts !== undefined) {
+    const shiftQuality=sourceCompleteness(shiftSourceState,shiftSourceState?.limit || 500);
+    if(quality.complete && shiftQuality.complete)attendance=globalThis.__86ChaosAttendanceEvidence.attendanceFindings({workspaceId,shifts:owned(shifts,workspaceId),punches:owned(timePunches,workspaceId),users:owned(users,workspaceId),policy:attendancePolicy,now:new Date(now).getTime()});
+    else attendance.reasons=['Shift/punch coverage is incomplete; attendance exceptions are not inferred.'];
+    findings.push(...attendance.findings);
+  }
   const roster = owned(users,workspaceId);
-  return {allowed,complete:quality.complete,reasons:quality.reasons,findings:findings.slice(0,30).map(row=>({...row,employeeName:text(roster.find(person=>[person.id,person.uid,person.authUid,person.userId].includes(row.employeeId))?.name || 'Employee'),reviewRequired:true})),mutationAllowed:false};
+  return {allowed,complete:quality.complete,reasons:[...quality.reasons,...attendance.reasons],attendanceComplete:attendance.policyConfigured && !attendance.reasons.length,policyConfigured:attendance.policyConfigured,findings:findings.slice(0,30).map(row=>({...row,employeeName:text(roster.find(person=>[person.id,person.uid,person.authUid,person.userId].includes(row.employeeId))?.name || 'Employee'),reviewRequired:true})),mutationAllowed:false};
 }
 const intelligenceConnections = { isoTime,dateKey,sourceCompleteness,normalizeItemSalesHistory,buildReadinessSnapshot,buildHistoryInputs,buildScheduleForecast,forecastDraftId,isForecastCandidateEligible,saveForecastDraft,buildTrainingDraft,readTrainingDraft,buildClockAwareness };
 Object.defineProperty(globalThis,'__86ChaosIntelligenceConnections',{value:intelligenceConnections,configurable:true,writable:true});

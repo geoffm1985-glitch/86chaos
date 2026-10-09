@@ -351,7 +351,7 @@ const AddOnboardingModal = ({ open, onClose, appUser, users, addToast, trainingD
             assignedById: currentUid(appUser),
             assignedByName: appUser.name || appUser.email || 'Manager',
             createdAt: nowIso(),
-            ...(trainingDraft ? { source:'operational_training_review',sourceEvidenceIds:trainingDraft.evidenceIds,sourceReason:trainingDraft.reason } : {})
+            ...(trainingDraft ? { source:'operational_training_review',sourceEvidenceIds:trainingDraft.evidenceIds,sourceReason:trainingDraft.reason,operationalEvidence:{evidenceIds:trainingDraft.evidenceIds,cause:trainingDraft.cause || '',category:trainingDraft.category || '',roleScope:trainingDraft.roleScope,reviewedBy:currentUid(appUser),reviewedAt:nowIso()} } : {})
           }
         });
       }

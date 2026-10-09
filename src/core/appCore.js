@@ -467,7 +467,7 @@ export const MASTER_ADMIN_EMAIL = (process.env.REACT_APP_MASTER_ADMIN_EMAIL || '
 export const EVENT_TAGS = ['Standard Day', 'Packers Game', 'Brewers Game', 'Live Music', 'Severe Weather', 'Private Catering', 'Holiday'];
 
 // --- VERSION TRACKING ---
-export const CURRENT_VERSION = '17.0.85';
+export const CURRENT_VERSION = '17.0.86';
 
 // --- Helpers ---
 const usePageVisible = () => {
@@ -1041,17 +1041,18 @@ export const useLiveCollection = (coll, restId, options = {}) => {
 
 
 export const useLiveCollectionState = (coll, restId, options = {}) => {
-  const [state, setState] = useState({ data: [], loading: Boolean(options?.enabled !== false && restId), resolved: false, error: null, stale: false, cached: false });
+  const scopeKey=stableJson({coll,restId,viewer:currentViewerUid(),enabled:options.enabled!==false,where:normalizeWhereClausesForKey(options.whereClauses || []),limit:options.limitCount,order:options.orderByField,direction:options.orderDirection,server:options.requireServerSnapshot===true});
+  const [state, setState] = useState({ scopeKey,data: [], loading: Boolean(options?.enabled !== false && restId), resolved: false, error: null, stale: false, cached: false });
   const setter = React.useCallback((rows = [], meta = {}) => {
     setState({
-      data: Array.isArray(rows) ? rows : [],
+      scopeKey,data: Array.isArray(rows) ? rows : [],
       loading: meta.resolved !== true && !meta.error,
       resolved: meta.resolved === true,
       error: meta.error || null,
       stale: meta.stale === true,
       cached: meta.cached === true
     });
-  }, []);
+  }, [scopeKey]);
   const {
     enabled = true,
     limitCount = null,
@@ -1069,7 +1070,7 @@ export const useLiveCollectionState = (coll, restId, options = {}) => {
   const viewerUid = currentViewerUid();
   useEffect(() => {
     if (!enabled || !restId) {
-      setState({ data: [], loading: false, resolved: false, error: null, stale: false, cached: false });
+      setState({ scopeKey,data: [], loading: false, resolved: false, error: null, stale: false, cached: false });
       return undefined;
     }
     if (pauseWhenHidden && !pageVisible) return undefined;
@@ -1082,8 +1083,9 @@ export const useLiveCollectionState = (coll, restId, options = {}) => {
     if (limitCount && Number(limitCount) > 0) constraints.push(firestoreLimit(Number(limitCount)));
     const key = makeLiveCollectionKey({ coll, restId, whereClauses, orderByField, orderDirection, limitCount, viewerUid, requireServerSnapshot });
     return acquireSharedLiveCollection({ coll, restId, constraints, key, setData: setter, debugLabel: debugLabelRef.current, viewerUid, requireServerSnapshot });
-  }, [coll, restId, enabled, limitCount, orderByField, orderDirection, pauseWhenHidden, pageVisible, viewerUid, requireServerSnapshot, stableJson(normalizeWhereClausesForKey(whereClauses || []))]);
-  return state;
+  }, [setter,scopeKey,coll, restId, enabled, limitCount, orderByField, orderDirection, pauseWhenHidden, pageVisible, viewerUid, requireServerSnapshot, stableJson(normalizeWhereClausesForKey(whereClauses || []))]);
+  const scoped=state.scopeKey===scopeKey?state:{data:[],resolved:false,loading:Boolean(enabled && restId),error:null,stale:false,cached:false};
+  return { ...scoped, stale:scoped.stale || pauseWhenHidden && !pageVisible, allowed:Boolean(enabled && restId), limit:limitCount || Infinity };
 };
 
 export const makeLiveDocumentKey = ({ coll, docId, viewerUid = currentViewerUid() }) => stableJson({

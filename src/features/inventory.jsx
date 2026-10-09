@@ -1,3 +1,4 @@
+import VendorCatalogReview from '../components/VendorCatalogReview';
 import React, { useState, useEffect, useRef } from 'react';
 import { Archive, Bell, Check, Camera, ChevronLeft, ChevronRight, MessageSquare, Plus, Trash2, Users, Calendar, Clock, X, Loader2, Package, ClipboardList, Menu, Settings, LogOut, Shield, Send, Repeat, Edit, Moon, Sun, TrendingUp, BookOpen, Search, ChefHat, Scale, Coffee, Star, Bug, Wrench, Globe, Sparkles } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
@@ -1957,6 +1958,7 @@ const groupedItems = orderableInventoryItems
       {hasInvPerms && invTab === 'vendors' && (
         <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
           <VendorMemoryPanel appUser={appUser} vendors={vendors} inventoryItems={inventoryItems} addToast={addToast}/>
+          <VendorCatalogReview appUser={appUser} vendors={vendors}/>
           <form onSubmit={handleAddVendor} className={`${T.card} p-4 space-y-3 bg-[#1A2126]`}>
             <h3 className="text-sm font-black uppercase text-[#D4A381] tracking-widest">Add Vendor</h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3"><input type="text" placeholder="Company Name..." value={vName} onChange={e=>setVName(e.target.value)} className={T.input} required/><input type="text" placeholder="Rep Name..." value={vRep} onChange={e=>setVRep(e.target.value)} className={T.input}/><input type="tel" placeholder="Phone (For SMS Orders)" value={vPhone} onChange={e=>setVPhone(e.target.value)} className={T.input}/><input type="email" placeholder="Email (For PDF Orders)" value={vEmail} onChange={e=>setVEmail(e.target.value)} className={T.input}/></div>

@@ -1,5 +1,3 @@
-'use strict';
-
 const rows = value => Array.isArray(value) ? value : [];
 const text = value => String(value == null ? '' : value).trim();
 const lower = value => text(value).toLowerCase();
@@ -21,9 +19,10 @@ function buildOperationalHistory(input = {}) {
     if (row.restaurantId && workspaceId && text(row.restaurantId) !== workspaceId) continue;
     const at = new Date(row.at || row.date || row.createdAt || row.updatedAt || 0);
     if (!Number.isFinite(at.getTime()) || at < cutoff || at > now) continue;
-    events.push({ id:text(row.id || `${category}:${at.toISOString()}:${row.title || row.reason || events.length}`), workspaceId, category, at:at.toISOString(), title:text(row.title || row.itemName || row.equipment || row.reason || category), cause:text(row.cause || row.reason || row.classification || row.errorCategory || 'unknown'), outcome:text(row.outcome || row.status || ''), severity:lower(row.severity || row.priority || 'info'), evidenceId:text(row.evidenceId || row.sourceId || row.id || '') });
+    events.push({ id:text(row.id || `${category}:${at.toISOString()}:${row.title || row.reason || events.length}`), workspaceId, category,relatedIds:[row.recipeId,row.menuItemId,row.itemId].filter(Boolean), at:at.toISOString(), title:text(row.title || row.itemName || row.equipment || row.reason || category), cause:text(row.cause || row.reason || row.classification || row.errorCategory || 'unknown'), outcome:text(row.outcome || row.status || ''), severity:lower(row.severity || row.priority || 'info'), evidenceId:text(row.evidenceId || row.sourceId || row.id || '') });
   }
   events.sort((a,b) => b.at.localeCompare(a.at));
+  const eventLimitReached = events.length > 500;
   events.splice(500);
   const buckets = new Map();
   for (const event of events) {
@@ -32,8 +31,8 @@ function buildOperationalHistory(input = {}) {
     buckets.get(key).push(event);
   }
   const trends = [...buckets.entries()].filter(([,group]) => group.length >= 2).map(([key,group]) => ({ id:`trend:${key}`, workspaceId, category:group[0].category, cause:group[0].cause, count:group.length, firstSeen:group[group.length-1].at, lastSeen:group[0].at, severity:group.some(row => ['critical','high'].includes(row.severity)) ? 'high' : 'attention', evidenceIds:group.map(row => row.evidenceId || row.id).slice(0,20), explainable:true })).sort((a,b) => b.count-a.count || a.id.localeCompare(b.id));
-  const trainingOpportunities = trends.filter(row => ['86','prep','receiving','waste','incident','error','readiness','maintenance'].includes(row.category) && !(row.category === 'readiness' && row.cause.endsWith(':ready'))).map(row => ({ id:`training:${row.id}`, workspaceId, title:`Review repeated ${row.category} issue`, reason:`${row.count} events share the cause “${row.cause}”.`, roleScope:row.category === 'receiving' ? ['manager','receiver'] : row.category === 'error' ? ['manager'] : ['manager','kitchen'], reviewRequired:true, automaticAssignment:false, evidenceIds:row.evidenceIds }));
-  return { schemaVersion:1, workspaceId, allowed:true, retentionDays, events:events.slice(0,500), trends:trends.slice(0,100), trainingOpportunities:trainingOpportunities.slice(0,40), bounded:true, queryGuidance:{ orderBy:'at desc', limit:500, tenantFilterRequired:true } };
+  const trainingOpportunities = trends.filter(row => ['86','prep','receiving','waste','incident','error','readiness','maintenance'].includes(row.category) && !(row.category === 'readiness' && row.cause.endsWith(':ready'))).map(row => ({ id:`training:${row.id}`, workspaceId, title:`Review repeated ${row.category} issue`, reason:`${row.count} events share the cause “${row.cause}”.`, roleScope:row.category === 'receiving' ? ['manager','receiver'] : row.category === 'error' ? ['manager'] : ['manager','kitchen'], reviewRequired:true, automaticAssignment:false, cause:row.cause, category:row.category, evidenceIds:row.evidenceIds }));
+  return { schemaVersion:1, workspaceId, allowed:true, retentionDays, complete:!eventLimitReached, truncated:eventLimitReached, events:events.slice(0,500), trends:trends.slice(0,100), trainingOpportunities:trainingOpportunities.slice(0,40), bounded:true, queryGuidance:{ orderBy:'at desc', limit:500, tenantFilterRequired:true } };
 }
 
 module.exports = { buildOperationalHistory };

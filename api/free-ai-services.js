@@ -1,3 +1,4 @@
+const { catalogEvidence } = require('./_operational-review');
 const { verifyRequestToken } = require('./_firebase-project-admin');
 const { authorizeAiScanWorkspace } = require('./_ai-usage');
 const { requireAppCheckIfEnforced } = require('./_chaos-admin');
@@ -82,6 +83,10 @@ async function researchProduct(body, access, decoded) {
     const active = memory.mappings.filter(row => row.active && row.state !== 'revoked');
     if (active.length) return { ...base, provider: 'Workspace vendor memory', products: active.map(row => ({ name: row.inventoryItemName, package: row.approvedPackSize, code: row.productCode, sourceUrl: '/?tab=inventory' })),
       reason: 'A prior approved workspace mapping exists. Confirm that this invoice still has the same package and unit.', evidenceRefs: active.map(row => `vendors/${body.vendorId}/productMappings/${row.id}`) };
+  }
+  if(body.vendorId && code) {
+    const products=await catalogEvidence({db:access.db,restaurantId:access.restaurantId,vendorId:body.vendorId,code});
+    if(products.length)return {...base,provider:'Reviewed vendor catalog',products,confidence:products[0].stale?'low':'medium',reason:'Reviewed distributor catalog evidence was found. Confirm delivery, package and current price before matching; older catalogs are marked stale.'};
   }
   // Bounded existing history, no broad customer-data crawl and no new index.
   if (code) {

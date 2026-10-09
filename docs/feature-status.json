@@ -1,14 +1,12 @@
 {
   "schemaVersion": 1,
-  "reviewedAt": "2026-10-08",
+  "reviewedAt": "2026-10-09",
   "scope": "testing",
   "sourceBaseline": {
-    "version": "17.0.85",
+    "version": "17.0.86",
     "branch": "testing",
-    "commit": "3f5faf21b01d54b52650a35ff05e6210f15de55a",
-    "parentCommit": "931413b8c9a339dd49510504d0d1bc09ca22042a",
-    "identity": "Verified application implementation/deployment commit. Subsequent test-selector and documentation changes do not establish full certification.",
-    "sourceHash": "0abc2a7b5271ad73628b3309de38e9751ba747223ce20b8e966ec0bb9fc72df1"
+    "parentCommit": "2594f1700e815cac4c52594d6b2a4db7a8195033",
+    "identity": "See release-source-manifest.json and deployed build-identity.json for the immutable implementation source; targeted checks do not establish full certification."
   },
   "productionBaseline": {
     "version": "17.0.84",
@@ -47,13 +45,18 @@
       "Targeted passing checks do not establish full certification.",
       "Missing physical-device evidence must not be fabricated or replaced by browser tests."
     ],
-    "standingRuleUrl": "https://github.com/geoffm1985-glitch/86chaos/issues/175"
+    "standingRuleUrl": "https://github.com/geoffm1985-glitch/86chaos/issues/175",
+    "cancelledRun": {
+      "id": "2026-10-08T23-23-11",
+      "result": "CANCELLED_INCOMPLETE",
+      "reason": "Stopped at explicit user request; no Playwright completion or certification claim."
+    }
   },
   "features": [
     {
       "id": "shared-needs-attention",
       "label": "Shared needs-attention and Restaurant Readiness",
-      "implementation": "foundation-present",
+      "implementation": "implemented-review-first",
       "certification": "not-currently-certified",
       "source": [
         "src/core/needsAttention.js",
@@ -62,14 +65,16 @@
       ],
       "coverage": [
         "api/restaurant-intelligence-17-0-39.test.cjs",
-        "tests/86chaos-release-gate/48-needs-attention-readiness-2.spec.cjs"
+        "tests/86chaos-release-gate/48-needs-attention-readiness-2.spec.cjs",
+        "api/operational-completion-17-0-86.test.cjs",
+        "tests/86chaos-release-gate/99-operational-completion-17-0-86.spec.cjs"
       ],
-      "remaining": "Expand real source connections and validate completeness, permissions, and direct review actions."
+      "remaining": "Structured safety, backup/setup and source quality connected; full certification pending."
     },
     {
       "id": "restaurant-knowledge-graph",
       "label": "Connected restaurant knowledge graph",
-      "implementation": "foundation-validated",
+      "implementation": "implemented-review-first",
       "certification": "not-currently-certified",
       "source": [
         "src/core/restaurantKnowledgeGraph.js",
@@ -81,14 +86,16 @@
         "api/intelligence-connections-17-0-85.test.cjs",
         "src/core/purchasingWorkflow.test.js",
         "test-tools/intelligence-purchasing-emulator.test.cjs",
-        "tests/86chaos-release-gate/98-intelligence-connections-17-0-85.spec.cjs"
+        "tests/86chaos-release-gate/98-intelligence-connections-17-0-85.spec.cjs",
+        "api/operational-completion-17-0-86.test.cjs",
+        "tests/86chaos-release-gate/99-operational-completion-17-0-86.spec.cjs"
       ],
-      "remaining": "Transactional purchasing tests verify updated ingredient and approved recipe costs reach menu cost, margin and graph inputs; complete deployed/device certification remains pending."
+      "remaining": "Approved batch/menu links, prices, cost, allergen provenance and stock/86 impacts connected; unresolved evidence remains visible."
     },
     {
       "id": "operational-history",
       "label": "Operational History",
-      "implementation": "implemented",
+      "implementation": "implemented-review-first",
       "certification": "not-currently-certified",
       "source": [
         "src/core/operationalHistoryIntelligence.js",
@@ -100,14 +107,16 @@
         "api/intelligence-connections-17-0-85.test.cjs",
         "src/core/purchasingWorkflow.test.js",
         "test-tools/intelligence-purchasing-emulator.test.cjs",
-        "tests/86chaos-release-gate/98-intelligence-connections-17-0-85.spec.cjs"
+        "tests/86chaos-release-gate/98-intelligence-connections-17-0-85.spec.cjs",
+        "api/operational-completion-17-0-86.test.cjs",
+        "tests/86chaos-release-gate/99-operational-completion-17-0-86.spec.cjs"
       ],
-      "remaining": "Readiness, receiving and classified error connections implemented. Existing prep/waste/maintenance/alerts remain bounded loaded sources, not a certified complete historical archive."
+      "remaining": "Explicit paged source windows with source permissions, cursor, undated and hard-limit coverage."
     },
     {
       "id": "predictive-smart-prep",
       "label": "Predictive Smart Prep",
-      "implementation": "implemented",
+      "implementation": "implemented-review-first",
       "certification": "not-currently-certified",
       "source": [
         "src/core/smartPrepIntelligence.js",
@@ -122,12 +131,12 @@
         "test-tools/intelligence-purchasing-emulator.test.cjs",
         "tests/86chaos-release-gate/98-intelligence-connections-17-0-85.spec.cjs"
       ],
-      "remaining": "Reviewed item-sales import, stable-line receipts, recipe identity and sold-serving checks implemented. Requires at least three fresh comparable weekdays; bulk conversion and automatic POS synchronization remain outside this batch."
+      "remaining": "Reviewed bulk serving conversions and qualified open-order, unit-consistent price and historical evidence connected; provider-specific automatic POS synchronization remains deferred."
     },
     {
       "id": "purchasing-costing",
       "label": "Purchasing reconciliation, approval, inventory, and costing",
-      "implementation": "workflow-validated",
+      "implementation": "implemented-review-first",
       "certification": "not-currently-certified",
       "source": [
         "src/core/purchaseReconciliation.cjs",
@@ -143,7 +152,7 @@
         "test-tools/intelligence-purchasing-emulator.test.cjs",
         "tests/86chaos-release-gate/98-intelligence-connections-17-0-85.spec.cjs"
       ],
-      "remaining": "Approval → received stock/current cost → reviewed recipe yield → menu impact verified with actual business functions and real Firestore transactions. Full deployed/device certification remains pending."
+      "remaining": "Reviewed catalog evidence and actual PO/partial receiving \u2192 stock/current cost \u2192 reviewed yield \u2192 menu margin/86 \u2192 ordering workflow verified. Full deployed/device certification remains pending."
     },
     {
       "id": "forecast-schedule-copilot",
@@ -165,7 +174,7 @@
     {
       "id": "training-time-clock-awareness",
       "label": "Operational training and Time Clock awareness",
-      "implementation": "implemented",
+      "implementation": "implemented-review-first",
       "certification": "not-currently-certified",
       "source": [
         "src/core/operationalHistoryIntelligence.js",
@@ -178,24 +187,55 @@
         "test-tools/intelligence-purchasing-emulator.test.cjs",
         "tests/86chaos-release-gate/98-intelligence-connections-17-0-85.spec.cjs"
       ],
-      "remaining": "Evidence-linked HR checklist review and private long-open/duplicate punch awareness implemented. Manager submission required; full deployed/device certification remains pending."
+      "remaining": "Reviewed timezone/grace/open-break policy, overnight shift/punch matching and evidence-linked checklist completion/follow-up implemented. Full certification remains pending."
     }
   ],
   "authorization": {
-    "scope": "This items 2/3/4 implementation batch on testing",
-    "instruction": "Implement",
-    "exception": "Proceed before outstanding full certification for this batch only; certification remains required for release.",
-    "date": "2026-10-08"
+    "scope": "Seven concrete operational completion workstreams on testing",
+    "instruction": "Stop the running tests and implement those things",
+    "exception": "Explicit instruction to implement this batch before outstanding certification; the full gate stays stopped.",
+    "date": "2026-10-09"
   },
   "validation": {
-    "nodeBusinessAndApi": "PASS: 68 business/API/listener tests, including workspace timezone boundaries; zero skips.",
-    "reactBusinessAndComponents": "PASS: 19 tests covering purchasing/costing, review components, import failure/retry/permissions, and listener query isolation.",
-    "firestoreEmulator": "PASS: actual approval/costing/import/read/duplicate/conflict transactions, demo-86chaos-intelligence loopback only.",
-    "build": "PASS: production compilation, server-verified listeners, and READY Vercel preview dpl_6rcxVAi8ZukEQzFy81tiTL8xxSdu. Testing URL version/commit/hash verified.",
-    "browser": "PASS: 6 desktop/mobile Chromium checks against the exact 17.0.85 application commit/hash above, using an existing QA workspace in read-only mode. The forecast selector uses its actual tab accessibility role.",
-    "fullCertification": "Not run for 17.0.85; outstanding real-device evidence is not supplied by these tests.",
-    "syntaxAndLint": "PASS: API/script syntax (713 files) and changed-file ESLint (zero errors).",
-    "targetedRelease": "PASS on the committed implementation: 311 Node + 19 React tests; zero failures/skips.",
-    "evidenceDirectory": "test-results/intelligence-17-0-85"
+    "nodeBusinessAndApi": "PASS: 24 operational completion checks and 35 intelligence connection checks, zero failures/skips. Separate business/API/help group: 46 pass.",
+    "reactBusinessAndComponents": "PASS: 29 checks across five suites, zero failures/skips.",
+    "firestoreEmulator": "PASS: 2 actual Firestore workflows, including PO/partial receiving through menu margin, 86 risk and order suggestions; demo-86chaos-intelligence loopback only.",
+    "build": "PASS: local production compilation. Final committed preview build and browser checks pending.",
+    "browser": "Pending exact committed 17.0.86 preview checks.",
+    "syntaxAndLint": "PASS: changed-file ESLint zero errors (262 warnings in the existing feature files); source validator and sealed manifest parity pass.",
+    "targetedRelease": "PASS: 277 legacy/current regressions after rerunning the two immutable-source checkpoint checks, plus 35 connection and 24 completion Node checks, 29 React checks and 2 real Firestore workflow checks. The first broad run correctly refused two checkpoints while source edits were ongoing; frozen rerun passed.",
+    "fullCertification": "Not run for 17.0.86. The previous full gate was cancelled by user request. No physical-device certification claim.",
+    "evidenceDirectory": "test-results/operational-17-0-86"
+  },
+  "previousSourceBaseline": {
+    "version": "17.0.85",
+    "branch": "testing",
+    "commit": "3f5faf21b01d54b52650a35ff05e6210f15de55a",
+    "parentCommit": "931413b8c9a339dd49510504d0d1bc09ca22042a",
+    "identity": "Verified application implementation/deployment commit. Subsequent test-selector and documentation changes do not establish full certification.",
+    "sourceHash": "0abc2a7b5271ad73628b3309de38e9751ba747223ce20b8e966ec0bb9fc72df1"
+  },
+  "operationalCompletion": {
+    "workstreams": [
+      "structured-readiness-evidence",
+      "paged-history",
+      "downstream-graph",
+      "reviewed-catalog-and-purchasing-proof",
+      "bulk-demand-conversion",
+      "attendance-and-training-follow-up",
+      "customer-help"
+    ],
+    "scopeEvidence": "RELEASE_17_0_86.md",
+    "originalScheduledReportsReconciled": false,
+    "sourceLimits": {
+      "historyDays": 180,
+      "historyPageSize": 100,
+      "historyScanMaxPerSource": 2000,
+      "historyAnalysisMax": 500,
+      "clockDays": 14,
+      "catalogPageSize": 50,
+      "catalogMaxReviewRows": 100
+    },
+    "deferredIntegrations": "Existing provider-specific POS/payments/payroll/GL/reservations, hardware and enterprise procurement scope remains deferred."
   }
 }

@@ -1,5 +1,6 @@
 'use strict';
 const crypto=require('node:crypto');
+const {reviewedServingConversion}=require('../src/core/operationalEvidence.cjs');
 const { dateKey }=require('../src/core/intelligenceConnections.cjs');
 const failure=(message,statusCode=400)=>{throw Object.assign(new Error(message),{statusCode});};
 function assertDemandPermission(ctx,write=false) {
@@ -25,7 +26,9 @@ function normalizeDemandRows(rows,currentDate) {
     if(!date || age<0 || age>112 || !Number.isFinite(quantity) || quantity<0 || quantity>100000) failure('Item sales need a valid date in the last 112 days and a non-negative quantity. Refunds require separate review.');
     const recipeId=String(row.recipeId || '').trim();const sourceId=String(row.sourceId || '').trim();const lineId=String(row.lineId || '').trim();
     if(!/^[A-Za-z0-9_-]{1,160}$/.test(recipeId) || !sourceId || sourceId.length>120 || !lineId || lineId.length>120) failure('Select a recipe and supply stable source and line IDs for every row.');
-    return {businessDate:date,recipeId,quantity,unit:'each',sourceId,lineId};
+    const input=row.servingConversion;
+    const servingConversion=input && typeof input==='object' ? {servingsPerBatch:Number(input.servingsPerBatch),yieldQuantity:Number(input.yieldQuantity),yieldPercent:Number(input.yieldPercent),yieldUnit:String(input.yieldUnit || '').toLowerCase(),costingApprovedAt:String(input.costingApprovedAt || ''),reviewed:input.reviewed===true} : null;
+    return {businessDate:date,recipeId,quantity,unit:'each',sourceId,lineId,...(servingConversion ? {servingConversion} : {})};
   });
 }
 async function importDemandRows({db,ctx,rows,approved,currentDate}) {
@@ -36,7 +39,12 @@ async function importDemandRows({db,ctx,rows,approved,currentDate}) {
     const recipes=await Promise.all(ids.map(id=>tx.get(db.collection('recipes').doc(id))));
     for(const recipe of recipes) {
       if(!recipe.exists || recipe.data().restaurantId!==ctx.restaurantId) failure('A selected recipe is unavailable in this workspace.',403);
-      if(recipe.data().batchYieldUnit && !['each','ea','portion','portions','serving','servings'].includes(String(recipe.data().batchYieldUnit).toLowerCase())) failure('Weight or bulk recipes require a reviewed serving conversion before importing item demand.');
+      for(const row of normalized.filter(row=>row.recipeId===recipe.id)) {
+        const conversion=reviewedServingConversion(recipe.data(),row.servingConversion || {});
+        if(!conversion.ready)failure('Weight or bulk recipes require a reviewed serving conversion before importing item demand.');
+        if(conversion.bulk)row.servingConversion={servingsPerBatch:conversion.servingsPerBatch,yieldQuantity:conversion.yieldQuantity,yieldPercent:conversion.yieldPercent,yieldUnit:conversion.unit,costingApprovedAt:conversion.costingApprovedAt,reviewed:true};
+        else delete row.servingConversion;
+      }
     }
     const snapshots=await Promise.all(dates.map(date=>tx.get(collection.doc(date))));
     const receiptCollection=db.collection('restaurants').doc(ctx.restaurantId).collection('demandImportLines');
@@ -50,7 +58,7 @@ async function importDemandRows({db,ctx,rows,approved,currentDate}) {
     for(const row of normalized) {
       const key=keyFor(row);
       const day=daily.get(row.businessDate);const prior=seen.get(key) || day[key];
-      if(prior) {if(prior.recipeId!==row.recipeId || prior.quantity!==row.quantity || prior.businessDate!==row.businessDate) failure('A source line conflicts with previously approved history. Review the original source; it cannot be overwritten by an import.',409);duplicates++;continue;}
+      if(prior) {if(prior.recipeId!==row.recipeId || prior.quantity!==row.quantity || prior.businessDate!==row.businessDate || JSON.stringify(prior.servingConversion || null)!==JSON.stringify(row.servingConversion || null)) failure('A source line conflicts with previously approved history. Review the original source; it cannot be overwritten by an import.',409);duplicates++;continue;}
       day[key]={...row,sourceLineId:key,approvedAt:now,approvedBy:ctx.uid};imported++;
       seen.set(key,day[key]);newReceipts.set(key,day[key]);
       if(Object.keys(day).length>400) failure('A business day exceeds the bounded 400-line history limit.');
