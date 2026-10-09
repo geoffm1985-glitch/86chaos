@@ -14,7 +14,7 @@ module.exports=async function handler(req,res) {
     if(!Object.hasOwn(SOURCES,body?.source))return res.status(400).json({ok:false,error:'Choose an available history source.'});
     const restaurantId=String(body.restaurantId || '');if(!/^[A-Za-z0-9_-]{1,160}$/.test(restaurantId))return res.status(400).json({ok:false,error:'Select a workspace.'});
     if(!/^Bearer\s+\S+$/i.test(req.headers?.authorization || ''))return res.status(401).json({ok:false,error:'Sign in to review history.'});
-    const app=initAdmin(req),ctx=await authorize(req,app,{allowTenantAdmin:true,targetRestaurantId:restaurantId,requiredPermissions:['ops','team','hr','prep','inventory','maintenance']});
+    const app=initAdmin(req),ctx=await authorize(req,app,{allowTenantAdmin:true,targetRestaurantId:restaurantId,requiredPermissions:['ops','team','hr','prep','kitchen','inventory','inventoryRead','invoices','maintenance','schedule']});
     if(!ctx.ok)return res.status(ctx.status || 401).json({ok:false,error:ctx.error});
     const appCheck=await requireAppCheckIfEnforced(ctx.app || app,req);if(!appCheck.ok)return res.status(appCheck.status || 401).json({ok:false,error:appCheck.error});
     const db=ctx.db || app.firestore(),workspace=await db.collection('restaurants').doc(ctx.restaurantId).get();

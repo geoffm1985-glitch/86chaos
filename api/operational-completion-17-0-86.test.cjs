@@ -170,3 +170,24 @@ test('attendance policy is explicitly approved, permission-checked, audited and 
 test('history endpoint rejects invalid requests before touching project credentials',async()=>{
   const handler=require('./operational-history');for(const [req,status] of [[{method:'GET'},405],[{method:'POST',body:{restaurantId:'r1',source:'prep'}},401],[{method:'POST',body:'bad'},400],[{method:'POST',body:'x'.repeat(8001)},413]]){const res={setHeader(){},status(code){this.code=code;return this;},json(body){this.body=body;return this;}};await handler({...req,headers:{}},res);assert.equal(res.code,status);assert.equal(res.body.ok,false);}
 });
+
+test('history HTTP authorization admits an inventory-read manager while preserving per-source denial',async()=>{
+  const Module=require('node:module'),original=Module._load,handlerPath=require.resolve('./operational-history');
+  const db=memoryDb({'restaurants/r1':{timezone:'America/Chicago'},'wasteLogs/waste':{restaurantId:'r1',date:'2026-10-08',itemName:'Flour',quantity:1}});
+  const ctx={ok:true,uid:'manager',restaurantId:'r1',db,user:{isManager:true},permissions:{inventoryRead:true}},app={firestore:()=>db};
+  delete require.cache[handlerPath];
+  Module._load=function(request,parent,...rest){
+    if(parent?.filename===handlerPath){
+      if(request==='./_chaos-admin')return {initAdmin:()=>app,authorize:async(req,app,options)=>options.requiredPermissions.some(key=>ctx.permissions[key])?ctx:{ok:false,status:403,error:'Denied'},requireAppCheckIfEnforced:async()=>({ok:true})};
+      if(request==='./_plan-access')return {resolveWorkspaceSubscription:()=>({planId:'operations'}),planIsAtLeast:()=>true,PLAN_IDS:{OPERATIONS:'operations'}};
+      if(request==='./_rate-limit')return {enforceRateLimit:async()=>({ok:true})};
+    }
+    return original.call(this,request,parent,...rest);
+  };
+  try {
+    const handler=require('./operational-history'),request={method:'POST',headers:{authorization:'Bearer fixture-token'},body:{restaurantId:'r1',source:'waste',days:180}};
+    const res=()=>({setHeader(){},status(code){this.code=code;return this;},json(body){this.body=body;return this;}});
+    const allowed=res();await handler(request,allowed);assert.equal(allowed.code,200);assert.equal(allowed.body.data[0].itemName,'Flour');
+    const denied=res();await handler({...request,body:{...request.body,source:'alerts'}},denied);assert.equal(denied.code,403);assert.equal(db.writes.length,0);
+  }finally{Module._load=original;delete require.cache[handlerPath];}
+});
