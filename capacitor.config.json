@@ -19,6 +19,10 @@
     }
   },
   "plugins": {
+    "LocalNotifications": {
+      "smallIcon": "chaos86_notification",
+      "iconColor": "#D4A381"
+    },
     "FirebaseMessaging": {
       "presentationOptions": [
         "alert",

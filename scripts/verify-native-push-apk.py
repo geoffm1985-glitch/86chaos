@@ -30,6 +30,9 @@ with zipfile.ZipFile(sys.argv[1]) as apk:
         assert any(name.startswith('res/mipmap-anydpi') and not name.startswith('res/mipmap-anydpi-v26/') and name.endswith('/' + icon) for name in apk.namelist()), 'Legacy launcher fallback missing: ' + icon
     dex = b''.join(apk.read(name) for name in apk.namelist() if name.endswith('.dex'))
     assert b'FirebaseMessagingPlugin' in dex and b'MessagingService' in dex, 'Native push implementation missing from DEX'
+    assert b'ChaosNativePlugin' in dex and b'startSpeech' in dex and b'documentCreated' in dex, 'Native voice and PDF implementation missing from DEX'
+    assert b'LocalNotificationsPlugin' in dex, 'Closed-app device reminders missing from DEX'
+    assert not any(b'TestRecognitionService' in apk.read(name) for name in apk.namelist() if name.endswith('.dex')), 'Test speech provider must never ship in the downloadable APK'
     resources = apk.read('resources.arsc')
     capacitor = json.loads(apk.read('assets/capacitor.config.json'))
     assert capacitor['server']['hostname'] == 'app.86chaos.com', 'APK local origin is not production'

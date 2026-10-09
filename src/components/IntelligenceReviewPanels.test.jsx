@@ -1,0 +1,15 @@
+import React from 'react';
+import { render, screen, fireEvent } from '@testing-library/react';
+import { DemandHistoryStatus, ForecastReviewPanel, ClockReviewPanel, TrainingReviewPanel } from './IntelligenceReviewPanels';
+
+const row = {id:'f',date:'2026-10-08',role:'Cook',state:'recommendation',reason:'Review demand trend',confidence:0.8,existing:2,needed:1,startTime:'09:00',endTime:'17:00',evidence:{dates:['a','b','c'],average:100,recent:110,expectedDemand:104}};
+test('forecast review calls only the explicit action and respects incomplete schedule/busy state',()=>{
+  const onReview=jest.fn();const {rerender}=render(<ForecastReviewPanel report={{allowed:true,rows:[row]}} blocked onReview={onReview}/>);
+  fireEvent.click(screen.getByRole('button',{name:'Review forecast drafts'}));expect(onReview).not.toHaveBeenCalled();
+  rerender(<ForecastReviewPanel report={{allowed:true,rows:[row]}} onReview={onReview}/>);fireEvent.click(screen.getByRole('button',{name:'Review forecast drafts'}));expect(onReview).toHaveBeenCalledWith(row);
+  rerender(<ForecastReviewPanel report={{allowed:true,rows:[row]}} busy onReview={onReview}/>);expect(screen.getByRole('button',{name:'Review forecast drafts'}).disabled).toBe(true);
+});
+test('insufficient forecasts do not expose a draft creation action',()=>{render(<ForecastReviewPanel report={{allowed:true,rows:[{...row,state:'insufficient-data',reason:'Missing comparable weekdays'}]}} onReview={jest.fn()}/>);expect(screen.queryByRole('button',{name:'Review forecast drafts'})).toBeNull();expect(screen.getByText('Missing comparable weekdays')).toBeTruthy();});
+test('training review is permission gated and preserves the selected evidence',()=>{const opportunity={id:'a',title:'Review prep',reason:'Repeated shortage',roleScope:['kitchen'],evidenceIds:['one','two']};const onReview=jest.fn();const {rerender}=render(<TrainingReviewPanel opportunities={[opportunity]} allowed={false} onReview={onReview}/>);expect(screen.queryByRole('button')).toBeNull();rerender(<TrainingReviewPanel opportunities={[opportunity]} allowed onReview={onReview}/>);fireEvent.click(screen.getByRole('button',{name:'Review training checklist'}));expect(onReview).toHaveBeenCalledWith(opportunity);});
+test('clock findings are private and incomplete history cannot imply a clean review',()=>{const {rerender}=render(<ClockReviewPanel report={{allowed:false,findings:[{employeeName:'Private Employee'}]}}/>);expect(screen.queryByText(/Private Employee/)).toBeNull();rerender(<ClockReviewPanel report={{allowed:true,complete:false,reasons:['History is still loading.'],findings:[]}} onReview={jest.fn()}/>);expect(screen.getByRole('status').textContent).toMatch(/incomplete/);expect(screen.queryByText(/No open-punch exceptions/)).toBeNull();});
+test('demand status exposes aggregate-only days without interpreting totals as item sales',()=>{render(<DemandHistoryStatus history={{complete:true,rows:[],aggregateOnlyDays:4}}/>);expect(screen.getByRole('status').textContent).toMatch(/Totals cannot predict individual menu items/);});

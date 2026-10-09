@@ -1,5 +1,6 @@
-'use strict';
-
+const {graphMenuIdentity}=require('./operationalEvidence.cjs');
+const menuApprovalHelpers=require('./menuApproval.cjs');
+const {isApprovedDependency}=menuApprovalHelpers;
 const rows = value => Array.isArray(value) ? value : [];
 const text = value => String(value == null ? '' : value).trim();
 const lower = value => text(value).toLowerCase();
@@ -14,7 +15,7 @@ function buildRestaurantKnowledgeGraph(input = {}) {
   const addNode = (type, source, extra = {}) => {
     if (!belongs(source, workspaceId)) return null;
     const id = stableId(type, source);
-    nodes.set(id, { id, type, workspaceId, label:text(source.name || source.title || source.itemName || source.description || source.sku || id), sourceId:text(source.id || ''), evidence:extra.evidence || { sourceType:type, sourceId:text(source.id || '') }, ...extra });
+    nodes.set(id, { id, type, workspaceId, label:text(source.name || source.title || source.itemName || source.description || source.sku || id), sourceId:text(source.id || ''), ownerId:text(source.ownerId || source.approvedBy || source.costingApprovedBy),updatedAt:text(source.updatedAt || source.approvedAt || source.costingApprovedAt),safetyVerified:Boolean(source.safetyVerified || source.allergensReviewedAt && source.allergensReviewedBy),evidence:extra.evidence || { sourceType:type, sourceId:text(source.id || ''),sourceIds:rows(source.sourceIds) }, ...extra });
     return id;
   };
   const addEdge = (from, to, type, source = {}, extra = {}) => {
@@ -23,7 +24,12 @@ function buildRestaurantKnowledgeGraph(input = {}) {
     edges.set(id, { id, from, to, type, workspaceId, evidence:{ sourceType:text(source.sourceType || 'configured-link'), sourceId:text(source.id || source.sourceId || '') }, confidence:Number.isFinite(Number(extra.confidence)) ? Number(extra.confidence) : 1, ...extra });
     return id;
   };
-  const indexById = list => new Map(list.flatMap(row => [[text(row.id), row],[slug(row.name || row.title || row.itemName), row]]).filter(([key]) => key));
+  const indexById = list => {
+    const index=new Map(),ambiguous=new Set();
+    for(const row of list)for(const key of [text(row.id),text(row.sku || row.code),slug(row.name || row.title || row.itemName)])if(key){if(index.has(key) && index.get(key)!==row)ambiguous.add(key);else index.set(key,row);}
+    for(const key of ambiguous)index.delete(key);
+    return index;
+  };
 
   const inventory = rows(input.inventoryItems).filter(row => belongs(row, workspaceId));
   const recipes = rows(input.recipes).filter(row => belongs(row, workspaceId));
@@ -34,8 +40,8 @@ function buildRestaurantKnowledgeGraph(input = {}) {
   const inventoryIndex = indexById(inventory), recipeIndex = indexById(recipes), vendorIndex = indexById(vendors), productIndex = indexById(products);
 
   inventory.forEach(item => addNode('ingredient', item, { unit:text(item.unit || item.uom), casePack:text(item.casePack || item.packSize), splitCase:Boolean(item.splitCaseAllowed || item.splitCase), yield:Number(item.yield || item.yieldQty || 0) || null, allergens:unique(item.allergens), substitutions:unique(item.substitutions) }));
-  recipes.forEach(recipe => addNode('recipe', recipe, { yield:Number(recipe.yield || recipe.yieldQty || 0) || null, allergens:unique(recipe.allergens) }));
-  menu.forEach(item => addNode('menu', item, { priceCents:Number(item.priceCents || Math.round(Number(item.price || 0) * 100)) || 0, allergens:unique(item.allergens) }));
+  recipes.forEach(recipe => addNode('recipe', recipe, { yield:Number(recipe.batchYieldQuantity || recipe.yield || recipe.yieldQty || 0) || null, yieldUnit:text(recipe.batchYieldUnit),usableYieldPercent:Number(recipe.batchYieldPercent ?? 100), allergens:unique(recipe.allergens) }));
+  menu.forEach(item => addNode('menu', item, { priceCents:item.priceConflict || item.price == null && item.priceCents == null ? null : Number(item.priceCents ?? Math.round(Number(item.price)*100)), allergens:unique(item.allergens) }));
   vendors.forEach(vendor => addNode('vendor', vendor, { aliases:unique(vendor.aliases) }));
   products.forEach(product => addNode('product', product, { sku:text(product.sku || product.productCode), unit:text(product.unit || product.uom), casePack:text(product.casePack || product.packSize), aliases:unique(product.aliases || product.vendorAliases) }));
   invoices.forEach(invoice => addNode('invoice', invoice, { invoiceNumber:text(invoice.invoiceNumber), businessDate:text(invoice.businessDate || invoice.invoiceDate) }));
@@ -65,12 +71,16 @@ function buildRestaurantKnowledgeGraph(input = {}) {
     }
   }
 
-  for (const link of rows(input.menuDependencies).filter(row => belongs(row, workspaceId))) {
-    const menuItem = menu.find(row => text(row.id) === text(link.menuItemId)) || { id:link.menuItemId, name:link.menuItemName };
+  for (const link of rows(input.menuDependencies).filter(row => belongs(row, workspaceId) && isApprovedDependency(row))) {
+    const batchRecipe=recipeIndex.get(text(link.recipeId || link.batchRecipeId));
+    const ingredient=inventoryIndex.get(text(link.inventoryItemId));
+    if(batchRecipe && ingredient)addEdge(stableId('recipe',batchRecipe),stableId('ingredient',ingredient),'uses',link,{quantity:Number(link.batchQuantity || link.quantity) || null,unit:text(link.batchUnit || link.unit),reviewed:link.source==='approved_batch_recipe'});
+    if(!graphMenuIdentity(link))continue;
+    const menuItem = menu.find(row => text(row.id) === graphMenuIdentity(link)) || { id:graphMenuIdentity(link), name:link.menuItemName };
     const inventoryItem = inventoryIndex.get(text(link.inventoryItemId)) || inventoryIndex.get(slug(link.inventoryItemName));
     const menuNode = nodes.has(stableId('menu', menuItem)) ? stableId('menu', menuItem) : addNode('menu', menuItem, { inferred:true });
     if (inventoryItem) addEdge(menuNode, stableId('ingredient', inventoryItem), 'direct-inventory-impact', link, { confidence:Number(link.confidence || 1) });
-    else missingLinks.push({ type:'menu-inventory', workspaceId, sourceId:text(link.id || link.menuItemId), sourceLabel:text(link.menuItemName), missingReference:text(link.inventoryItemName || link.inventoryItemId), reason:'Menu dependency references missing inventory.' });
+    else if (!batchRecipe || link.inventoryItemId || link.inventoryItemName) missingLinks.push({ type:'menu-inventory', workspaceId, sourceId:text(link.id || link.menuItemId), sourceLabel:text(link.menuItemName), missingReference:text(link.inventoryItemName || link.inventoryItemId), reason:'Menu dependency references missing inventory.' });
   }
 
   for (const product of products) {
@@ -85,8 +95,8 @@ function buildRestaurantKnowledgeGraph(input = {}) {
 
   for (const invoice of invoices) {
     const invoiceNode = stableId('invoice', invoice);
-    for (const line of rows(invoice.lines || invoice.items)) {
-      const product = productIndex.get(text(line.vendorProductId || line.productId || line.sku)) || productIndex.get(slug(line.itemName || line.description));
+    for (const line of rows(invoice.lineItems || invoice.lines || invoice.items)) {
+      const product = productIndex.get(text(line.vendorProductId || line.productId || `${invoice.vendorId}:${line.productCode || line.sku}`)) || productIndex.get(text(line.productCode || line.sku)) || productIndex.get(slug(line.itemName || line.description));
       if (product) addEdge(invoiceNode, stableId('product', product), 'prices', line, { unitPriceCents:Number(line.unitPriceCents || Math.round(Number(line.unitPrice || 0) * 100)) || 0, quantity:Number(line.quantity || line.qty || 0) || 0 });
       else missingLinks.push({ type:'invoice-product', workspaceId, sourceId:text(invoice.id), sourceLabel:text(invoice.invoiceNumber), missingReference:text(line.itemName || line.sku), reason:'Invoice line has no deterministic vendor-product match.' });
     }
@@ -94,8 +104,16 @@ function buildRestaurantKnowledgeGraph(input = {}) {
 
   const nodeRows = [...nodes.values()].sort((a,b) => a.id.localeCompare(b.id));
   const edgeRows = [...edges.values()].sort((a,b) => a.id.localeCompare(b.id));
-  const allergenRelationships = nodeRows.flatMap(node => rows(node.allergens).map(allergen => ({ nodeId:node.id, allergen:text(allergen), verified:true })));
+  const allergenRelationships = nodeRows.flatMap(node => rows(node.allergens).map(allergen => ({ nodeId:node.id, allergen:text(allergen), verified:node.safetyVerified===true,evidence:node.evidence })));
   const substitutionRelationships = nodeRows.flatMap(node => rows(node.substitutions).map(substitution => ({ nodeId:node.id, substitution:text(substitution), reviewRequired:true })));
+  const impacts=nodeRows.filter(node=>node.type==='menu').map(menuNode=>{
+    const visited=new Set(),pending=[menuNode.id],paths=[];
+    while(pending.length){const id=pending.shift();if(visited.has(id))continue;visited.add(id);for(const edge of edgeRows.filter(row=>row.from===id && ['prepared-from','uses','direct-inventory-impact'].includes(row.type))){paths.push(edge.id);pending.push(edge.to);}}
+    const ingredients=inventory.filter(item=>visited.has(stableId('ingredient',item)));
+    const low=ingredients.filter(item=>Number(item.currentStock)<=Number(item.parLevel || 0));
+    const safety=nodeRows.filter(node=>visited.has(node.id)).flatMap(node=>rows(node.allergens).map(allergen=>({allergen,sourceId:node.sourceId,verified:node.safetyVerified===true})));
+    return {menuId:menuNode.sourceId,menuName:menuNode.label,ingredientIds:ingredients.map(row=>row.id),lowStockIds:low.map(row=>row.id),stock86Impact:!ingredients.length || ingredients.some(row=>row.currentStock==null || !Number.isFinite(Number(row.currentStock)))?'unknown':low.some(row=>Number(row.currentStock)<=0)?'high':low.length?'watch':'normal',priceCents:menuNode.priceCents,allergens:safety,substitutions:ingredients.flatMap(row=>unique(row.substitutions).map(substitution=>({inventoryItemId:row.id,substitution,reviewRequired:true}))),evidencePathIds:paths,reviewRequired:true};
+  });
   return {
     schemaVersion:1,
     workspaceId,
@@ -103,6 +121,7 @@ function buildRestaurantKnowledgeGraph(input = {}) {
     edges:edgeRows,
     missingLinks:missingLinks.sort((a,b) => `${a.type}:${a.sourceId}`.localeCompare(`${b.type}:${b.sourceId}`)),
     allergenRelationships,
+    impacts,
     substitutionRelationships,
     coverage:{ nodes:nodeRows.length, edges:edgeRows.length, missing:missingLinks.length, complete:missingLinks.length === 0 && nodeRows.length > 0 },
     readModel:'indexed-firebase-relationships',

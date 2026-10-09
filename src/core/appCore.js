@@ -10,6 +10,7 @@ import { getFunctions, connectFunctionsEmulator } from 'firebase/functions';
 import { firebaseRuntimeTarget, isFirebaseEmulatorTarget, firebaseEmulatorSettings, assertFirebaseEmulatorBrowserHost, verifyFirebaseEmulatorAvailability } from './firebaseTarget';
 import L from 'leaflet';
 import { Capacitor, CapacitorHttp } from '@capacitor/core';
+import { NativeCapabilities, isNativeAndroid, installNativeDocumentBridge, blobToBase64 } from './nativeCapabilities';
 
 
 // Fix for React-Leaflet invisible pin issue
@@ -468,7 +469,7 @@ export const MASTER_ADMIN_EMAIL = (process.env.REACT_APP_MASTER_ADMIN_EMAIL || '
 export const EVENT_TAGS = ['Standard Day', 'Packers Game', 'Brewers Game', 'Live Music', 'Severe Weather', 'Private Catering', 'Holiday'];
 
 // --- VERSION TRACKING ---
-export const CURRENT_VERSION = '18.0.11';
+export const CURRENT_VERSION = '18.0.12';
 
 // --- Helpers ---
 const usePageVisible = () => {
@@ -509,6 +510,7 @@ export const installNativeViewportClass = () => {
   return platform;
 };
 installNativeViewportClass();
+installNativeDocumentBridge();
 export const MOBILE_NATIVE_BACKGROUND_RELEASE_GRACE_MS = 15 * 1000;
 
 const nativeRuntimeIsBackgrounded = () => {
@@ -518,6 +520,10 @@ const nativeRuntimeIsBackgrounded = () => {
 };
 
 export const NATIVE_API_BASE_URL = String(env('REACT_APP_NATIVE_API_BASE_URL', 'https://app.86chaos.com')).replace(/\/+$/, '');
+// These routes changed after the current production web release. Keep the
+// native release's server actions on its matching mobile branch deployment.
+export const NATIVE_UPDATED_API_BASE_URL = String(env('REACT_APP_NATIVE_UPDATED_API_BASE_URL', 'https://86chaos-git-mobile-cheers-portal-s-projects.vercel.app')).replace(/\/+$/, '');
+const nativeUpdatedRoutes = new Set(['/api/demand-history', '/api/operational-history', '/api/safe-write', '/api/free-ai-services']);
 const nativeOriginalFetch = typeof window !== 'undefined' && typeof window.fetch === 'function'
   ? window.fetch.bind(window)
   : null;
@@ -547,11 +553,12 @@ const nativeRequestBody = async (input, init, method) => {
     if (typeof init.body === 'string') return init.body;
     if (typeof URLSearchParams !== 'undefined' && init.body instanceof URLSearchParams) return init.body.toString();
     if (typeof FormData !== 'undefined' && init.body instanceof FormData) {
-      const out = {};
+      const out = [];
       for (const [key, value] of init.body.entries()) {
-        if (typeof value !== 'string') throw new Error('Native API file uploads require the dedicated native upload path.');
-        if (Object.prototype.hasOwnProperty.call(out, key)) out[key] = Array.isArray(out[key]) ? [...out[key], value] : [out[key], value];
-        else out[key] = value;
+        if (/[\r\n"]/.test(key) || (typeof value !== 'string' && /[\r\n"]/.test(value.name || ''))) throw new Error('Invalid upload field or filename.');
+        out.push(typeof value === 'string'
+          ? { key, value, type: 'string' }
+          : { key, value: await blobToBase64(value), type: 'base64File', fileName: value.name || 'upload', contentType: value.type || 'application/octet-stream' });
       }
       return out;
     }
@@ -576,16 +583,24 @@ export const nativeApiFetch = async (input, init = {}) => {
     init.headers
   );
   const data = await nativeRequestBody(input, init, requestMethod);
+  const multipart = typeof FormData !== 'undefined' && init.body instanceof FormData;
+  if (multipart) {
+    for (const key of Object.keys(requestHeaders)) if (key.toLowerCase() === 'content-type') delete requestHeaders[key];
+    // Capacitor requires a content type to write a body, then supplies its own
+    // boundary. A browser-generated boundary would not match these native bytes.
+    requestHeaders['Content-Type'] = 'multipart/form-data';
+  }
   const result = await CapacitorHttp.request({
-    url: `${NATIVE_API_BASE_URL}${apiPath}`,
+    url: `${nativeUpdatedRoutes.has(apiPath.split(/[?#]/)[0]) ? NATIVE_UPDATED_API_BASE_URL : NATIVE_API_BASE_URL}${apiPath}`,
     method: requestMethod,
     headers: requestHeaders,
     data,
+    ...(multipart ? { dataType: 'formData' } : {}),
     connectTimeout: 15000,
     readTimeout: 30000,
   });
   const body = typeof result.data === 'string' ? result.data : JSON.stringify(result.data ?? null);
-  return new Response(body, {
+  return new Response(requestMethod === 'HEAD' || [204, 205, 304].includes(Number(result.status)) ? null : body, {
     status: Number(result.status || 500),
     headers: result.headers || {},
   });
@@ -743,7 +758,9 @@ export const downloadFirebaseUsageDiagnostics = (filename = '86chaos-firebase-us
   const a = document.createElement('a');
   a.href = url;
   a.download = filename;
+  document.body.appendChild(a);
   a.click();
+  a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 5000);
   return report;
 };
@@ -913,7 +930,7 @@ function releaseLiveDocumentEntry(key, entry, options = {}) {
   if (options.cache === false) liveDocumentSessionCache.delete(key);
 }
 
-export const makeLiveCollectionKey = ({ coll, restId, whereClauses, orderByField, orderDirection, limitCount, cursor = null, viewerUid = currentViewerUid() }) => stableJson({
+export const makeLiveCollectionKey = ({ coll, restId, whereClauses, orderByField, orderDirection, limitCount, cursor = null, viewerUid = currentViewerUid(), requireServerSnapshot = false }) => stableJson({
   projectId: firebaseConfig?.projectId || 'default',
   viewerUid: viewerUid || 'anonymous',
   coll,
@@ -922,7 +939,8 @@ export const makeLiveCollectionKey = ({ coll, restId, whereClauses, orderByField
   orderByField: orderByField || '',
   orderDirection: orderDirection || 'asc',
   limitCount: Number(limitCount || 0) || null,
-  cursor: cursor || null
+  cursor: cursor || null,
+  ...(requireServerSnapshot ? {requireServerSnapshot:true} : {})
 });
 
 const annotateListenerDiagnostics = (key, patch = {}) => {
@@ -933,7 +951,7 @@ const annotateListenerDiagnostics = (key, patch = {}) => {
 };
 
 
-const acquireSharedLiveCollection = ({ coll, restId, constraints, key, setData, debugLabel = '', viewerUid = currentViewerUid() }) => {
+const acquireSharedLiveCollection = ({ coll, restId, constraints, key, setData, debugLabel = '', viewerUid = currentViewerUid(), requireServerSnapshot = false }) => {
   let entry = liveCollectionRegistry.get(key);
   const diagnostics = getFirestoreDiagnostics();
   if (!entry) {
@@ -989,9 +1007,15 @@ const acquireSharedLiveCollection = ({ coll, restId, constraints, key, setData, 
     });
     entry.unsubscribe = onSnapshot(
       query(collection(db, coll), ...constraints),
+      ...(requireServerSnapshot ? [{includeMetadataChanges:true}] : []),
       snap => {
         if (entry.closed === true || liveCollectionRegistry.get(key) !== entry) return;
         const docs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        if (requireServerSnapshot && (snap.metadata?.fromCache || snap.metadata?.hasPendingWrites)) {
+          entry.data=docs;entry.stale=true;entry.hasCachedSnapshot=true;entry.initialSnapshotSeen=false;
+          entry.subscribers.forEach(row=>row.fn(docs,{resolved:true,stale:true,cached:true,error:null,fromServer:false}));
+          return;
+        }
         const isInitial = !entry.initialSnapshotSeen;
         entry.initialSnapshotSeen = true;
         entry.hasCachedSnapshot = true;
@@ -1040,7 +1064,7 @@ const acquireSharedLiveCollection = ({ coll, restId, constraints, key, setData, 
         else console.error(`Live collection error for ${coll} / ${restId}${debugLabel ? ` [${debugLabel}]` : ''}:`, err);
         entry.lastError = message;
         entry.stale = true;
-        annotateListenerDiagnostics(key, { debugLabel: debugLabel || '', consumerLabels: entryConsumerLabels(entry), lastError: message, lastErrorAt: new Date().toISOString(), stale: true, cached: entry.hasCachedSnapshot === true });
+        annotateListenerDiagnostics(key, { debugLabel: debugLabel || '', consumerLabels: entryConsumerLabels(entry), lastError: message, lastErrorAt: new Date().toISOString(), stale: true, cached: entry.hasCachedSnapshot === true && !entry.initialSnapshotSeen });
         // Preserve last valid data. Do not push an empty array for transient errors.
         entry.subscribers.forEach(row => row.fn(entry.data || [], { resolved: true, stale: true, error: message, fromServer: false }));
       }
@@ -1071,7 +1095,7 @@ const acquireSharedLiveCollection = ({ coll, restId, constraints, key, setData, 
   }
   const subscriber = makeSubscriberRecord(setData, debugLabel);
   entry.subscribers.add(subscriber);
-  setData(entry.data || [], { resolved: entry.initialSnapshotSeen === true, stale: entry.stale === true, error: entry.lastError || null, cached: entry.hasCachedSnapshot === true });
+  setData(entry.data || [], { resolved: entry.initialSnapshotSeen === true, stale: entry.stale === true, error: entry.lastError || null, cached: entry.hasCachedSnapshot === true && !entry.initialSnapshotSeen });
   annotateListenerDiagnostics(key, { debugLabel: debugLabel || '', subscriberCount: entry.subscribers.size, consumerLabels: entryConsumerLabels(entry), cached: entry.hasCachedSnapshot && !entry.initialSnapshotSeen, stale: entry.stale === true });
 
   return () => {
@@ -1151,17 +1175,18 @@ export const useLiveCollection = (coll, restId, options = {}) => {
 
 
 export const useLiveCollectionState = (coll, restId, options = {}) => {
-  const [state, setState] = useState({ data: [], loading: Boolean(options?.enabled !== false && restId), resolved: false, error: null, stale: false, cached: false });
+  const scopeKey=stableJson({coll,restId,viewer:currentViewerUid(),enabled:options.enabled!==false,where:normalizeWhereClausesForKey(options.whereClauses || []),limit:options.limitCount,order:options.orderByField,direction:options.orderDirection,server:options.requireServerSnapshot===true});
+  const [state, setState] = useState({ scopeKey,data: [], loading: Boolean(options?.enabled !== false && restId), resolved: false, error: null, stale: false, cached: false });
   const setter = React.useCallback((rows = [], meta = {}) => {
     setState({
-      data: Array.isArray(rows) ? rows : [],
+      scopeKey,data: Array.isArray(rows) ? rows : [],
       loading: meta.resolved !== true && !meta.error,
       resolved: meta.resolved === true,
       error: meta.error || null,
       stale: meta.stale === true,
       cached: meta.cached === true
     });
-  }, []);
+  }, [scopeKey]);
   const {
     enabled = true,
     limitCount = null,
@@ -1170,7 +1195,8 @@ export const useLiveCollectionState = (coll, restId, options = {}) => {
     orderDirection = 'asc',
     fallbackLimitCount = 75,
     pauseWhenHidden = true,
-    debugLabel = ''
+    debugLabel = '',
+    requireServerSnapshot = false
   } = options || {};
   const pageVisible = usePageVisible();
   const debugLabelRef = React.useRef(debugLabel || '');
@@ -1178,7 +1204,7 @@ export const useLiveCollectionState = (coll, restId, options = {}) => {
   const viewerUid = currentViewerUid();
   useEffect(() => {
     if (!enabled || !restId) {
-      setState({ data: [], loading: false, resolved: false, error: null, stale: false, cached: false });
+      setState({ scopeKey,data: [], loading: false, resolved: false, error: null, stale: false, cached: false });
       return undefined;
     }
     if (pauseWhenHidden && !pageVisible) return undefined;
@@ -1189,10 +1215,11 @@ export const useLiveCollectionState = (coll, restId, options = {}) => {
     });
     if (orderByField) constraints.push(orderBy(orderByField, orderDirection || 'asc'));
     if (limitCount && Number(limitCount) > 0) constraints.push(firestoreLimit(Number(limitCount)));
-    const key = makeLiveCollectionKey({ coll, restId, whereClauses, orderByField, orderDirection, limitCount, viewerUid });
-    return acquireSharedLiveCollection({ coll, restId, constraints, key, setData: setter, debugLabel: debugLabelRef.current, viewerUid });
-  }, [coll, restId, enabled, limitCount, orderByField, orderDirection, pauseWhenHidden, pageVisible, viewerUid, stableJson(normalizeWhereClausesForKey(whereClauses || []))]);
-  return state;
+    const key = makeLiveCollectionKey({ coll, restId, whereClauses, orderByField, orderDirection, limitCount, viewerUid, requireServerSnapshot });
+    return acquireSharedLiveCollection({ coll, restId, constraints, key, setData: setter, debugLabel: debugLabelRef.current, viewerUid, requireServerSnapshot });
+  }, [setter,scopeKey,coll, restId, enabled, limitCount, orderByField, orderDirection, pauseWhenHidden, pageVisible, viewerUid, requireServerSnapshot, stableJson(normalizeWhereClausesForKey(whereClauses || []))]);
+  const scoped=state.scopeKey===scopeKey?state:{data:[],resolved:false,loading:Boolean(enabled && restId),error:null,stale:false,cached:false};
+  return { ...scoped, stale:scoped.stale || pauseWhenHidden && !pageVisible, allowed:Boolean(enabled && restId), limit:limitCount || Infinity };
 };
 
 export const makeLiveDocumentKey = ({ coll, docId, viewerUid = currentViewerUid() }) => stableJson({
@@ -1497,6 +1524,10 @@ export const openPrintableReport = ({ title, subtitle = '', rows = [], filename 
     <div class="foot">Generated ${esc(new Date().toLocaleString())}</div>
     <script>setTimeout(() => window.print(), 350);</script>
     </body></html>`;
+  if (isNativeAndroid()) {
+    NativeCapabilities.printHtml({ html, title: safeTitle || filename }).catch(error => window.alert(error?.message || 'Unable to print this document.'));
+    return true;
+  }
   const win = window.open('', '_blank');
   if (!win) return false;
   win.document.open();

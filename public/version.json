@@ -1,22 +1,25 @@
 {
-  "version": "18.0.11",
-  "name": "86 Chaos 18.0.11",
-  "build": "18.0.11",
-  "label": "86 Chaos 18.0.11",
-  "releasedAt": "2026-10-08T23:32:21.696Z",
-  "releaseTitle": "Production native connection and microphone alignment",
+  "version": "18.0.12",
+  "name": "86 Chaos 18.0.12",
+  "build": "18.0.12",
+  "label": "86 Chaos 18.0.12",
+  "title": "86 Chaos 18.0.12",
+  "releasedAt": "2026-10-09T23:29:01.172Z",
+  "releaseTitle": "Native PDF, speech and testing feature parity",
+  "summary": "Connects verified operational evidence, paged history, vendor catalogs, serving conversions, attendance and training follow-up.",
+  "description": "Testing branch implementation with explicit review and source coverage. Full release certification remains pending.",
   "notes": [
-    "Microphone placement matches the web app without double-counting Android system-bar insets.",
-    "Connects sign-in, restaurant data, storage, presence, functions and native notifications to production.",
-    "Testing accounts and data stay separate; sign in using a production account.",
-    "Retains the signing key from 18.0.10 for an in-place update."
+    "Includes testing 17.0.85 and 17.0.86 operational and reviewed workflow improvements.",
+    "Android PDF exports use the system document picker.",
+    "86Voice uses Android native speech recognition and runtime microphone permission."
   ],
-  "title": "86 Chaos 18.0.11",
-  "summary": "Connects the native app to production Firebase and APIs, with the microphone aligned to the web app.",
-  "description": "Android uses 44px voice-dock spacing inside the system-bar inset content area. Native Firebase registrations and API transport now target the production project.",
   "highlights": [
-    "Production Firebase cheers-34b8d and app.86chaos.com APIs.",
-    "Native Android microphone spacing matches web.",
-    "Automated mutation tests use local Firebase emulators."
+    "Verified readiness and paged history",
+    "Reviewed catalog and serving conversions",
+    "Attendance policy and training follow-up"
+  ],
+  "changes": [
+    "17.0.86 release identity on testing",
+    "Targeted business, component, emulator and browser coverage"
   ]
 }

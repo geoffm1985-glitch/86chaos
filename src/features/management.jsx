@@ -1,3 +1,4 @@
+import { NativeCapabilities, isNativeAndroid } from '../core/nativeCapabilities';
 import { firestoreHealthEvidence, restoreDrillNeedsAttention, deploymentEvidenceChecks } from '../core/adminHealthEvidence';
 import PosImportReview from '../components/PosImportReview';
 import Shift4IntegrationPanel from '../components/Shift4IntegrationPanel';
@@ -391,7 +392,7 @@ const DEFAULT_PERMISSIONS = { schedule: false, events: false, ops: false, invent
 
   const buildLoginText = (login) => login ? `Welcome to 86 Chaos!\n\nApp: https://app.86chaos.com\n\nName: ${login.name}\nEmail: ${login.email}\nTemporary Password: ${login.password}\n\nThis temporary password is shown one time. Please log in and change it.` : '';
   const copyLogin = async (login) => { try { await navigator.clipboard.writeText(buildLoginText(login)); addToast('Copied', 'Login info copied.'); } catch(e) { addToast('Copy Failed', 'Highlight and copy the login info manually.'); } };
-  const printLogin = (login) => { const w = window.open('', '_blank'); if (!w) return addToast('Popup Blocked', 'Allow popups to print the login sheet.'); w.document.write(`<pre style="font-family:Arial,sans-serif;font-size:18px;white-space:pre-wrap;line-height:1.5">${buildLoginText(login).replace(/</g,'&lt;')}</pre>`); w.document.close(); w.focus(); w.print(); };
+  const printLogin = (login) => { if (isNativeAndroid()) { NativeCapabilities.printHtml({ title: '86 Chaos Login', html: `<pre style="font-family:Arial;white-space:pre-wrap">${buildLoginText(login).replace(/</g,'&lt;')}</pre>` }).catch(error => addToast('Print Failed', error.message)); return; } const w = window.open('', '_blank'); if (!w) return addToast('Popup Blocked', 'Allow popups to print the login sheet.'); w.document.write(`<pre style="font-family:Arial,sans-serif;font-size:18px;white-space:pre-wrap;line-height:1.5">${buildLoginText(login).replace(/</g,'&lt;')}</pre>`); w.document.close(); w.focus(); w.print(); };
   const emailLogin = (login) => { window.location.href = `mailto:${login.email}?subject=${encodeURIComponent('Your 86 Chaos Account')}&body=${encodeURIComponent(buildLoginText(login))}`; };
   const textLogin = (login) => { if (!login.phone) return addToast('No Phone', 'This employee does not have a phone number entered.'); const smsChar = /iPad|iPhone|iPod/.test(navigator.userAgent) ? '&' : '?'; window.location.href = `sms:${login.phone}${smsChar}body=${encodeURIComponent(buildLoginText(login))}`; };
 
@@ -4358,7 +4359,7 @@ const [editingRest, setEditingRest] = useState(null);
     const blob=new Blob([JSON.stringify(securityReport,null,2)],{type:'application/json'});
     const url=URL.createObjectURL(blob);
     const anchor=document.createElement('a');
-    anchor.href=url;anchor.download=`86chaos-security-diagnostics-${CURRENT_VERSION}.json`;anchor.click();
+    anchor.href=url;anchor.download=`86chaos-security-diagnostics-${CURRENT_VERSION}.json`;document.body.appendChild(anchor);anchor.click();anchor.remove();
     setTimeout(()=>URL.revokeObjectURL(url),5000);
     addToast('Sanitized Export Ready','The download contains redacted diagnostic evidence and no secret values.');
   };
@@ -4440,7 +4441,7 @@ const [editingRest, setEditingRest] = useState(null);
 
   const buildWorkspaceLoginText = (login) => login ? `Welcome to 86 Chaos!\n\nWorkspace: ${login.restaurantName}\nApp: https://app.86chaos.com\n\nOwner: ${login.ownerName}\nEmail: ${login.email}\nTemporary Password: ${login.password}\n\nThis temporary password is shown one time. Please log in and change it.` : '';
   const copyWorkspaceLogin = async (login) => { try { await navigator.clipboard.writeText(buildWorkspaceLoginText(login)); addToast('Copied', 'Workspace login info copied.'); } catch(e) { addToast('Copy Failed', 'Highlight and copy the login info manually.'); } };
-  const printWorkspaceLogin = (login) => { const w = window.open('', '_blank'); if (!w) return addToast('Popup Blocked', 'Allow popups to print the login sheet.'); w.document.write(`<pre style="font-family:Arial,sans-serif;font-size:18px;white-space:pre-wrap;line-height:1.5">${buildWorkspaceLoginText(login).replace(/</g,'&lt;')}</pre>`); w.document.close(); w.focus(); w.print(); };
+  const printWorkspaceLogin = (login) => { if (isNativeAndroid()) { NativeCapabilities.printHtml({ title: '86 Chaos Login', html: `<pre style="font-family:Arial;white-space:pre-wrap">${buildWorkspaceLoginText(login).replace(/</g,'&lt;')}</pre>` }).catch(error => addToast('Print Failed', error.message)); return; } const w = window.open('', '_blank'); if (!w) return addToast('Popup Blocked', 'Allow popups to print the login sheet.'); w.document.write(`<pre style="font-family:Arial,sans-serif;font-size:18px;white-space:pre-wrap;line-height:1.5">${buildWorkspaceLoginText(login).replace(/</g,'&lt;')}</pre>`); w.document.close(); w.focus(); w.print(); };
   const emailWorkspaceLogin = (login) => { window.location.href = `mailto:${login.email}?subject=${encodeURIComponent(`Your 86 Chaos OS: ${login.restaurantName}`)}&body=${encodeURIComponent(buildWorkspaceLoginText(login))}`; };
   const textWorkspaceLogin = (login) => { if (!login.phone) return addToast('No Phone', 'No owner phone number was entered.'); const smsChar = /iPad|iPhone|iPod/.test(navigator.userAgent) ? '&' : '?'; window.location.href = `sms:${login.phone}${smsChar}body=${encodeURIComponent(buildWorkspaceLoginText(login))}`; };
   const startDemoMode = (client, role = demoRole) => { if (!client?.id) return; setGhostTenant({ id: client.id, name: client.name, mode: 'demo', demoMode: { plan: demoPlan, role, features: demoFeatures } }); setSelectedClient(null); setActiveTab('published'); addToast('Demo Mode', `${role === 'employee' ? 'Employee' : 'Manager'} demo started. Use the banner to exit.`); };
@@ -7060,6 +7061,10 @@ ${body}`;
       <section class="intro"><h2>How to use this manual</h2><p>This plain-English reference covers the selected 86 Chaos tabs and workflows. Features still follow workspace settings and user permissions, so a reader may not see every control described here. This manual is static: searching and printing it makes no AI calls.</p><h3>Selected chapters</h3><ol>${tableOfContents}</ol></section>
       ${chapterHtml}<div class="footer">86 Chaos · Complete App Training Manual · ${selectedTrainingManualChapters.length} selected chapter(s)</div>
       </body></html>`;
+    if (isNativeAndroid()) {
+      NativeCapabilities.printHtml({html: printableHtml, title: '86 Chaos Training Manual'}).catch(error => addToast('Print Failed', error.message));
+      return;
+    }
     const printWindow = window.open('', '_blank');
     if (!printWindow) {
       addToast('Popup Blocked', 'Allow popups for 86 Chaos, then choose Print selected again.');

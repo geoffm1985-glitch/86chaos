@@ -1,6 +1,7 @@
 import { makeLiveCollectionKey, makeLiveDocumentKey } from './appCore';
 
 describe('listener registry identity', () => {
+  test('server-verified consumers cannot reuse a cache-only listener, but do share equivalent verified queries',()=>{const base={coll:'sales',restId:'r1',viewerUid:'owner'};expect(makeLiveCollectionKey({...base,requireServerSnapshot:true})).not.toBe(makeLiveCollectionKey(base));expect(makeLiveCollectionKey({...base,requireServerSnapshot:true})).toBe(makeLiveCollectionKey({...base,requireServerSnapshot:true,debugLabel:'another consumer'}));});
   test('same query with different diagnostic labels still hashes once', () => {
     const base = { coll: 'tasks', restId: 'r1', whereClauses: [['isCompleted','==',false]], orderByField: 'date', orderDirection: 'asc', limitCount: 50, viewerUid:'u1' };
     expect(makeLiveCollectionKey({ ...base, debugLabel: 'a' })).toBe(makeLiveCollectionKey({ ...base, debugLabel: 'b' }));

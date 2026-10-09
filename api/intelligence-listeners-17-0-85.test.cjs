@@ -1,0 +1,14 @@
+'use strict';
+const {test}=require('node:test');const assert=require('node:assert/strict');const fs=require('node:fs');const vm=require('node:vm');
+const source=fs.readFileSync(require.resolve('../src/core/appCore.js'),'utf8');
+function listenerFixture(){
+  const start=source.indexOf('const acquireSharedLiveCollection = ')+ 'const acquireSharedLiveCollection = '.length;
+  const end=source.indexOf('\nexport const useLiveCollection =',start);
+  let receive,options,unsubscribeCount=0;
+  const registry=new Map();const context={currentViewerUid:()=> 'owner',liveCollectionRegistry:registry,getFirestoreDiagnostics:()=>null,touchLiveCacheEntry:()=>null,liveCollectionSessionCache:new Map(),firebaseConfig:{projectId:'demo-86chaos'},annotateListenerDiagnostics:()=>{},collection:()=>({}),query:()=>({}),db:{},onSnapshot:(query,...args)=>{options=typeof args[0]==='object'?args.shift():null;receive=args[0];return()=>unsubscribeCount++;},makeSubscriberRecord:fn=>({fn}),entryConsumerLabels:()=>[],setLiveCacheEntry:()=>{},listenerReleaseGraceMs:()=>0,setTimeout:fn=>{fn();return 1;},clearTimeout:()=>{},FIRESTORE_INTERNAL_ASSERTION_RE:/internal-assertion/};
+  const acquire=vm.runInNewContext('('+source.slice(start,end).trim().replace(/;$/,'')+')',context);
+  return {acquire,registry,receive:snapshot=>receive(snapshot),options:()=>options,unsubscribeCount:()=>unsubscribeCount};
+}
+const snapshot=metadata=>({metadata,docs:[{id:'actual',data:()=>({restaurantId:'r1',quantity:3})}],docChanges:()=>[]});
+test('production listener marks cache and pending writes incomplete, then clears cached origin after server verification',()=>{const fixture=listenerFixture();const observed=[];fixture.acquire({coll:'sales',restId:'r1',constraints:[],key:'verified',setData:(rows,meta)=>observed.push({rows,meta}),requireServerSnapshot:true});assert.equal(fixture.options().includeMetadataChanges,true);for(const metadata of [{fromCache:true,hasPendingWrites:false},{fromCache:false,hasPendingWrites:true}]){fixture.receive(snapshot(metadata));assert.equal(observed.at(-1).meta.stale,true);assert.equal(observed.at(-1).meta.cached,true);}fixture.receive(snapshot({fromCache:false,hasPendingWrites:false}));assert.equal(observed.at(-1).meta.fromServer,true);assert.equal(observed.at(-1).meta.stale,false);const reused=[];fixture.acquire({coll:'sales',restId:'r1',constraints:[],key:'verified',setData:(rows,meta)=>reused.push(meta),requireServerSnapshot:true});assert.equal(reused.at(-1).resolved,true);assert.equal(reused.at(-1).cached,false);assert.equal(fixture.registry.size,1);});
+test('production listener releases the last subscriber while preserving server-verification query isolation',()=>{const fixture=listenerFixture();const cleanup=fixture.acquire({coll:'sales',restId:'r1',constraints:[],key:'verified',setData:()=>{},requireServerSnapshot:true});cleanup();assert.equal(fixture.registry.size,0);assert.equal(fixture.unsubscribeCount(),1);});

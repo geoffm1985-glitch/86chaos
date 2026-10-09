@@ -1,0 +1,3 @@
+import './operationalEvidence.shared';
+const { evidenceQuality,evidenceTime,buildFoodSafetyEvidence,reviewedServingConversion,buildGraphMenuRows,graphMenuIdentity,buildTrainingFollowUp } = globalThis.__86ChaosOperationalEvidence;
+export { evidenceQuality,evidenceTime,buildFoodSafetyEvidence,reviewedServingConversion,buildGraphMenuRows,graphMenuIdentity,buildTrainingFollowUp };

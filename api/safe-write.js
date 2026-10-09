@@ -1,3 +1,4 @@
+const { operationalReview } = require('./_operational-review');
 const { foodSafety } = require('./_food-safety');
 const { authorizeAiScanWorkspace } = require('./_ai-usage');
 const { verifyRequestToken } = require('./_firebase-project-admin');
@@ -245,6 +246,12 @@ module.exports = async function handler(req, res) {
       const out=await mutateRosterRole(auth.db||db,{action,restaurantId:clean(restaurantId||auth.restaurantId),roleId:docId,name:data.name||body.name,actor:auth.email||auth.uid,nowIso:new Date().toISOString()});
       await writeAudit(auth.db||db,auth,`ROSTER_ROLE_${action.replace('roster-role-','').toUpperCase()}`,out.path,'Canonical roster role lifecycle',restaurantId||auth.restaurantId);
       return res.status(200).json({ok:true,...out});
+    }
+    if (action.startsWith('vendor-catalog-') || action === 'attendance-policy-approve') {
+      const appCheck=await requireAppCheckIfEnforced(auth.app || app,req);
+      if(!appCheck.ok)return res.status(appCheck.status || 401).json({ok:false,error:appCheck.error});
+      try {return res.status(200).json({ok:true,...await operationalReview({db:auth.db || db,ctx:auth,body})});}
+      catch(error){const status=[400,403,409].includes(error?.statusCode)?error.statusCode:500;return res.status(status).json({ok:false,error:status===409?'This evidence changed or was revoked. Reload and review before retrying.':status===403?'Workspace review permission is required.':status===400?'Review the evidence, units, public source links and explicit approval.':'Workspace evidence could not be saved. Retry when the connection recovers.'});}
     }
     if (action === 'invoice-approve' || action === 'menu-approve' || action.startsWith('vendor-memory-') || action.startsWith('recipe-costing-')) {
       const appCheck = await requireAppCheckIfEnforced(auth.app || app, req);

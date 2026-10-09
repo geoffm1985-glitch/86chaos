@@ -1,5 +1,3 @@
-'use strict';
-
 const rows = value => Array.isArray(value) ? value : [];
 const text = value => String(value == null ? '' : value).trim();
 const lower = value => text(value).toLowerCase();
@@ -117,6 +115,15 @@ function buildNeedsAttention(input = {}) {
   const safetyRows = [...tasks, ...prepItems].filter(row => safetyPattern.test([row.title,row.text,row.category,row.notes].filter(Boolean).join(' ')));
   if (!safetyRows.length) add({ category:'food-safety', sourceKey:'food-safety-data', severity:'needs-data', title:'Food-safety checks are unknown', reason:'No food-safety or temperature-check evidence is loaded.', completeness:'incomplete', confidence:0, action:{label:'Review checks',tab:'prep',focus:'checks'}, visibility:['owner','admin','manager','staff'] });
   for (const check of safetyRows.filter(row => row.isCompleted !== true && !closed(row.status))) add({ category:'food-safety', sourceKey:`safety:${check.id || check.title || check.text}`, severity:'high', title:check.title || check.text || 'Food-safety check incomplete', reason:'A food-safety control remains incomplete and requires human review.', action:{label:'Review checks',tab:'prep',focus:'checks'}, visibility:['owner','admin','manager','staff'] });
+
+  if (input.foodSafetyEvidence) {
+    for (let index=findings.length-1;index>=0;index--) if(findings[index].category==='food-safety')findings.splice(index,1);
+    const safety=input.foodSafetyEvidence;
+    for(const finding of safety.findings) add({category:'food-safety',sourceKey:finding.id,title:finding.title,reason:finding.reason,severity:finding.severity,evidence:finding.evidenceIds,action:finding.action,completeness:safety.complete?'complete':'partial',visibility:['owner','admin','manager','staff']});
+    if(!safety.complete || !safety.configuredChecks)add({category:'food-safety',sourceKey:'structured-safety-coverage',severity:'needs-data',title:'Food-safety evidence is incomplete',reason:safety.reasons.join(' ') || 'Configure required line checks.',completeness:'incomplete',action:{label:'Review line checks',tab:'prep',focus:'checks'}});
+  }
+  for(const finding of rows(input.aiOrderFindings))add({category:'inventory',sourceKey:`order:${finding.id || finding.itemId}`,title:finding.itemName || finding.name || 'Ordering recommendation',reason:finding.reason || finding.reasons?.join(' ') || 'Review demand, stock, price and pack evidence before ordering.',severity:'attention',evidence:finding.evidenceIds,action:{label:'Review order suggestion',tab:'ai-order',focus:'recommendations'}});
+  for(const finding of rows(input.pythonFindings))add({category:finding.category || 'operations',sourceKey:`python:${finding.id || finding.title}`,title:finding.title || 'Restaurant check finding',reason:finding.detail || finding.reason || finding.recommendation || 'Review the recorded restaurant check.',severity:finding.severity || 'attention',observedAt:finding.observedAt,completeness:finding.complete===false?'partial':'complete',action:finding.action || {label:'Review restaurant check',tab:'today',focus:'restaurant-check'}});
 
   const sales = rows(input.sales).filter(row => dateKey(row.businessDate || row.date || row.createdAt) === currentDate);
   if (!sales.length) add({ category:'financial', sourceKey:`sales-data:${currentDate}`, severity:'needs-data', title:'Current-day financial picture is incomplete', reason:'No current-day sales evidence is loaded.', completeness:'incomplete', confidence:0, action:{label:'Review financials',tab:'financials'}, visibility:['owner','admin','manager'] });

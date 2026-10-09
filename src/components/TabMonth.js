@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import { NativeCapabilities, isNativeAndroid } from '../core/nativeCapabilities';
 
 const escapeHtml = (value = '') => String(value ?? '')
   .replace(/&/g, '&amp;')
@@ -220,6 +221,10 @@ const TabMonth = ({ currentDate, users, shifts, T, getMonthStr, getDaysInMonth, 
   };
 
   const handlePrintCalendar = () => {
+    if (isNativeAndroid()) {
+      NativeCapabilities.printHtml({ html: buildPrintableCalendarHtml(), title: '86 Chaos Schedule' }).catch(error => window.alert(error?.message || 'Unable to print the schedule.'));
+      return;
+    }
     const printWindow = window.open('', '_blank');
     if (!printWindow) {
       window.print();

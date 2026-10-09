@@ -90,7 +90,7 @@ async function approveInvoice({ db, ctx, invoice, approved }) {
       staged.set(itemRef.id, after);
       if (isNew) created++; else updated++;
       approvedRows.push({ ...row, matchedItemId: itemRef.id, approvedStockQuantity: values.stockQuantity, approvedStockUnitCost: values.stockUnitCost,
-        approvedBy: ctx.uid, approvedAt: at, previousStock: item.currentStock || 0, previousCost: item.price ?? null });
+        approvedBy: ctx.uid, approvedAt: at, previousStock: item.currentStock || 0, previousCost: item.price ?? null,previousStockUnitCost:Number.isFinite(item.latestCost)?item.latestCost:null });
       // Revocation is sticky: approving another invoice must not silently reactivate a revoked mapping.
       if (!priorMapping.exists || priorMapping.data().active !== false) {
         const sameInvoiceMapping = stagedMappings.get(mappingRefs[index].path)?.data;

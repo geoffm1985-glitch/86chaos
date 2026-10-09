@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { Bell, Check, Camera, ChevronLeft, ChevronRight, MessageSquare, Plus, Trash2, Users, Calendar, Clock, X, Loader2, Package, ClipboardList, Menu, Settings, LogOut, Shield, Send, Repeat, Edit, Moon, Sun, TrendingUp, BookOpen, Search, ChefHat, Scale, Coffee, Star, Bug, Wrench, Globe } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
-import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, getDoc, setDoc, getDocs, getDocsFromServer, writeBatch, orderBy, limit as firestoreLimit } from 'firebase/firestore';
+import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, getDoc, setDoc, getDocs, getDocsFromServer, writeBatch, runTransaction, orderBy, limit as firestoreLimit } from 'firebase/firestore';
 import { getAuth, signInWithEmailAndPassword, sendPasswordResetEmail, createUserWithEmailAndPassword, updatePassword } from 'firebase/auth';
 import { getToken, onMessage } from 'firebase/messaging';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
@@ -31,6 +31,9 @@ import { requestOffDateKey, normalizeRequestOffRuntimeRow, safeRequestOffRows } 
 import { validatePartialRequestOffTimeRange } from '../core/requestOffValidation';
 import { normalizeTimeOffPolicy, evaluateTimeOffPolicyDate, timeOffPolicyReleaseDateForRequestDate, timeOffPolicyCutoffDateForRequestDate, canConfigureTimeOffPolicy } from '../core/timeOffPolicy';
 import { useI18n } from '../core/i18n';
+import { buildScheduleForecast, forecastDraftId, isForecastCandidateEligible, saveForecastDraft } from '../core/intelligenceConnections';
+import { useDemandHistory } from '../hooks/useDemandHistory';
+import { ForecastReviewPanel } from '../components/IntelligenceReviewPanels';
 import { normalizeScheduleBuilderEvents, safeScheduleBuilderRecords } from '../core/scheduleBuilderRuntime';
 import { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, MapClickListener, SmartEmptyState, MiniProblemCard, getHomeProfile, calculatePunchHours, getWeekStart, roleMatches, toLocalTimeInput, makeLocalIso, PunchTable, FriendlyEmpty, GlobalSearchModal, QuickActionDock, KitchenTVMode, ChangeLogModal, UndoBar } from '../components/common';
 
@@ -5870,6 +5873,9 @@ const ScheduleCopilot = ({ period, periodLabel = '', users = [], shifts = [], ti
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const copilotReadEnabled = Boolean(open && appUser?.restaurantId);
+  const demandHistoryState = useDemandHistory(appUser,getToday(),copilotReadEnabled);
+  const [forecastBusy, setForecastBusy] = useState(false);
+  const forecastInFlight = useRef(false);
   const templateLimit = 120;
   const coverageTargetLimit = 200;
   const roleLimit = 120;
@@ -5961,6 +5967,7 @@ const ScheduleCopilot = ({ period, periodLabel = '', users = [], shifts = [], ti
     { label: 'staff roles', resolved: dbRolesState.resolved, error: dbRolesState.error, count: dbRoles.length, limit: roleLimit },
   ]);
   const periodActionBlocked = open && !scheduleToolsCompleteness.complete;
+  const demandForecast = buildScheduleForecast({workspaceId:appUser?.restaurantId,actor:appUser,currentDate:getToday(),dates:activePeriodDates,sales:demandHistoryState.data,sourceState:demandHistoryState,coverageTargets,shifts:safeShifts});
 
   const addTemplateRow = () => setTemplateRows([...templateRows, { dayIndex: 5, role: firstScheduleRole, startTime: '16:00', endTime: '21:00', count: 1 }]);
   const updateTemplateRow = (idx, patch) => setTemplateRows(templateRows.map((r,i) => i === idx ? { ...r, ...patch } : r));
@@ -5988,11 +5995,12 @@ const ScheduleCopilot = ({ period, periodLabel = '', users = [], shifts = [], ti
     catch(err) { addToast('Template Not Saved', err.message || 'The current week was not saved as a template.'); }
   };
 
-  const pickUserForShift = (role, date, startTime = '09:00', endTime = '17:00', usedIds = []) => {
+  const pickUserForShift = (role, date, startTime = '09:00', endTime = '17:00', usedIds = [], forecastReview = false) => {
     const scheduleRole = canonicalScheduleRole(role);
     const candidates = activeUsers.filter(u => !usedIds.includes(u.id)).filter(u => roleMatches(u.role, scheduleRole));
     const pool = candidates;
     return pool.find(u => {
+      if (forecastReview && !isForecastCandidateEligible({person:u,date,startTime,endTime,shifts:safeShifts,loadedDates:activePeriodDates})) return false;
       const requestedOff = safeTimeOffRequests.some(request => {
         if (!timeOffMatchesPerson(request, u) || request.date !== date || !isActiveTimeOffRequest(request)) return false;
         if (!request.isPartial) return true;
@@ -6009,15 +6017,19 @@ const ScheduleCopilot = ({ period, periodLabel = '', users = [], shifts = [], ti
     const scheduleRole = canonicalScheduleRole(row.role);
     const draftStart = row.startTime || '09:00';
     const draftEnd = row.endTime || '17:00';
-    const employee = pickUserForShift(scheduleRole, date, draftStart, draftEnd, usedIds);
+    const employee = pickUserForShift(scheduleRole, date, draftStart, draftEnd, usedIds,Boolean(row.forecastDraftId));
     const finalRole = employee?.role ? canonicalScheduleRole(employee.role) : scheduleRole;
     const nowIso = new Date().toISOString();
     const canonicalFields = buildCanonicalScheduleCreateFields(date, appUser.restaurantId);
     recordScheduleOperationDiagnostic('canonicalDatePatches');
-    await addDoc(collection(db, 'shifts'), { ...canonicalFields, ...buildScheduleIdentityFields(employee || {}), role: finalRole, targetRole: scheduleRole, startTime: draftStart, endTime: draftEnd, isPublished: false, publishState: 'draft', scheduleBuilderDraft: true, readyToPublish: true, createdAt: nowIso, updatedAt: nowIso, createdBy: appUser.id || 'schedule-copilot', updatedBy: appUser.id || 'schedule-copilot', source: 'schedule_copilot', assignmentSource: 'schedule_copilot' });
+    const payload = { ...canonicalFields, ...buildScheduleIdentityFields(employee || {}), role: finalRole, targetRole: scheduleRole, startTime: draftStart, endTime: draftEnd, isPublished: false, publishState: 'draft', scheduleBuilderDraft: true, readyToPublish: true, createdAt: nowIso, updatedAt: nowIso, createdBy: appUser.id || 'schedule-copilot', updatedBy: appUser.id || 'schedule-copilot', source: 'schedule_copilot', assignmentSource: 'schedule_copilot',...(row.forecastDraftId ? {source:'demand_forecast_review',forecastEvidence:row.evidence,forecastReviewedAt:nowIso,forecastReviewedBy:appUser.id || appUser.uid || appUser.authUid || 'manager'} : {}) };
+    if (row.forecastDraftId) {
+      const saved = await saveForecastDraft({transact:callback=>runTransaction(db,callback),ref:doc(db,'shifts',row.forecastDraftId),payload});
+      if (!saved.created) return {employeeId:'',date,role:finalRole,created:false};
+    } else await addDoc(collection(db, 'shifts'),payload);
     recordScheduleOperationDiagnostic('directSdkWrites');
     recordScheduleOperationDiagnostic('totalScheduleDocumentsWritten');
-    return { employeeId: employee?.id || '', date, role: finalRole, targetRole: scheduleRole, startTime: draftStart, endTime: draftEnd };
+    return { employeeId: employee?.id || '', date, role: finalRole, targetRole: scheduleRole, startTime: draftStart, endTime: draftEnd,created:true };
   };
 
   const applyTemplate = async () => {
@@ -6099,6 +6111,25 @@ const ScheduleCopilot = ({ period, periodLabel = '', users = [], shifts = [], ti
     if (periodActionBlocked) return addToast('Schedule Check Incomplete', scheduleToolsCompleteness.reasons[0] || 'Wait for the current schedule period to finish loading.');
     if (!draftCount) return addToast('Nothing To Publish', `No draft shifts were found in ${activePeriodLabel}.`);
     onReviewPublish?.();
+  };
+
+  const reviewForecastDrafts = async (recommendation) => {
+    const current = demandForecast.rows.find(row => row.id === recommendation.id);
+    if (forecastInFlight.current || periodActionBlocked || !current || current.state !== 'recommendation' || current.needed < 1 || current.needed > 20) return;
+    if (!window.confirm(`Review ${current.needed} draft ${current.role} shift(s) for ${current.date}, ${current.startTime}–${current.endTime}? ${current.reason} Availability and Request Off checks apply. Shifts remain unpublished.`)) return;
+    setForecastBusy(true);
+    forecastInFlight.current = true;
+    try {
+      const used = activePeriodShifts.filter(shift => getShiftDateKey(shift) === current.date).map(shift => shift.employeeId || shift.scheduleUserId).filter(Boolean);
+      let createdCount = 0;
+      for (let index=0;index<current.needed;index++) {
+        const created = await createShiftDraft({...current,forecastDraftId:forecastDraftId(current,appUser.restaurantId,current.existing+index)},current.date,used);
+        if (created.employeeId) used.push(created.employeeId);
+        if (created.created) createdCount++;
+      }
+      addToast('Forecast Drafts Created',`${createdCount} draft shifts were added. Review assignments and publish through Schedule Builder when ready.`);
+    } catch (error) { addToast('Forecast Drafts Incomplete','Some drafts may have saved. Refresh coverage before retrying. '+(error.message || '')); }
+    finally { setForecastBusy(false);forecastInFlight.current = false; }
   };
 
   const moveShiftToDay = async (targetDate) => {
@@ -6190,8 +6221,9 @@ const ScheduleCopilot = ({ period, periodLabel = '', users = [], shifts = [], ti
       <div className="grid grid-cols-4 gap-1.5">
         {[['Drafts',draftCount],['Missing',missingTargets.length],['Warnings',allScheduleWarnings.length],['Templates',safeTemplates.length]].map(([label,value]) => <div key={label} className="schedule-copilot-metric bg-[#12161A] border border-[#2A353D]"><span className="text-[8px] uppercase tracking-widest font-black text-slate-500">{label}</span><strong className="text-white">{value}</strong></div>)}
       </div>
-      <div className="flex gap-1.5 overflow-x-auto custom-scrollbar border-b border-[#2A353D] pb-2" role="tablist" aria-label="Schedule Builder tools" aria-orientation="horizontal">{[['targets',t('builder.coverage')],['templates',t('builder.templates')],['template-editor', editingTemplateId ? t('builder.editTemplate') : t('builder.createTemplate')],['drag',t('builder.dragBoard')],['warnings',t('builder.warnings')]].map(([id,label]) => <button key={id} type="button" role="tab" data-testid={id === 'warnings' ? 'schedule-copilot-warnings-tab' : undefined} aria-label={label} title={label} onClick={() => setActiveTool(id)} aria-selected={activeTool===id} data-chaos-current-state={activeTool===id ? 'true' : undefined} className={`flex-shrink-0 px-2.5 py-1.5 rounded-lg text-[9px] uppercase tracking-widest font-black ${activeTool===id ? `${T.grad} text-slate-900` : 'bg-[#12161A] text-slate-400 hover:text-white'}`}>{label}</button>)}</div>
+      <div className="flex gap-1.5 overflow-x-auto custom-scrollbar border-b border-[#2A353D] pb-2" role="tablist" aria-label="Schedule Builder tools" aria-orientation="horizontal">{[['targets',t('builder.coverage')],['forecast','Demand forecast'],['templates',t('builder.templates')],['template-editor', editingTemplateId ? t('builder.editTemplate') : t('builder.createTemplate')],['drag',t('builder.dragBoard')],['warnings',t('builder.warnings')]].map(([id,label]) => <button key={id} type="button" role="tab" data-testid={id === 'warnings' ? 'schedule-copilot-warnings-tab' : undefined} aria-label={label} title={label} onClick={() => setActiveTool(id)} aria-selected={activeTool===id} data-chaos-current-state={activeTool===id ? 'true' : undefined} className={`flex-shrink-0 px-2.5 py-1.5 rounded-lg text-[9px] uppercase tracking-widest font-black ${activeTool===id ? `${T.grad} text-slate-900` : 'bg-[#12161A] text-slate-400 hover:text-white'}`}>{label}</button>)}</div>
       <div className="schedule-copilot-body custom-scrollbar space-y-3">
+      {activeTool === 'forecast' && <ForecastReviewPanel report={demandForecast} blocked={periodActionBlocked} busy={forecastBusy} onReview={reviewForecastDrafts}/>}
       {activeTool === 'targets' && <div className="grid lg:grid-cols-2 gap-4"><form onSubmit={addCoverageTarget} className="bg-[#12161A] border border-[#2A353D] rounded-xl p-3 space-y-2"><h4 className="font-black text-white">Add Coverage Target</h4><p className="text-[10px] font-bold text-slate-400">Choose how many people you need for a role and time. Roles match the Staff Roster and Schedule Builder.</p><div className="grid grid-cols-2 gap-2"><select value={targetForm.dayIndex} onChange={e=>setTargetForm({...targetForm, dayIndex:e.target.value})} className={T.input}>{dayNames.map((d,i)=><option key={d} value={i}>{d}</option>)}</select><select value={targetForm.role} onChange={e=>setTargetForm({...targetForm, role:e.target.value})} className={T.input}>{scheduleRoleOptions.map(r => <option key={r} value={r}>{r}</option>)}</select><input type="time" value={targetForm.startTime} onChange={e=>setTargetForm({...targetForm, startTime:e.target.value})} className={T.input}/><input type="time" value={targetForm.endTime} onChange={e=>setTargetForm({...targetForm, endTime:e.target.value})} className={T.input}/><input type="number" min="1" value={targetForm.count} onChange={e=>setTargetForm({...targetForm, count:e.target.value})} className={T.input}/><button className={`${T.btn} py-2`}>Save Coverage Target</button></div></form><div className="space-y-2">{coverageTargets.length === 0 ? <FriendlyEmpty title="No coverage targets yet" text="Add the staffing level you want for each role and time. Fill Coverage Gaps can then create draft shifts for review."/> : coverageTargets.map(t => <div key={t.id} className="bg-[#12161A] border border-[#2A353D] rounded-xl p-3 flex justify-between items-center"><div><div className="font-black text-white">{dayNames[t.dayIndex]} • {t.role} x{t.count}</div><div className="text-xs text-slate-400 font-bold">{formatShortTime(t.startTime)} - {formatShortTime(t.endTime)}</div></div><button onClick={() => deleteDoc(doc(db,'scheduleCoverageTargets',t.id))} className="p-2 text-slate-400 hover:text-red-400"><Trash2 size={14}/></button></div>)}</div></div>}
       {activeTool === 'templates' && <div className="space-y-3"><div className="flex flex-col md:flex-row gap-2"><select value={templateId} onChange={e => setTemplateId(e.target.value)} className={`${T.input} flex-1`}><option value="">Select template to apply</option>{templateOptions.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}</select><button onClick={applyTemplate} disabled={periodActionBlocked} className={`${T.btn} py-2 disabled:opacity-50`}>{activePeriod.mode === 'weekly' ? 'Apply to Current Week' : 'Apply to Current Period'}</button><button onClick={saveCurrentWeekAsTemplate} className={T.btnAlt}>Save Current Week</button></div>{templateOptions.length === 0 ? <FriendlyEmpty title="No templates yet" text="Create a Normal Week, Packers Sunday, Fish Fry Friday, or Live Music template. Each restaurant gets its own library."/> : templateOptions.map(t => <div key={t.id} className="bg-[#12161A] border border-[#2A353D] rounded-xl p-3 flex justify-between items-center"><div><div className="font-black text-white">{t.name}</div><div className="text-xs text-slate-400 font-bold">{t.description || 'No description'} • {(t.rows || []).length} rules</div></div><div className="flex gap-2"><button onClick={() => editTemplate(t)} className={T.btnAlt}>Edit</button><button onClick={() => deleteTemplate(t)} className="px-3 py-2 rounded-xl bg-red-900/20 text-red-300 border border-red-900/50 text-xs font-black">Delete</button></div></div>)}</div>}
       {activeTool === 'template-editor' && <form onSubmit={saveTemplate} className="space-y-3"><div className="grid md:grid-cols-2 gap-2"><input value={templateName} onChange={e=>setTemplateName(e.target.value)} className={T.input} placeholder="Template name" required/><input value={templateDesc} onChange={e=>setTemplateDesc(e.target.value)} className={T.input} placeholder="Description"/></div><div className="space-y-2">{templateRows.map((r,idx)=><div key={idx} className="grid grid-cols-2 md:grid-cols-6 gap-2 bg-[#12161A] border border-[#2A353D] rounded-xl p-2"><select value={r.dayIndex} onChange={e=>updateTemplateRow(idx,{dayIndex:e.target.value})} className={T.input}>{dayNames.map((d,i)=><option key={d} value={i}>{d}</option>)}</select><select value={r.role} onChange={e=>updateTemplateRow(idx,{role:e.target.value})} className={T.input}>{scheduleRoleOptions.map(roleName => <option key={roleName} value={roleName}>{roleName}</option>)}</select><input type="time" value={r.startTime} onChange={e=>updateTemplateRow(idx,{startTime:e.target.value})} className={T.input}/><input type="time" value={r.endTime} onChange={e=>updateTemplateRow(idx,{endTime:e.target.value})} className={T.input}/><input type="number" min="1" value={r.count} onChange={e=>updateTemplateRow(idx,{count:e.target.value})} className={T.input}/><button type="button" onClick={()=>removeTemplateRow(idx)} className="bg-red-900/20 border border-red-900/50 text-red-300 rounded-xl font-black text-xs">Remove</button></div>)}</div><div className="flex gap-2"><button type="button" onClick={addTemplateRow} className={T.btnAlt}>Add Row</button><button type="submit" className={`${T.btn} py-2`}>{editingTemplateId ? 'Update Template' : 'Create Template'}</button></div></form>}

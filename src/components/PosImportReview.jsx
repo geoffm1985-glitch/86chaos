@@ -9,7 +9,7 @@ export default function PosImportReview({ restaurantId, onUseDaily }) {
   const run = fn => { try { setError(''); fn(); } catch (err) { setError(err.message); } };
   const download = () => {
     const url = URL.createObjectURL(new Blob([JSON.stringify(draft, null, 2)], { type: 'application/json' }));
-    const anchor = document.createElement('a'); anchor.href = url; anchor.download = '86chaos-pos-review-draft.json'; anchor.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+    const anchor = document.createElement('a'); anchor.href = url; anchor.download = '86chaos-pos-review-draft.json'; document.body.appendChild(anchor); anchor.click(); anchor.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
   return <details className={`${T.card} p-3`}><summary className="font-bold text-[#D4A381] cursor-pointer">Review POS CSV import</summary><div className="space-y-3 mt-3">
     <p className="text-xs text-slate-400">Map a CSV export to a review draft. Daily, item, and category rows remain separate to avoid double-counting. Item IDs can map to your menu; no live POS connection is used.</p>

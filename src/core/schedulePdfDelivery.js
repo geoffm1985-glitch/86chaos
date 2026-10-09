@@ -1,3 +1,5 @@
+import { isNativeAndroid, saveNativeFile } from './nativeCapabilities';
+
 const PDF_MIME_TYPE = 'application/pdf';
 const BLOB_CLEANUP_DELAY_MS = 60000;
 
@@ -79,6 +81,7 @@ export async function deliverSchedulePdf(bytes, {
 } = {}) {
   if (!filename) throw new Error('A PDF filename is required.');
   const blob = new BlobCtor([bytes], { type: PDF_MIME_TYPE });
+  if (isNativeAndroid()) return saveNativeFile(blob, filename);
   const fileDelivery = typeof preferFileDelivery === 'boolean'
     ? preferFileDelivery
     : shouldPreferSchedulePdfFileDelivery({ windowObject, navigatorObject });

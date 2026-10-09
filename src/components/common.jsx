@@ -18,6 +18,7 @@ import { requestPersonalReminderRefresh, usePersonalReminderRows } from '../core
 import { FEATURE_KEYS } from '../config/plans';
 import { useI18n } from '../core/i18n';
 import { validatePartialRequestOffTimeRange } from '../core/requestOffValidation';
+import { AndroidSpeechRecognition, isNativeAndroid } from '../core/nativeCapabilities';
 
 
 const buildReminderQueueFields = (scheduledAt, status = 'scheduled') => ({
@@ -1470,7 +1471,7 @@ const VoiceCommandDockBase = ({ appUser, inventoryItems = [], recipes = [], user
   const [pending, setPending] = useState(null);
   const [lastUndo, setLastUndo] = useState(null);
   const [voiceResult, setVoiceResult] = useState(null);
-  const SpeechRecognition = typeof window !== 'undefined' ? (window.SpeechRecognition || window.webkitSpeechRecognition) : null;
+  const SpeechRecognition = isNativeAndroid() ? AndroidSpeechRecognition : (typeof window !== 'undefined' ? (window.SpeechRecognition || window.webkitSpeechRecognition) : null);
   const canUseSpeech = Boolean(SpeechRecognition);
   const eightySixContextRef = useRef({ restaurantId: '', loadedAt: 0, inventoryItems: [], menuDependencies: [] });
   const voiceSessionRef = useRef({ id: '', startedAt: 0, commits: 0, finalFingerprint: '' });
@@ -1511,8 +1512,9 @@ const VoiceCommandDockBase = ({ appUser, inventoryItems = [], recipes = [], user
 
   const voiceErrorMessage = (error = {}) => {
     const code = String(error?.error || error?.name || error?.message || '').toLowerCase();
-    if (/not-allowed|permission|denied/.test(code)) return 'Microphone permission is blocked. You can still type the command here.';
+    if (isNativeAndroid() && /service-not-allowed/.test(code)) return error?.message || 'Enable an Android speech recognition service in device settings, then try 86Voice again.';
     if (/service-not-allowed|security/.test(code)) return 'The browser or operating system blocked speech recognition. Use typed command fallback.';
+    if (/not-allowed|permission|denied/.test(code)) return 'Microphone permission is blocked. You can still type the command here.';
     if (/audio-capture|no-speech-device|device/.test(code)) return 'No microphone or audio-capture device was found. Use typed command fallback.';
     if (/no-speech/.test(code)) return 'No speech was detected. Try again or type the command.';
     if (/network/.test(code)) return 'Speech recognition had a network problem. Type the command or try again.';

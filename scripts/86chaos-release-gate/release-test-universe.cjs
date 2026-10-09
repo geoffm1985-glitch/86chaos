@@ -80,6 +80,9 @@ const RELEASE_CRITICAL_SPECS = Object.freeze([
   'tests/86chaos-release-gate/94-failed-new-lineage-repair-17-0-82.spec.cjs',
   'tests/86chaos-release-gate/95-request-off-maturity-refactor-17-0-83.spec.cjs',
   'tests/86chaos-release-gate/96-owned-full-fidelity-17-0-84.spec.cjs',
+  'tests/86chaos-release-gate/98-intelligence-connections-17-0-85.spec.cjs',
+  'tests/86chaos-release-gate/99-operational-completion-17-0-86.spec.cjs',
+  'tests/e2e/intelligence-connections-17-0-85.spec.cjs',
 ]);
 
 const PWA_SPEC_PATTERN = /86chaos-release-gate\/(26-pwa-icon-source-deployed-parity|27-pwa-browser-icon-matrix|66-firebase-emulator-bridge-17-0-54|70-release-gate-emulator-target-coherence-17-0-58)\.spec\.cjs/;

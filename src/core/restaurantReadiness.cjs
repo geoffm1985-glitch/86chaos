@@ -1,6 +1,5 @@
-'use strict';
-
-const { buildNeedsAttention } = require('./needsAttention.cjs');
+const {buildNeedsAttention}=require('./needsAttention.cjs');
+const {evidenceQuality}=require('./operationalEvidence.cjs');
 
 const clamp = (value, min = 0, max = 100) => Math.max(min, Math.min(max, Number(value) || 0));
 const rows = value => Array.isArray(value) ? value : [];
@@ -99,7 +98,7 @@ function buildRestaurantReadiness(input = {}) {
   const safetyPattern = /food\s*safety|haccp|temp(?:erature)?|cool(?:ing)?|hot\s*hold|cold\s*hold|sanitize|sanitizer|allergen|line\s*check/i;
   const safetyChecks = [...tasks, ...prepItems].filter(row => safetyPattern.test([row?.title,row?.text,row?.category,row?.notes].filter(Boolean).join(' ')));
   const openSafetyChecks = safetyChecks.filter(row => row?.isCompleted !== true && active(row?.status));
-  const foodSafety = safetyChecks.length === 0
+  let foodSafety = safetyChecks.length === 0
     ? category({ key:'food-safety', label:'Food Safety', status:'needs-data', reason:'No food-safety or temperature checks are visible in the loaded prep/task data.', action:{ label:'Review checks', tab:'prep', focus:'checks' } })
     : category({
         key:'food-safety', label:'Food Safety',
@@ -109,6 +108,11 @@ function buildRestaurantReadiness(input = {}) {
         evidence:openSafetyChecks.slice(0,4).map(row => row.title || row.text || row.category || 'Open check'),
         action:{ label:'Review checks', tab:'prep', focus:'checks' }
       });
+
+  if (input.foodSafetyEvidence) {
+    const safety = input.foodSafetyEvidence;
+    foodSafety = category({key:'food-safety',label:'Food Safety',status:safety.findings.length ? 'attention' : !safety.complete || !safety.configuredChecks ? 'needs-data' : 'ready',score:safety.complete && safety.configuredChecks ? 100-safety.findings.length*18 : null,reason:safety.findings.length ? `${safety.findings.length} missed check or corrective action needs review.` : !safety.complete ? safety.reasons.join(' ') : !safety.configuredChecks ? 'Configure the required line checks before judging food-safety readiness.' : 'Configured checks and corrective-action sign-offs are current.',evidence:safety.findings.map(row=>row.title),action:{label:'Review line checks',tab:'prep',focus:'checks'}});
+  }
 
   const todaySales = sales.filter(row => dateKey(row?.businessDate || row?.date || row?.createdAt) === currentDate);
   const financial = todaySales.length === 0
@@ -127,7 +131,19 @@ function buildRestaurantReadiness(input = {}) {
       ? category({ key:'system', label:'System', status:'needs-data', reason:'Backup/recovery evidence is not loaded. Unknown system protection is not counted as healthy.', action:{ label:'Open Backup Center', tab:'godmode', focus:'forensics' } })
       : category({ key:'system', label:'System', score:100 - criticalAdminAlerts.length * 28 - Math.max(0, openAdminAlerts.length - criticalAdminAlerts.length) * 7, status:criticalAdminAlerts.length ? 'critical' : openAdminAlerts.length ? 'attention' : 'ready', reason:criticalAdminAlerts.length ? `${criticalAdminAlerts.length} high/critical owner-admin alert${criticalAdminAlerts.length===1?' needs':'s need'} review.` : openAdminAlerts.length ? `${openAdminAlerts.length} owner/admin alert${openAdminAlerts.length===1?' is':'s are'} still open.` : 'No open owner/admin system alerts are visible and backup evidence is loaded.', evidence:openAdminAlerts.slice(0,4).map(alert => alert.title || alert.detail || 'Open system alert'), action:{ label:'Open back office', tab:'back-office' } });
 
+  if(backupEvidenceKnown && input.systemDataVisible!==false) {
+    const backup=input.backupStatus;
+    if(backup.backupStale || ['failed','error','stale','attention','unknown'].includes(lower(backup.status)) || ['failed','error','unknown'].includes(lower(backup.lastIntegrityStatus))){system.score=null;system.status=backup.backupStale || backup.status==='unknown'?'needs-data':'critical';system.statusLabel=system.status==='critical'?'Critical':'Needs data';system.reason='Backup evidence is stale, failed or unverified. Review protection and recovery before judging system readiness.';}
+  }
   const categories=[inventory,prep,staffing,maintenance,foodSafety,financial,operations,system];
+  const categorySources = {inventory:['inventory'],prep:['prep','tasks'],staffing:['users','shifts','timeOff'],maintenance:['maintenance'],financial:['sales'],operations:['events'],system:['backup']};
+  if (input.sourceStates) for (const row of categories) {
+    const quality = (categorySources[row.key] || []).map(key=>({key,...evidenceQuality(input.sourceStates[key])}));
+    const missing = quality.filter(source=>!source.complete);
+    row.completeness = missing.length ? 'incomplete' : 'complete';
+    row.sourceReasons = missing.flatMap(source=>source.reasons.map(reason=>`${source.key}: ${reason}`));
+    if (missing.length) { row.score=null;if(row.status==='ready')row.status='needs-data';row.statusLabel=row.status==='critical'?'Critical':row.status==='attention'?'Needs attention':'Needs data';row.reason=`${row.reason} Coverage incomplete: ${row.sourceReasons.join(' ')}`; }
+  }
   const scored=categories.filter(row => Number.isFinite(row.score));
   const overallScore=scored.length ? Math.round(scored.reduce((sum,row)=>sum+row.score,0)/scored.length) : null;
   const coveragePct=Math.round(scored.length/categories.length*100);
@@ -141,4 +157,4 @@ function buildRestaurantReadiness(input = {}) {
   return { schemaVersion:2, currentDate, overallScore, coveragePct, groundedCategoryCount:scored.length, totalCategoryCount:categories.length, status, categories, needsAttention, attentionItems, reviewOnly:true };
 }
 
-module.exports={ buildRestaurantReadiness };
+module.exports = { buildRestaurantReadiness };
