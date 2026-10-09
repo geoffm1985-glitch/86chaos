@@ -36,7 +36,7 @@ test.describe('99 operational completion 17.0.86',()=>{
     const writes=[],problems=[];watchForProblems(page,problems);
     page.on('request',request=>{if(request.url().includes('/api/safe-write') && /vendor-catalog-(import|revoke)|invoice-approve/.test(request.postDataJSON()?.action || ''))writes.push(request.postDataJSON().action);});
     await login(page,account.email,account.password);await gotoTab(page,'inventory',{settleMs:1500});
-    await page.getByRole('button',{name:'vendors',exact:true}).click();
+    await page.getByRole('button',{name:/^(?:Open )?vendors$/i}).click();
     const catalog=page.getByTestId('vendor-catalog-review');await expect(catalog).toBeVisible();
     const vendor=catalog.getByLabel('Catalog vendor');await expect.poll(()=>vendor.locator('option').count()).toBeGreaterThan(1);
     const vendorId=await vendor.locator('option').nth(1).getAttribute('value');
