@@ -5,7 +5,7 @@ set -euo pipefail
 # directory changes and both Gradle invocations inside this single process.
 cd "$(dirname "$0")/../android"
 chmod +x gradlew
-./gradlew assembleDebug assembleDebugAndroidTest --no-daemon
+./gradlew :app:assembleDebug :app:assembleDebugAndroidTest --no-daemon
 adb shell settings put secure location_mode 3
 adb emu geo fix -87.63 41.88
-./gradlew connectedDebugAndroidTest --no-daemon -Pandroid.testInstrumentationRunnerArguments.class=com.chiltonappworks.chaos86.NativeCapabilitiesTest
+./gradlew :app:connectedDebugAndroidTest --no-daemon -Pandroid.testInstrumentationRunnerArguments.class=com.chiltonappworks.chaos86.NativeCapabilitiesTest

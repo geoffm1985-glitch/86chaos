@@ -1,7 +1,7 @@
 {
   "schemaVersion": 5,
   "version": "18.0.12",
-  "sourceHash": "bd673c733d85c32a0b8f3637de012d34cba8546c8549c9e2ad25e9c7c6dbe275",
+  "sourceHash": "630fee335c312a541a6d7427ecfd45b72c67457bf2bb842d33771fefb2c4a4b0",
   "files": [
     {
       "file": ".gitattributes",
@@ -2973,7 +2973,7 @@
     },
     {
       "file": "scripts/run-native-android-capabilities.sh",
-      "sha256": "3067a76447d326984255a7b4bb0a660face96235d15a343a6366529f72794de6"
+      "sha256": "36ba4d4c5666fc06206d43be2742bf2e07f2dc0cc2689c17e65061c4e5032be2"
     },
     {
       "file": "scripts/run-pos-bridge-emulator-tests.cjs",
