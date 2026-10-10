@@ -2,21 +2,69 @@
   "schemaVersion": 1,
   "status": "pending-connected-device",
   "checks": [
-    {"id":"android-install","scenario":"Install the signed release APK; verify package, version code, certificate, target SDK and launch without a crash."},
-    {"id":"android-upgrade","scenario":"Upgrade the previous installed version; verify saved workspace, preferences and authenticated session migrate correctly."},
-    {"id":"android-startup","scenario":"Cold start, force stop and relaunch; verify startup recovery and no duplicate initialization."},
-    {"id":"android-navigation","scenario":"Exercise every primary screen, hardware Back, gestures, rotation and edge-to-edge safe areas."},
-    {"id":"android-keyboard","scenario":"Enter long text and numeric values; verify keyboard does not hide fields or save actions."},
-    {"id":"android-offline","scenario":"Lose network during reads and writes; reconnect and verify clear errors, retry and no duplicate records."},
-    {"id":"android-lifecycle","scenario":"Background and resume during a save; kill and restart after saving; verify persisted results."},
-    {"id":"android-camera","scenario":"Grant, deny and permanently deny camera access; capture an invoice and recover without losing the form."},
-    {"id":"android-microphone","scenario":"Grant and deny microphone permission; interrupt voice capture and verify safe retry and cancellation."},
-    {"id":"android-location","scenario":"Test denied, approximate and precise location with clock-in; verify review behavior and no incorrect punch."},
-    {"id":"android-notifications","scenario":"Grant and deny notification permission; verify settings link, graceful fallback and no repeated prompts."},
-    {"id":"android-reminders","scenario":"Deliver a reminder while backgrounded and closed; tap it, edit/cancel it, and confirm no stale duplicates."},
-    {"id":"android-documents","scenario":"Generate, open, print and share PDFs; cancel external activities and return with app state intact."},
-    {"id":"android-auth-isolation","scenario":"Sign out and switch accounts/workspaces; verify Back and offline caches do not expose prior private records."},
-    {"id":"android-accessibility","scenario":"Use TalkBack and large font/display scaling; verify focus, labels, contrast, scrolling and touch targets."},
-    {"id":"android-links-resources","scenario":"Open supported deep links; exercise low-memory resume and a long active session; inspect crash/ANR and resource logs."}
+    {
+      "id": "android-install",
+      "scenario": "Install the signed non-debuggable release APK; verify package, positive version code, signing certificate, target SDK 36 or higher, and 16 KB ELF/ZIP alignment compatibility; launch without a crash."
+    },
+    {
+      "id": "android-upgrade",
+      "scenario": "Upgrade the previous installed version; verify saved workspace, preferences and authenticated session migrate correctly."
+    },
+    {
+      "id": "android-startup",
+      "scenario": "Cold start, force stop and relaunch; verify startup recovery and no duplicate initialization."
+    },
+    {
+      "id": "android-navigation",
+      "scenario": "Exercise every primary screen, hardware Back, gestures, rotation and edge-to-edge safe areas."
+    },
+    {
+      "id": "android-keyboard",
+      "scenario": "Enter long text and numeric values; verify keyboard does not hide fields or save actions."
+    },
+    {
+      "id": "android-offline",
+      "scenario": "Lose network during reads and writes; reconnect and verify clear errors, retry and no duplicate records."
+    },
+    {
+      "id": "android-lifecycle",
+      "scenario": "Background and resume during a save; kill and restart after saving; verify persisted results."
+    },
+    {
+      "id": "android-camera",
+      "scenario": "Grant, deny and permanently deny camera access; capture an invoice and recover without losing the form."
+    },
+    {
+      "id": "android-microphone",
+      "scenario": "Grant and deny microphone permission; interrupt voice capture and verify safe retry and cancellation."
+    },
+    {
+      "id": "android-location",
+      "scenario": "Test denied, approximate and precise location with clock-in; verify review behavior and no incorrect punch."
+    },
+    {
+      "id": "android-notifications",
+      "scenario": "Grant and deny notification permission; verify settings link, graceful fallback and no repeated prompts."
+    },
+    {
+      "id": "android-reminders",
+      "scenario": "Deliver a reminder while backgrounded and closed; tap it, edit/cancel it, and confirm no stale duplicates."
+    },
+    {
+      "id": "android-documents",
+      "scenario": "Generate, open, print and share PDFs; cancel external activities and return with app state intact."
+    },
+    {
+      "id": "android-auth-isolation",
+      "scenario": "Sign out and switch accounts/workspaces; verify Back and offline caches do not expose prior private records."
+    },
+    {
+      "id": "android-accessibility",
+      "scenario": "Use TalkBack and large font/display scaling; verify focus, labels, contrast, scrolling and touch targets."
+    },
+    {
+      "id": "android-links-resources",
+      "scenario": "Open supported deep links; exercise low-memory resume and a long active session; inspect crash/ANR and resource logs."
+    }
   ]
 }

@@ -1,7 +1,7 @@
 {
   "schemaVersion": 3,
   "version": "17.0.86",
-  "sourceHash": "4aea42d19cf672e736387cf4156d5902779bde96dacd6cecc041d6a7634fae33",
+  "sourceHash": "4f6ff9d5bf15a9746ccef5fbf5df5efb2394f815c0150790e17247ea2ff273dc",
   "files": [
     {
       "file": ".gitattributes",
@@ -521,7 +521,7 @@
     },
     {
       "file": "api/_schedule-forecast-draft.js",
-      "sha256": "9464bb8166f2b7fec5a925792cd946251aad312d44db50923f2f87cb5473ca45"
+      "sha256": "4064b28890763328e312591bf02c48b05d5e3f29f6af69bb9a65aee5b3137824"
     },
     {
       "file": "api/_schedule-publish-core.cjs",
@@ -1441,7 +1441,7 @@
     },
     {
       "file": "api/reliability-forecast-draft.test.cjs",
-      "sha256": "b93f455766037aee0362fa32d3009e49599924bc1610b27d32847a7f1b49abda"
+      "sha256": "d5bc278935a70187ce220a8bab80ffa89c83beef44783ad76c8c8e2b9b69841e"
     },
     {
       "file": "api/reliability-qa-cleanup.test.cjs",
@@ -1449,7 +1449,7 @@
     },
     {
       "file": "api/reliability-release-gate.test.cjs",
-      "sha256": "7ee8938145de1bd617853c18611aa6101e4872ae7d991d445529e0f629d6cf65"
+      "sha256": "5b4758cb01119db38c0c67876fd601127b42ed3e04bbd2e390d5ca614b0a47f3"
     },
     {
       "file": "api/reminder-mobile-runtime-17-0-38.test.cjs",
@@ -1953,7 +1953,7 @@
     },
     {
       "file": "docs/PLAY_STORE_RELIABILITY_ACCEPTANCE.md",
-      "sha256": "5f46bb779db5bc7858cd0df8b4873aead32e9a19c5b6968e7fdfaf2fbc8f6ee6"
+      "sha256": "536338bd0e44522f1c7271596af8c7046d302fb33d1e8d6955e62207697c2145"
     },
     {
       "file": "docs/daily-briefing-feature-status.md",
@@ -2305,7 +2305,7 @@
     },
     {
       "file": "scripts/86chaos-release-gate/device-evidence.cjs",
-      "sha256": "d6f2571e45f06de9f31eff42fd63cb8dfbe22591c2de5c0eef4f0a1ff569a3ce"
+      "sha256": "99ee6dff913dc4ecb505cd30214021497089d7f829b9022d6683e7c4dfd8b5c8"
     },
     {
       "file": "scripts/86chaos-release-gate/enforce-jest-coverage.cjs",
@@ -4317,7 +4317,7 @@
     },
     {
       "file": "test-tools/certification/device-acceptance.json",
-      "sha256": "2a1a1c90e50d9968b5eb47958eaa06fddf05c8a5643a62e624bd613569cf8fc3"
+      "sha256": "5e9df517c1de163eb474ec7f7031d6d11ad3f40d5c4d6116a3ce428020308ffc"
     },
     {
       "file": "test-tools/certification/groups.json",
@@ -4569,7 +4569,7 @@
     },
     {
       "file": "tests/86chaos-release-gate/100-operational-reliability.spec.cjs",
-      "sha256": "8b93355162fcdcd69fdba5cf6ac1d048324829400571b81df54a2126b52b0a09"
+      "sha256": "caae626bbf9a7ce521fb07b0bd1e8d219359b8eabab0ff4002316a027208c00a"
     },
     {
       "file": "tests/86chaos-release-gate/15-interactive-control-census.spec.cjs",

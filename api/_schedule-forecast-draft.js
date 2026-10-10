@@ -24,7 +24,7 @@ async function createReviewedForecastDraft({db,ctx,body,now=new Date().toISOStri
   const result=await saveForecastDraft({ref,payload,transact:callback=>db.runTransaction(async tx=>{
     const targetSnapshot=await tx.get(targetRef),target=targetSnapshot.data() || {};
     if(!targetSnapshot.exists || target.restaurantId!==restaurantId)fail('Coverage target belongs to another workspace or no longer exists.',403);
-    if(Number(target.dayIndex)!==new Date(body.date).getUTCDay() || !Number.isFinite(Number(target.count)) || Number(target.count)<=0 || Number(target.count)>50 || String(target.role || '').trim().toLowerCase()!==payload.targetRole.toLowerCase() || target.startTime!==payload.startTime || target.endTime!==payload.endTime)fail('Coverage target changed. Reload and review the forecast.',409);
+    if(Number(target.dayIndex)!==new Date(body.date).getUTCDay() || !Number.isInteger(Number(target.count)) || Number(target.count)<=0 || Number(target.count)>50 || body.slot>=Number(target.count) || String(target.role || '').trim().toLowerCase()!==payload.targetRole.toLowerCase() || target.startTime!==payload.startTime || target.endTime!==payload.endTime)fail('Coverage target changed. Reload and review the forecast.',409);
     payload.role=target.role;payload.targetRole=target.role;
     return callback({get:async document=>{const snap=await tx.get(document);if(snap.exists && snap.data().restaurantId!==restaurantId)fail('Draft identity belongs to another workspace.',409);return {exists:()=>snap.exists,data:()=>snap.data()};},set:(document,value)=>tx.create(document,value)});
   })});
