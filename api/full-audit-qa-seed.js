@@ -471,7 +471,7 @@ async function cleanupQa(req, res, { app, auth, db, projectId, body, base }) {
       const reviewed=await reviewedQaCleanupRefs({db,restaurant:restaurantSnap,runId:base.runId,vendors});
       for(const ref of reviewed)writes.push({type:'delete',ref});
     } catch(error) {
-      return res.status(409).json({ok:false,error:`Reviewed QA cleanup refused: ${error.message}`});
+      return res.status(409).json({ok:false,error:'Reviewed QA cleanup could not be verified. Check the current QA workspace and retry.'});
     }
   }
   for (const ref of refs.values()) writes.push({ type: 'delete', ref });
