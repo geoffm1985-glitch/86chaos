@@ -1,7 +1,7 @@
 {
   "schemaVersion": 5,
   "version": "18.0.12",
-  "sourceHash": "630fee335c312a541a6d7427ecfd45b72c67457bf2bb842d33771fefb2c4a4b0",
+  "sourceHash": "10c797e03f295383b4e788c8b498901f2f5e1e4c211920dde9f1586ba6500ee1",
   "files": [
     {
       "file": ".gitattributes",
@@ -417,7 +417,7 @@
     },
     {
       "file": "android/app/src/androidTest/java/com/chiltonappworks/chaos86/NativeCapabilitiesTest.java",
-      "sha256": "ccbaddc3c93f1625fc24170dc7658d772d7d47ecf29b0b3248f11abcb384ef9f"
+      "sha256": "b98ba8a50eef03ec71af904947671f209fbbe9eec3df4f0dc5ea121ed04878b1"
     },
     {
       "file": "android/app/src/androidTest/java/com/chiltonappworks/chaos86/TestRecognitionService.java",
@@ -4365,7 +4365,7 @@
     },
     {
       "file": "src/core/localReminderBridge.js",
-      "sha256": "33ef54120a2a5bac2874d6d4cda52cf0c64c16c080c411b3bb55e3b486f2b71f"
+      "sha256": "c2e94103beb5a62ac029908c3a8c7b4188dd4286f7d1b5f51c9cdd895b037347"
     },
     {
       "file": "src/core/maturityGuards.js",

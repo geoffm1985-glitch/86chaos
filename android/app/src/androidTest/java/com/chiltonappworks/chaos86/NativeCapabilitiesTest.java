@@ -110,12 +110,13 @@ public class NativeCapabilitiesTest {
         InstrumentationRegistry.getInstrumentation().getUiAutomation().grantRuntimePermission(target.getPackageName(),Manifest.permission.POST_NOTIFICATIONS);
         try(ActivityScenario<MainActivity> scenario=ActivityScenario.launch(MainActivity.class)) {
             ready(scenario);
-            js(scenario,"window.__nativeReminder=null;(async()=>{const p=Capacitor.registerPlugin('LocalNotifications');await p.schedule({notifications:[{id:180012,title:'86 Chaos test',body:'Device local reminder',isExactNotification:false,schedule:{at:new Date(Date.now()+3600000)}}]});window.__nativeReminder={scheduled:true};})().catch(e=>window.__nativeReminder={error:e.message})");
-            assertTrue(new JSONObject(waitFor(scenario,"window.__nativeReminder")).getBoolean("scheduled"));
+            js(scenario,"window.__nativeReminder=null;(async()=>{const p=Capacitor.Plugins.LocalNotifications;await p.schedule({notifications:[{id:180012,title:'86 Chaos test',body:'Device local reminder',isExactNotification:false,schedule:{at:new Date(Date.now()+3600000)}}]});window.__nativeReminder={scheduled:true};})().catch(e=>window.__nativeReminder={error:e.message})");
+            JSONObject scheduled=new JSONObject(waitFor(scenario,"window.__nativeReminder"));
+            assertTrue(scheduled.toString(),scheduled.optBoolean("scheduled"));
         }
         try(ActivityScenario<MainActivity> scenario=ActivityScenario.launch(MainActivity.class)) {
             ready(scenario);
-            js(scenario,"window.__nativeReminder=null;(async()=>{const p=Capacitor.registerPlugin('LocalNotifications');const before=await p.getPending();await p.cancel({notifications:[{id:180012}]});const after=await p.getPending();window.__nativeReminder={persisted:before.notifications.some(n=>n.id===180012),removed:!after.notifications.some(n=>n.id===180012)};})().catch(e=>window.__nativeReminder={error:e.message})");
+            js(scenario,"window.__nativeReminder=null;(async()=>{const p=Capacitor.Plugins.LocalNotifications;const before=await p.getPending();await p.cancel({notifications:[{id:180012}]});const after=await p.getPending();window.__nativeReminder={persisted:before.notifications.some(n=>n.id===180012),removed:!after.notifications.some(n=>n.id===180012)};})().catch(e=>window.__nativeReminder={error:e.message})");
             JSONObject result=new JSONObject(waitFor(scenario,"window.__nativeReminder"));
             assertTrue(result.toString(),result.getBoolean("persisted"));assertTrue(result.toString(),result.getBoolean("removed"));
         }
