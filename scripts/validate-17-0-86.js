@@ -99,4 +99,6 @@ for(const file of ['tests/86chaos-release-gate/100-operational-reliability.spec.
 assert.ok(universe.RELEASE_CRITICAL_SPECS.includes('tests/86chaos-release-gate/100-operational-reliability.spec.cjs'));
 assert.ok(pkg.scripts['test:current-release-targeted'].includes('npm run test:reliability'));
 assert.equal(json('test-tools/certification/device-acceptance.json').checks.length,16);
+for(const file of ['api/_schedule-forecast-draft.js','api/reliability-forecast-draft.test.cjs','api/today-recipe-evidence.test.cjs'])assert.ok(manifest.files.some(row=>row.file===file),file+' is sealed');
+new TextDecoder('utf-8',{fatal:true}).decode(fs.readFileSync(path.join(root,'tests/86chaos-release-gate/100-operational-reliability.spec.cjs')));
 console.log('86 Chaos 17.0.86 intelligence connections and preserved full-gate repairs validation PASS');

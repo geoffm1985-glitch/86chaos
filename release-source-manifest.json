@@ -1,7 +1,7 @@
 {
   "schemaVersion": 3,
   "version": "17.0.86",
-  "sourceHash": "d2ae67f6b47d54cd5be5f855a0c8f8fb165829674a01361a6a209a69e85ab22e",
+  "sourceHash": "2fa75e48e4aed463f4b9baddb895379f1ae7a11040acb13c0543fca4630aec3c",
   "files": [
     {
       "file": ".gitattributes",
@@ -518,6 +518,10 @@
     {
       "file": "api/_reminder-dispatch-logic.js",
       "sha256": "812471f1bcc2abc62bbb11817dd2f0d6f8b91b9dc0a901dd9e5ce0f6e35fac1c"
+    },
+    {
+      "file": "api/_schedule-forecast-draft.js",
+      "sha256": "9464bb8166f2b7fec5a925792cd946251aad312d44db50923f2f87cb5473ca45"
     },
     {
       "file": "api/_schedule-publish-core.cjs",
@@ -1436,6 +1440,10 @@
       "sha256": "475c0c6719584a6205e985e7c742aa406179d63de1db3f8d00285c4565991e4a"
     },
     {
+      "file": "api/reliability-forecast-draft.test.cjs",
+      "sha256": "b93f455766037aee0362fa32d3009e49599924bc1610b27d32847a7f1b49abda"
+    },
+    {
       "file": "api/reliability-qa-cleanup.test.cjs",
       "sha256": "6849ea5b4c8c2bba6a0f20a518dfc9810d24ffe29670ba3b3bd3f17b13f5e2b9"
     },
@@ -1557,7 +1565,7 @@
     },
     {
       "file": "api/safe-write.js",
-      "sha256": "7d33ce933b20c5f8c2867855f5ffa3ce76204eb32cfb4fee82b54736e9a1fb2e"
+      "sha256": "79d3f95bb968518ff4f12b455a45c33c38f1bc6602efb5ab9b21c8519a2f5086"
     },
     {
       "file": "api/scale-time-export-17-0-0.test.cjs",
@@ -1945,7 +1953,7 @@
     },
     {
       "file": "docs/PLAY_STORE_RELIABILITY_ACCEPTANCE.md",
-      "sha256": "99b7b83ae8129f90175d630117ba99a2f2b0023804658ff1bb7412a059976e2f"
+      "sha256": "5f46bb779db5bc7858cd0df8b4873aead32e9a19c5b6968e7fdfaf2fbc8f6ee6"
     },
     {
       "file": "docs/daily-briefing-feature-status.md",
@@ -2013,7 +2021,7 @@
     },
     {
       "file": "package.json",
-      "sha256": "cf25c5079f5b21583f7912ac64ee0f29bd392859f737b928cb9308f6c89a1f92"
+      "sha256": "a663dbb6e9951f0475427a237fc2a107f7388df0e97e6d39651b141a900ef915"
     },
     {
       "file": "playwright.config.js",
@@ -3565,7 +3573,7 @@
     },
     {
       "file": "scripts/validate-17-0-86.js",
-      "sha256": "bf16cc5784d22ee8cba841a35993c4394cdd889b63c6a67b47c29e9b8af3c103"
+      "sha256": "669da073dbe3b56f461cccb5958eecf5bb12d370f62c4276675bb5e844c4174c"
     },
     {
       "file": "scripts/validate-17-0-9.js",
@@ -4229,7 +4237,7 @@
     },
     {
       "file": "src/features/schedule.jsx",
-      "sha256": "5860ceee2eca38dd9675e990a3e37fe048a8fd92cc00e9ba5c728df916ac9cf6"
+      "sha256": "021d20b1d6c83bc366a342284bd57f26ca101e24ee01381f6653f6bcd016db53"
     },
     {
       "file": "src/features/trainingManual.js",
@@ -4497,7 +4505,7 @@
     },
     {
       "file": "tests/86chaos-full-audit/utils/fake-restaurant-profile.cjs",
-      "sha256": "a448641ec62224de42f195d372f31ee817637d686db531318476363a58c2cd02"
+      "sha256": "682493861efe2a74364cfd25e36214531ed7c4dab045af15165643cbc726d660"
     },
     {
       "file": "tests/86chaos-full-audit/utils/firebase-transport-recovery.cjs",
@@ -4561,7 +4569,7 @@
     },
     {
       "file": "tests/86chaos-release-gate/100-operational-reliability.spec.cjs",
-      "sha256": "67712d7208751179d3da5f1bcbaf4fb50a64490fdd7f15cdce0127a5f179b508"
+      "sha256": "8b93355162fcdcd69fdba5cf6ac1d048324829400571b81df54a2126b52b0a09"
     },
     {
       "file": "tests/86chaos-release-gate/15-interactive-control-census.spec.cjs",

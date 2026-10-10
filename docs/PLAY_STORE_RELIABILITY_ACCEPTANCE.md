@@ -1,6 +1,6 @@
 # Testing 17.0.86 reliability additions
 
-This revision adds **89 scenarios**: 40 browser scenarios executed on desktop and mobile Chromium (80 executions), 33 local regression tests, and 16 physical-device acceptance scenarios. Browser emulation does not complete the device scenarios.
+This revision adds **98 scenarios**: 40 browser scenarios executed on desktop and mobile Chromium (80 executions), 42 local regression tests, and 16 physical-device acceptance scenarios. Browser emulation does not complete the device scenarios.
 
 ## Automated coverage
 
@@ -8,6 +8,7 @@ This revision adds **89 scenarios**: 40 browser scenarios executed on desktop an
 - `src/components/OperationalReliability.test.jsx`: 12 component/hook regressions for workspace and identity changes, late responses, cancellation, duplicate approvals, safe retries, source deduplication and scan limits.
 - `api/reliability-release-gate.test.cjs`: 12 final-result and device-evidence validation regressions.
 - `api/reliability-qa-cleanup.test.cjs`: 6 tests for cleanup ownership, tenant isolation, bounded traversal and removal of reviewed QA children.
+- `api/reliability-forecast-draft.test.cjs`: 9 regressions for authorized server-side atomic draft creation, concurrent retries, published/foreign record preservation, target changes, malformed requests, zero recent demand and valid training fixtures. First forecast creation uses the authenticated server route because Firestore correctly prevents a tenant browser from reading a missing document with no tenant field.
 
 Catalog/sales/policy saves, deduplication, forecast creation and training completion use the deployed app and real testing backend. Fault tests deliberately intercept individual network responses. Synthetic history pages exercise pagination edge cases; the separate real-history scenario checks the deployed endpoint. Existing API and emulator suites verify business rules and transactions.
 

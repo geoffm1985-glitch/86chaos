@@ -107,7 +107,7 @@ function buildFakeRestaurantProfile({ restaurantId = '', runId = '', anchorDate 
     { restaurantId, title: 'QA Burger Prep', name: 'QA Burger Prep', category: 'Prep', prepTime: '30 mins', yieldAmt: '24 patties', ingredients: 'Ground Beef\nSalt\nPepper', instructions: 'Mix, portion, press.', ...tag },
   ];
 
-  const hrOnboardingTasks = [{restaurantId,userKey:'allen',employeeName:'QA Reliability Employee',title:'QA Reliability Training',completed:false,operationalEvidence:{cause:'prep-review',evidenceIds:['qa-reliability-source']},...tag}];
+  const hrOnboardingTasks = [{restaurantId,userKey:'allen',employeeName:'QA Reliability Employee',title:'QA Reliability Training',completed:false,assignedById:'86chaos-full-audit',assignedByName:'QA Reliability Manager',operationalEvidence:{cause:'prep-review',evidenceIds:['qa-reliability-source']},...tag}];
 
   const menuDependencies = [
     { restaurantId, menuItemName: 'QA Salmon BLT', inventoryItemName: 'QA Salmon Portion', dependencyName: 'QA Salmon Portion', itemName: 'QA Salmon BLT', status: 'blocked', source: '86chaos-full-audit', ...tag },

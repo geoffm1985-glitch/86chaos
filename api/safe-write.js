@@ -1,4 +1,5 @@
 const { operationalReview } = require('./_operational-review');
+const { createReviewedForecastDraft } = require('./_schedule-forecast-draft');
 const { foodSafety } = require('./_food-safety');
 const { authorizeAiScanWorkspace } = require('./_ai-usage');
 const { verifyRequestToken } = require('./_firebase-project-admin');
@@ -236,9 +237,17 @@ module.exports = async function handler(req, res) {
       return res.status(200).json({ ok: true, ...await foodSafety({ db: workspace.db, ctx, body }) });
     }
     const requestedPermissions = collectionName && GENERIC_COLLECTION_CONTRACTS[collectionName]?.permissions || [];
-    const roleMutation=action.startsWith('roster-role-'),wasteMutation=action.startsWith('waste-'),inventoryStockMutation=action==='inventory-stock-set';
-    const auth = await authorize(req, app, { allowTenantAdmin: true, targetRestaurantId: restaurantId, requiredPermissions: roleMutation?['schedule','team','settings']:wasteMutation||inventoryStockMutation?['inventory']:requestedPermissions });
+    const roleMutation=action.startsWith('roster-role-'),wasteMutation=action.startsWith('waste-'),inventoryStockMutation=action==='inventory-stock-set',forecastMutation=action==='schedule-forecast-draft-create';
+    const auth = await authorize(req, app, { allowTenantAdmin: true, targetRestaurantId: restaurantId, requiredPermissions: forecastMutation?['schedule','team']:roleMutation?['schedule','team','settings']:wasteMutation||inventoryStockMutation?['inventory']:requestedPermissions });
     if (!auth.ok) return res.status(auth.status).json({ ok: false, error: auth.error });
+    if(forecastMutation){
+      const check=await requireAppCheckIfEnforced(auth.app || app,req);
+      if(!check.ok)return res.status(check.status || 401).json({ok:false,error:check.error});
+      if(!canWrite(auth,'shifts',restaurantId))return res.status(403).json({ok:false,error:'Schedule review permission is required.'});
+      const out=await createReviewedForecastDraft({db:auth.db || db,ctx:auth,body});
+      if(out.created)await writeAudit(auth.db || db,auth,'SCHEDULE_FORECAST_DRAFT_CREATE',`shifts/${out.id}`,'Reviewed forecast draft; unpublished',restaurantId);
+      return res.status(200).json({ok:true,...out});
+    }
     if(wasteMutation){const appCheck=await requireAppCheckIfEnforced(auth.app||app,req);if(!appCheck.ok)return res.status(appCheck.status||401).json({ok:false,error:appCheck.error});const out=await mutateWaste(auth.db||db,{action,restaurantId:clean(restaurantId||auth.restaurantId),body,actor:auth.email||auth.uid,nowIso:new Date().toISOString()});await writeAudit(auth.db||db,auth,`WASTE_${action.replace('waste-','').toUpperCase()}`,`wasteLogs/${out.id}`,'Atomic waste and stock mutation',restaurantId||auth.restaurantId);return res.status(200).json({ok:true,...out});}
     if(inventoryStockMutation){const appCheck=await requireAppCheckIfEnforced(auth.app||app,req);if(!appCheck.ok)return res.status(appCheck.status||401).json({ok:false,error:appCheck.error});const out=await mutateInventoryStock(auth.db||db,{restaurantId:clean(restaurantId||auth.restaurantId),body,actor:auth.email||auth.uid,nowIso:new Date().toISOString()});await writeAudit(auth.db||db,auth,'INVENTORY_STOCK_SET',`inventoryItems/${out.id}`,'Revision-guarded idempotent stock mutation',restaurantId||auth.restaurantId);return res.status(200).json({ok:true,...out});}
     if(roleMutation){
