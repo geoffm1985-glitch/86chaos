@@ -1,7 +1,7 @@
 {
   "schemaVersion": 3,
   "version": "17.0.86",
-  "sourceHash": "b64a258ac9d20920583553cd6ca8901eb4790080dcbbcf92a461333efac2e107",
+  "sourceHash": "9e84890952cd6afcf792434756cac3a425ca32da5ac1659e57eb7d51e9807e03",
   "files": [
     {
       "file": ".gitattributes",
@@ -4597,7 +4597,7 @@
     },
     {
       "file": "tests/86chaos-release-gate/101-phone-navigation-repairs.spec.cjs",
-      "sha256": "a0a02162a707f8b3b21020b1392a563dd503ab175e1098e9c27e8f69a74604a4"
+      "sha256": "97c55345aab4a9aa617a22f00817636eff5c603b3698007a1453bbb4be364aef"
     },
     {
       "file": "tests/86chaos-release-gate/15-interactive-control-census.spec.cjs",

@@ -1,6 +1,6 @@
 'use strict';
 const { test, expect } = require('@playwright/test');
-const { ownerLikeCreds, requireCreds, login } = require('../86chaos-full-audit/utils/audit-helpers.cjs');
+const { ownerLikeCreds, requireCreds, login, dismissBlockingDialogs } = require('../86chaos-full-audit/utils/audit-helpers.cjs');
 
 test('drawer search clears after close and reopen so all navigation stays reachable', async ({ page }) => {
   const account = ownerLikeCreds(); requireCreds(account, 'owner-like account');
@@ -31,6 +31,11 @@ test('standalone first close request warns after reload and leaves second reques
   const account = ownerLikeCreds(); requireCreds(account, 'owner-like account');
   await login(page, account.email, account.password); await page.reload();
   await expect(page.getByRole('button', { name: 'Open navigation menu', exact: true })).toBeVisible();
+  // A fresh QA workspace can show onboarding again after reload. Native Back
+  // correctly dismisses that dialog before reaching the app exit handler.
+  const dialogs = await dismissBlockingDialogs(page, { maxPasses: 6 });
+  expect(dialogs.ok, 'Onboarding must be dismissed before testing app exit').toBe(true);
+  await expect(page.locator('.chaos-modal-backdrop:visible')).toHaveCount(0);
   await expect.poll(() => page.evaluate(() => window.__qaCloseWatchers.filter(w => w.active).length)).toBe(1);
   await page.evaluate(() => window.__qaCloseWatchers.find(w => w.active).requestClose());
   await expect(page.getByText('Press back again to exit.', { exact: true })).toBeVisible();
