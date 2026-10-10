@@ -1,6 +1,6 @@
 # Testing 17.0.86 reliability additions
 
-This revision adds **86 scenarios**: 40 browser scenarios executed on desktop and mobile Chromium (80 executions), 30 local regression tests, and 16 physical-device acceptance scenarios. Browser emulation does not complete the device scenarios.
+This revision adds **87 scenarios**: 40 browser scenarios executed on desktop and mobile Chromium (80 executions), 31 local regression tests, and 16 physical-device acceptance scenarios. Browser emulation does not complete the device scenarios.
 
 ## Automated coverage
 
@@ -12,6 +12,8 @@ This revision adds **86 scenarios**: 40 browser scenarios executed on desktop an
 Catalog/sales/policy saves, deduplication, forecast creation and training completion use the deployed app and real testing backend. Fault tests deliberately intercept individual network responses. Synthetic history pages exercise pagination edge cases; the separate real-history scenario checks the deployed endpoint. Existing API and emulator suites verify business rules and transactions.
 
 Run the small regression set locally with `npm run test:reliability`. Run the complete local gate using `START_86CHAOS_PLAY_STORE_RELEASE_GATE_BACKGROUND.ps1` from the clean testing checkout after deployment identity matches. Do not dispatch GitHub Actions. The launcher must report failure when final certification is incomplete, including missing device evidence.
+
+- `api/today-recipe-evidence.test.cjs`: regression for Today loading recipe evidence for authorized item-sales mapping and menu projections.
 
 ## Connected Android device acceptance
 

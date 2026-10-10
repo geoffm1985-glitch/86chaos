@@ -1,7 +1,7 @@
 {
   "schemaVersion": 3,
   "version": "17.0.86",
-  "sourceHash": "0a2e584d15a94f977766715ea87d89783bc72283d23310ba99b92e475a1309c9",
+  "sourceHash": "f80025dfbf6fb016c6bb0a61571fda2bf74518b2ae7586694033fd3041b931e3",
   "files": [
     {
       "file": ".gitattributes",
@@ -1860,6 +1860,10 @@
       "sha256": "14f6830c68895ad84a2001afd195409e7566e996d387a7ff1d3955a20c9a9d7a"
     },
     {
+      "file": "api/today-recipe-evidence.test.cjs",
+      "sha256": "b60edd5c65186635a7a7afaeffdbd34427e33cf1ea17fd8e8e3088e6212bd96c"
+    },
+    {
       "file": "api/vercel-build-identity-17-0-6.test.cjs",
       "sha256": "0746385e87b59c9b901db436e59647d2b7d812b0177ed5a0ebc771f482349254"
     },
@@ -1941,7 +1945,7 @@
     },
     {
       "file": "docs/PLAY_STORE_RELIABILITY_ACCEPTANCE.md",
-      "sha256": "b8ada9c4dbe6b27c43ce9d7c5fcbd0bc84518d606fd30bd0f90383466a84af08"
+      "sha256": "3cfb380a38f6d4e2f220ffae95f393f6d3f9d332b6ec9194da9ab65151d92acc"
     },
     {
       "file": "docs/daily-briefing-feature-status.md",
@@ -2009,7 +2013,7 @@
     },
     {
       "file": "package.json",
-      "sha256": "2e79811c2bd13824891b9076017947efaa9d5b50f7944daf46ee11c004d86c2c"
+      "sha256": "cf25c5079f5b21583f7912ac64ee0f29bd392859f737b928cb9308f6c89a1f92"
     },
     {
       "file": "playwright.config.js",
@@ -3621,7 +3625,7 @@
     },
     {
       "file": "src/App.js",
-      "sha256": "30250791252f127c842932c0269bec6f3ac5519ec1e111878f354b138ba7b443"
+      "sha256": "525ee57972ce3049ead9eed77d7e7d01539c8bf990107134a84c4751c041e8e9"
     },
     {
       "file": "src/components/CheersLogo.js",
@@ -4557,7 +4561,7 @@
     },
     {
       "file": "tests/86chaos-release-gate/100-operational-reliability.spec.cjs",
-      "sha256": "287bc870f183490384fcb585fc1c9b4cc64b8f6bdb63a972b809d83fbe1ddfd9"
+      "sha256": "67712d7208751179d3da5f1bcbaf4fb50a64490fdd7f15cdce0127a5f179b508"
     },
     {
       "file": "tests/86chaos-release-gate/15-interactive-control-census.spec.cjs",

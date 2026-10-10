@@ -4,7 +4,7 @@ import { addDoc, collection, doc, onSnapshot, updateDoc } from 'firebase/firesto
 import { getToken, onMessage } from 'firebase/messaging';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import 'leaflet/dist/leaflet.css';
-import { T, db, auth, messagingReady, isFirebaseMessagingUnsupportedError, firebaseConfig, CURRENT_VERSION, MASTER_ADMIN_EMAIL, useLiveCollection, useLiveCollectionState, useLiveDocumentState, secureFetch, waitForAuthCurrentUser, getToday, getMonthStr, formatDate, formatDisplayFullDate, formatDisplayMonth, logAudit, setActiveTimeFormat, getOfflineQueue, replayOfflineQueue, startLowCostPresenceSession, useLowCostPresenceSummary, clearTenantListenerCache, releaseAbandonedRouteListeners, recordScheduleOperationDiagnostic } from './core/appCore';
+import { T, db, auth, hasAnyPermission, messagingReady, isFirebaseMessagingUnsupportedError, firebaseConfig, CURRENT_VERSION, MASTER_ADMIN_EMAIL, useLiveCollection, useLiveCollectionState, useLiveDocumentState, secureFetch, waitForAuthCurrentUser, getToday, getMonthStr, formatDate, formatDisplayFullDate, formatDisplayMonth, logAudit, setActiveTimeFormat, getOfflineQueue, replayOfflineQueue, startLowCostPresenceSession, useLowCostPresenceSummary, clearTenantListenerCache, releaseAbandonedRouteListeners, recordScheduleOperationDiagnostic } from './core/appCore';
 import { buildAlertFingerprint, useRememberedAlert } from './core/alertMemory';
 import { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, GlobalSearchModal, KitchenTVMode, UndoBar, VoiceCommandDock } from './components/common';
 import { LockedFeatureScreen } from './components/PlanGate';
@@ -1171,7 +1171,7 @@ const [currentDate, setCurrentDate] = useState(getToday());
   const wantsInventoryData = (((wantsToday || globalSearchHasMeaningfulQuery) && (canReadBasicInventory || canReadSmartInventory)) || (activeTabState === 'menu-intelligence' && canReadMenuCollections));
   const wantsPrepData = wantsToday; // Prep screen owns its live prep/task listeners; App keeps only Today summaries.
   const wantsMenuData = (activeTabState === 'menu-intelligence' || wantsToday) && canReadMenuCollections;
-  const wantsRecipesData = activeTabState === 'menu-intelligence' || globalSearchHasMeaningfulQuery; // Recipes screen owns its live query; App keeps only demand-driven global-search data.
+  const wantsRecipesData = activeTabState === 'menu-intelligence' || globalSearchHasMeaningfulQuery || (wantsToday && (canReadMenuCollections || (!appUser?.demoMode && !appUser?.isDemo && hasAnyPermission(appUser,['sales','salesEdit','financialEdit'])))); // Today needs recipe evidence for menu projections and reviewed item-sales matching.
   const wantsMaintenanceData = wantsToday && canReadMaintenance; // Maintenance screen owns its full listener; App keeps only Today alert context.
   const wantsSalesData = ['financials', 'sales', 'ops', 'labor'].includes(activeTabState) && canReadSalesCollections;
   const shiftRangeStart = schedulePlan.shiftClauses.find(c => c[0] === 'date' && c[1] === '>=')?.[2] || (wantsScheduleScreen ? scheduleWindowStart : getToday());
