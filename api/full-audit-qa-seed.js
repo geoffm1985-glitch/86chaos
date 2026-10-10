@@ -10,7 +10,7 @@ const ALLOWED_COLLECTIONS = new Set([
   'users', 'vendors', 'inventoryItems', 'recipes', 'menuDependencies', 'shifts', 'timeOffRequests',
   'events', 'timePunches', 'prepItems', 'tasks', 'maintenanceLogs', 'pmSchedules', 'sales',
   'financialExpenses', 'restaurantAdminAlerts', 'personalReminders', 'availabilityRecords',
-  'scheduleTemplates', 'scheduleCoverageTargets', 'workspaceMembers'
+  'scheduleTemplates', 'scheduleCoverageTargets', 'hrOnboardingTasks', 'workspaceMembers'
 ]);
 
 function safeId(value = '', max = 240) {
@@ -464,6 +464,16 @@ async function cleanupQa(req, res, { app, auth, db, projectId, body, base }) {
   for (const row of roleAccounts) addRef('workspaceMembers', memberDocId(row.uid, base.restaurantId));
 
   const writes = [];
+  if (restaurantSnap.exists) {
+    try {
+      const {reviewedQaCleanupRefs}=require('./_qa-reviewed-cleanup');
+      const vendors=[...refs.entries()].filter(([key])=>key.startsWith('vendors/')).map(([,ref])=>ref);
+      const reviewed=await reviewedQaCleanupRefs({db,restaurant:restaurantSnap,runId:base.runId,vendors});
+      for(const ref of reviewed)writes.push({type:'delete',ref});
+    } catch(error) {
+      return res.status(409).json({ok:false,error:`Reviewed QA cleanup refused: ${error.message}`});
+    }
+  }
   for (const ref of refs.values()) writes.push({ type: 'delete', ref });
   if (restaurantSnap.exists) writes.push({ type: 'delete', ref: restaurantRef });
   for (const row of roleAccounts) {

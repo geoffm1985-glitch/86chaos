@@ -374,6 +374,10 @@ function withIds(profile, createdIds) {
     if (rec.userKey && userIdsByKey[rec.userKey]) { const uid = userIdsByKey[rec.userKey]; rec.userId = uid; rec.employeeId = uid; rec.scheduleUserId = uid; }
     delete rec.userKey;
   }
+  for (const task of profile.collections.hrOnboardingTasks || []) {
+    if (task.userKey && userIdsByKey[task.userKey]) task.userId = userIdsByKey[task.userKey];
+    delete task.userKey;
+  }
   for (const punch of profile.collections.timePunches) {
     if (punch.employeeKey && userIdsByKey[punch.employeeKey]) { const uid = userIdsByKey[punch.employeeKey]; punch.employeeId = uid; punch.scheduleUserId = uid; punch.userId = uid; }
     delete punch.employeeKey;
@@ -431,7 +435,7 @@ function buildServerSeedDocuments(profile) {
     docs.push(spec);
   });
   const ids = withIds(profile, created);
-  const restCollections = ['inventoryItems', 'recipes', 'menuDependencies', 'shifts', 'timeOffRequests', 'events', 'timePunches', 'prepItems', 'tasks', 'maintenanceLogs', 'pmSchedules', 'sales', 'financialExpenses', 'restaurantAdminAlerts', 'personalReminders', 'availabilityRecords', 'scheduleTemplates', 'scheduleCoverageTargets'];
+  const restCollections = ['inventoryItems', 'recipes', 'hrOnboardingTasks', 'menuDependencies', 'shifts', 'timeOffRequests', 'events', 'timePunches', 'prepItems', 'tasks', 'maintenanceLogs', 'pmSchedules', 'sales', 'financialExpenses', 'restaurantAdminAlerts', 'personalReminders', 'availabilityRecords', 'scheduleTemplates', 'scheduleCoverageTargets'];
   for (const colName of restCollections) {
     created[colName] = [];
     (profile.collections[colName] || []).forEach((record, index) => {

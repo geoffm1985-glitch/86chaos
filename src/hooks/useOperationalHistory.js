@@ -10,7 +10,7 @@ export function useOperationalHistory(appUser,enabled) {
   const load=async(source,restart=false)=>{
     if(!enabled || !appUser?.restaurantId || appUser.demoMode || appUser.isDemo || busy.current)return;
     const previous=!restart && state.boundary===boundary ? state.sources[source] : null;
-    if(previous && !previous.error && !previous.nextCursor)return;
+    if(previous?.truncated || previous && !previous.error && !previous.nextCursor)return;
     busy.current=true;const requestBoundary=boundary;const abort=new AbortController();controller.current=abort;
     setState(old=>({...old,loading:true}));
     try {
@@ -19,10 +19,10 @@ export function useOperationalHistory(appUser,enabled) {
       if(!abort.signal.aborted && active.current===requestBoundary)setState(old=>{
         const prior=restart ? null : old.sources[source];const byId=new Map([...(prior?.data || []),...result.data].map(row=>[row.id,row]));
         const undated=(prior?.undated || 0)+result.undated;
-        return {...old,loading:false,sources:{...old.sources,[source]:{...result,data:[...byId.values()],undated,resolved:true,complete:!result.hasMore && !undated,error:null}}};
+        return {...old,loading:false,sources:{...old.sources,[source]:{...result,data:[...byId.values()],undated,resolved:true,complete:!result.hasMore && !undated && !result.truncated,error:null}}};
       });
     }catch(error){if(!abort.signal.aborted && active.current===requestBoundary)setState(old=>({...old,loading:false,sources:{...old.sources,[source]:{...previous,resolved:true,complete:false,error:error.message}}}));}
-    finally{if(active.current===requestBoundary)busy.current=false;}
+    finally{if(controller.current===abort)busy.current=false;}
   };
   return {...(state.boundary===boundary ? state : {sources:{},loading:false}),load};
 }

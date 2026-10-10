@@ -661,6 +661,12 @@ if ($RunnerState.blockingReason) { $RunnerState.status = 'blocked' } elseif ([in
 if ([int]$env:CHAOS_RELEASE_GATE_STEP_FAILURES -gt 0 -or $RunnerState.blockingReason) { $RunnerState.finalExitCode = 1 } else { $RunnerState.finalExitCode = 0 }
 Save-RunnerState
 Run-CollectorStep "Collect report" "node scripts/86chaos-release-gate/collect-release-gate-report.cjs"
+& node scripts/86chaos-release-gate/final-gate-outcome.cjs $RunDir $RunId
+if ($LASTEXITCODE -ne 0) {
+  $env:CHAOS_RELEASE_GATE_STEP_FAILURES = [string]([int]$env:CHAOS_RELEASE_GATE_STEP_FAILURES + 1)
+  $RunnerState.status = 'failed'
+  $RunnerState.finalExitCode = 1
+}
 $RunnerState.updatedAt = (Get-Date -Format o)
 Save-RunnerState
 Write-RunnerSummary

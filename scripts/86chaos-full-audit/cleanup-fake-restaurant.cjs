@@ -20,7 +20,7 @@ const COLLECTIONS = [
   'restaurantAdminAlerts', 'eventReminders', 'personalReminders', 'scheduleCoverageTargets',
   'scheduleTemplates', 'availabilityRecords', 'shiftSwaps', 'timePunches', 'timeOffRequests',
   'shifts', 'events', 'financialExpenses', 'sales', 'maintenanceLogs', 'pmSchedules', 'tasks',
-  'prepItems', 'menuDependencies', 'recipes', 'inventoryItems', 'vendors', 'users', 'workspaceMembers'
+  'hrOnboardingTasks', 'prepItems', 'menuDependencies', 'recipes', 'inventoryItems', 'vendors', 'users', 'workspaceMembers'
 ];
 
 
