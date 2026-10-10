@@ -1,7 +1,7 @@
 {
   "schemaVersion": 5,
   "version": "18.0.12",
-  "sourceHash": "6742e41e7b2a2e04a70c460dceaa1334945f133f995e4d337d73daa0e1d719d8",
+  "sourceHash": "d0dd9870311dbaca20f8b9e71ea34ac2662910bf7ad58fcb3d431b64c230854a",
   "files": [
     {
       "file": ".gitattributes",
@@ -9,7 +9,7 @@
     },
     {
       "file": ".github/workflows/mobile-targeted-gate.yml",
-      "sha256": "acd123f34914b0a588c9e683468c41504c4d26a4dd2e27e3da9b9c52cce8fc63"
+      "sha256": "6ac0c8e4c7ef2a6a1881342d0f9e5b55ef64eea3d4952a67d27541ca7d03f9ea"
     },
     {
       "file": ".github/workflows/testing-targeted-delta.yml",
@@ -2970,6 +2970,10 @@
     {
       "file": "scripts/run-mobile-push-emulator.cjs",
       "sha256": "60145aa0fc27f290bbabba2bc8d9516f2024cf803ac18b7f675829a8bce1d310"
+    },
+    {
+      "file": "scripts/run-native-android-capabilities.sh",
+      "sha256": "3067a76447d326984255a7b4bb0a660face96235d15a343a6366529f72794de6"
     },
     {
       "file": "scripts/run-pos-bridge-emulator-tests.cjs",

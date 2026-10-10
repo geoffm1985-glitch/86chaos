@@ -99,13 +99,7 @@ jobs:
           arch: x86_64
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
-          script: |
-            cd android
-            chmod +x gradlew
-            ./gradlew assembleDebug assembleDebugAndroidTest --no-daemon
-            adb shell settings put secure location_mode 3
-            adb emu geo fix -87.63 41.88
-            ./gradlew connectedDebugAndroidTest --no-daemon -Pandroid.testInstrumentationRunnerArguments.class=com.chiltonappworks.chaos86.NativeCapabilitiesTest
+          script: bash scripts/run-native-android-capabilities.sh
 
       - name: Require matching mobile backend before distributing APK
         shell: bash
