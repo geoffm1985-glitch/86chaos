@@ -133,6 +133,7 @@ $env:CHAOS_FULL_AUDIT_RUN_ID = $RunId
 $env:CHAOS_RELEASE_GATE_STEP_FAILURES = "0"
 $env:CHAOS_FAILED_ONLY_RELEASE_GATE = "true"
 $env:CHAOS_RELEASE_GATE_SELECTION_MODE = $SelectionMode
+$env:CHAOS_CERTIFICATION_MODE = 'false'
 $env:CHAOS_FAILED_AND_NEW_RELEASE_GATE = if ($SelectionMode -eq "failed+new") { "true" } else { "false" }
 $env:CHAOS_PARTIAL_RESUME_RELEASE_GATE = if ($SelectionMode -eq "partial-resume") { "true" } else { "false" }
 $env:CHAOS_CURRENT_BLOCKERS_RELEASE_GATE = if ($SelectionMode -eq "reported-current-blockers") { "true" } else { "false" }
@@ -588,6 +589,9 @@ if ((Test-Path $SetupStatePath) -and -not (Test-Path $CleanupPath)) {
 
 Set-RunnerPhase 'report-collection'
 Run-CollectorStep "Collect $SelectionMode report" "node scripts/86chaos-release-gate/collect-release-gate-report.cjs"
+if (-not $NoScopedPlaywrightRemain) {
+  Run-Step "Adjudicate $SelectionMode result" "node scripts/86chaos-release-gate/final-gate-outcome.cjs '$RunDir' '$RunId'"
+}
 Write-RunnerSummary
 New-Slim-ReleaseGateReport -SourceDir $RunDir -DestinationDir $SlimDir -ZipPath $SlimZipPath
 

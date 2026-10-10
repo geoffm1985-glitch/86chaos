@@ -1,6 +1,7 @@
 const { admin, initAdmin, authorize, readBody, writeAudit, clean, norm, memberDocId } = require('./_chaos-admin');
 const { isProductionHost, isTestingPreviewHost, parseHost } = require('../scripts/86chaos-release-gate/mutation-safety.cjs');
 const { expectedFirebaseProject } = require('../scripts/86chaos-firebase-target.cjs');
+const qaOnboardingBaseline = require('../scripts/86chaos-release-gate/qa-onboarding-baseline.cjs');
 
 const TESTING_PROJECT_ID = expectedFirebaseProject(process.env);
 const QA_PREFIX = '86 Chaos Release Gate QA ';
@@ -129,6 +130,7 @@ function roleMembership(row = {}, restaurantId = '', workspaceName = '', runId =
     isSuperAdmin: false,
     systemAdministratorVerifiedByWhoami: row.key === 'systemAdmin',
     permissions: row.permissions || {},
+    ...qaOnboardingBaseline,
     isActive: true,
     qaOwned: true,
     qaRunId: runId,
@@ -309,6 +311,8 @@ async function seedQa(req, res, { auth, db, projectId, body, base }) {
       memberships: { [base.restaurantId]: membership },
       qaRoleAccount: true,
       qaLastRunId: base.runId,
+      ...qaOnboardingBaseline,
+      preferences: { language: 'en' },
       updatedAt: isoNow(),
       updatedBy: auth.email || auth.uid || 'system-admin',
     };

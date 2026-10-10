@@ -266,7 +266,7 @@
                     "test:intelligence-connections:emulator": "node scripts/run-intelligence-emulator-tests.cjs",
                     "validate:17.0.86": "node scripts/validate-17-0-86.js",
                     "test:repair:17.0.86": "npm run test:current-release-targeted",
-                    "test:reliability": "node --test api/reliability-release-gate.test.cjs api/reliability-qa-cleanup.test.cjs api/today-recipe-evidence.test.cjs api/reliability-forecast-draft.test.cjs && react-scripts test --watchAll=false --runInBand src/components/OperationalReliability.test.jsx",
+                    "test:reliability": "node --test api/reliability-release-gate.test.cjs api/reliability-qa-cleanup.test.cjs api/today-recipe-evidence.test.cjs api/reliability-forecast-draft.test.cjs api/qa-operational-isolation.test.cjs && react-scripts test --watchAll=false --runInBand src/components/OperationalReliability.test.jsx",
                     "test:operational-completion": "node --test api/operational-completion-17-0-86.test.cjs && react-scripts test --watchAll=false --runInBand src/components/OperationalCompletion.test.jsx && npm run test:intelligence-connections:emulator"
                 },
     "browserslist":  {

@@ -638,6 +638,7 @@ async function main() {
       ownerUid: roleAccounts.find(account => account.key === 'owner')?.uid || writer.uid,
       isActive: true,
       subscriptionStatus: 'beta',
+      workspaceOnboardingComplete: true,
       planId: 'owner_pro',
       qaOwned: true,
       qaRunId: RUN_ID,

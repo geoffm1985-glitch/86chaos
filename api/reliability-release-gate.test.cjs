@@ -5,6 +5,11 @@ const {finalGateOutcome}=require('../scripts/86chaos-release-gate/final-gate-out
 const {validateDeviceEvidence}=require('../scripts/86chaos-release-gate/device-evidence.cjs');
 const checklist=require('../test-tools/certification/device-acceptance.json');
 const passing=()=>({ok:true,outcome:'PASS',runId:'run-current',fullReleaseCertified:true,sourceIdentityValidation:{ok:true},deploymentIdentityValidation:{ok:true},mandatoryGroupValidation:{ok:true},certificationTruth:{ok:true},skipValidation:{ok:true},playwright:{passed:100,failed:0,timedOut:0,unexpected:0,blocked:0}});
+test('targeted adjudication can pass without claiming full certification but still rejects failed browser evidence',()=>{
+  const scoped={...passing(),fullReleaseCertified:false};
+  assert.equal(finalGateOutcome(scoped,{runId:'run-current',requireCertification:false}).ok,true);
+  assert.equal(finalGateOutcome({...scoped,playwright:{...scoped.playwright,timedOut:1}},{runId:'run-current',requireCertification:false}).ok,false);
+});
 const judge=report=>finalGateOutcome(report,{runId:'run-current'});
 test('final adjudication accepts a fully certified current run',()=>assert.equal(judge(passing()).ok,true));
 test('collector success cannot override missing mandatory device evidence',()=>{const report=passing();report.ok=false;report.outcome='FAIL';report.fullReleaseCertified=false;report.mandatoryGroupValidation={ok:false,failures:['real-device']};assert.equal(judge(report).ok,false);});

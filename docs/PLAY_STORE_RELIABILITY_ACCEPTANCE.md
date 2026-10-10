@@ -42,3 +42,9 @@ Evidence shape (illustration only; this is not passing evidence):
 ```
 
 This work improves coverage and fixes discovered defects. It does not claim that every possible failure is tested or that Play Store certification is complete before physical-device and submission evidence exists.
+
+## October 10 follow-up repairs
+
+The completed full run recorded 652 passes, 7 failures, 16 timeouts and 12 skips. The 23 unsuccessful browser cases are the delta repair baseline. Several were blocked by late onboarding dialogs or by English-only modal exit lookup after the Spanish journey changed the shared QA profile.
+
+Operational QA profiles and their disposable workspace now start with onboarding complete. Modal exit probes use the actual header close control, independent of its translated label, and select the topmost backdrop. The Spanish journey independently restores and verifies only the current verified QA user's saved language after each test, even when its page timed out. Twelve additional local regressions cover these repairs and truthful targeted-gate adjudication. Targeted success remains diagnostic; it does not certify the full release or replace physical-device evidence.

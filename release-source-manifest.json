@@ -1,7 +1,7 @@
 {
   "schemaVersion": 3,
   "version": "17.0.86",
-  "sourceHash": "57a88d0baf323dcbcd9dd5c7be3571113a506cccf361c7db5c948ddbd234dc37",
+  "sourceHash": "732cf9131d6848bd6349ac94e17d868a71ae5ac49e3337e51b169b752c321860",
   "files": [
     {
       "file": ".gitattributes",
@@ -305,7 +305,7 @@
     },
     {
       "file": "RUN_86CHAOS_FAILED_AND_NEW_RELEASE_GATE.ps1",
-      "sha256": "70f6d2ef7d6188a95a8633746c5c5949d053f1cb4eb40a6835f75fc61bad0616"
+      "sha256": "9e4ead37b5732418b0bc7ef604f4af75ceb249c3c1e407af8182c3cac777ab94"
     },
     {
       "file": "RUN_86CHAOS_FAILED_ONLY_RELEASE_GATE.ps1",
@@ -869,7 +869,7 @@
     },
     {
       "file": "api/full-audit-qa-seed.js",
-      "sha256": "661055dddf47545c5e828069e6b122597fef37bbfb2c6e162ec1d96a5f90bfd4"
+      "sha256": "e96a34f9756aeda97f9e9f5513e70289fadc211631bc8e7eb3814f4b6d612426"
     },
     {
       "file": "api/full-system-diagnostics.js",
@@ -1208,6 +1208,10 @@
       "sha256": "b855a323065bf34a105ed5a591fb269e39c3a1f7ac4a332542d8fabeeb358bf8"
     },
     {
+      "file": "api/qa-operational-isolation.test.cjs",
+      "sha256": "d292d128aac7b117b89a701ccad08f74f5e3eac497bc9bfd4403c0ce8523443c"
+    },
+    {
       "file": "api/qa-role-definitions.test.cjs",
       "sha256": "d4fec961c5670366f95eaa25f57fc560026cbafa63b4791e1ed5d08159046494"
     },
@@ -1449,7 +1453,7 @@
     },
     {
       "file": "api/reliability-release-gate.test.cjs",
-      "sha256": "5b4758cb01119db38c0c67876fd601127b42ed3e04bbd2e390d5ca614b0a47f3"
+      "sha256": "d59d855936a3c57e15cd3f87bf42202dab60f69b88dc001a3b9744c42bf04ddf"
     },
     {
       "file": "api/reminder-mobile-runtime-17-0-38.test.cjs",
@@ -1533,7 +1537,7 @@
     },
     {
       "file": "api/runtime-crawl-modal-exit.test.cjs",
-      "sha256": "65d4f14aa3497af78e462dbcf2dd9f81cfaed5d27cc19a1a40dd75f9483519ee"
+      "sha256": "9e93a74d0c13713b3ac50e252f81f1c6dd9f241dde93bcfcbbe7fdc015296e3e"
     },
     {
       "file": "api/runtime-health-evidence-16-0-231.test.cjs",
@@ -1953,7 +1957,7 @@
     },
     {
       "file": "docs/PLAY_STORE_RELIABILITY_ACCEPTANCE.md",
-      "sha256": "536338bd0e44522f1c7271596af8c7046d302fb33d1e8d6955e62207697c2145"
+      "sha256": "3a554b49655b0f7a1c7fe94a12dbafccdc9a465e8ef39a558606728a51c61d30"
     },
     {
       "file": "docs/daily-briefing-feature-status.md",
@@ -2021,7 +2025,7 @@
     },
     {
       "file": "package.json",
-      "sha256": "a663dbb6e9951f0475427a237fc2a107f7388df0e97e6d39651b141a900ef915"
+      "sha256": "97c0f9d0e0e270441aebdcf81e0b2368531f731abb1624e273613c5e46d78266"
     },
     {
       "file": "playwright.config.js",
@@ -2273,7 +2277,7 @@
     },
     {
       "file": "scripts/86chaos-full-audit/seed-fake-restaurant.cjs",
-      "sha256": "9cb6f3a0d2eff078011e0cb17386a4cc2dc11842124b2cba6a7474a3f4299db9"
+      "sha256": "6243c70b1ddcb606b533a32bef1051e59ea68ea37e9a60a9075738ac38221f63"
     },
     {
       "file": "scripts/86chaos-full-audit/validate-full-audit-source.cjs",
@@ -2361,7 +2365,11 @@
     },
     {
       "file": "scripts/86chaos-release-gate/provision-test-accounts.cjs",
-      "sha256": "d16ffbc816676069d4bb52f0c7b67ee68af5e9e7e73fa88fb9597bd235ef0857"
+      "sha256": "67ddf682f95c21f9a5ec73b944a1594de397d193ee4039f49954cb35ac420fb1"
+    },
+    {
+      "file": "scripts/86chaos-release-gate/qa-onboarding-baseline.cjs",
+      "sha256": "379566e24b834e3683cd564603a71be0f28bff222a53173ac4573157fed6d812"
     },
     {
       "file": "scripts/86chaos-release-gate/qa-role-definitions.cjs",
@@ -3757,7 +3765,7 @@
     },
     {
       "file": "src/components/common.jsx",
-      "sha256": "5af93e21c1b35b13771fcae2e5b2ddddf1c181ce2c968b642c68556b4aafabd8"
+      "sha256": "61f8d0bf50679e5b7d74aeb309d2c98bfd57b51182c0056f3efe95a26c325205"
     },
     {
       "file": "src/config/plans.js",
@@ -4501,7 +4509,7 @@
     },
     {
       "file": "tests/86chaos-full-audit/utils/audit-helpers.cjs",
-      "sha256": "d79b84f4d41a135a8eecbf2e563f24a584e71159dfd020c0c5ea33c86dd71431"
+      "sha256": "50cf6444f95710e123a7d288e6b1773f3492f69d72625713fcfe582e6eb8ca4a"
     },
     {
       "file": "tests/86chaos-full-audit/utils/fake-restaurant-profile.cjs",
@@ -4514,6 +4522,10 @@
     {
       "file": "tests/86chaos-full-audit/utils/math-oracle.cjs",
       "sha256": "13e6ced6ed47a81bca084e1bcbd309d490f5905493b9a45b0d48d5672473faf9"
+    },
+    {
+      "file": "tests/86chaos-full-audit/utils/qa-language-isolation.cjs",
+      "sha256": "6dbddc6654d44da0879bb97548ba508e9bb09b8009882f3eb70cf0a6b7691b37"
     },
     {
       "file": "tests/86chaos-new-implementations/01-shift4-connection.spec.cjs",
@@ -4553,7 +4565,7 @@
     },
     {
       "file": "tests/86chaos-new-implementations/08-phase1-spanish-interface.spec.cjs",
-      "sha256": "43ee0cea21f7508b527110d128b62847378f10a2e92b4709150e644626c6ea4a"
+      "sha256": "d24fc49076838f3d32c790aa93cd7d620b85054323a6e911cffc6dfce47804f2"
     },
     {
       "file": "tests/86chaos-new-implementations/09-schedule-builder-shift-assignment.spec.cjs",
@@ -4953,7 +4965,7 @@
     },
     {
       "file": "tests/86chaos-release-gate/utils/exhaustive-ui-helpers.cjs",
-      "sha256": "87bdec3442c7d075398f400e8231bbd7ca82664173e21ca49060eaf0268967f0"
+      "sha256": "5159b9eccae3d47cc65839678d83744492bed7efbb3e86750f50bf0779667452"
     },
     {
       "file": "tests/86chaos-release-gate/utils/lazy-chunk-request.cjs",

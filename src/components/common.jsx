@@ -90,7 +90,7 @@ const Modal = ({ isOpen, onClose, title, children, sizeClass = 'max-w-md' }) => 
       <div ref={panelRef} role="dialog" aria-modal="true" aria-labelledby={titleIdRef.current} tabIndex={-1} className={`chaos-modal-panel ${T.card} ${sizeClass} w-full max-h-[90vh] overflow-y-auto outline-none`}>
         <div className={`chaos-modal-header flex justify-between items-center p-4 border-b ${T.border}`}>
           <h3 id={titleIdRef.current} className="font-bold text-lg text-white">{title}</h3>
-          <button type="button" aria-label={t('common.closeDialog', { title: title || 'dialog' }, `Close ${title || 'dialog'}`)} onClick={() => onCloseRef.current?.()} className="p-1.5 hover:bg-[#12161A] rounded-full text-slate-400 hover:text-white transition-colors focus:outline-none focus:ring-2 focus:ring-[#D4A381]"><X size={20}/></button>
+          <button type="button" data-chaos-modal-close="true" aria-label={t('common.closeDialog', { title: title || 'dialog' }, `Close ${title || 'dialog'}`)} onClick={() => onCloseRef.current?.()} className="p-1.5 hover:bg-[#12161A] rounded-full text-slate-400 hover:text-white transition-colors focus:outline-none focus:ring-2 focus:ring-[#D4A381]"><X size={20}/></button>
         </div>
         <div className="chaos-modal-body p-4">{children}</div>
       </div>
