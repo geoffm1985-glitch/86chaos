@@ -74,7 +74,7 @@ const Modal = ({ isOpen, onClose, title, children, sizeClass = 'max-w-md' }) => 
       (firstFocusable || panelRef.current)?.focus?.();
     }, 0);
     const handleKeyDown = (event) => {
-      if (event.key === 'Escape') onCloseRef.current?.();
+      if (event.key === 'Escape') { event.preventDefault(); onCloseRef.current?.(); }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => {
@@ -119,10 +119,12 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
 
   // Reset the drawer search every time the hamburger menu opens/closes.
   // This prevents an old search term from reappearing and making the drawer look auto-filled.
+  useEffect(() => { setMenuSearch(''); }, [isOpen]);
+
   useEffect(() => {
     if (!isOpen) return undefined;
     const handleKeyDown = (event) => {
-      if (event.key === 'Escape') onClose?.();
+      if (event.key === 'Escape') { event.preventDefault(); onClose?.(); }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);

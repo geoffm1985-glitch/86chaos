@@ -1,7 +1,7 @@
 {
   "schemaVersion": 3,
   "version": "17.0.86",
-  "sourceHash": "732cf9131d6848bd6349ac94e17d868a71ae5ac49e3337e51b169b752c321860",
+  "sourceHash": "a7a6ad34ab8f47a34bacd8ad90e95a3becebaaa035f0c42d8dadc2f58fedb132",
   "files": [
     {
       "file": ".gitattributes",
@@ -14,6 +14,10 @@
     {
       "file": ".gitignore",
       "sha256": "30a93026ea141e2162076dccf168b8e5611f9f1574348baa6bcc671eebf3329f"
+    },
+    {
+      "file": "AGENTS.md",
+      "sha256": "b20a1dca3b1b88cbe19fc3993369493c182d50d0643e15ff8f8853ab2ef1c342"
     },
     {
       "file": "INSTALL_AND_RUN_86CHAOS_ULTIMATE_TESTS.cmd",
@@ -1169,7 +1173,11 @@
     },
     {
       "file": "api/pwa-back-exit-source.test.cjs",
-      "sha256": "8451c9380e6dbd6f6d9f32cb12fe992502d67a568be6fc5ebac87ae2de790f5c"
+      "sha256": "6a30f907dd8b1d68ee3840440b0ec66d44c733ca87ef32e0ac7cb41315283cac"
+    },
+    {
+      "file": "api/pwa-close-watcher.test.cjs",
+      "sha256": "c3ae8266a0d8cd6c98246505273d1c0215e3c130acd52e44c80c1937ff404ad1"
     },
     {
       "file": "api/pwa-firefox-retry-17-0-12.test.cjs",
@@ -3641,7 +3649,7 @@
     },
     {
       "file": "src/App.js",
-      "sha256": "007805c8ff68d1fa819349e21c6497e323f6d60d6a4e84f23bcfd71c76bdce5c"
+      "sha256": "d9f94bd64c81fbad8e7c6ad8367fd1ca3e8adbeb403b6f542e6ff2c13290fb62"
     },
     {
       "file": "src/components/CheersLogo.js",
@@ -3765,7 +3773,7 @@
     },
     {
       "file": "src/components/common.jsx",
-      "sha256": "61f8d0bf50679e5b7d74aeb309d2c98bfd57b51182c0056f3efe95a26c325205"
+      "sha256": "6548127225892fa61da3bd315a4f7066d425d02f45d612e485d61e6ffa39757b"
     },
     {
       "file": "src/config/plans.js",
@@ -3990,6 +3998,10 @@
     {
       "file": "src/core/pushRepairState.cjs",
       "sha256": "4bc252d4a2734d5b277bf75f201444a1fc0896e671262a07506e9c3d7d573e85"
+    },
+    {
+      "file": "src/core/pwaCloseWatcher.cjs",
+      "sha256": "6ff1d71106fda65e34c07690a7276dd754aa48bd45c0cee05c92f7c20a994270"
     },
     {
       "file": "src/core/reminderUtils.js",
@@ -4582,6 +4594,10 @@
     {
       "file": "tests/86chaos-release-gate/100-operational-reliability.spec.cjs",
       "sha256": "caae626bbf9a7ce521fb07b0bd1e8d219359b8eabab0ff4002316a027208c00a"
+    },
+    {
+      "file": "tests/86chaos-release-gate/101-phone-navigation-repairs.spec.cjs",
+      "sha256": "a0a02162a707f8b3b21020b1392a563dd503ab175e1098e9c27e8f69a74604a4"
     },
     {
       "file": "tests/86chaos-release-gate/15-interactive-control-census.spec.cjs",

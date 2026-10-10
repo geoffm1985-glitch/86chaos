@@ -17,6 +17,7 @@ import { LoginScreen } from './features/auth';
 import * as runtimeReportStateModule from './core/runtimeReportState.cjs';
 import { initChaosPostHog, identifyChaosPostHogUser, resetChaosPostHogIdentity, trackChaosPageView, trackChaosPostHogEvent, trackChaosRuntimeError } from './core/posthogClient';
 import { I18nProvider, LANGUAGE_STORAGE_KEY, normalizeAppLanguage } from './core/i18n';
+import { installPwaCloseWatcher } from './core/pwaCloseWatcher.cjs';
 
 const resolveCommonJsModule = (moduleValue) => {
   const candidate = moduleValue?.default && typeof moduleValue.default === 'object' ? moduleValue.default : moduleValue;
@@ -844,6 +845,7 @@ export default function App() {
   const [activeTabState, setActiveTabState] = useState(initialRouteState.topLevelTab);
   const activeTabStateRef = useRef(activeTabState);
   const pwaBackExitRef = useRef({ armed: false, timer: null, initialized: false, exiting: false });
+  const pwaCloseWatcherRef = useRef(null);
   const [helpOriginState, setHelpOriginState] = useState('');
   const [clientData, setClientData] = useState(null);
   const [heartbeatDebug, setHeartbeatDebug] = useState(null);
@@ -2108,6 +2110,7 @@ if (liveAppUser && clientData) {
       clearTimeout(state.timer);
       state.timer = null;
     }
+    pwaCloseWatcherRef.current?.reset();
   }, []);
 
   const writeTopLevelTabHistory = useCallback((tab, options = {}) => {
@@ -2492,10 +2495,27 @@ What I clicked / expected:
     const tab = normalizeRouteTab(rawTab);
     transitionActiveTabState(tab);
 
+    const closeWatcher = isStandalone86ChaosPwa() ? installPwaCloseWatcher({
+      target: window,
+      state: pwaBackExitRef.current,
+      windowMs: CHAOS_PWA_BACK_EXIT_WINDOW_MS,
+      onWarn: () => addToast('Exit 86 Chaos', 'Press back again to exit.'),
+      closeTransientUi: () => {
+        const controls = [...document.querySelectorAll('[data-chaos-modal-close="true"], .app-drawer-readable .drawer-icon-button')];
+        const topmost = controls.filter(control => control.getClientRects().length).pop();
+        if (!topmost) return false;
+        topmost.click();
+        return true;
+      }
+    }) : null;
+    pwaCloseWatcherRef.current = closeWatcher;
+
     try {
       if (isStandalone86ChaosPwa()) {
         const currentState = window.history.state && typeof window.history.state === 'object' ? window.history.state : {};
-        if (!pwaBackExitRef.current.initialized || !currentState.chaosPwaBackGuard) {
+        if (closeWatcher) {
+          window.history.replaceState({ ...currentState, tab, chaosAppShell: true, chaosPwaBackGuard: true, chaosPwaBackBase: false }, '', appTabUrl(tab));
+        } else if (!pwaBackExitRef.current.initialized || !currentState.chaosPwaBackGuard) {
           window.history.replaceState({ ...currentState, tab, chaosAppShell: true, chaosPwaBackBase: true }, '', appTabUrl(tab));
           window.history.pushState({ tab, chaosAppShell: true, chaosPwaBackGuard: true }, '', appTabUrl(tab));
           pwaBackExitRef.current.initialized = true;
@@ -2510,6 +2530,13 @@ What I clicked / expected:
     const handlePopState = (event) => {
       const standalone = isStandalone86ChaosPwa();
       const state = pwaBackExitRef.current;
+
+      if (standalone && closeWatcher && state.armed) {
+        state.exiting = true;
+        closeWatcher.destroy();
+        try { window.history.back(); } catch (_) {}
+        return;
+      }
 
       if (standalone && event?.state?.chaosPwaBackBase) {
         const currentTab = normalizeRouteTab(activeTabStateRef.current || tab || 'today');
@@ -2546,6 +2573,8 @@ What I clicked / expected:
     window.addEventListener('popstate', handlePopState);
     return () => {
       window.removeEventListener('popstate', handlePopState);
+      closeWatcher?.destroy();
+      if (pwaCloseWatcherRef.current === closeWatcher) pwaCloseWatcherRef.current = null;
       if (pwaBackExitRef.current.timer) {
         clearTimeout(pwaBackExitRef.current.timer);
         pwaBackExitRef.current.timer = null;
