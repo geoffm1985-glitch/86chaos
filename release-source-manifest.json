@@ -1,7 +1,7 @@
 {
   "schemaVersion": 5,
   "version": "18.0.12",
-  "sourceHash": "10c797e03f295383b4e788c8b498901f2f5e1e4c211920dde9f1586ba6500ee1",
+  "sourceHash": "77e029ad308b9bf2ffcab01e5c9af3d556152afd3ade79546b939fdc927e3b17",
   "files": [
     {
       "file": ".gitattributes",
@@ -1261,7 +1261,11 @@
     },
     {
       "file": "api/mobile-capabilities.js",
-      "sha256": "3a01008e7ee91603fb55380e8b70806023544a930ce2e6f6669c97de5d33b0d8"
+      "sha256": "23be88e8f70c8a0eba83788d83543374a49163ca6ee6ab51c7a88a133e4d2a24"
+    },
+    {
+      "file": "api/mobile-capabilities.test.cjs",
+      "sha256": "2016fd2c1cab1eefc9c53094a8d889e517a2c16b0ac6dbea441dcc268dc5ab53"
     },
     {
       "file": "api/mobile-native-api-bridge-18-0-1.test.cjs",
@@ -4841,7 +4845,7 @@
     },
     {
       "file": "test-tools/contracts/api-route-contracts.cjs",
-      "sha256": "d0c3d2d77e32f4c7c827a83dab7a9d576504d993162d23f32840879d5afb24b3"
+      "sha256": "b86d6fa9ee38d680d33df99d1a37f91197bf16b9619c677d895b65c2903ab8d6"
     },
     {
       "file": "test-tools/fakeFirestore.cjs",
