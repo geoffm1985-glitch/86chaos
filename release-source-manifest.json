@@ -1,7 +1,7 @@
 {
   "schemaVersion": 3,
   "version": "17.0.86",
-  "sourceHash": "f80025dfbf6fb016c6bb0a61571fda2bf74518b2ae7586694033fd3041b931e3",
+  "sourceHash": "d2ae67f6b47d54cd5be5f855a0c8f8fb165829674a01361a6a209a69e85ab22e",
   "files": [
     {
       "file": ".gitattributes",
@@ -1861,7 +1861,7 @@
     },
     {
       "file": "api/today-recipe-evidence.test.cjs",
-      "sha256": "b60edd5c65186635a7a7afaeffdbd34427e33cf1ea17fd8e8e3088e6212bd96c"
+      "sha256": "7e4730547ddfc28dc6d787b1509284faf9c3a7ab3fc8e604affdc45cabebaaa7"
     },
     {
       "file": "api/vercel-build-identity-17-0-6.test.cjs",
@@ -1945,7 +1945,7 @@
     },
     {
       "file": "docs/PLAY_STORE_RELIABILITY_ACCEPTANCE.md",
-      "sha256": "3cfb380a38f6d4e2f220ffae95f393f6d3f9d332b6ec9194da9ab65151d92acc"
+      "sha256": "99b7b83ae8129f90175d630117ba99a2f2b0023804658ff1bb7412a059976e2f"
     },
     {
       "file": "docs/daily-briefing-feature-status.md",
@@ -3625,7 +3625,7 @@
     },
     {
       "file": "src/App.js",
-      "sha256": "525ee57972ce3049ead9eed77d7e7d01539c8bf990107134a84c4751c041e8e9"
+      "sha256": "007805c8ff68d1fa819349e21c6497e323f6d60d6a4e84f23bcfd71c76bdce5c"
     },
     {
       "file": "src/components/CheersLogo.js",

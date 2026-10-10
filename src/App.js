@@ -1305,11 +1305,16 @@ const [currentDate, setCurrentDate] = useState(getToday());
     }
     if (previous !== key) {
       const [previousProjectId, previousRestaurantId, previousViewerUid] = previous.split('|');
-      clearTenantListenerCache({
-        projectId: previousProjectId || undefined,
-        restaurantId: previousRestaurantId || undefined,
-        viewerUid: previousViewerUid || undefined
-      });
+      // An absent old workspace/viewer is not a wildcard. Login effects may
+      // already have attached the new scope before this boundary effect runs.
+      const obsoleteBoundary = previousProjectId !== projectId
+        ? { projectId: previousProjectId }
+        : previousViewerUid !== (authenticatedUid || '')
+          ? { projectId, viewerUid: previousViewerUid || 'anonymous' }
+          : previousRestaurantId && previousRestaurantId !== (rId || '')
+            ? { projectId, restaurantId: previousRestaurantId, viewerUid: previousViewerUid || 'anonymous' }
+            : null;
+      if (obsoleteBoundary) clearTenantListenerCache(obsoleteBoundary);
       listenerCacheBoundaryRef.current = key;
     }
   }, [firebaseConfig?.projectId, rId, authenticatedUid, ghostTenant?.id]);
