@@ -1,4 +1,4 @@
-import { NativeCapabilities, isNativeAndroid } from '../core/nativeCapabilities';
+import { NativeCapabilities, isNativeAndroid, saveNativeFile } from '../core/nativeCapabilities';
 import NativeNotificationConnection from '../components/NativeNotificationConnection';
 import { firestoreHealthEvidence, restoreDrillNeedsAttention, deploymentEvidenceChecks } from '../core/adminHealthEvidence';
 import PosImportReview from '../components/PosImportReview';
@@ -12160,6 +12160,10 @@ const TabBackOffice = ({ currentDate, users = [], sales = [], timePunches = [], 
     setDocumentBusyId(`download:${record.id}`);
     try {
       const blob = await getBlob(ref(storage, record.storagePath));
+      if (isNativeAndroid()) {
+        await saveNativeFile(blob, record.originalFileName || record.sanitizedFileName || record.title || '86chaos-document');
+        return;
+      }
       const url = URL.createObjectURL(blob);
       window.open(url, '_blank', 'noopener,noreferrer');
       window.setTimeout(() => URL.revokeObjectURL(url), 60000);

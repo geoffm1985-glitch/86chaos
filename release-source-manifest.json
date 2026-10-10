@@ -1,7 +1,7 @@
 {
   "schemaVersion": 5,
   "version": "18.0.12",
-  "sourceHash": "e832f21a1eaf63a342f0eb61735e579393b793dc575450e5881520daa3a3e36f",
+  "sourceHash": "bd673c733d85c32a0b8f3637de012d34cba8546c8549c9e2ad25e9c7c6dbe275",
   "files": [
     {
       "file": ".gitattributes",
@@ -4733,7 +4733,7 @@
     },
     {
       "file": "src/features/management.jsx",
-      "sha256": "ae37cd75bcfc742a16985ccd6ac47ac59825d7c18e689b7b10efddf651f54932"
+      "sha256": "99a258d46b5a5a465a4f26a22d3f743f7bce8b82a3f8b36320407e3b2bab343a"
     },
     {
       "file": "src/features/operations.jsx",
