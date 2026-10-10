@@ -56,7 +56,9 @@ test('actual Firestore transactions preserve approval, retry, recipe links and f
   } finally { await deleteApp(app); }
 });
 
-test('real PO/partial receiving approval propagates through costing, menu/86 and order suggestions exactly once',async()=>{
+test('real PO/partial receiving approval propagates through costing, menu/86 and order suggestions exactly once',async(t)=>{
+  // Approval stamps and the history window must share the fixture's business day.
+  t.mock.timers.enable({apis:['Date'],now:Date.UTC(2026,9,9,12)});
   assert.match(process.env.FIRESTORE_EMULATOR_HOST || '',/^127\.0\.0\.1:\d+$/);assert.equal(process.env.GCLOUD_PROJECT,'demo-86chaos-intelligence');
   const app=initializeApp({projectId:'demo-86chaos-intelligence'},`purchasing-86-${Date.now()}`),db=getFirestore(app);
   const ctx={restaurantId:'workflow86',uid:'owner86',user:{isOwner:true}},today='2026-10-09';

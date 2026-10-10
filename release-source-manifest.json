@@ -1,7 +1,7 @@
 {
   "schemaVersion": 5,
   "version": "18.0.12",
-  "sourceHash": "d0dd9870311dbaca20f8b9e71ea34ac2662910bf7ad58fcb3d431b64c230854a",
+  "sourceHash": "e832f21a1eaf63a342f0eb61735e579393b793dc575450e5881520daa3a3e36f",
   "files": [
     {
       "file": ".gitattributes",
@@ -4861,7 +4861,7 @@
     },
     {
       "file": "test-tools/intelligence-purchasing-emulator.test.cjs",
-      "sha256": "f0053040c034b00ee185f1d078f852b7a4a3c71cc997ccd3b708fd40198122cb"
+      "sha256": "b60f0ccb25daf13c0a6d230880f5dfe81c27acc6fa1261f1744d083ba3da0e36"
     },
     {
       "file": "test-tools/load-restaurant-model.cjs",
