@@ -59,7 +59,10 @@ test('actual Firestore transactions preserve approval, retry, recipe links and f
 test('real PO/partial receiving approval propagates through costing, menu/86 and order suggestions exactly once',async()=>{
   assert.match(process.env.FIRESTORE_EMULATOR_HOST || '',/^127\.0\.0\.1:\d+$/);assert.equal(process.env.GCLOUD_PROJECT,'demo-86chaos-intelligence');
   const app=initializeApp({projectId:'demo-86chaos-intelligence'},`purchasing-86-${Date.now()}`),db=getFirestore(app);
-  const ctx={restaurantId:'workflow86',uid:'owner86',user:{isOwner:true}},today='2026-10-09';
+  // Approval timestamps are written by the actual server clock. Keep this
+  // history window on the same UTC date rather than a past release date.
+  const ctx={restaurantId:'workflow86',uid:'owner86',user:{isOwner:true}},today=new Date().toISOString().slice(0,10);
+  const saleDate=new Date(Date.parse(`${today}T00:00:00Z`)-7*86400000).toISOString().slice(0,10);
   const readModel=async()=>{
     const result={};for(const collection of ['inventoryItems','recipes','menuDependencies']){const snap=await db.collection(collection).where('restaurantId','==',ctx.restaurantId).get();result[collection]=snap.docs.map(doc=>({id:doc.id,...doc.data()}));}return result;
   };
@@ -86,7 +89,7 @@ test('real PO/partial receiving approval propagates through costing, menu/86 and
     assert.equal((await catalogEvidence({db,restaurantId:ctx.restaurantId,vendorId:'flow86-vendor',code:'FLOUR86'}))[0].unitPriceCents,2000);
     const history=await readOperationalHistoryPage({db,ctx,source:'invoices',currentDate:today});assert.equal(history.complete,true);assert.equal(history.data[0].lineItems[0].approvedStockQuantity,5);
     const conversion={servingsPerBatch:8,yieldQuantity:recipe.batchYieldQuantity,yieldPercent:recipe.batchYieldPercent,yieldUnit:recipe.batchYieldUnit,costingApprovedAt:recipe.costingApprovedAt,reviewed:true};
-    const demand={businessDate:'2026-10-02',recipeId:recipe.id,quantity:8,sourceId:'reviewed-sale',lineId:'one',servingConversion:conversion};assert.equal((await importDemandRows({db,ctx,approved:true,currentDate:today,rows:[demand]})).imported,1);
+    const demand={businessDate:saleDate,recipeId:recipe.id,quantity:8,sourceId:'reviewed-sale',lineId:'one',servingConversion:conversion};assert.equal((await importDemandRows({db,ctx,approved:true,currentDate:today,rows:[demand]})).imported,1);
     assert.equal((await importDemandRows({db,ctx,approved:true,currentDate:today,rows:[demand]})).duplicates,1);
     assert.equal((await db.doc('inventoryItems/flow86-flour').get()).data().currentStock,5);
   }finally{await deleteApp(app);}
