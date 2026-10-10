@@ -2,7 +2,7 @@
 
 // Android can skip history entries created before any user gesture. A platform
 // close request handles the first Back even immediately after launch/reload.
-function installPwaCloseWatcher({ target, state, windowMs = 2000, onWarn, closeTransientUi = () => false }) {
+export function installPwaCloseWatcher({ target, state, windowMs = 2000, onWarn, closeTransientUi = () => false }) {
   if (typeof target?.CloseWatcher !== 'function') return null;
   let watcher = null;
   let disposed = false;
@@ -48,5 +48,3 @@ function installPwaCloseWatcher({ target, state, windowMs = 2000, onWarn, closeT
     }
   };
 }
-
-module.exports = { installPwaCloseWatcher };

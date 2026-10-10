@@ -17,7 +17,7 @@ import { LoginScreen } from './features/auth';
 import * as runtimeReportStateModule from './core/runtimeReportState.cjs';
 import { initChaosPostHog, identifyChaosPostHogUser, resetChaosPostHogIdentity, trackChaosPageView, trackChaosPostHogEvent, trackChaosRuntimeError } from './core/posthogClient';
 import { I18nProvider, LANGUAGE_STORAGE_KEY, normalizeAppLanguage } from './core/i18n';
-import { installPwaCloseWatcher } from './core/pwaCloseWatcher.cjs';
+import { installPwaCloseWatcher } from './core/pwaCloseWatcher';
 
 const resolveCommonJsModule = (moduleValue) => {
   const candidate = moduleValue?.default && typeof moduleValue.default === 'object' ? moduleValue.default : moduleValue;

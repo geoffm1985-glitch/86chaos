@@ -1,7 +1,7 @@
 {
   "schemaVersion": 3,
   "version": "17.0.86",
-  "sourceHash": "a7a6ad34ab8f47a34bacd8ad90e95a3becebaaa035f0c42d8dadc2f58fedb132",
+  "sourceHash": "b64a258ac9d20920583553cd6ca8901eb4790080dcbbcf92a461333efac2e107",
   "files": [
     {
       "file": ".gitattributes",
@@ -1177,7 +1177,7 @@
     },
     {
       "file": "api/pwa-close-watcher.test.cjs",
-      "sha256": "c3ae8266a0d8cd6c98246505273d1c0215e3c130acd52e44c80c1937ff404ad1"
+      "sha256": "17d5981dcb2b58b9bb80175121716609be471a4fc944d4c80ccd86121ac82152"
     },
     {
       "file": "api/pwa-firefox-retry-17-0-12.test.cjs",
@@ -3649,7 +3649,7 @@
     },
     {
       "file": "src/App.js",
-      "sha256": "d9f94bd64c81fbad8e7c6ad8367fd1ca3e8adbeb403b6f542e6ff2c13290fb62"
+      "sha256": "ea0bbf1a695feb6c2373e4201df01977c591bd92382ceb963cfcf95d6c8727d5"
     },
     {
       "file": "src/components/CheersLogo.js",
@@ -4000,8 +4000,8 @@
       "sha256": "4bc252d4a2734d5b277bf75f201444a1fc0896e671262a07506e9c3d7d573e85"
     },
     {
-      "file": "src/core/pwaCloseWatcher.cjs",
-      "sha256": "6ff1d71106fda65e34c07690a7276dd754aa48bd45c0cee05c92f7c20a994270"
+      "file": "src/core/pwaCloseWatcher.js",
+      "sha256": "fcdf73a9138882396442b6076908cb9e726c3ab1674c48d7526a8aa5402abd16"
     },
     {
       "file": "src/core/reminderUtils.js",

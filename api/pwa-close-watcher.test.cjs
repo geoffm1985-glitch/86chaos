@@ -1,6 +1,6 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { installPwaCloseWatcher } = require('../src/core/pwaCloseWatcher.cjs');
+const { installPwaCloseWatcher } = require('../src/core/pwaCloseWatcher.js');
 
 function fixture(options = {}) {
   const instances = [], timers = new Map(), warnings = [];
