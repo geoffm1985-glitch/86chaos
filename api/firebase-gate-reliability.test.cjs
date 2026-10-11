@@ -3,6 +3,7 @@ const test=require('node:test'),assert=require('node:assert/strict');
 const fs=require('node:fs'),path=require('node:path'),vm=require('node:vm'),os=require('node:os');
 const {submitAuditLogin,firestoreListenKey,createFirestoreListenRecovery}=require('../tests/86chaos-full-audit/utils/firebase-transport-recovery.cjs');
 const root=path.resolve(__dirname,'..');
+const layoutConfigRequire=require('node:module').createRequire(path.join(root,'playwright.layout.config.cjs'));
 const listen='https://firestore.googleapis.com/google.firestore.v1.Firestore/Listen/channel?database=projects%2Fchaos-test-d1601%2Fdatabases%2F(default)&RID=1';
 const request=()=>({type:'requestfailed',url:listen.split('?')[0],failure:'net::ERR_CONNECTION_CLOSED'});
 const consoleRow=()=>({type:'console-error',message:'Failed to load resource: net::ERR_CONNECTION_CLOSED'});
@@ -66,8 +67,9 @@ test('the real problem watcher records repeated failures again after recovery',(
 test('layout smoke cleanup preserves full-gate preflight and rules evidence',()=>{
   const temp=fs.mkdtempSync(path.join(os.tmpdir(),'86chaos-layout-evidence-'));
   const code=fs.readFileSync(path.join(root,'playwright.layout.config.cjs'),'utf8');
-  const context={require,module:{exports:{}},__dirname:temp,process:{env:{CHAOS_RELEASE_GATE_RUN_DIR:temp}}};vm.runInNewContext(code,context);
+  const context={require:layoutConfigRequire,module:{exports:{}},__dirname:temp,process:{env:{CHAOS_RELEASE_GATE_RUN_DIR:temp}}};vm.runInNewContext(code,context);
   const config=context.module.exports;assert.equal(config.outputDir,path.join(temp,'layout-smoke-artifacts'));
+  assert.equal(config.reporter[0][0],layoutConfigRequire.resolve('./test-tools/reporters/chaos-release-gate-reporter.cjs'));
   for(const name of ['environment-preflight.json','node-test-live-summary.json','firebase-rules-release-gate.json'])fs.writeFileSync(path.join(temp,name),'verified evidence');
   fs.mkdirSync(config.outputDir);fs.writeFileSync(path.join(config.outputDir,'old-artifact.txt'),'old');
   // Simulate Playwright clearing only its configured output directory.
@@ -76,6 +78,6 @@ test('layout smoke cleanup preserves full-gate preflight and rules evidence',()=
   for(const name of fs.readdirSync(temp))fs.unlinkSync(path.join(temp,name));fs.rmdirSync(temp);
 });
 test('standalone layout smoke output is a child of test-results rather than its root',()=>{
-  const code=fs.readFileSync(path.join(root,'playwright.layout.config.cjs'),'utf8'),context={require,module:{exports:{}},__dirname:root,process:{env:{}}};vm.runInNewContext(code,context);
+  const code=fs.readFileSync(path.join(root,'playwright.layout.config.cjs'),'utf8'),context={require:layoutConfigRequire,module:{exports:{}},__dirname:root,process:{env:{}}};vm.runInNewContext(code,context);
   assert.equal(context.module.exports.outputDir,path.join(root,'test-results','layout-smoke-artifacts'));
 });
