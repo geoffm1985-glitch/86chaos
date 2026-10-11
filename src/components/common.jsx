@@ -190,8 +190,8 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
   ];
   const menuSections = [
     { label: t('drawer.peopleScheduling'), ids: ['published', 'team', 'hr-training'] },
-    { label: t('drawer.today'), ids: ['today', 'ops', 'reminders', 'events', 'messages'] },
     { label: t('drawer.kitchenOperations'), ids: ['prep', 'inventory', 'recipes'] },
+    { label: t('drawer.today'), ids: ['today', 'ops', 'reminders', 'events', 'messages'] },
     { label: t('drawer.businessFinancials'), ids: ['financials', 'back-office', 'maintenance'] },
     { label: t('drawer.toolsAutomation'), ids: ['ai-tools', 'menu-intelligence'] },
     { label: t('drawer.systemSupport'), ids: ['settings', 'help', 'audit', 'godmode'] }

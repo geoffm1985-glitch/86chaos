@@ -1,7 +1,7 @@
 {
   "schemaVersion": 3,
   "version": "17.0.86",
-  "sourceHash": "9e84890952cd6afcf792434756cac3a425ca32da5ac1659e57eb7d51e9807e03",
+  "sourceHash": "43eb31e2ee78a5d0239e93279aa160ec94f5b94b018e5074b75782063d3efdc1",
   "files": [
     {
       "file": ".gitattributes",
@@ -309,7 +309,7 @@
     },
     {
       "file": "RUN_86CHAOS_FAILED_AND_NEW_RELEASE_GATE.ps1",
-      "sha256": "9e4ead37b5732418b0bc7ef604f4af75ceb249c3c1e407af8182c3cac777ab94"
+      "sha256": "3a29d1aaa40907a58dad02c117dafb3b7db3270f180c26d6d9167003aa864159"
     },
     {
       "file": "RUN_86CHAOS_FAILED_ONLY_RELEASE_GATE.ps1",
@@ -329,7 +329,7 @@
     },
     {
       "file": "RUN_86CHAOS_PLAY_STORE_RELEASE_GATE.ps1",
-      "sha256": "8078b8ed0279f75ff9adf83c3f4adebda1f2945ca0792a9354760fe36c873d2b"
+      "sha256": "224e1e584a7b5a93e8df2f84f7c6fca950e75467d5ece774ddd375dbeaddac49"
     },
     {
       "file": "START_86CHAOS_PLAY_STORE_RELEASE_GATE_BACKGROUND.ps1",
@@ -1281,7 +1281,7 @@
     },
     {
       "file": "api/release-gate-console-reporter.test.cjs",
-      "sha256": "4c4a235ce08017431fb27311ac1e71ad6f385778219a2647736ad191c69d54df"
+      "sha256": "a9cb662683b7c59c0046fff7f326fe296fe136ff76a2025b072545dbee5f5788"
     },
     {
       "file": "api/release-gate-delta-clean-baseline-17-0-25.test.cjs",
@@ -1413,7 +1413,7 @@
     },
     {
       "file": "api/release-gate-schedule-runner-17-0-18.test.cjs",
-      "sha256": "d976cbbaeab00fc96e3e935cfd592d44bb111bde9808a3db18ece536fb2434af"
+      "sha256": "f85b842da8524e90534ed6fb9a8ca7a6c8672aa51c56e0a16ae1fcb03d323f0b"
     },
     {
       "file": "api/release-gate-server-certification-drift-17-0-77.test.cjs",
@@ -2053,7 +2053,7 @@
     },
     {
       "file": "playwright.layout.config.cjs",
-      "sha256": "c8aba396a4a13588f9551524e6017d80d6276cecd12644ce57106c079bb36308"
+      "sha256": "56275e123c786229362827c61bd27305ab61c17e5a45bff384f65d31903e994d"
     },
     {
       "file": "playwright.play-store-release.config.cjs",
@@ -2292,6 +2292,14 @@
       "sha256": "ed6989bebc7a4e57422481e8bf90ec65e676ae16ffa43842702fd0c579495772"
     },
     {
+      "file": "scripts/86chaos-release-gate/Invoke-ChaosPlaywright.ps1",
+      "sha256": "2f6d2bf427e69663fb9e85f97e45375bac758739fcba627b29ce9ce46611cf57"
+    },
+    {
+      "file": "scripts/86chaos-release-gate/Write-ChaosConsole.ps1",
+      "sha256": "e9a31bf5248bb954ac776248bdf2bd0b5387f8ae7fdd0a43f98ccc0ed54c3bc6"
+    },
+    {
       "file": "scripts/86chaos-release-gate/certification-truth.cjs",
       "sha256": "2b65317368e5d4ad2cef2204812b8c33d7f78c73f6200e56c81da0f24afa6981"
     },
@@ -2354,6 +2362,10 @@
     {
       "file": "scripts/86chaos-release-gate/partial-run-evidence.cjs",
       "sha256": "653a1c417da47ac6cdf56b2703f61832e4d5d35e5b3c211bc5b70767841307a9"
+    },
+    {
+      "file": "scripts/86chaos-release-gate/playwright-console.cjs",
+      "sha256": "8305a32fc4d658696bbc5c047a03eb7eba1c2cb21c489faf933bb35a73b028f2"
     },
     {
       "file": "scripts/86chaos-release-gate/playwright-inventory.cjs",
@@ -3773,7 +3785,7 @@
     },
     {
       "file": "src/components/common.jsx",
-      "sha256": "6548127225892fa61da3bd315a4f7066d425d02f45d612e485d61e6ffa39757b"
+      "sha256": "47ee15868e99d6349b4cd7db0b0804b168b6e203d44baef1df24be0350e1ecd4"
     },
     {
       "file": "src/config/plans.js",
@@ -4409,7 +4421,7 @@
     },
     {
       "file": "test-tools/reporters/chaos-release-gate-reporter.cjs",
-      "sha256": "b2373409b264d5541df73e194e7b0a946001bd157cb2c980b362e789127d87b0"
+      "sha256": "a6db1bda50d402f49e665c4e524043f13e6b198d2ed0fe86118fbc9f3aaa0816"
     },
     {
       "file": "test-tools/reporters/jest-live-timer.cjs",

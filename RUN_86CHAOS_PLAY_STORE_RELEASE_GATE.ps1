@@ -8,6 +8,7 @@ $env:PYTHONUTF8 = '1'
 
 $Root = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location $Root
+. (Join-Path $Root 'scripts/86chaos-release-gate/Write-ChaosConsole.ps1')
 
 if (-not (Test-Path ".\package.json")) {
   throw "package.json was not found. Run this from the real 86chaos app folder."
@@ -285,7 +286,7 @@ function Run-LiveStep {
   $LogPath = Join-Path $RunnerLogDir ("{0}-{1}.log" -f $RunId, $safeName)
   Ensure-RunnerLogPath $LogPath
   "=== $Name ===`nCommand: $Command`nStarted: $(Get-Date -Format o)`nLive console output is printed to the terminal while the step exit code remains scalar for the runner.`n" | Set-Content $LogPath
-  powershell -NoProfile -ExecutionPolicy Bypass -Command $Command 2>&1 | ForEach-Object { Ensure-RunnerLogPath $LogPath; Add-Content -Path $LogPath -Value $_; Write-Host $_ }
+  powershell -NoProfile -ExecutionPolicy Bypass -Command $Command 2>&1 | ForEach-Object { Ensure-RunnerLogPath $LogPath; Add-Content -Path $LogPath -Value $_; Write-ChaosConsoleLine $_ }
   $exitCode = if ($null -eq $LASTEXITCODE) { 0 } else { [int]$LASTEXITCODE }
   Ensure-RunnerLogPath $LogPath
   "`nFinished: $(Get-Date -Format o)`nExitCode: $exitCode" | Add-Content $LogPath
@@ -556,7 +557,7 @@ if ($PreflightExit -ne 0) {
                     } else {
                       Set-RunnerPhase 'playwright-layout-smoke'
                       $LayoutSmokeConfig = ".\playwright.layout.config.cjs"
-                      $LayoutSmokeExit = Run-LiveStep "Mobile layout Playwright smoke" "& '$PlaywrightExe' test --config '$LayoutSmokeConfig'"
+                      $LayoutSmokeExit = Run-LiveStep "Mobile layout Playwright smoke" "& '$Root\scripts\86chaos-release-gate\Invoke-ChaosPlaywright.ps1' -Config '$LayoutSmokeConfig'"
                       if ($LayoutSmokeExit -ne 0) {
                         Stop-BeforePlaywright "Release gate stopped because the required mobile layout Playwright smoke failed. See the current step log."
                       } else {
@@ -564,7 +565,7 @@ if ($PreflightExit -ne 0) {
                         $PlaywrightConfig = ".\playwright.play-store-release.config.cjs"
                         $RunnerState.playwrightStarted = $true
                         Save-RunnerState
-                        $PlaywrightExit = Run-LiveStep "Playwright release gate" "& '$PlaywrightExe' test --config '$PlaywrightConfig'"
+                        $PlaywrightExit = Run-LiveStep "Playwright release gate" "& '$Root\scripts\86chaos-release-gate\Invoke-ChaosPlaywright.ps1' -Config '$PlaywrightConfig'"
                         $RunnerState.playwrightCompleted = $true
                         $RunnerState.playwrightExitCode = $PlaywrightExit
                         $RunnerState.playwrightFinishedAt = (Get-Date -Format o)

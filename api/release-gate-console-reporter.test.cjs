@@ -21,6 +21,29 @@ function outputHasOnlyAscii(lines) {
   return lines.every(line => /^[\x09\x0A\x0D\x20-\x7E]*$/.test(line));
 }
 
+test('dashboard keeps failures, timeouts and interruptions visible while progress advances', () => {
+  const line = Reporter.createDashboardLine({ completed: 4, total: 8, elapsed: 59999, counts: { passed: 1, failed: 1, timedOut: 1, interrupted: 1 } });
+  assert.match(line, /\[############............\] 50% \| 4\/8 \| elapsed 1m 00s/);
+  assert.match(line, /PASS 1 FAIL 1 TIMEOUT 1 SKIP 0 INTERRUPTED 1/);
+  assert.doesNotMatch(Reporter.createDashboardLine({ total: 0 }), /NaN|Infinity|100%/);
+  assert(outputHasOnlyAscii([line]));
+});
+
+test('dashboard reports a running test and stops its timer after a failed run', () => {
+  const lines = [];
+  const reporter = new Reporter({ output: line => lines.push(line), mode: 'repair' });
+  const current = fakeTest('slow test');
+  reporter.onBegin({}, { allTests: () => [current] });
+  reporter.onTestBegin(current, {});
+  assert(lines.some(line => line.startsWith('[RUNNING] chromium | slow test')));
+  reporter.onTestEnd(current, { status: 'timedOut', duration: 90000 });
+  reporter.onEnd({ status: 'failed' });
+  assert.equal(reporter.activeTests.size, 0);
+  assert.equal(reporter.dashboardTimer, null);
+  assert.match(lines.join('\n'), /TIMEOUT 1/);
+  assert.match(lines.join('\n'), /RESULT: FAILED/);
+});
+
 test('release-gate reporter prints selected manifest once and one result line per executed test', () => {
   const lines = [];
   const runDir = fs.mkdtempSync(path.join(os.tmpdir(), '86chaos-reporter-'));
