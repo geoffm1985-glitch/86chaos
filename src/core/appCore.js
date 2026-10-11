@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { appendOfflineQueueItem, classifyRuntimeIssue, normalizeOfflineQueue, readJsonFromStorage, recordLocalRuntimeEvent, writeJsonToStorage } from './maturityGuards';
 import { initializeApp } from 'firebase/app';
-import { getFirestore, connectFirestoreEmulator, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, getDoc, setDoc, getDocs, enableIndexedDbPersistence, enableMultiTabIndexedDbPersistence, orderBy, limit as firestoreLimit } from 'firebase/firestore';
+import { getFirestore, initializeFirestore, connectFirestoreEmulator, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, getDoc, setDoc, getDocs, getDocsFromServer, enableIndexedDbPersistence, enableMultiTabIndexedDbPersistence, orderBy, limit as firestoreLimit } from 'firebase/firestore';
 import { getAuth, connectAuthEmulator, onAuthStateChanged } from 'firebase/auth';
 import { getMessaging, isSupported } from 'firebase/messaging';
 import { getStorage, connectStorageEmulator } from 'firebase/storage';
@@ -139,7 +139,10 @@ export const firebaseDiagnostics = {
 };
 
 export const app = initializeApp(firebaseConfig);
-export const db = getFirestore(app);
+// Android WebView/proxy buffering must not leave the initial listen pending.
+export const db = Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android'
+  ? initializeFirestore(app, { experimentalForceLongPolling: true, experimentalAutoDetectLongPolling: false })
+  : getFirestore(app);
 export const storage = getStorage(app);
 export const auth = getAuth(app);
 export const firebaseFunctions = getFunctions(app, env('REACT_APP_FIREBASE_FUNCTIONS_REGION', 'us-central1'));
@@ -469,7 +472,7 @@ export const MASTER_ADMIN_EMAIL = (process.env.REACT_APP_MASTER_ADMIN_EMAIL || '
 export const EVENT_TAGS = ['Standard Day', 'Packers Game', 'Brewers Game', 'Live Music', 'Severe Weather', 'Private Catering', 'Holiday'];
 
 // --- VERSION TRACKING ---
-export const CURRENT_VERSION = '18.0.13';
+export const CURRENT_VERSION = '18.0.14';
 
 // --- Helpers ---
 const usePageVisible = () => {
@@ -914,6 +917,7 @@ const FIRESTORE_INTERNAL_ASSERTION_RE = /INTERNAL ASSERTION FAILED|Unexpected st
 function releaseLiveCollectionEntry(key, entry, options = {}) {
   if (!entry) return;
   entry.closed = true;
+  if (entry.initialReadTimer) clearTimeout(entry.initialReadTimer);
   try { entry.unsubscribe?.(); } catch (_) {}
   if (entry.releaseTimer) clearTimeout(entry.releaseTimer);
   if (liveCollectionRegistry.get(key) === entry) liveCollectionRegistry.delete(key);
@@ -1005,7 +1009,7 @@ const acquireSharedLiveCollection = ({ coll, restId, constraints, key, setData, 
       cached: !!cached,
       stale: !!cached
     });
-    entry.unsubscribe = onSnapshot(
+    const attach = () => onSnapshot(
       query(collection(db, coll), ...constraints),
       ...(requireServerSnapshot ? [{includeMetadataChanges:true}] : []),
       snap => {
@@ -1016,6 +1020,7 @@ const acquireSharedLiveCollection = ({ coll, restId, constraints, key, setData, 
           entry.subscribers.forEach(row=>row.fn(docs,{resolved:true,stale:true,cached:true,error:null,fromServer:false}));
           return;
         }
+        if (entry.initialReadTimer) clearTimeout(entry.initialReadTimer);
         const isInitial = !entry.initialSnapshotSeen;
         entry.initialSnapshotSeen = true;
         entry.hasCachedSnapshot = true;
@@ -1069,12 +1074,55 @@ const acquireSharedLiveCollection = ({ coll, restId, constraints, key, setData, 
         entry.subscribers.forEach(row => row.fn(entry.data || [], { resolved: true, stale: true, error: message, fromServer: false }));
       }
     );
+    entry.unsubscribe = attach();
     if (diagnostics && coll === 'shifts') {
       const scheduleDiagnostics = ensureFirestoreDiagnosticsShape(diagnostics).schedule;
       scheduleDiagnostics.sdkReads += 1;
       if (String(debugLabel || '').includes('scheduleDateKey-rescue')) scheduleDiagnostics.rescueQueryExecutions += 1;
     }
     liveCollectionRegistry.set(key, entry);
+    // A WebView listen stream can remain pending without delivering an error.
+    // Bound initial readiness with an independent server read; cached rows never
+    // certify a complete schedule. Keep the shared stream for subsequent updates.
+    entry.recoverInitialRead = async () => {
+      const generation = entry.readGeneration = (entry.readGeneration || 0) + 1;
+      if (entry.closed || entry.initialSnapshotSeen || liveCollectionRegistry.get(key) !== entry) return;
+      let deadline;
+      try {
+        const snapshot = await Promise.race([
+          getDocsFromServer(query(collection(db, coll), ...constraints)),
+          new Promise((_, reject) => { deadline = setTimeout(() => reject(new Error('Server verification timed out. Check your connection and retry.')), 15000); })
+        ]);
+        if (entry.closed || liveCollectionRegistry.get(key) !== entry || entry.initialSnapshotSeen || entry.readGeneration !== generation) return;
+        if (snapshot.metadata?.fromCache || snapshot.metadata?.hasPendingWrites) throw new Error('Schedule data still has unverified local changes. Wait for sync and retry.');
+        entry.data = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+        entry.initialSnapshotSeen = true;
+        entry.hasCachedSnapshot = true;
+        entry.stale = false;
+        entry.lastError = null;
+        entry.subscribers.forEach(row => row.fn(entry.data, {resolved:true,stale:false,error:null,fromServer:true}));
+        annotateListenerDiagnostics(key, {initialReadRecovery:'server-verified',lastSnapshotAt:new Date().toISOString()});
+      } catch (err) {
+        if (entry.closed || liveCollectionRegistry.get(key) !== entry || entry.initialSnapshotSeen || entry.readGeneration !== generation) return;
+        entry.lastError = err?.message || 'Schedule data could not be verified. Retry when connected.';
+        entry.stale = true;
+        entry.subscribers.forEach(row => row.fn(entry.data || [], {resolved:true,stale:true,error:entry.lastError,fromServer:false}));
+        annotateListenerDiagnostics(key, {initialReadRecovery:'failed',lastError:entry.lastError});
+      } finally { if (deadline) clearTimeout(deadline); }
+    };
+    entry.initialReadTimer = setTimeout(entry.recoverInitialRead, 10000);
+    entry.restart = () => {
+      if (entry.closed || liveCollectionRegistry.get(key) !== entry) return;
+      entry.readGeneration = (entry.readGeneration || 0) + 1;
+      if (entry.initialReadTimer) clearTimeout(entry.initialReadTimer);
+      try { entry.unsubscribe?.(); } catch (_) {}
+      entry.initialSnapshotSeen = false;
+      entry.lastError = null;
+      entry.stale = true;
+      entry.subscribers.forEach(row => row.fn(entry.data || [], {resolved:false,stale:true,error:null,fromServer:false}));
+      entry.unsubscribe = attach();
+      entry.initialReadTimer = setTimeout(entry.recoverInitialRead,10000);
+    };
     if (diagnostics) diagnostics.activeListeners = liveCollectionRegistry.size;
   } else {
     entry.listenerReuseCount += 1;
@@ -1219,7 +1267,12 @@ export const useLiveCollectionState = (coll, restId, options = {}) => {
     return acquireSharedLiveCollection({ coll, restId, constraints, key, setData: setter, debugLabel: debugLabelRef.current, viewerUid, requireServerSnapshot });
   }, [setter,scopeKey,coll, restId, enabled, limitCount, orderByField, orderDirection, pauseWhenHidden, pageVisible, viewerUid, requireServerSnapshot, stableJson(normalizeWhereClausesForKey(whereClauses || []))]);
   const scoped=state.scopeKey===scopeKey?state:{data:[],resolved:false,loading:Boolean(enabled && restId),error:null,stale:false,cached:false};
-  return { ...scoped, stale:scoped.stale || pauseWhenHidden && !pageVisible, allowed:Boolean(enabled && restId), limit:limitCount || Infinity };
+  const retry = React.useCallback(() => {
+    const key = makeLiveCollectionKey({coll,restId,whereClauses,orderByField,orderDirection,limitCount,viewerUid,requireServerSnapshot});
+    const entry = liveCollectionRegistry.get(key);
+    if (entry && (entry.lastError || !entry.initialSnapshotSeen || entry.stale)) entry.restart?.();
+  }, [scopeKey]);
+  return { ...scoped, retry, stale:scoped.stale || pauseWhenHidden && !pageVisible, allowed:Boolean(enabled && restId), limit:limitCount || Infinity };
 };
 
 export const makeLiveDocumentKey = ({ coll, docId, viewerUid = currentViewerUid() }) => stableJson({

@@ -1,25 +1,27 @@
 {
-  "version": "18.0.13",
-  "name": "86 Chaos 18.0.13",
-  "build": "18.0.13",
-  "label": "86 Chaos 18.0.13",
-  "title": "86 Chaos 18.0.13",
-  "releasedAt": "2026-10-11T07:45:00Z",
-  "releaseTitle": "Production Firebase APK target enforced",
-  "summary": "Restores production accounts and APIs in the mobile APK and prevents testing Firebase APK publication.",
-  "description": "Production Firebase mobile preview with retained native features and signing identity. Full release certification remains pending.",
+  "version": "18.0.14",
+  "name": "86 Chaos 18.0.14",
+  "build": "18.0.14",
+  "label": "86 Chaos 18.0.14",
+  "title": "86 Chaos 18.0.14",
+  "releasedAt": "2026-10-11T22:10:58.036Z",
+  "releaseTitle": "Schedule loading and production publishing repair",
+  "summary": "Preserves schedule workspace during account refresh, bounds server verification, and repairs tenant-authorized publish queries.",
+  "description": "Production Firebase Android preview. Local schedule regression validation included; complete release certification remains pending.",
   "notes": [
-    "APK connects to production Firebase cheers-34b8d.",
-    "Native APIs use the production website and matching production-authenticated mobile backend.",
-    "Testing Firebase APK builds are disabled. Automated mutation tests remain isolated in local emulators."
+    "APK stays on production Firebase cheers-34b8d with the retained signing identity.",
+    "Schedule Builder retains its selected workspace when account data refreshes.",
+    "Android Firestore uses long polling; stalled initial reads have bounded server verification and retry.",
+    "Publishing reads use restaurant-scoped queries without weakening tenant security rules."
   ],
   "highlights": [
-    "Verified readiness and paged history",
-    "Reviewed catalog and serving conversions",
-    "Attendance policy and training follow-up"
+    "Verified schedule readiness",
+    "Recoverable loading errors",
+    "Tenant-authorized schedule publishing"
   ],
   "changes": [
-    "Production APK build and packaged target checks",
-    "Android versionCode 180013; release 18.0.13"
+    "Schedule tools require server-confirmed data before period actions.",
+    "Selected-week publishing no longer issues unauthorized workspaceId queries.",
+    "Android versionCode 180014; release 18.0.14"
   ]
 }

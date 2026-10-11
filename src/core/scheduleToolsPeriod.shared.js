@@ -137,6 +137,7 @@
       if (!source || source.required === false) return;
       const label = clean(source.label || source.name || 'schedule data');
       if (source.error) reasons.push(`${label} could not be loaded`);
+      else if (source.stale === true) reasons.push(`${label} is waiting for server verification`);
       else if (source.resolved !== true) reasons.push(`${label} is still loading`);
       if (Number(source.limit || 0) > 0 && Number(source.count || 0) >= Number(source.limit)) reasons.push(`${label} reached its retrieval limit`);
       if (source.workspaceId && source.expectedWorkspaceId && clean(source.workspaceId) !== clean(source.expectedWorkspaceId)) reasons.push(`${label} belongs to a different restaurant`);

@@ -11,7 +11,7 @@ const unique=info=>`QA${createHash('sha256').update(`${RUN_ID}|${info.project.na
 const test=base.extend({forecastFixture:async({},use,info)=>{
   requireDisposableWorkspace();
   const restaurantId=readSeedReport().restaurantId;
-  const db=require('../../api/_firebase-project-admin').getAdminAppForProject('chaos-test-d1601',{requireCredentials:true}).firestore();
+  const db=require('../../api/_firebase-project-admin').getAdminAppForProject(require('../../scripts/86chaos-firebase-target.cjs').getFirebaseTarget(process.env).projectId,{requireCredentials:true}).firestore();
   const restaurant=await db.collection('restaurants').doc(restaurantId).get();
   expect(restaurant.data()).toMatchObject({qaOwned:true,qaRunId:RUN_ID});
   const id=unique(info),date=today(),ref=db.collection('scheduleCoverageTargets').doc(id);

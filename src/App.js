@@ -1,3 +1,4 @@
+import { withSelectedWorkspaceContext } from './core/workspaceContext';
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { Bell, Bug, ChevronLeft, ChevronRight, Loader2, Menu, Moon, Send, X } from 'lucide-react';
 import { addDoc, collection, doc, onSnapshot, updateDoc } from 'firebase/firestore';
@@ -1226,7 +1227,7 @@ const [currentDate, setCurrentDate] = useState(getToday());
   const livePresenceRecords = workspacePresenceRecords;
   const selfPresenceRecord = useLowCostPresenceSummary(rId, appUser?.id || '', { enabled: !!rId && !ghostTenant && activeTabState === 'settings' && !!appUser?.id });
   const presenceSessions = livePresenceRecords;
-  const rawDateShiftsState = useLiveCollectionState('shifts', rId, { requireServerSnapshot:activeTabState === 'today', enabled: !!rId && wantsShiftData, whereClauses: schedulePlan.shiftClauses, orderByField: 'date', orderDirection: 'asc', limitCount: schedulePlan.shiftLimit, fallbackLimitCount: Math.min(schedulePlan.shiftLimit || 80, 80), debugLabel: `app:${activeTabState}:${activeScheduleSubTab}:shifts-date-plan` });
+  const rawDateShiftsState = useLiveCollectionState('shifts', rId, { requireServerSnapshot:activeTabState === 'today' || wantsScheduleScreen, enabled: !!rId && wantsShiftData, whereClauses: schedulePlan.shiftClauses, orderByField: 'date', orderDirection: 'asc', limitCount: schedulePlan.shiftLimit, fallbackLimitCount: Math.min(schedulePlan.shiftLimit || 80, 80), debugLabel: `app:${activeTabState}:${activeScheduleSubTab}:shifts-date-plan` });
   const rawDateShifts = rawDateShiftsState.data || [];
   const enableScheduleDateKeyRescue = shouldEnableScheduleDateKeyRescue({ wantsShiftData, wantsScheduleScreen, canonicalState: rawDateShiftsState, clientData, shiftClauses: schedulePlan.shiftClauses });
   const rescueDiagnosticsActiveRef = useRef(false);
@@ -1244,7 +1245,7 @@ const [currentDate, setCurrentDate] = useState(getToday());
     }
     rescueDiagnosticsActiveRef.current = enableScheduleDateKeyRescue;
   }, [enableScheduleDateKeyRescue, rawDateShiftsState.error, rawDateShiftsState.resolved, rawDateShifts.length, clientData?.scheduleDateKeyRescueRequired, clientData?.scheduleRescueEnforceProtected, JSON.stringify(clientData?.scheduleDateKeyOnlyMonths || [])]);
-  const rawScheduleDateKeyShiftsState = useLiveCollectionState('shifts', rId, { enabled: !!rId && enableScheduleDateKeyRescue, whereClauses: scheduleDateKeyShiftClauses, orderByField: 'scheduleDateKey', orderDirection: 'asc', limitCount: schedulePlan.shiftLimit, fallbackLimitCount: Math.min(schedulePlan.shiftLimit || 80, 80), debugLabel: `app:${activeTabState}:${activeScheduleSubTab}:shifts-scheduleDateKey-rescue` });
+  const rawScheduleDateKeyShiftsState = useLiveCollectionState('shifts', rId, { requireServerSnapshot:wantsScheduleScreen, enabled: !!rId && enableScheduleDateKeyRescue, whereClauses: scheduleDateKeyShiftClauses, orderByField: 'scheduleDateKey', orderDirection: 'asc', limitCount: schedulePlan.shiftLimit, fallbackLimitCount: Math.min(schedulePlan.shiftLimit || 80, 80), debugLabel: `app:${activeTabState}:${activeScheduleSubTab}:shifts-scheduleDateKey-rescue` });
   const rawScheduleDateKeyShifts = rawScheduleDateKeyShiftsState.data || [];
   const rawShifts = useMemo(() => mergeLoadedScheduleShifts(rawDateShifts, rawScheduleDateKeyShifts), [rawDateShifts, rawScheduleDateKeyShifts]);
   const shifts = useMemo(() => {
@@ -1276,7 +1277,7 @@ const [currentDate, setCurrentDate] = useState(getToday());
   const events = eventsEvidenceState.data;
   const salesEvidenceState = useLiveCollectionState('sales', rId, { requireServerSnapshot: activeTabState === 'today', enabled: !!rId && wantsSalesData, whereClauses: [['date','>=', monthBounds.start], ['date','<=', monthBounds.end]], orderByField: 'date', orderDirection: 'desc', limitCount: 45, fallbackLimitCount: 20 });
   const sales = salesEvidenceState.data;
-  const activeTimeOffRequestsState = useLiveCollectionState('timeOffRequests', rId, { requireServerSnapshot:activeTabState === 'today', enabled: !!rId && wantsTimeOffData, whereClauses: schedulePlan.timeOffClauses, orderByField: schedulePlan.timeOffClauses.some(c => c[0] === 'date') ? 'date' : null, orderDirection: 'asc', limitCount: schedulePlan.timeOffLimit, fallbackLimitCount: Math.min(schedulePlan.timeOffLimit || 60, 60), debugLabel: `app:${activeTabState}:${activeScheduleSubTab}:timeoff-plan` });
+  const activeTimeOffRequestsState = useLiveCollectionState('timeOffRequests', rId, { requireServerSnapshot:activeTabState === 'today' || wantsScheduleScreen, enabled: !!rId && wantsTimeOffData, whereClauses: schedulePlan.timeOffClauses, orderByField: schedulePlan.timeOffClauses.some(c => c[0] === 'date') ? 'date' : null, orderDirection: 'asc', limitCount: schedulePlan.timeOffLimit, fallbackLimitCount: Math.min(schedulePlan.timeOffLimit || 60, 60), debugLabel: `app:${activeTabState}:${activeScheduleSubTab}:timeoff-plan` });
   const activeTimeOffRequests = activeTimeOffRequestsState.data || [];
   const timeOffHistoryRequests = useLiveCollection('timeOffRequests', rId, { enabled: !!rId && wantsTimeOffData && schedulePlan.timeOffHistoryEnabled === true, whereClauses: schedulePlan.timeOffHistoryClauses || [], orderByField: 'date', orderDirection: 'desc', limitCount: schedulePlan.timeOffHistoryLimit || 40, fallbackLimitCount: 40, debugLabel: `app:${activeTabState}:${activeScheduleSubTab}:timeoff-history` });
   const timeOffRequests = useMemo(() => {
@@ -1374,7 +1375,7 @@ const [currentDate, setCurrentDate] = useState(getToday());
       ? appUser
       : (workspaceMemberForAppUser ? userFromWorkspaceMember(workspaceMemberForAppUser, accountUserFromTenantList || appUser) : (accountUserFromTenantList || appUser))
   ) : null;
-  let liveAppUser = realAppUser;
+  let liveAppUser = withSelectedWorkspaceContext(realAppUser, rId);
 
   if (ghostTenant && realAppUser) {
     const ghostWorkspaceId = ghostTenant.id || ghostTenant.restaurantId;
@@ -3453,6 +3454,8 @@ What I clicked / expected:
   const scheduleToolsDataState = {
     workspaceId: rId,
     shifts: {
+      retry: () => { rawDateShiftsState.retry(); if (enableScheduleDateKeyRescue) rawScheduleDateKeyShiftsState.retry(); },
+      stale: rawDateShiftsState.stale || (enableScheduleDateKeyRescue && rawScheduleDateKeyShiftsState.stale),
       resolved: rawDateShiftsState.resolved === true && (!enableScheduleDateKeyRescue || rawScheduleDateKeyShiftsState.resolved === true),
       error: rawDateShiftsState.error || (enableScheduleDateKeyRescue ? rawScheduleDateKeyShiftsState.error : null),
       count: Math.max(rawDateShifts.length, enableScheduleDateKeyRescue ? rawScheduleDateKeyShifts.length : 0),
@@ -3460,6 +3463,8 @@ What I clicked / expected:
       workspaceId: rId
     },
     timeOff: {
+      retry: activeTimeOffRequestsState.retry,
+      stale: activeTimeOffRequestsState.stale,
       resolved: activeTimeOffRequestsState.resolved === true,
       error: activeTimeOffRequestsState.error,
       count: activeTimeOffRequests.length,

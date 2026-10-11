@@ -1055,7 +1055,7 @@ const TabMasterSchedule = ({ currentDate, setCurrentDate = null, onSubTabChange 
   const scheduleIdentity = buildScheduleIdentityFields(getSchedulePersonForAppUser(appUser, users), appUser);
   const availabilityWhereClauses = canViewTeamAvailability ? [] : [['scheduleUserId', '==', scheduleIdentity.scheduleUserId || '__none__']];
   const availabilityLimit = canViewTeamAvailability ? 220 : 25;
-  const availabilityRecordsState = useLiveCollectionState('availabilityRecords', appUser?.restaurantId, { enabled: !!appUser?.restaurantId && (subTab === 'availability' || subTab === 'schedule-builder'), whereClauses: availabilityWhereClauses, orderByField: null, orderDirection: 'asc', limitCount: availabilityLimit, fallbackLimitCount: canViewTeamAvailability ? 80 : 25, debugLabel: `schedule:${subTab}:availability` });
+  const availabilityRecordsState = useLiveCollectionState('availabilityRecords', appUser?.restaurantId, { requireServerSnapshot:true, enabled: !!appUser?.restaurantId && (subTab === 'availability' || subTab === 'schedule-builder'), whereClauses: availabilityWhereClauses, orderByField: null, orderDirection: 'asc', limitCount: availabilityLimit, fallbackLimitCount: canViewTeamAvailability ? 80 : 25, debugLabel: `schedule:${subTab}:availability` });
   const availabilityRecords = [...(availabilityRecordsState.data || [])].sort((a, b) => String(a?.employeeName || a?.name || '').localeCompare(String(b?.employeeName || b?.name || '')));
 
   useEffect(() => { onSubTabChange?.(subTab); }, [subTab, onSubTabChange]);
@@ -2239,8 +2239,6 @@ const [eventDate, setEventDate] = useState(getToday());
       try {
         await fetchAuthoritativeCandidates(query(collection(db, 'shifts'), where('restaurantId', '==', appUser.restaurantId), where('date', '==', day)));
         await fetchAuthoritativeCandidates(query(collection(db, 'shifts'), where('restaurantId', '==', appUser.restaurantId), where('scheduleDateKey', '==', day)));
-        await fetchAuthoritativeCandidates(query(collection(db, 'shifts'), where('workspaceId', '==', appUser.restaurantId), where('date', '==', day)));
-        await fetchAuthoritativeCandidates(query(collection(db, 'shifts'), where('workspaceId', '==', appUser.restaurantId), where('scheduleDateKey', '==', day)));
       } catch (err) {
         throw new Error(`Publish candidate query failed for ${day}. No shifts were changed. ${err?.message || ''}`.trim());
       }
@@ -5879,9 +5877,9 @@ const ScheduleCopilot = ({ period, periodLabel = '', users = [], shifts = [], ti
   const templateLimit = 120;
   const coverageTargetLimit = 200;
   const roleLimit = 120;
-  const templatesState = useLiveCollectionState('scheduleTemplates', appUser?.restaurantId, { enabled: copilotReadEnabled, limitCount: templateLimit, debugLabel: 'schedule:copilot:templates' });
-  const coverageTargetsState = useLiveCollectionState('scheduleCoverageTargets', appUser?.restaurantId, { enabled: copilotReadEnabled, limitCount: coverageTargetLimit, debugLabel: 'schedule:copilot:coverage-targets' });
-  const dbRolesState = useLiveCollectionState('roles', appUser?.restaurantId, { enabled: copilotReadEnabled, limitCount: roleLimit, debugLabel: 'schedule:copilot:roles' });
+  const templatesState = useLiveCollectionState('scheduleTemplates', appUser?.restaurantId, { requireServerSnapshot: true, enabled: copilotReadEnabled, limitCount: templateLimit, debugLabel: 'schedule:copilot:templates' });
+  const coverageTargetsState = useLiveCollectionState('scheduleCoverageTargets', appUser?.restaurantId, { requireServerSnapshot: true, enabled: copilotReadEnabled, limitCount: coverageTargetLimit, debugLabel: 'schedule:copilot:coverage-targets' });
+  const dbRolesState = useLiveCollectionState('roles', appUser?.restaurantId, { requireServerSnapshot: true, enabled: copilotReadEnabled, limitCount: roleLimit, debugLabel: 'schedule:copilot:roles' });
   const templates = templatesState.data || [];
   const coverageTargets = coverageTargetsState.data || [];
   const dbRoles = dbRolesState.data || [];
@@ -5962,9 +5960,9 @@ const ScheduleCopilot = ({ period, periodLabel = '', users = [], shifts = [], ti
     { label: 'schedule shifts', ...shiftSourceState, expectedWorkspaceId: appUser?.restaurantId || '' },
     { label: 'Request Off records', ...timeOffSourceState, expectedWorkspaceId: appUser?.restaurantId || '' },
     { label: 'availability records', ...availabilitySourceState, expectedWorkspaceId: appUser?.restaurantId || '' },
-    { label: 'schedule templates', resolved: templatesState.resolved, error: templatesState.error, count: templates.length, limit: templateLimit },
-    { label: 'coverage targets', resolved: coverageTargetsState.resolved, error: coverageTargetsState.error, count: coverageTargets.length, limit: coverageTargetLimit },
-    { label: 'staff roles', resolved: dbRolesState.resolved, error: dbRolesState.error, count: dbRoles.length, limit: roleLimit },
+    { label: 'schedule templates', stale:templatesState.stale, resolved: templatesState.resolved, error: templatesState.error, count: templates.length, limit: templateLimit },
+    { label: 'coverage targets', stale:coverageTargetsState.stale, resolved: coverageTargetsState.resolved, error: coverageTargetsState.error, count: coverageTargets.length, limit: coverageTargetLimit },
+    { label: 'staff roles', stale:dbRolesState.stale, resolved: dbRolesState.resolved, error: dbRolesState.error, count: dbRoles.length, limit: roleLimit },
   ]);
   const periodActionBlocked = open && !scheduleToolsCompleteness.complete;
   const demandForecast = buildScheduleForecast({workspaceId:appUser?.restaurantId,actor:appUser,currentDate:getToday(),dates:activePeriodDates,sales:demandHistoryState.data,sourceState:demandHistoryState,coverageTargets,shifts:safeShifts});
@@ -6219,7 +6217,7 @@ const ScheduleCopilot = ({ period, periodLabel = '', users = [], shifts = [], ti
         </div>
         <div className="flex flex-wrap gap-1.5 flex-shrink-0"><button onClick={copyPreviousWeek} disabled={periodActionBlocked} title={`Copies the prior week into ${formatDisplayDate(copyWeekPeriod.start)} through ${formatDisplayDate(copyWeekPeriod.end)}`} className={`${T.btnAlt} disabled:opacity-50`}>{t('builder.copyPreviousWeek')}</button><button aria-label="Smart Fill" onClick={smartFill} disabled={periodActionBlocked} className={`${T.btnAlt} disabled:opacity-50`}>{t('builder.fillCoverageGaps')}</button><button onClick={reviewAndPublish} disabled={periodActionBlocked} className={`${T.btn} disabled:opacity-50`}>{t('builder.reviewPublish')}</button><button onClick={() => setOpen(false)} className={T.btnAlt}>{t('builder.closeTools')}</button></div>
       </div>
-      {!scheduleToolsCompleteness.complete && <div className="rounded-xl border border-amber-900/50 bg-amber-900/15 px-3 py-2 text-[10px] font-bold text-amber-200" role="status">Schedule check incomplete: {scheduleToolsCompleteness.reasons.join(' • ')}. Counts may change when loading finishes; period actions are paused.</div>}
+      {!scheduleToolsCompleteness.complete && <div className="rounded-xl border border-amber-900/50 bg-amber-900/15 px-3 py-2 text-[10px] font-bold text-amber-200" role="status">Schedule check incomplete: {scheduleToolsCompleteness.reasons.join(' • ')}. Period actions stay paused until all required data is verified. <button type="button" className="underline ml-2" onClick={() => { [shiftSourceState,timeOffSourceState,availabilitySourceState,templatesState,coverageTargetsState,dbRolesState].forEach(source => source.retry?.()); }}>Retry schedule data</button></div>}
       <div className="grid grid-cols-4 gap-1.5">
         {[['Drafts',draftCount],['Missing',missingTargets.length],['Warnings',allScheduleWarnings.length],['Templates',safeTemplates.length]].map(([label,value]) => <div key={label} className="schedule-copilot-metric bg-[#12161A] border border-[#2A353D]"><span className="text-[8px] uppercase tracking-widest font-black text-slate-500">{label}</span><strong className="text-white">{value}</strong></div>)}
       </div>
