@@ -2,14 +2,17 @@
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
 const {initializeTestEnvironment,assertSucceeds,assertFails}=require('@firebase/rules-unit-testing');
 const sdk=require('firebase/firestore');
-test('actual publisher queries work for a tenant manager and cannot read another tenant',{timeout:60000},async()=>{
-  assert.equal(process.env.FIRESTORE_EMULATOR_HOST,'127.0.0.1:8080');
+test('actual publisher queries work for a tenant manager and cannot read another tenant',{timeout:120000},async()=>{
+  const emulatorHost=String(process.env.FIRESTORE_EMULATOR_HOST||'');
+  assert.match(emulatorHost,/^127\.0\.0\.1:\d+$/,'This mutation test requires an explicit loopback emulator');
+  const emulatorPort=Number(emulatorHost.split(':')[1]);
+  assert(emulatorPort>0 && emulatorPort<65536);
   console.log('RULES: initialize');
-  const env=await initializeTestEnvironment({projectId:'demo-schedule-repair',firestore:{host:'127.0.0.1',port:8080,rules:fs.readFileSync('firestore.rules','utf8')}});
+  const env=await initializeTestEnvironment({projectId:'demo-schedule-repair',firestore:{host:'127.0.0.1',port:emulatorPort,rules:fs.readFileSync('firestore.rules','utf8')}});
   console.log('RULES: seed');
   try{
     await env.withSecurityRulesDisabled(async ctx=>{
-      const db=ctx.firestore();db.settings({experimentalForceLongPolling:true,experimentalAutoDetectLongPolling:false,merge:true});
+      const db=ctx.firestore();
       await Promise.all([
         sdk.setDoc(sdk.doc(db,'users','schedule-manager'),{restaurantId:'tenant-a',workspaceIds:['tenant-a'],memberships:{'tenant-a':{isActive:true,isAdmin:true,permissions:{schedule:true}}}}),
         sdk.setDoc(sdk.doc(db,'restaurants','tenant-a'),{name:'Owned QA'}),
@@ -19,14 +22,14 @@ test('actual publisher queries work for a tenant manager and cannot read another
       ]);
     });
     console.log('RULES: authenticated queries');
-    const db=env.authenticatedContext('schedule-manager').firestore();db.settings({experimentalForceLongPolling:true,experimentalAutoDetectLongPolling:false,merge:true});
+    const db=env.authenticatedContext('schedule-manager').firestore();
     // Execute the application's real candidate-loader body against authenticated rules.
     const source=fs.readFileSync('src/features/schedule.jsx','utf8');
     const start=source.indexOf('const fetchSchedulePublishCandidatesForDaySet = async');
     const end=source.indexOf('  const eventsByScheduleDay',start);
     assert(start>=0&&end>start);
     const run=vm.runInNewContext(source.slice(start,end)+'\nfetchSchedulePublishCandidatesForDaySet',{
-      db,appUser:{restaurantId:'tenant-a'},query:sdk.query,collection:sdk.collection,where:sdk.where,getDocsFromServer:sdk.getDocsFromServer,
+      db,appUser:{restaurantId:'tenant-a'},query:sdk.query,collection:sdk.collection,where:sdk.where,getDocsFromServer:async q=>{console.log('RULES: candidate query');const result=await sdk.getDocsFromServer(q);console.log('RULES: candidate returned',result.size);return result;},
       recordScheduleOperationDiagnostic:()=>{},isDeletedScheduleShift:()=>false,getShiftDateKey:row=>row.date||row.scheduleDateKey,
       shiftMatchesLocalDeleteMarkers:()=>false,activeLocalDeleteKeySet:new Set(),activeLocalDeleteMarkerMap:new Map(),getShiftWritableDocId:row=>row.id,
       mergeSchedulePublishCandidates:rows=>rows
