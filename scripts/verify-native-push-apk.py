@@ -7,6 +7,7 @@ from apk_elf_alignment import verify_apk_elf_alignment
 
 root = Path(__file__).resolve().parent.parent
 testing = '--testing' in sys.argv[2:]
+assert not testing, 'Testing Firebase APKs are forbidden; APKs must use production Firebase'
 expected_project = 'chaos-test-d1601' if testing else 'cheers-34b8d'
 expected_hostname = 'testing.86chaos.com' if testing else 'app.86chaos.com'
 aligned_libraries = verify_apk_elf_alignment(sys.argv[1])
@@ -47,6 +48,14 @@ with zipfile.ZipFile(sys.argv[1]) as apk:
     assert services['project_info']['project_id'] == expected_project
     for value in [expected_project, app_id]:
         assert value.encode() in resources or value.encode('utf-16-le') in resources, 'Target Firebase resource missing: ' + value
+    if not testing:
+        assert b'chaos-test-d1601' not in resources and 'chaos-test-d1601'.encode('utf-16-le') not in resources, 'Testing Firebase resources in production APK'
+        target = json.loads(apk.read('assets/public/native-build-target.json'))
+        assert target['environment'] == 'production' and target['firebaseProjectId'] == expected_project, 'APK must target production Firebase'
+        assert target['apiBaseUrl'] == 'https://app.86chaos.com', 'Production API destination mismatch'
+        assert target['updatedApiBaseUrl'] == 'https://86chaos-git-mobile-cheers-portal-s-projects.vercel.app', 'Matching mobile API destination mismatch'
+        assert target['commit'] == identity['commit'] and target['sourceHash'] == identity['sourceHash'], 'Packaged target source identity mismatch'
+        assert capacitor['appName'] == '86 Chaos', 'Wrong production app label'
     if testing:
         assert b'cheers-34b8d' not in resources and 'cheers-34b8d'.encode('utf-16-le') not in resources, 'Production Firebase resources leaked into testing APK'
         target = json.loads(apk.read('assets/public/native-build-target.json'))
