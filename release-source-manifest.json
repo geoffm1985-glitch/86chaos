@@ -1,7 +1,7 @@
 {
   "schemaVersion": 5,
   "version": "18.0.12",
-  "sourceHash": "b8b61900c068ca4cca622d9932ad735c14e3cdcc315c6645af5805f1c222c6ba",
+  "sourceHash": "820a35d688bec36ff8e13860e3c0d3334f55125aec4a945b6b565651fa8fdf84",
   "files": [
     {
       "file": ".gitattributes",
@@ -401,7 +401,7 @@
     },
     {
       "file": "android/app/build.gradle",
-      "sha256": "4a8b9ea0bcf37d382f719f42819a37495b9ffae4fd3df2c24ceb9ab8fd337bb2"
+      "sha256": "892e5fbc1b3a6d9944275290547efff6619d35b1c05371d2a63f32e3f3de2525"
     },
     {
       "file": "android/app/capacitor.build.gradle",
@@ -2485,7 +2485,7 @@
     },
     {
       "file": "mobile/testing/README.md",
-      "sha256": "2da9ce0ff6191a2b9f3a8b31a61fb90a784a0707f0843e194b9375d69462da62"
+      "sha256": "c5b577a56e57ae92f3a1139660920472e0907d259e0eb4920ca2ae8e80863e14"
     },
     {
       "file": "mobile/testing/google-services.json",
@@ -2980,8 +2980,12 @@
       "sha256": "760e880133657e0a511810b3ae9df64de8cfb5dbc2f77c121065644914174444"
     },
     {
+      "file": "scripts/apk_elf_alignment.py",
+      "sha256": "83b3d0c23f7572cb5bfb4b7897689929fe3c222357c97eaf75bbe835a52f4f16"
+    },
+    {
       "file": "scripts/build-testing-apk.cjs",
-      "sha256": "0c02cf20f54d0f3bc0324794fc607f0e0721c6c6e66caf4d4a4761d81514c2bc"
+      "sha256": "9cabaf4682c1e242d404b61a358e01e93701dc7e9b58f543a9a9193dcf368617"
     },
     {
       "file": "scripts/check-api-syntax.js",
@@ -3190,6 +3194,10 @@
     {
       "file": "scripts/test-16-0-80-targeted.cjs",
       "sha256": "ab51357c78fc6c1b674bf1663d07f4181d7ed0e0bd81e3f57df046d74bc00747"
+    },
+    {
+      "file": "scripts/test_apk_elf_alignment.py",
+      "sha256": "30138d3befa01651c1913ca9933a59f894f00369153694b112947891907ba378"
     },
     {
       "file": "scripts/validate-15-0-100.js",
@@ -4173,7 +4181,7 @@
     },
     {
       "file": "scripts/verify-native-push-apk.py",
-      "sha256": "65c10d01ac9ee524332fbebde59a19e499a236f5be8daaf2f5ad45fc22363067"
+      "sha256": "cbf441e32e11b284b19c10b8f9bd583bf533042ac27a10d5dd45a868c6671c9e"
     },
     {
       "file": "scripts/verify-repository-safety.cjs",

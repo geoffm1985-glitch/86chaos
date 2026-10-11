@@ -21,7 +21,7 @@ and compare its certificate with the retained preview key. Keep the APK and its
 SHA-256 file together. Publish as a new GitHub prerelease targeting the exact
 mobile commit, using a distinct testing tag; never replace a previous APK.
 
-The build runs Android compilation, JVM unit tests and lint locally. Run the
+The build runs Android compilation, JVM unit tests, lint, ZIP alignment and 64-bit ELF LOAD/RELRO alignment checks locally. Run `python scripts/test_apk_elf_alignment.py` to exercise the binary checker regression cases. Run the
 mobile foundation unit checks and browser checks in visible PowerShell too.
 Browser bridge checks do not replace physical-device verification of the APK.
 

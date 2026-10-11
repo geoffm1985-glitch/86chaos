@@ -63,6 +63,11 @@ async function main() {
   fs.mkdirSync(outputDir, { recursive: true });
   const apk = path.join(outputDir, `86Chaos-${source.version}-testing-preview.apk`);
   fs.copyFileSync(path.join(root, 'android/app/build/outputs/apk/debug/app-debug.apk'), apk);
+  const buildTools = fs.readdirSync(path.join(sdk, 'build-tools')).sort((a, b) => b.localeCompare(a, undefined, {numeric:true}));
+  const zipalign = buildTools.map(version => path.join(sdk, 'build-tools', version, process.platform === 'win32' ? 'zipalign.exe' : 'zipalign')).find(file => fs.existsSync(file));
+  assert(zipalign, 'Android zipalign is required');
+  await run(zipalign, ['-c', '-P', '16', '4', apk]);
+  await run(process.platform === 'win32' ? 'python' : 'python3', [path.join(root, 'scripts/verify-native-push-apk.py'), apk, '--testing']);
   const sha256 = crypto.createHash('sha256').update(fs.readFileSync(apk)).digest('hex');
   fs.writeFileSync(apk + '.sha256', sha256 + '  ' + path.basename(apk) + '\n');
   fs.writeFileSync(path.join(outputDir, 'build-result.json'), JSON.stringify({ ...target, apk, sha256, builtLocally: true, physicalDeviceVerified: false, finishedAt: new Date().toISOString() }, null, 2) + '\n');

@@ -3,11 +3,14 @@ import json
 import sys
 import zipfile
 from pathlib import Path
+from apk_elf_alignment import verify_apk_elf_alignment
 
 root = Path(__file__).resolve().parent.parent
 testing = '--testing' in sys.argv[2:]
 expected_project = 'chaos-test-d1601' if testing else 'cheers-34b8d'
 expected_hostname = 'testing.86chaos.com' if testing else 'app.86chaos.com'
+aligned_libraries = verify_apk_elf_alignment(sys.argv[1])
+print('Verified 16 KB LOAD and RELRO alignment for ' + str(len(aligned_libraries)) + ' native libraries')
 with zipfile.ZipFile(sys.argv[1]) as apk:
     plugins = json.loads(apk.read('assets/capacitor.plugins.json'))
     assert any(p.get('classpath') == 'io.capawesome.capacitorjs.plugins.firebase.messaging.FirebaseMessagingPlugin' for p in plugins), 'Native Firebase Messaging plugin missing'
