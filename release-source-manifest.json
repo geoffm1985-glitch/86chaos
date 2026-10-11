@@ -1,7 +1,7 @@
 {
   "schemaVersion": 3,
   "version": "17.0.84",
-  "sourceHash": "c53be6dd491b018ad2178c5ad6490c73884efa8bafe7a77531067768d228faaa",
+  "sourceHash": "f30f2a973dc57b5d1007d95221924da2d6b62627e5d5447eedf45abc6714bf55",
   "files": [
     {
       "file": ".gitattributes",
@@ -1558,6 +1558,10 @@
     {
       "file": "api/schedule-publish-17-0-16.test.cjs",
       "sha256": "e8732740e8eb7a1f7f945d0ac5f7b1408444989538d92a167cab7eb9e6b8f34e"
+    },
+    {
+      "file": "api/schedule-publish-candidate-permissions.test.cjs",
+      "sha256": "20caef0e53c6c67f0200dadb50c2c970002ef84c9fb95a05fc2ae7fc83e5b085"
     },
     {
       "file": "api/schedule-publish-emulator-17-0-0.test.cjs",
@@ -4057,7 +4061,7 @@
     },
     {
       "file": "src/features/schedule.jsx",
-      "sha256": "29e9d7af7734218d3009d97a2b6bb8ecf978ba067fd8e200f0a8bb3f677ac5ca"
+      "sha256": "9f1d12572191f373178bac3ab7440a65c59bb42c096831d6e6e17f9c6843715c"
     },
     {
       "file": "src/features/trainingManual.js",
