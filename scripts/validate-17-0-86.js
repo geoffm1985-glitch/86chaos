@@ -95,4 +95,10 @@ assert.ok(workflow.includes('tests/e2e/operational-completion-17-0-86.spec.cjs')
 assert.ok(pkg.scripts['test:current-release-targeted'].includes('npm run test:operational-completion'));
 assert.ok(pkg.scripts['test:operational-completion'].includes('npm run test:intelligence-connections:emulator'));
 assert.equal(require('../src/core/customerHelpKnowledge.cjs').validateCustomerHelpCorpus().ok,true);
+for(const file of ['tests/86chaos-release-gate/100-operational-reliability.spec.cjs','src/components/OperationalReliability.test.jsx','api/reliability-release-gate.test.cjs','api/reliability-qa-cleanup.test.cjs','api/_qa-reviewed-cleanup.js','scripts/86chaos-release-gate/final-gate-outcome.cjs','scripts/86chaos-release-gate/device-evidence.cjs','test-tools/certification/device-acceptance.json'])assert.ok(manifest.files.some(row=>row.file===file),file+' is sealed');
+assert.ok(universe.RELEASE_CRITICAL_SPECS.includes('tests/86chaos-release-gate/100-operational-reliability.spec.cjs'));
+assert.ok(pkg.scripts['test:current-release-targeted'].includes('npm run test:reliability'));
+assert.equal(json('test-tools/certification/device-acceptance.json').checks.length,16);
+for(const file of ['api/_schedule-forecast-draft.js','api/reliability-forecast-draft.test.cjs','api/today-recipe-evidence.test.cjs'])assert.ok(manifest.files.some(row=>row.file===file),file+' is sealed');
+new TextDecoder('utf-8',{fatal:true}).decode(fs.readFileSync(path.join(root,'tests/86chaos-release-gate/100-operational-reliability.spec.cjs')));
 console.log('86 Chaos 17.0.86 intelligence connections and preserved full-gate repairs validation PASS');

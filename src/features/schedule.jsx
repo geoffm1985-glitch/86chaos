@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { Bell, Check, Camera, ChevronLeft, ChevronRight, MessageSquare, Plus, Trash2, Users, Calendar, Clock, X, Loader2, Package, ClipboardList, Menu, Settings, LogOut, Shield, Send, Repeat, Edit, Moon, Sun, TrendingUp, BookOpen, Search, ChefHat, Scale, Coffee, Star, Bug, Wrench, Globe } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
-import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, getDoc, setDoc, getDocs, getDocsFromServer, writeBatch, runTransaction, orderBy, limit as firestoreLimit } from 'firebase/firestore';
+import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, getDoc, setDoc, getDocs, getDocsFromServer, writeBatch, orderBy, limit as firestoreLimit } from 'firebase/firestore';
 import { getAuth, signInWithEmailAndPassword, sendPasswordResetEmail, createUserWithEmailAndPassword, updatePassword } from 'firebase/auth';
 import { getToken, onMessage } from 'firebase/messaging';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
@@ -31,7 +31,7 @@ import { requestOffDateKey, normalizeRequestOffRuntimeRow, safeRequestOffRows } 
 import { validatePartialRequestOffTimeRange } from '../core/requestOffValidation';
 import { normalizeTimeOffPolicy, evaluateTimeOffPolicyDate, timeOffPolicyReleaseDateForRequestDate, timeOffPolicyCutoffDateForRequestDate, canConfigureTimeOffPolicy } from '../core/timeOffPolicy';
 import { useI18n } from '../core/i18n';
-import { buildScheduleForecast, forecastDraftId, isForecastCandidateEligible, saveForecastDraft } from '../core/intelligenceConnections';
+import { buildScheduleForecast, forecastDraftId, isForecastCandidateEligible } from '../core/intelligenceConnections';
 import { useDemandHistory } from '../hooks/useDemandHistory';
 import { ForecastReviewPanel } from '../components/IntelligenceReviewPanels';
 import { normalizeScheduleBuilderEvents, safeScheduleBuilderRecords } from '../core/scheduleBuilderRuntime';
@@ -6024,7 +6024,9 @@ const ScheduleCopilot = ({ period, periodLabel = '', users = [], shifts = [], ti
     recordScheduleOperationDiagnostic('canonicalDatePatches');
     const payload = { ...canonicalFields, ...buildScheduleIdentityFields(employee || {}), role: finalRole, targetRole: scheduleRole, startTime: draftStart, endTime: draftEnd, isPublished: false, publishState: 'draft', scheduleBuilderDraft: true, readyToPublish: true, createdAt: nowIso, updatedAt: nowIso, createdBy: appUser.id || 'schedule-copilot', updatedBy: appUser.id || 'schedule-copilot', source: 'schedule_copilot', assignmentSource: 'schedule_copilot',...(row.forecastDraftId ? {source:'demand_forecast_review',forecastEvidence:row.evidence,forecastReviewedAt:nowIso,forecastReviewedBy:appUser.id || appUser.uid || appUser.authUid || 'manager'} : {}) };
     if (row.forecastDraftId) {
-      const saved = await saveForecastDraft({transact:callback=>runTransaction(db,callback),ref:doc(db,'shifts',row.forecastDraftId),payload});
+      const response=await secureFetch('/api/safe-write',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'schedule-forecast-draft-create',collectionName:'shifts',restaurantId:appUser.restaurantId,approved:true,targetId:row.targetId,date,slot:row.forecastSlot,docId:row.forecastDraftId,data:payload})});
+      const saved=await response.json();
+      if(!response.ok || !saved.ok)throw new Error(saved.error || 'Forecast draft was not saved.');
       if (!saved.created) return {employeeId:'',date,role:finalRole,created:false};
     } else await addDoc(collection(db, 'shifts'),payload);
     recordScheduleOperationDiagnostic('directSdkWrites');
@@ -6123,7 +6125,7 @@ const ScheduleCopilot = ({ period, periodLabel = '', users = [], shifts = [], ti
       const used = activePeriodShifts.filter(shift => getShiftDateKey(shift) === current.date).map(shift => shift.employeeId || shift.scheduleUserId).filter(Boolean);
       let createdCount = 0;
       for (let index=0;index<current.needed;index++) {
-        const created = await createShiftDraft({...current,forecastDraftId:forecastDraftId(current,appUser.restaurantId,current.existing+index)},current.date,used);
+        const created = await createShiftDraft({...current,forecastSlot:current.existing+index,forecastDraftId:forecastDraftId(current,appUser.restaurantId,current.existing+index)},current.date,used);
         if (created.employeeId) used.push(created.employeeId);
         if (created.created) createdCount++;
       }

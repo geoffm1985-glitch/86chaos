@@ -27,3 +27,9 @@ test('installed PWA first Back shows toast, second Back uses browser history to 
   assert.match(app, /setTimeout\(\(\) => \{\s*state\.armed = false;\s*state\.timer = null;\s*\}, CHAOS_PWA_BACK_EXIT_WINDOW_MS\)/s);
   assert.match(app, /window\.history\.back\(\)/);
 });
+
+test('installed PWA installs the platform close watcher with cleanup and history fallback', () => {
+  assert.match(app, /isStandalone86ChaosPwa\(\) \? installPwaCloseWatcher/);
+  assert.match(app, /closeWatcher\?\.destroy\(\)/);
+  assert.match(app, /else if \(!pwaBackExitRef\.current\.initialized/);
+});

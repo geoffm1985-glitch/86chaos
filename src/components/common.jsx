@@ -75,7 +75,7 @@ const Modal = ({ isOpen, onClose, title, children, sizeClass = 'max-w-md' }) => 
       (firstFocusable || panelRef.current)?.focus?.();
     }, 0);
     const handleKeyDown = (event) => {
-      if (event.key === 'Escape') onCloseRef.current?.();
+      if (event.key === 'Escape') { event.preventDefault(); onCloseRef.current?.(); }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => {
@@ -91,7 +91,7 @@ const Modal = ({ isOpen, onClose, title, children, sizeClass = 'max-w-md' }) => 
       <div ref={panelRef} role="dialog" aria-modal="true" aria-labelledby={titleIdRef.current} tabIndex={-1} className={`chaos-modal-panel ${T.card} ${sizeClass} w-full max-h-[90vh] overflow-y-auto outline-none`}>
         <div className={`chaos-modal-header flex justify-between items-center p-4 border-b ${T.border}`}>
           <h3 id={titleIdRef.current} className="font-bold text-lg text-white">{title}</h3>
-          <button type="button" aria-label={t('common.closeDialog', { title: title || 'dialog' }, `Close ${title || 'dialog'}`)} onClick={() => onCloseRef.current?.()} className="p-1.5 hover:bg-[#12161A] rounded-full text-slate-400 hover:text-white transition-colors focus:outline-none focus:ring-2 focus:ring-[#D4A381]"><X size={20}/></button>
+          <button type="button" data-chaos-modal-close="true" aria-label={t('common.closeDialog', { title: title || 'dialog' }, `Close ${title || 'dialog'}`)} onClick={() => onCloseRef.current?.()} className="p-1.5 hover:bg-[#12161A] rounded-full text-slate-400 hover:text-white transition-colors focus:outline-none focus:ring-2 focus:ring-[#D4A381]"><X size={20}/></button>
         </div>
         <div className="chaos-modal-body p-4">{children}</div>
       </div>
@@ -120,10 +120,12 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
 
   // Reset the drawer search every time the hamburger menu opens/closes.
   // This prevents an old search term from reappearing and making the drawer look auto-filled.
+  useEffect(() => { setMenuSearch(''); }, [isOpen]);
+
   useEffect(() => {
     if (!isOpen) return undefined;
     const handleKeyDown = (event) => {
-      if (event.key === 'Escape') onClose?.();
+      if (event.key === 'Escape') { event.preventDefault(); onClose?.(); }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
@@ -189,8 +191,8 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
   ];
   const menuSections = [
     { label: t('drawer.peopleScheduling'), ids: ['published', 'team', 'hr-training'] },
-    { label: t('drawer.today'), ids: ['today', 'ops', 'reminders', 'events', 'messages'] },
     { label: t('drawer.kitchenOperations'), ids: ['prep', 'inventory', 'recipes'] },
+    { label: t('drawer.today'), ids: ['today', 'ops', 'reminders', 'events', 'messages'] },
     { label: t('drawer.businessFinancials'), ids: ['financials', 'back-office', 'maintenance'] },
     { label: t('drawer.toolsAutomation'), ids: ['ai-tools', 'menu-intelligence'] },
     { label: t('drawer.systemSupport'), ids: ['settings', 'help', 'audit', 'godmode'] }

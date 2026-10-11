@@ -1,6 +1,7 @@
 'use strict';
 const { test, expect } = require('@playwright/test');
 const { ownerLikeCreds, requireCreds, login, gotoTab, appUrl } = require('../86chaos-full-audit/utils/audit-helpers.cjs');
+const { restoreCurrentQaLanguage } = require('../86chaos-full-audit/utils/qa-language-isolation.cjs');
 
 async function openPreferencesAfterHydration(page) {
   const language = page.getByTestId('app-language-select');
@@ -32,6 +33,9 @@ async function saveLanguagePreference(page, value, { verifyReload = false } = {}
 }
 
 test.describe('17.0.26 Phase 1 Spanish interface', () => {
+  // Independent of the page/test timeout: never leave the shared QA account in
+  // Spanish when a navigation or assertion fails during this language journey.
+  test.afterEach(async () => { await restoreCurrentQaLanguage(ownerLikeCreds()); });
   test('a user can switch their own interface to Spanish and core Phase 1 navigation follows it', async ({ page }) => {
     const account = ownerLikeCreds();
     requireCreds(account, 'owner/admin-like');

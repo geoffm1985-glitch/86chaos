@@ -9,6 +9,7 @@ const { assertMutationSafety } = require('./mutation-safety.cjs');
 const { EXPECTED_FIREBASE_PROJECT, ROLE_DEFINITIONS, readConfiguredAccounts, validateLocalRoleEnv, analyzeRoleRows, verifyRoleAccounts } = require('./verify-role-accounts.cjs');
 const { roleForKey } = require('./qa-role-definitions.cjs');
 const { applyFirebaseEmulatorEnv } = require('../86chaos-firebase-target.cjs');
+const qaOnboardingBaseline = require('./qa-onboarding-baseline.cjs');
 
 const PROTECTED_ROOT_EMAILS = new Set(['geoffm1985@gmail.com']);
 const SAFE_TEMP_EMAIL_RE = /(^86chaos[.+_-]?qa|[.+_-]86chaos[.+_-]?qa|release[.+_-]?gate|qa[.+_-]?release)/i;
@@ -47,6 +48,7 @@ function profileForAccount(account, uid, runId) {
     firestoreSuperAdmin: role.expectedSuperAdmin,
     firestoreSystemAdministrator: role.expectedPlatformAuthority,
     preferences: { language: 'en' },
+    ...qaOnboardingBaseline,
     qaOwned: true,
     testingOnly: true,
     qaRunId: runId,

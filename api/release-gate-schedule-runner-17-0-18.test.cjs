@@ -20,7 +20,7 @@ test('full release checks split schedule core tests from mobile layout Playwrigh
   assert.match(runner, /--timeout 600 -- npm run test:schedule-publish:core/);
   assert.doesNotMatch(runner, /mobile layout Playwright smoke/i);
   assert.match(full, /Set-RunnerPhase 'playwright-layout-smoke'/);
-  assert.match(full, /\$LayoutSmokeExit = Run-LiveStep "Mobile layout Playwright smoke" "& '\$PlaywrightExe' test --config '\$LayoutSmokeConfig'"/);
+  assert.match(full, /\$LayoutSmokeExit = Run-LiveStep "Mobile layout Playwright smoke" .*Invoke-ChaosPlaywright\.ps1' -Config '\$LayoutSmokeConfig'"/);
   assert.match(full, /if \(\$LayoutSmokeExit -ne 0\)/);
   assert.ok(full.indexOf("Set-RunnerPhase 'playwright-layout-smoke'") < full.indexOf("Set-RunnerPhase 'playwright'", full.indexOf("Set-RunnerPhase 'playwright-layout-smoke'") + 1));
   assert.match(layout, /globalTimeout:180000/);

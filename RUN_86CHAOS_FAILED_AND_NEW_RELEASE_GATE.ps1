@@ -7,6 +7,7 @@ $ErrorActionPreference = 'Continue'
 
 $Root = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location $Root
+. (Join-Path $Root 'scripts/86chaos-release-gate/Write-ChaosConsole.ps1')
 
 if (-not (Test-Path ".\package.json")) {
   throw "package.json was not found. Run this from the real 86chaos app folder."
@@ -133,6 +134,7 @@ $env:CHAOS_FULL_AUDIT_RUN_ID = $RunId
 $env:CHAOS_RELEASE_GATE_STEP_FAILURES = "0"
 $env:CHAOS_FAILED_ONLY_RELEASE_GATE = "true"
 $env:CHAOS_RELEASE_GATE_SELECTION_MODE = $SelectionMode
+$env:CHAOS_CERTIFICATION_MODE = 'false'
 $env:CHAOS_FAILED_AND_NEW_RELEASE_GATE = if ($SelectionMode -eq "failed+new") { "true" } else { "false" }
 $env:CHAOS_PARTIAL_RESUME_RELEASE_GATE = if ($SelectionMode -eq "partial-resume") { "true" } else { "false" }
 $env:CHAOS_CURRENT_BLOCKERS_RELEASE_GATE = if ($SelectionMode -eq "reported-current-blockers") { "true" } else { "false" }
@@ -254,7 +256,7 @@ function Run-LiveStep {
   if ([string]::IsNullOrWhiteSpace($safeName)) { $safeName = "step" }
   $LogPath = Join-Path $RunnerLogDir ("{0}-{1}.log" -f $RunId, $safeName)
   "=== $Name ===`nCommand: $Command`nStarted: $(Get-Date -Format o)`nLive console output is printed to the terminal while the step exit code remains scalar for the runner.`n" | Set-Content $LogPath
-  powershell -NoProfile -ExecutionPolicy Bypass -Command $Command 2>&1 | ForEach-Object { Add-Content -Path $LogPath -Value $_; Write-Host $_ }
+  powershell -NoProfile -ExecutionPolicy Bypass -Command $Command 2>&1 | ForEach-Object { Add-Content -Path $LogPath -Value $_; Write-ChaosConsoleLine $_ }
   $exitCode = if ($null -eq $LASTEXITCODE) { 0 } else { [int]$LASTEXITCODE }
   "`nFinished: $(Get-Date -Format o)`nExitCode: $exitCode" | Add-Content $LogPath
   Add-StepResult -Name $Name -ExitCode $exitCode -LogPath $LogPath
@@ -523,7 +525,7 @@ if ($PreflightExit -ne 0) {
                         $PlaywrightConfig = ".\playwright.failed-release.config.cjs"
                         $RunnerState.playwrightStarted = $true
                         Save-RunnerState
-                        Run-LiveStep "$SelectionMode Playwright gate" "& '$PlaywrightExe' test --config '$PlaywrightConfig'"
+                        Run-LiveStep "$SelectionMode Playwright gate" "& '$Root\scripts\86chaos-release-gate\Invoke-ChaosPlaywright.ps1' -Config '$PlaywrightConfig'"
                       }
                     }
                   }
@@ -588,6 +590,9 @@ if ((Test-Path $SetupStatePath) -and -not (Test-Path $CleanupPath)) {
 
 Set-RunnerPhase 'report-collection'
 Run-CollectorStep "Collect $SelectionMode report" "node scripts/86chaos-release-gate/collect-release-gate-report.cjs"
+if (-not $NoScopedPlaywrightRemain) {
+  Run-Step "Adjudicate $SelectionMode result" "node scripts/86chaos-release-gate/final-gate-outcome.cjs '$RunDir' '$RunId'"
+}
 Write-RunnerSummary
 New-Slim-ReleaseGateReport -SourceDir $RunDir -DestinationDir $SlimDir -ZipPath $SlimZipPath
 

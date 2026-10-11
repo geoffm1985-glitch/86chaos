@@ -310,5 +310,6 @@ test('reset-request-off-fixture source is narrow and cannot accept arbitrary col
   assert.doesNotMatch(source, /body\.collection/);
   assert.doesNotMatch(source, /body\.patch/);
   assert.doesNotMatch(source, /body\.status/);
-  assert.match(source, /TESTING_PROJECT_ID = 'chaos-test-d1601'/);
+  assert.match(source, /TESTING_PROJECT_ID = expectedFirebaseProject\(process\.env\)/);
+  assert.equal(require('../../scripts/86chaos-firebase-target.cjs').expectedFirebaseProject({YARDMASTER_FIREBASE_TARGET:'live'}),'chaos-test-d1601');
 });

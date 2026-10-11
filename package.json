@@ -295,7 +295,10 @@
     "test:operational-completion": "node --test api/operational-completion-17-0-86.test.cjs && react-scripts test --watchAll=false --runInBand src/components/OperationalCompletion.test.jsx && npm run test:intelligence-connections:emulator",
     "validate:18.0.12": "node scripts/validate-18-0-12.js",
     "test:repair:18.0.12": "npm run test:current-release-targeted",
-    "test:mobile-capabilities": "node --test api/mobile-native-http-18-0-12.test.cjs api/mobile-native-speech-18-0-12.test.cjs && react-scripts test --watchAll=false --runInBand src/core/nativeCapabilities.test.js src/core/schedulePdfDelivery.test.js src/core/schedulePdf.test.js src/components/NativeNotificationConnection.test.jsx"
+    "test:mobile-capabilities": "node --test api/mobile-native-http-18-0-12.test.cjs api/mobile-native-speech-18-0-12.test.cjs && react-scripts test --watchAll=false --runInBand src/core/nativeCapabilities.test.js src/core/schedulePdfDelivery.test.js src/core/schedulePdf.test.js src/components/NativeNotificationConnection.test.jsx",
+    "test:reliability": "node --test api/reliability-release-gate.test.cjs api/reliability-qa-cleanup.test.cjs api/today-recipe-evidence.test.cjs api/reliability-forecast-draft.test.cjs api/qa-operational-isolation.test.cjs && react-scripts test --watchAll=false --runInBand src/components/OperationalReliability.test.jsx",
+    "build:android:testing": "node scripts/build-testing-apk.cjs",
+    "test:mobile-testing-build": "node --test api/mobile-testing-build.test.cjs"
   },
   "browserslist": {
     "production": [

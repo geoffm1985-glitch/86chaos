@@ -4,7 +4,7 @@ import { addDoc, collection, doc, onSnapshot, updateDoc } from 'firebase/firesto
 import { getToken, onMessage } from 'firebase/messaging';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import 'leaflet/dist/leaflet.css';
-import { T, db, auth, messagingReady, isFirebaseMessagingUnsupportedError, firebaseConfig, CURRENT_VERSION, MASTER_ADMIN_EMAIL, useLiveCollection, useLiveCollectionState, useLiveDocumentState, secureFetch, waitForAuthCurrentUser, getToday, getMonthStr, formatDate, formatDisplayFullDate, formatDisplayMonth, logAudit, setActiveTimeFormat, getOfflineQueue, replayOfflineQueue, startLowCostPresenceSession, useLowCostPresenceSummary, clearTenantListenerCache, releaseAbandonedRouteListeners, recordScheduleOperationDiagnostic } from './core/appCore';
+import { T, db, auth, hasAnyPermission, messagingReady, isFirebaseMessagingUnsupportedError, firebaseConfig, CURRENT_VERSION, MASTER_ADMIN_EMAIL, useLiveCollection, useLiveCollectionState, useLiveDocumentState, secureFetch, waitForAuthCurrentUser, getToday, getMonthStr, formatDate, formatDisplayFullDate, formatDisplayMonth, logAudit, setActiveTimeFormat, getOfflineQueue, replayOfflineQueue, startLowCostPresenceSession, useLowCostPresenceSummary, clearTenantListenerCache, releaseAbandonedRouteListeners, recordScheduleOperationDiagnostic } from './core/appCore';
 import { buildAlertFingerprint, useRememberedAlert } from './core/alertMemory';
 import { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, GlobalSearchModal, KitchenTVMode, UndoBar, VoiceCommandDock } from './components/common';
 import { LockedFeatureScreen } from './components/PlanGate';
@@ -18,6 +18,7 @@ import * as runtimeReportStateModule from './core/runtimeReportState.cjs';
 import { initChaosPostHog, identifyChaosPostHogUser, resetChaosPostHogIdentity, trackChaosPageView, trackChaosPostHogEvent, trackChaosRuntimeError } from './core/posthogClient';
 import { I18nProvider, LANGUAGE_STORAGE_KEY, normalizeAppLanguage } from './core/i18n';
 import { nativePush } from './core/nativePush';
+import { installPwaCloseWatcher } from './core/pwaCloseWatcher';
 
 const resolveCommonJsModule = (moduleValue) => {
   const candidate = moduleValue?.default && typeof moduleValue.default === 'object' ? moduleValue.default : moduleValue;
@@ -845,6 +846,7 @@ export default function App() {
   const [activeTabState, setActiveTabState] = useState(initialRouteState.topLevelTab);
   const activeTabStateRef = useRef(activeTabState);
   const pwaBackExitRef = useRef({ armed: false, timer: null, initialized: false, exiting: false });
+  const pwaCloseWatcherRef = useRef(null);
   const [helpOriginState, setHelpOriginState] = useState('');
   const [clientData, setClientData] = useState(null);
   const [heartbeatDebug, setHeartbeatDebug] = useState(null);
@@ -1174,7 +1176,7 @@ const [currentDate, setCurrentDate] = useState(getToday());
   const wantsInventoryData = (((wantsToday || globalSearchHasMeaningfulQuery) && (canReadBasicInventory || canReadSmartInventory)) || (activeTabState === 'menu-intelligence' && canReadMenuCollections));
   const wantsPrepData = wantsToday; // Prep screen owns its live prep/task listeners; App keeps only Today summaries.
   const wantsMenuData = (activeTabState === 'menu-intelligence' || wantsToday) && canReadMenuCollections;
-  const wantsRecipesData = activeTabState === 'menu-intelligence' || globalSearchHasMeaningfulQuery; // Recipes screen owns its live query; App keeps only demand-driven global-search data.
+  const wantsRecipesData = activeTabState === 'menu-intelligence' || globalSearchHasMeaningfulQuery || (wantsToday && (canReadMenuCollections || (!appUser?.demoMode && !appUser?.isDemo && hasAnyPermission(appUser,['sales','salesEdit','financialEdit'])))); // Today needs recipe evidence for menu projections and reviewed item-sales matching.
   const wantsMaintenanceData = wantsToday && canReadMaintenance; // Maintenance screen owns its full listener; App keeps only Today alert context.
   const wantsSalesData = ['financials', 'sales', 'ops', 'labor'].includes(activeTabState) && canReadSalesCollections;
   const shiftRangeStart = schedulePlan.shiftClauses.find(c => c[0] === 'date' && c[1] === '>=')?.[2] || (wantsScheduleScreen ? scheduleWindowStart : getToday());
@@ -1308,11 +1310,16 @@ const [currentDate, setCurrentDate] = useState(getToday());
     }
     if (previous !== key) {
       const [previousProjectId, previousRestaurantId, previousViewerUid] = previous.split('|');
-      clearTenantListenerCache({
-        projectId: previousProjectId || undefined,
-        restaurantId: previousRestaurantId || undefined,
-        viewerUid: previousViewerUid || undefined
-      });
+      // An absent old workspace/viewer is not a wildcard. Login effects may
+      // already have attached the new scope before this boundary effect runs.
+      const obsoleteBoundary = previousProjectId !== projectId
+        ? { projectId: previousProjectId }
+        : previousViewerUid !== (authenticatedUid || '')
+          ? { projectId, viewerUid: previousViewerUid || 'anonymous' }
+          : previousRestaurantId && previousRestaurantId !== (rId || '')
+            ? { projectId, restaurantId: previousRestaurantId, viewerUid: previousViewerUid || 'anonymous' }
+            : null;
+      if (obsoleteBoundary) clearTenantListenerCache(obsoleteBoundary);
       listenerCacheBoundaryRef.current = key;
     }
   }, [firebaseConfig?.projectId, rId, authenticatedUid, ghostTenant?.id]);
@@ -2106,6 +2113,7 @@ if (liveAppUser && clientData) {
       clearTimeout(state.timer);
       state.timer = null;
     }
+    pwaCloseWatcherRef.current?.reset();
   }, []);
 
   const writeTopLevelTabHistory = useCallback((tab, options = {}) => {
@@ -2490,10 +2498,27 @@ What I clicked / expected:
     const tab = normalizeRouteTab(rawTab);
     transitionActiveTabState(tab);
 
+    const closeWatcher = isStandalone86ChaosPwa() ? installPwaCloseWatcher({
+      target: window,
+      state: pwaBackExitRef.current,
+      windowMs: CHAOS_PWA_BACK_EXIT_WINDOW_MS,
+      onWarn: () => addToast('Exit 86 Chaos', 'Press back again to exit.'),
+      closeTransientUi: () => {
+        const controls = [...document.querySelectorAll('[data-chaos-modal-close="true"], .app-drawer-readable .drawer-icon-button')];
+        const topmost = controls.filter(control => control.getClientRects().length).pop();
+        if (!topmost) return false;
+        topmost.click();
+        return true;
+      }
+    }) : null;
+    pwaCloseWatcherRef.current = closeWatcher;
+
     try {
       if (isStandalone86ChaosPwa()) {
         const currentState = window.history.state && typeof window.history.state === 'object' ? window.history.state : {};
-        if (!pwaBackExitRef.current.initialized || !currentState.chaosPwaBackGuard) {
+        if (closeWatcher) {
+          window.history.replaceState({ ...currentState, tab, chaosAppShell: true, chaosPwaBackGuard: true, chaosPwaBackBase: false }, '', appTabUrl(tab));
+        } else if (!pwaBackExitRef.current.initialized || !currentState.chaosPwaBackGuard) {
           window.history.replaceState({ ...currentState, tab, chaosAppShell: true, chaosPwaBackBase: true }, '', appTabUrl(tab));
           window.history.pushState({ tab, chaosAppShell: true, chaosPwaBackGuard: true }, '', appTabUrl(tab));
           pwaBackExitRef.current.initialized = true;
@@ -2508,6 +2533,13 @@ What I clicked / expected:
     const handlePopState = (event) => {
       const standalone = isStandalone86ChaosPwa();
       const state = pwaBackExitRef.current;
+
+      if (standalone && closeWatcher && state.armed) {
+        state.exiting = true;
+        closeWatcher.destroy();
+        try { window.history.back(); } catch (_) {}
+        return;
+      }
 
       if (standalone && event?.state?.chaosPwaBackBase) {
         const currentTab = normalizeRouteTab(activeTabStateRef.current || tab || 'today');
@@ -2544,6 +2576,8 @@ What I clicked / expected:
     window.addEventListener('popstate', handlePopState);
     return () => {
       window.removeEventListener('popstate', handlePopState);
+      closeWatcher?.destroy();
+      if (pwaCloseWatcherRef.current === closeWatcher) pwaCloseWatcherRef.current = null;
       if (pwaBackExitRef.current.timer) {
         clearTimeout(pwaBackExitRef.current.timer);
         pwaBackExitRef.current.timer = null;

@@ -1,6 +1,7 @@
 const { admin, initAdmin, authorize, readBody, writeAudit, clean, norm, memberDocId } = require('./_chaos-admin');
 const { isProductionHost, isTestingPreviewHost, parseHost } = require('../scripts/86chaos-release-gate/mutation-safety.cjs');
 const { expectedFirebaseProject } = require('../scripts/86chaos-firebase-target.cjs');
+const qaOnboardingBaseline = require('../scripts/86chaos-release-gate/qa-onboarding-baseline.cjs');
 
 const TESTING_PROJECT_ID = expectedFirebaseProject(process.env);
 const QA_PREFIX = '86 Chaos Release Gate QA ';
@@ -10,7 +11,7 @@ const ALLOWED_COLLECTIONS = new Set([
   'users', 'vendors', 'inventoryItems', 'recipes', 'menuDependencies', 'shifts', 'timeOffRequests',
   'events', 'timePunches', 'prepItems', 'tasks', 'maintenanceLogs', 'pmSchedules', 'sales',
   'financialExpenses', 'restaurantAdminAlerts', 'personalReminders', 'availabilityRecords',
-  'scheduleTemplates', 'scheduleCoverageTargets', 'workspaceMembers'
+  'scheduleTemplates', 'scheduleCoverageTargets', 'hrOnboardingTasks', 'workspaceMembers'
 ]);
 
 function safeId(value = '', max = 240) {
@@ -129,6 +130,7 @@ function roleMembership(row = {}, restaurantId = '', workspaceName = '', runId =
     isSuperAdmin: false,
     systemAdministratorVerifiedByWhoami: row.key === 'systemAdmin',
     permissions: row.permissions || {},
+    ...qaOnboardingBaseline,
     isActive: true,
     qaOwned: true,
     qaRunId: runId,
@@ -309,6 +311,8 @@ async function seedQa(req, res, { auth, db, projectId, body, base }) {
       memberships: { [base.restaurantId]: membership },
       qaRoleAccount: true,
       qaLastRunId: base.runId,
+      ...qaOnboardingBaseline,
+      preferences: { language: 'en' },
       updatedAt: isoNow(),
       updatedBy: auth.email || auth.uid || 'system-admin',
     };
@@ -464,6 +468,16 @@ async function cleanupQa(req, res, { app, auth, db, projectId, body, base }) {
   for (const row of roleAccounts) addRef('workspaceMembers', memberDocId(row.uid, base.restaurantId));
 
   const writes = [];
+  if (restaurantSnap.exists) {
+    try {
+      const {reviewedQaCleanupRefs}=require('./_qa-reviewed-cleanup');
+      const vendors=[...refs.entries()].filter(([key])=>key.startsWith('vendors/')).map(([,ref])=>ref);
+      const reviewed=await reviewedQaCleanupRefs({db,restaurant:restaurantSnap,runId:base.runId,vendors});
+      for(const ref of reviewed)writes.push({type:'delete',ref});
+    } catch(error) {
+      return res.status(409).json({ok:false,error:'Reviewed QA cleanup could not be verified. Check the current QA workspace and retry.'});
+    }
+  }
   for (const ref of refs.values()) writes.push({ type: 'delete', ref });
   if (restaurantSnap.exists) writes.push({ type: 'delete', ref: restaurantRef });
   for (const row of roleAccounts) {

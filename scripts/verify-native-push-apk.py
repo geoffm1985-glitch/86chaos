@@ -5,6 +5,9 @@ import zipfile
 from pathlib import Path
 
 root = Path(__file__).resolve().parent.parent
+testing = '--testing' in sys.argv[2:]
+expected_project = 'chaos-test-d1601' if testing else 'cheers-34b8d'
+expected_hostname = 'testing.86chaos.com' if testing else 'app.86chaos.com'
 with zipfile.ZipFile(sys.argv[1]) as apk:
     plugins = json.loads(apk.read('assets/capacitor.plugins.json'))
     assert any(p.get('classpath') == 'io.capawesome.capacitorjs.plugins.firebase.messaging.FirebaseMessagingPlugin' for p in plugins), 'Native Firebase Messaging plugin missing'
@@ -35,10 +38,17 @@ with zipfile.ZipFile(sys.argv[1]) as apk:
     assert not any(b'TestRecognitionService' in apk.read(name) for name in apk.namelist() if name.endswith('.dex')), 'Test speech provider must never ship in the downloadable APK'
     resources = apk.read('resources.arsc')
     capacitor = json.loads(apk.read('assets/capacitor.config.json'))
-    assert capacitor['server']['hostname'] == 'app.86chaos.com', 'APK local origin is not production'
-    services = json.loads((root / 'android/app/google-services.json').read_text())
+    assert capacitor['server']['hostname'] == expected_hostname, 'APK local origin does not match its target'
+    services = json.loads((root / ('mobile/testing/google-services.json' if testing else 'android/app/google-services.json')).read_text())
     app_id = services['client'][0]['client_info']['mobilesdk_app_id']
-    assert services['project_info']['project_id'] == 'cheers-34b8d'
-    for value in ['cheers-34b8d', app_id]:
-        assert value.encode() in resources or value.encode('utf-16-le') in resources, 'Production Firebase resource missing: ' + value
-print('Verified native FCM plugin, receiver, production Firebase resources and sealed APK identity for ' + version['version'])
+    assert services['project_info']['project_id'] == expected_project
+    for value in [expected_project, app_id]:
+        assert value.encode() in resources or value.encode('utf-16-le') in resources, 'Target Firebase resource missing: ' + value
+    if testing:
+        assert b'cheers-34b8d' not in resources and 'cheers-34b8d'.encode('utf-16-le') not in resources, 'Production Firebase resources leaked into testing APK'
+        target = json.loads(apk.read('assets/public/native-build-target.json'))
+        assert target['environment'] == 'testing' and target['firebaseProjectId'] == expected_project
+        assert target['apiBaseUrl'] == target['updatedApiBaseUrl'] == 'https://testing.86chaos.com', 'Testing APK API destination mismatch'
+        assert target['sourceHash'] == identity['sourceHash'] and target['commit'] == identity['commit'], 'Testing target does not match sealed APK identity'
+        assert capacitor['appName'] == '86 Chaos Testing', 'Testing APK must be labeled clearly'
+print('Verified native bridges, ' + expected_project + ' Firebase resources and sealed APK identity for ' + version['version'])

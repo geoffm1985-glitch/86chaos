@@ -3,12 +3,14 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { newlyOpenedStateDialog, recoverExitedStateModal } = require('../tests/86chaos-release-gate/utils/exhaustive-ui-helpers.cjs');
 
-function fixture(buttons, child = '') {
+function fixture(buttons, child = '', layers = 1) {
   const clicked = [];
   let open = true;
   const locator = rows => ({
+    rows,
     count: async () => rows.length,
     first: () => locator(rows.slice(0,1)),
+    or: other => locator([...new Set([...rows,...other.rows])]),
     nth: index => locator(rows.slice(index,index+1)),
     isVisible: async () => rows.length > 0 && rows[0].visible !== false && open,
     isEnabled: async () => rows.length > 0 && rows[0].enabled !== false,
@@ -17,10 +19,24 @@ function fixture(buttons, child = '') {
   const modal = {
     ...locator([{name:'dialog'}]),
     getByRole: (role, {name}) => locator((role === 'button' ? buttons : role === 'tab' && child ? [{name:child}] : []).filter(row => name.test(row.name))),
+    locator: () => locator(buttons.filter(row => row.stableClose)),
     waitFor: async ({state}) => assert.equal(open, state !== 'hidden'),
   };
-  return {clicked, page:{locator: () => ({first: () => modal}), evaluate:async () => {}}, isOpen:() => open};
+  return {clicked, page:{locator: () => ({count:async()=>layers,first:()=>{assert.equal(layers,1,'must select the topmost modal');return modal;},last:()=>modal}), evaluate:async () => {}}, isOpen:() => open};
 }
+
+test('runtime crawl uses the stable header exit in any interface language', async () => {
+  const state=fixture([{name:'閉じる',stableClose:true},{name:'Publish Manual'}]);
+  await recoverExitedStateModal(state.page,'Copy Month');assert.deepEqual(state.clicked,['閉じる']);
+});
+test('runtime crawl supports Spanish exits in existing deployed modals', async () => {
+  const state=fixture([{name:'Cerrar Publicar manual'},{name:'Publicar manual'}]);
+  await recoverExitedStateModal(state.page,'Copy Month');assert.deepEqual(state.clicked,['Cerrar Publicar manual']);
+});
+test('runtime crawl exits the topmost modal when backdrops are stacked', async () => {
+  const state=fixture([{name:'Close Copy Month'}],'',2);
+  await recoverExitedStateModal(state.page,'Schedule Builder');assert.deepEqual(state.clicked,['Close Copy Month']);
+});
 
 test('runtime crawl closes the shared Modal through its titled accessible exit', async () => {
   const state = fixture([{name:'Close Publish a Training Manual'}, {name:'Publish Manual'}]);

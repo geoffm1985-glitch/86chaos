@@ -326,7 +326,8 @@ async function visibleAncestorExitControl(page) {
 }
 
 async function recoverExitedStateModal(page, nextLabel) {
-  const modal = page.locator('.chaos-modal-backdrop:visible, [role="dialog"]:visible').first();
+  const backdrops = page.locator('.chaos-modal-backdrop:visible');
+  const modal = await backdrops.count() ? backdrops.last() : page.locator('[role="dialog"]:visible').last();
   if (!await modal.isVisible().catch(() => false)) return false;
   const raw = String(nextLabel || '');
   const escaped = raw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -338,7 +339,7 @@ async function recoverExitedStateModal(page, nextLabel) {
   // background navigation button is not actionable through a modal backdrop.
   // The shared Modal names its header exit "Close <dialog title>".
   // Search only this modal and skip hidden or disabled duplicate exits.
-  const exits = modal.getByRole('button', { name: /^(?:Cancel|Close(?:\s+.+)?)$/i });
+  const exits = modal.locator('button[data-chaos-modal-close="true"]').or(modal.getByRole('button', { name: /^(?:Cancel|Cancelar|Close(?:\s+.+)?|Cerrar(?:\s+.+)?)$/i }));
   let exit = null;
   for (let index = 0, count = await exits.count(); index < count; index += 1) {
     const candidate = exits.nth(index);

@@ -107,6 +107,8 @@ function buildFakeRestaurantProfile({ restaurantId = '', runId = '', anchorDate 
     { restaurantId, title: 'QA Burger Prep', name: 'QA Burger Prep', category: 'Prep', prepTime: '30 mins', yieldAmt: '24 patties', ingredients: 'Ground Beef\nSalt\nPepper', instructions: 'Mix, portion, press.', ...tag },
   ];
 
+  const hrOnboardingTasks = [{restaurantId,userKey:'allen',employeeName:'QA Reliability Employee',title:'QA Reliability Training',completed:false,assignedById:'86chaos-full-audit',assignedByName:'QA Reliability Manager',operationalEvidence:{cause:'prep-review',evidenceIds:['qa-reliability-source']},...tag}];
+
   const menuDependencies = [
     { restaurantId, menuItemName: 'QA Salmon BLT', inventoryItemName: 'QA Salmon Portion', dependencyName: 'QA Salmon Portion', itemName: 'QA Salmon BLT', status: 'blocked', source: '86chaos-full-audit', ...tag },
     { restaurantId, menuItemName: 'QA House Salad', inventoryItemName: 'QA Romaine', dependencyName: 'QA Romaine', itemName: 'QA House Salad', status: 'available', source: '86chaos-full-audit', ...tag },
@@ -132,7 +134,7 @@ function buildFakeRestaurantProfile({ restaurantId = '', runId = '', anchorDate 
     { restaurantId, title: 'QA Descale dishwasher', equipment: 'Dish Machine', frequencyDays: 14, lastCompleted: isoDate(addDays(today, -4)), ...tag },
   ];
 
-  const sales = Array.from({ length: 14 }).map((_, i) => {
+  const sales = Array.from({ length: 56 }).map((_, i) => {
     const date = isoDate(addDays(today, -i));
     const grossSales = i % 5 === 0 ? 9200 : 4200 + (i * 137);
     return { restaurantId, date, grossSales, netSales: grossSales * 0.92, tax: grossSales * 0.055, tips: grossSales * 0.18, discounts: i % 3 === 0 ? 45 : 0, guestCount: 90 + i, ticketCount: 45 + i, laborCost: grossSales * 0.23, source: 'full-audit-seed', ...tag };
@@ -175,7 +177,7 @@ function buildFakeRestaurantProfile({ restaurantId = '', runId = '', anchorDate 
   return {
     restaurant: { restaurantId, name: QA_WORKSPACE_NAME, timezone: 'America/Chicago', type: 'Bar & Grill', scheduleStyle: 'biweekly', payrollWeekStart: 'Monday', timeOffPolicy: { enabled: false, cutoffDaysBeforeRelease: 10, monthlyReleaseDay: 25, nonMonthlyReleaseLeadDays: 7, blackouts: [] }, systemSettings: { overtime: 40, enableTargets: true, targetLaborPct: 23 }, ...tag },
     collections: {
-      users, vendors, inventoryItems, recipes, menuDependencies, shifts, timeOffRequests, events, timePunches, prepItems, tasks, maintenanceLogs, pmSchedules, sales, financialExpenses, restaurantAdminAlerts, personalReminders: reminders, availabilityRecords, scheduleTemplates, scheduleCoverageTargets,
+      users, vendors, inventoryItems, recipes, hrOnboardingTasks, menuDependencies, shifts, timeOffRequests, events, timePunches, prepItems, tasks, maintenanceLogs, pmSchedules, sales, financialExpenses, restaurantAdminAlerts, personalReminders: reminders, availabilityRecords, scheduleTemplates, scheduleCoverageTargets,
     },
     expectations: {
       fixture,

@@ -411,6 +411,14 @@ async function dismissBlockingDialogs(page, options = {}) {
     const dialogs = await visibleDialogSnapshot(page);
     const backdropCount = await page.locator('.chaos-modal-backdrop:visible').count().catch(() => 0);
     if (!dialogs.length && backdropCount === 0) return { ok: true, dismissed, remainingDialogs: [], backdropCount: 0 };
+    const topModal = backdropCount ? page.locator('.chaos-modal-backdrop:visible').last() : page.locator('[role="dialog"]:visible').last();
+    const headerClose = topModal.locator('button[data-chaos-modal-close="true"]').first();
+    if (await headerClose.isVisible().catch(() => false) && await headerClose.isEnabled().catch(() => false)) {
+      await headerClose.click({ timeout: 2500 });
+      await topModal.waitFor({ state: 'hidden', timeout: 3500 });
+      dismissed.push({ title: dialogs.at(-1)?.title || 'modal', control: 'modal header close' });
+      continue;
+    }
     const dialog = dialogs[0] || { title: 'modal backdrop', text: '' };
     const title = dialog.title || 'dialog';
     const candidates = [];

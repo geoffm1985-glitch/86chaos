@@ -56,10 +56,17 @@ function formatDuration(ms = 0) {
   const value = Number(ms || 0);
   if (!Number.isFinite(value) || value <= 0) return '0s';
   const seconds = value / 1000;
-  if (seconds < 60) return `${seconds.toFixed(seconds < 10 ? 1 : 0)}s`;
-  const minutes = Math.floor(seconds / 60);
-  const remainder = Math.round(seconds % 60);
+  if (Math.round(seconds) < 60) return `${seconds.toFixed(seconds < 10 ? 1 : 0)}s`;
+  const rounded = Math.round(seconds);
+  const minutes = Math.floor(rounded / 60);
+  const remainder = rounded % 60;
   return `${minutes}m ${String(remainder).padStart(2, '0')}s`;
+}
+
+function createDashboardLine({ completed = 0, total = 0, elapsed = 0, counts = {} } = {}) {
+  const ratio = total > 0 ? Math.min(1, Math.max(0, completed / total)) : 0;
+  const filled = Math.floor(ratio * 24);
+  return `[PROGRESS] [${'#'.repeat(filled)}${'.'.repeat(24 - filled)}] ${Math.floor(ratio * 100)}% | ${completed}/${total} | elapsed ${formatDuration(elapsed)} | PASS ${counts.passed || 0} FAIL ${counts.failed || 0} TIMEOUT ${counts.timedOut || 0} SKIP ${counts.skipped || 0} INTERRUPTED ${counts.interrupted || 0}`;
 }
 
 function countByStatus(results = []) {
@@ -336,6 +343,9 @@ class ChaosReleaseGateReporter {
     this.manifestPrinted = false;
     this.progressJournal = null;
     this.runErrors = [];
+    this.startedAt = Date.now();
+    this.activeTests = new Set();
+    this.dashboardTimer = null;
   }
 
   emit(line = '') {
@@ -345,6 +355,7 @@ class ChaosReleaseGateReporter {
   onBegin(config, suite) {
     if (this.manifestPrinted) return;
     this.manifestPrinted = true;
+    this.startedAt = Date.now();
     const tests = suite && typeof suite.allTests === 'function' ? suite.allTests() : [];
     this.total = tests.length || Number(this.selection?.totalSelected || 0);
     try {
@@ -364,6 +375,19 @@ class ChaosReleaseGateReporter {
       includeIdentities: this.options.includeIdentities !== false,
     });
     header.forEach(line => this.emit(line));
+    this.emit('86 CHAOS | TEST QUEST | Every result earns its label.');
+    this.dashboard();
+    // Keep elapsed time moving during long tests without keeping Node alive.
+    if (this.options.dashboard !== false && typeof this.options.output !== 'function') {
+      this.dashboardTimer = setInterval(() => this.dashboard(), 15000);
+      this.dashboardTimer.unref();
+    }
+  }
+
+  dashboard() {
+    if (this.options.dashboard === false) return;
+    this.emit(createDashboardLine({ completed: this.completed, total: this.total, elapsed: Date.now() - this.startedAt, counts: this.counts }));
+    if (this.activeTests.size) this.emit('[RUNNING] ' + [...this.activeTests].join(' / '));
   }
 
   recordProgress(type, test, result) {
@@ -383,10 +407,13 @@ class ChaosReleaseGateReporter {
 
   onTestBegin(test, result) {
     this.recordProgress('start', test, result);
+    this.activeTests.add(`${testProjectName(test)} | ${humanTestTitle(test)}`);
+    this.dashboard();
   }
 
   onTestEnd(test, result) {
     this.recordProgress('end', test, result);
+    this.activeTests.delete(`${testProjectName(test)} | ${humanTestTitle(test)}`);
     const status = normalizeStatus(result?.status || 'failed');
     this.completed += 1;
     if (status === 'passed') this.counts.passed += 1;
@@ -410,9 +437,14 @@ class ChaosReleaseGateReporter {
     if (!['passed', 'skipped'].includes(status)) {
       createFailureBlock({ project, spec: row.file, title, error: result?.error || {}, artifact: attachmentPath(result || {}) }).forEach(line => this.emit(line));
     }
+    this.dashboard();
   }
 
   onEnd(result = {}) {
+    clearInterval(this.dashboardTimer);
+    this.dashboardTimer = null;
+    this.activeTests.clear();
+    this.dashboard();
     const status = normalizeStatus(result.status || '');
     if (this.progressJournal) {
       try { this.progressJournal.finish(status); }
@@ -446,6 +478,7 @@ module.exports = ChaosReleaseGateReporter;
 module.exports.ascii = ascii;
 module.exports.statusLabel = statusLabel;
 module.exports.formatDuration = formatDuration;
+module.exports.createDashboardLine = createDashboardLine;
 module.exports.countByStatus = countByStatus;
 module.exports.humanTestTitle = humanTestTitle;
 module.exports.manifestRowTitle = manifestRowTitle;

@@ -15,7 +15,7 @@ module.exports = defineConfig({
   fullyParallel: false,
   workers: 1,
   retries: process.env.CI ? 1 : 0,
-  reporter: [['list']],
+  reporter: [[require.resolve('./test-tools/reporters/chaos-release-gate-reporter.cjs'), {mode:'native-targeted'}], ['json', {outputFile: './test-results/native-mobile-foundation/playwright-report.json'}]],
   // Keep native cleanup separate from canonical release-gate evidence.
   outputDir: './test-results/native-mobile-foundation',
   use: {
