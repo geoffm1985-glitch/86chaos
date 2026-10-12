@@ -30,7 +30,7 @@ test('denied platform flags and reordered grants do not abort an attendance save
  fireEvent.click(screen.getByRole('button',{name:'Approve attendance review policy'}));
  rerender(<AttendancePolicyReview appUser={{...actor,permissions:{godmode:false,labor:true,settings:true,systemAdmin:false}}} policy={{approvedAt:'hydrated',graceMinutes:5}} onSaved={onSaved}/>);
  expect(secureFetch.mock.calls[0][1].signal.aborted).toBe(false);
- expect(screen.getByLabelText('Start/end grace minutes')).toHaveValue(11);
+ expect(screen.getByLabelText('Start/end grace minutes').value).toBe('11');
  await act(async()=>resolve(response({policy:{approvedAt:'saved',graceMinutes:11}})));expect(onSaved).toHaveBeenCalledTimes(1);
 });
 test('policy hydration cannot overwrite invalid edits or their rejection',async()=>{
@@ -39,7 +39,7 @@ test('policy hydration cannot overwrite invalid edits or their rejection',async(
  fireEvent.change(screen.getByLabelText('Open-break review minutes'),{target:{value:'0'}});
  rerender(<AttendancePolicyReview appUser={user} policy={{approvedAt:'late',maxOpenBreakMinutes:31}} onSaved={jest.fn()}/>);
  fireEvent.click(screen.getByRole('button',{name:'Approve attendance review policy'}));await screen.findByRole('alert');
- expect(screen.getByLabelText('Open-break review minutes')).toHaveValue(0);
+ expect(screen.getByLabelText('Open-break review minutes').value).toBe('0');
  expect(JSON.parse(secureFetch.mock.calls[0][1].body).policy.maxOpenBreakMinutes).toBe('0');
 });
 test('unchanged effective permissions preserve a pending history request',async()=>{
