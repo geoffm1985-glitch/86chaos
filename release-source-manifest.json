@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
   "version": "18.0.14",
-  "sourceHash": "45d60e8deaddf2ccab06dac34cef48b679537a532a86df71cae80ac7ef81ff72",
+  "sourceHash": "5b86977bd3708d76c4ddb62425ec14cd4fd98b6317ef8397ac7be2f635c51b1a",
   "files": [
     {
       "file": ".gitattributes",
@@ -4245,7 +4245,7 @@
     },
     {
       "file": "src/components/IntelligenceReviewPanels.jsx",
-      "sha256": "afe68c49657b66d5bce586a97957cf93144e76229dec6c91fce88f3fcf405607"
+      "sha256": "54689ae9d4373ca9ae898e9abbcc09ed9862b5db0407fdbd693de583ee168648"
     },
     {
       "file": "src/components/IntelligenceReviewPanels.test.jsx",
@@ -4285,7 +4285,7 @@
     },
     {
       "file": "src/components/OperationalReliability.test.jsx",
-      "sha256": "40c473133294bb090fc76fd2195dc5f32c280334df53ac99e1e01316552c095c"
+      "sha256": "1cfe0c60677c89ab7a786c5f69782c032a4adf9b6b934f5a520996742e22c8b0"
     },
     {
       "file": "src/components/PlanGate.jsx",
@@ -4873,11 +4873,11 @@
     },
     {
       "file": "src/features/management.jsx",
-      "sha256": "99a258d46b5a5a465a4f26a22d3f743f7bce8b82a3f8b36320407e3b2bab343a"
+      "sha256": "b24396e514cc730c3d5f33d012fb44170ed4ba01ac7526708b8ab20d06a362f3"
     },
     {
       "file": "src/features/operations.jsx",
-      "sha256": "a6a4358da6aac4c6c31a3659b762a225e25f79f2740a5a11bab9bfa0e82c480d"
+      "sha256": "009c3a1e5bbb88f4c5f20272f63ab124062a6aa9ba9e779c937dd58196771b64"
     },
     {
       "file": "src/features/schedule.jsx",
@@ -4890,6 +4890,14 @@
     {
       "file": "src/hooks/useDemandHistory.js",
       "sha256": "9eefbe3ca69c35beb5a942def6aa893576a009c43275009a3e56854d658633ba"
+    },
+    {
+      "file": "src/hooks/useHydratedPreference.js",
+      "sha256": "243bb15684bde2de67391301179de93bb20f8bab35bc6fc8d164ab85853deab7"
+    },
+    {
+      "file": "src/hooks/useHydratedPreference.test.js",
+      "sha256": "787e7b990ebe283e58bf9312d6b7233035f865c3a328339b2998f4b8c6c94912"
     },
     {
       "file": "src/hooks/useItemDemandHistory.js",

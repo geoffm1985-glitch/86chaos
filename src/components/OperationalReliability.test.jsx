@@ -51,3 +51,14 @@ test('unchanged effective permissions preserve a pending history request',async(
  expect(result.current.loading).toBe(true);expect(secureFetch.mock.calls[0][1].signal.aborted).toBe(false);
  await act(async()=>{resolve(response({data:[],undated:0,hasMore:false}));await pending;});expect(result.current.sources.prep.complete).toBe(true);
 });
+
+test('attendance waits for the initial saved policy and its concurrency revision before editing',async()=>{
+ secureFetch.mockResolvedValue(response({policy:{approvedAt:'saved'}}));
+ const onSaved=jest.fn(),{rerender}=render(<AttendancePolicyReview appUser={user} policyReady={false} onSaved={onSaved}/>);
+ expect(screen.queryByLabelText('Start/end grace minutes')).toBeNull();
+ expect(screen.queryByRole('button',{name:'Approve attendance review policy'})).toBeNull();
+ rerender(<AttendancePolicyReview appUser={user} policyReady policy={{approvedAt:'initial-revision',graceMinutes:11}} onSaved={onSaved}/>);
+ fireEvent.change(screen.getByLabelText('Start/end grace minutes'),{target:{value:'12'}});
+ fireEvent.click(screen.getByRole('button',{name:'Approve attendance review policy'}));await waitFor(()=>expect(onSaved).toHaveBeenCalled());
+ expect(JSON.parse(secureFetch.mock.calls[0][1].body)).toMatchObject({expectedApprovedAt:'initial-revision',policy:{graceMinutes:'12'}});
+});

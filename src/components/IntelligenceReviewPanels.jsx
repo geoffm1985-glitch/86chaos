@@ -44,7 +44,10 @@ export function HistorySourceReview({history,sources}) {
   </section>;
 }
 
-export function AttendancePolicyReview(props) {return <AttendancePolicyWorkspace key={operationalReviewBoundary(props.appUser)} {...props}/>;}
+export function AttendancePolicyReview(props) {
+ if(props.policyReady===false)return <section data-testid="attendance-policy-review" className={box}><h4 className="font-bold text-white">Attendance review policy</h4><p role="status" className="mt-2 text-xs text-slate-400">Loading saved attendance policy before review…</p></section>;
+ return <AttendancePolicyWorkspace key={operationalReviewBoundary(props.appUser)} {...props}/>;
+}
 function AttendancePolicyWorkspace({appUser,policy,workspaceTimeZone,onSaved}) {
   const alive=useRef(true),request=useRef(null),saving=useRef(false),dirty=useRef(false);
   useEffect(()=>{alive.current=true;return()=>{alive.current=false;request.current?.abort();};},[]);

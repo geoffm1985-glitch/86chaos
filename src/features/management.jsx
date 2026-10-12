@@ -1,3 +1,4 @@
+import { useHydratedPreference } from '../hooks/useHydratedPreference';
 import { NativeCapabilities, isNativeAndroid, saveNativeFile } from '../core/nativeCapabilities';
 import NativeNotificationConnection from '../components/NativeNotificationConnection';
 import { firestoreHealthEvidence, restoreDrillNeedsAttention, deploymentEvidenceChecks } from '../core/adminHealthEvidence';
@@ -1097,7 +1098,7 @@ const TabSettings = ({ appUser, addToast, users = [], clientData = {}, presenceS
   const prefs = appUser?.preferences || {};
   const [defaultTab, setDefaultTab] = useState(prefs.defaultTab || (appUser?.isAdmin ? 'schedule' : 'published'));
   const [timeFormat, setTimeFormat] = useState(prefs.timeFormat || '12h');
-  const [language, setLanguage] = useState(normalizeAppLanguage(prefs.language || 'en'));
+  const [language, setLanguage, markLanguageSaved] = useHydratedPreference(prefs.language, normalizeAppLanguage);
   const [uiDensity, setUiDensity] = useState(prefs.uiDensity || 'compact');
   const [recipeDensity, setRecipeDensity] = useState(prefs.recipeDensity || 'tight');
   const [messageView, setMessageView] = useState(prefs.messageView || 'ops');
@@ -1424,6 +1425,7 @@ const handleEnableNotifications = async () => {
           uiDensity, recipeDensity, messageView, motionMode, tableDensity, confirmDestructiveActions, showQuickDock, showMorningBrief
         }
       });
+      markLanguageSaved();
       try { window.localStorage?.setItem(LANGUAGE_STORAGE_KEY, language); } catch (_) {}
       addToast(t('preferences.savedTitle'), t('preferences.savedBody'));
     } catch (err) { addToast(t('preferences.saveErrorTitle'), t('preferences.saveErrorBody')); }
