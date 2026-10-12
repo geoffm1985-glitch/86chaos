@@ -17,6 +17,6 @@ test.describe('17.0.77 server certification drift repair', () => {
     expect(schedule).toMatch(/assert\.equal\(rows\[0\]\.existing,\s*2\)/);
     expect(schedule).toMatch(/assert\.equal\(rows\[0\]\.target,\s*1\)/);
     expect(spanish).toMatch(/saveLanguagePreference/);
-    expect(spanish).toContain("assert.match(spec, /saveLanguagePreference\\(page,\\s*['\\\"]es['\\\"]\\)/);");
+    expect(spanish).toContain("assert.match(spec, /saveLanguagePreference\\(page,\\s*['\\\"]es['\\\"],\\s*\\{\\s*verifyReload:\\s*true\\s*\\}\\)/);");
   });
 });

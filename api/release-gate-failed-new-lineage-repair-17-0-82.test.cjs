@@ -38,7 +38,7 @@ test('17.0.82 Request Off regression anchors the conflict test in October withou
 test('17.0.82 server-certification regression matches the escaped Spanish assertion source instead of pretending it is executable syntax', () => {
   const releaseSpec = read('tests/86chaos-release-gate/89-server-certification-drift-17-0-77.spec.cjs');
   const spanishSource = read('api/spanish-release-gate-fidelity-17-0-29.test.cjs');
-  const exactNestedAssertion = "assert.match(spec, /saveLanguagePreference\\(page,\\s*['\\\"]es['\\\"]\\)/);";
+  const exactNestedAssertion = "assert.match(spec, /saveLanguagePreference\\(page,\\s*['\\\"]es['\\\"],\\s*\\{\\s*verifyReload:\\s*true\\s*\\}\\)/);";
   assert.ok(spanishSource.includes(exactNestedAssertion));
   assert.ok(releaseSpec.includes(`expect(spanish).toContain(${JSON.stringify(exactNestedAssertion)});`));
   assert.doesNotMatch(releaseSpec, /expect\(spanish\)\.toMatch\(\/saveLanguagePreference\\\(\[\^\)\]\*\['\"]es\['\"]\//);

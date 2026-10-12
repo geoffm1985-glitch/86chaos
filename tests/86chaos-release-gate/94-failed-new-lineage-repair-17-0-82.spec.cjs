@@ -29,7 +29,7 @@ test.describe('17.0.82 failed+new lineage repair', () => {
 
   test('17.0.77 Spanish source assertion follows its actual escaped source contract', async () => {
     const driftSpec = read('tests/86chaos-release-gate/89-server-certification-drift-17-0-77.spec.cjs');
-    const exactNestedAssertion = "assert.match(spec, /saveLanguagePreference\\(page,\\s*['\\\"]es['\\\"]\\)/);";
+    const exactNestedAssertion = "assert.match(spec, /saveLanguagePreference\\(page,\\s*['\\\"]es['\\\"],\\s*\\{\\s*verifyReload:\\s*true\\s*\\}\\)/);";
     expect(read('api/spanish-release-gate-fidelity-17-0-29.test.cjs')).toContain(exactNestedAssertion);
     expect(driftSpec).toContain(`expect(spanish).toContain(${JSON.stringify(exactNestedAssertion)});`);
     expect(driftSpec).not.toContain("expect(spanish).toMatch(/saveLanguagePreference\\([^)]*['\"]es['\"]/);");
