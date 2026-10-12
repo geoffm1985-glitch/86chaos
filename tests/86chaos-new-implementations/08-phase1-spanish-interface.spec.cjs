@@ -22,7 +22,12 @@ async function saveLanguagePreference(page, value, { verifyReload = false } = {}
   await language.selectOption(value);
   const save = page.getByRole('button', { name: /save preferences|guardar preferencias/i }).first();
   await expect(save, `Save Preferences must stay visible while persisting language ${value}`).toBeVisible({ timeout: 10000 });
+  // The local snapshot can translate the page before the write is acknowledged.
+  // Only reload after the success feedback from the completed server write.
+  const savedNotice = page.getByText(/^(Preferences Saved|Preferencias guardadas)$/i);
+  await expect(savedNotice).toHaveCount(0, { timeout: 15000 });
   await save.click();
+  await expect(savedNotice).toBeVisible({ timeout: 15000 });
   await expect(page.locator('html')).toHaveAttribute('lang', value, { timeout: 15000 });
   await expect(language).toHaveValue(value);
   if (!verifyReload) return;

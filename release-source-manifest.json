@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
   "version": "18.0.14",
-  "sourceHash": "5b86977bd3708d76c4ddb62425ec14cd4fd98b6317ef8397ac7be2f635c51b1a",
+  "sourceHash": "6b24e7999452009ee7d13dcee8d2cf0be7ca3c987408839bc2dc8ebef2ed060b",
   "files": [
     {
       "file": ".gitattributes",
@@ -5209,7 +5209,7 @@
     },
     {
       "file": "tests/86chaos-new-implementations/08-phase1-spanish-interface.spec.cjs",
-      "sha256": "ba0a0cf247a76b916e80b16084a5eee13f8f8de48ff04d2ea5871f3a0cc3ba49"
+      "sha256": "0e88d9bcfa8539183444d30836af49a30f874a8c36b9310a51c977aabaf71f4b"
     },
     {
       "file": "tests/86chaos-new-implementations/09-schedule-builder-shift-assignment.spec.cjs",
