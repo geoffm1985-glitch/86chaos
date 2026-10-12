@@ -5,12 +5,21 @@ export function withSelectedWorkspaceContext(profile, workspaceId) {
   return { ...profile, restaurantId: String(workspaceId || '').trim() };
 }
 
-// Permission map ordering and an explicit denied flag do not change access.
-// Real account, tenant, role, or granted-permission changes still clear reviews.
+// Personal preferences belong to the account, not its copied roster membership.
+export function resolvePersonalPreferences(accountUser = {}, member = {}) {
+  return accountUser.preferences || member.preferences || {};
+}
+
+// These panels use the same broad manager access as hasAnyPermission. Additional
+// owner aliases or a hydrated grant map do not change that effective access.
+// Identity, tenant, role, loss of manager access and staff grants still reset it.
 export function operationalReviewBoundary(user) {
+  const manager = user?.isSuperAdmin === true || user?.systemAccess?.superAdmin === true ||
+    ['isOwner','owner','accountOwner','workspaceOwner','isAdmin'].some(key => user?.[key] === true) ||
+    String(user?.accountRole || '').toLowerCase() === 'owner';
   return JSON.stringify([
     user?.restaurantId || '', user?.uid || user?.id || '', user?.role || '',
-    ['isOwner','owner','accountOwner','workspaceOwner','isAdmin','isSuperAdmin','demoMode','isDemo'].filter(key => Boolean(user?.[key])),
-    Object.keys(user?.permissions || {}).filter(key => Boolean(user.permissions[key])).sort(),
+    Boolean(user?.demoMode || user?.isDemo),
+    manager ? 'workspace-manager' : Object.keys(user?.permissions || {}).filter(key => user.permissions[key] === true).sort(),
   ]);
 }

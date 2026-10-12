@@ -45,7 +45,7 @@ test.describe('17.0.26 Phase 1 Spanish interface', () => {
     await saveLanguagePreference(page, 'en');
 
     try {
-      await saveLanguagePreference(page, 'es');
+      await saveLanguagePreference(page, 'es', { verifyReload: true });
       await expect(page.locator('button.settings-tab-button').filter({ hasText: /^Preferencias$/i }).first()).toBeVisible();
 
       await page.getByRole('button', { name: /open navigation menu/i }).click();
@@ -54,18 +54,18 @@ test.describe('17.0.26 Phase 1 Spanish interface', () => {
       await expect(page.getByText('Configuración', { exact: true })).toBeVisible();
       await page.keyboard.press('Escape');
 
-      await page.goto(appUrl('published'), { waitUntil: 'domcontentloaded' });
+      await gotoTab(page, 'published');
       await dismissBlockingDialogs(page);
       await expect(page.getByRole('button', { name: /Mi horario/i }).first()).toBeVisible({ timeout: 20000 });
       await expect(page.getByRole('button', { name: /Pedir libre/i }).first()).toBeVisible();
       await expect(page.getByText(/FICHAR (ENTRADA|SALIDA)/i).first()).toBeVisible({ timeout: 15000 });
 
-      await page.goto(appUrl('prep'), { waitUntil: 'domcontentloaded' });
+      await gotoTab(page, 'prep');
       await dismissBlockingDialogs(page);
       await expect(page.getByRole('button', { name: /Preparación/i }).first()).toBeVisible({ timeout: 20000 });
       await expect(page.getByRole('button', { name: /Control de línea/i }).first()).toBeVisible();
 
-      await page.goto(appUrl('today'), { waitUntil: 'domcontentloaded' });
+      await gotoTab(page, 'today');
       await expect(page.getByText(/Resumen del gerente|Resumen de cocina|Resumen del bar|Resumen de servicio|Resumen de hoy|Inicio de hoy/i).first()).toBeVisible({ timeout: 20000 });
     } finally {
       await page.goto(appUrl('settings'), { waitUntil: 'domcontentloaded' });

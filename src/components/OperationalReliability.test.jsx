@@ -28,7 +28,7 @@ test('denied platform flags and reordered grants do not abort an attendance save
  const actor={...user,permissions:{settings:true,labor:true}}, {rerender}=render(<AttendancePolicyReview appUser={actor} onSaved={onSaved}/>);
  fireEvent.change(screen.getByLabelText('Start/end grace minutes'),{target:{value:'11'}});
  fireEvent.click(screen.getByRole('button',{name:'Approve attendance review policy'}));
- rerender(<AttendancePolicyReview appUser={{...actor,permissions:{godmode:false,labor:true,settings:true,systemAdmin:false}}} policy={{approvedAt:'hydrated',graceMinutes:5}} onSaved={onSaved}/>);
+ rerender(<AttendancePolicyReview appUser={{...actor,owner:true,accountOwner:true,workspaceOwner:true,isAdmin:true,permissions:{godmode:false,labor:true,settings:true,systemAdmin:false}}} policy={{approvedAt:'hydrated',graceMinutes:5}} onSaved={onSaved}/>);
  expect(secureFetch.mock.calls[0][1].signal.aborted).toBe(false);
  expect(screen.getByLabelText('Start/end grace minutes').value).toBe('11');
  await act(async()=>resolve(response({policy:{approvedAt:'saved',graceMinutes:11}})));expect(onSaved).toHaveBeenCalledTimes(1);
@@ -47,7 +47,7 @@ test('unchanged effective permissions preserve a pending history request',async(
  const actor={...user,permissions:{settings:true,labor:true}};
  const {result,rerender}=renderHook(({actor})=>useOperationalHistory(actor,true),{initialProps:{actor}});
  let pending;act(()=>{pending=result.current.load('prep');});
- rerender({actor:{...actor,permissions:{labor:true,systemAdmin:false,settings:true,godmode:false}}});
+ rerender({actor:{...actor,owner:true,accountOwner:true,workspaceOwner:true,isAdmin:true,permissions:{labor:true,systemAdmin:false,settings:true,godmode:false}}});
  expect(result.current.loading).toBe(true);expect(secureFetch.mock.calls[0][1].signal.aborted).toBe(false);
  await act(async()=>{resolve(response({data:[],undated:0,hasMore:false}));await pending;});expect(result.current.sources.prep.complete).toBe(true);
 });

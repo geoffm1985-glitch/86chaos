@@ -1,4 +1,4 @@
-import { withSelectedWorkspaceContext } from './core/workspaceContext';
+import { withSelectedWorkspaceContext, resolvePersonalPreferences } from './core/workspaceContext';
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { Bell, Bug, ChevronLeft, ChevronRight, Loader2, Menu, Moon, Send, X } from 'lucide-react';
 import { addDoc, collection, doc, onSnapshot, updateDoc } from 'firebase/firestore';
@@ -807,6 +807,7 @@ const userFromWorkspaceMember = (member = {}, accountUser = {}) => {
     employeeEmail: member.employeeEmail || member.email || accountUser.employeeEmail || accountUser.email || '',
     restaurantId: member.restaurantId || accountUser.restaurantId,
     restaurantName: safeWorkspaceName(member),
+    preferences: resolvePersonalPreferences(accountUser, member),
     permissions: { ...(member.permissions || {}) },
     isAdmin: member.isAdmin === true || accountUser.isSuperAdmin === true,
     isSuperAdmin: accountUser.isSuperAdmin === true,

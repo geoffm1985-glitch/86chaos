@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
   "version": "18.0.14",
-  "sourceHash": "76bd86883c482011dd659b5402aca228718d8592dabb610968e8e2ef04326ca1",
+  "sourceHash": "dfcbf05092094a1a5099481620d55d45b598dc0434675e8d4ae5d980ccaf61a0",
   "files": [
     {
       "file": ".gitattributes",
@@ -4229,7 +4229,7 @@
     },
     {
       "file": "src/App.js",
-      "sha256": "7c1cb3f8f83938a9e0ffe8b0d80f239749b796cee9a9ce631dbd4ff2aadf2d2c"
+      "sha256": "c5a024f6c385278f373f5fa09c79a7ae7a38cb4c50452450ff90f9712f1ee833"
     },
     {
       "file": "src/components/CheersLogo.js",
@@ -4285,7 +4285,7 @@
     },
     {
       "file": "src/components/OperationalReliability.test.jsx",
-      "sha256": "19a39f4ce1f472b79cf815f966d389567912cafc3c482fbaf8df9ee269bf2647"
+      "sha256": "40c473133294bb090fc76fd2195dc5f32c280334df53ac99e1e01316552c095c"
     },
     {
       "file": "src/components/PlanGate.jsx",
@@ -4845,11 +4845,11 @@
     },
     {
       "file": "src/core/workspaceContext.js",
-      "sha256": "bf1f7b51e57af2d7da20c4df9cebc2050022a1c565af9e4e92af2fa40aeef6cd"
+      "sha256": "c6f3b72caea2615e51a24b197c390a093c11b068fbe43a75fa4366b1c19339be"
     },
     {
       "file": "src/core/workspaceContext.test.js",
-      "sha256": "32b57dfe13641d9407faba9a377a4654e7fefee952332b8c5161e8aba356904b"
+      "sha256": "1c8a4fe3f85cf0f1a125ddd2b95d673d6a4ae05a30ff4e95c172941e20019922"
     },
     {
       "file": "src/features/auth.jsx",
@@ -5201,7 +5201,7 @@
     },
     {
       "file": "tests/86chaos-new-implementations/08-phase1-spanish-interface.spec.cjs",
-      "sha256": "22be6924b24f4ced9bdbc4cd1498b2bee9b269f10dbe7aad241394680aef6cf7"
+      "sha256": "d4448b46cdbbff123cfc569edd216551532df78decbc4327438769c73e57cbad"
     },
     {
       "file": "tests/86chaos-new-implementations/09-schedule-builder-shift-assignment.spec.cjs",
