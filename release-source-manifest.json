@@ -1,7 +1,7 @@
 {
-  "schemaVersion": 2,
+  "schemaVersion": 3,
   "version": "18.0.14",
-  "sourceHash": "8d615c5b98a4292b3198638ccf4def70fdd4ed516e0b02ebf190866685916261",
+  "sourceHash": "8a5563a3a9af51ba4c15d675ad8d67bde29dd9392a37309c3458b4e9a4196b82",
   "files": [
     {
       "file": ".gitattributes",
@@ -2161,7 +2161,7 @@
     },
     {
       "file": "api/spanish-release-gate-fidelity-17-0-29.test.cjs",
-      "sha256": "0799a6efd556c4cacaf6abe72bcbf60690ba86ee701dff8c8ecb7b3afa2a0213"
+      "sha256": "046272384eb96973ac6c18b785dc6b31d13b3b5a2d52545fcb81094eb7dfc63d"
     },
     {
       "file": "api/staff-member-email-update-source.test.cjs",
