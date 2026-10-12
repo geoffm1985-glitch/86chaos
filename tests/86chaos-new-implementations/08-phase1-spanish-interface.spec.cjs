@@ -1,6 +1,6 @@
 'use strict';
 const { test, expect } = require('@playwright/test');
-const { ownerLikeCreds, requireCreds, login, gotoTab, appUrl, dismissBlockingDialogs } = require('../86chaos-full-audit/utils/audit-helpers.cjs');
+const { ownerLikeCreds, requireCreds, login, gotoTab, appUrl } = require('../86chaos-full-audit/utils/audit-helpers.cjs');
 const { restoreCurrentQaLanguage } = require('../86chaos-full-audit/utils/qa-language-isolation.cjs');
 
 async function openPreferencesAfterHydration(page) {
@@ -8,7 +8,7 @@ async function openPreferencesAfterHydration(page) {
   for (let attempt = 0; attempt < 3; attempt += 1) {
     const preferencesTab = page.getByRole('button', { name: /preferences|preferencias/i }).first();
     await expect(preferencesTab).toBeVisible({ timeout: 15000 });
-    await preferencesTab.click();
+    await preferencesTab.click({ timeout: 15000 });
     if (await language.isVisible().catch(() => false)) return language;
     await page.waitForTimeout(350);
   }
@@ -42,6 +42,10 @@ test.describe('17.0.26 Phase 1 Spanish interface', () => {
     await login(page, account.email, account.password, { chooseWorkspace: true });
     await gotoTab(page, 'settings');
 
+    // A tour can appear after fresh profile hydration, including after reload.
+    // Dismiss it at action time instead of checking once before it exists.
+    await page.addLocatorHandler(page.getByRole('button', { name: "Skip and don't show again", exact: true }), async button => { await button.click({ timeout: 2500 }); });
+
     await saveLanguagePreference(page, 'en');
 
     try {
@@ -54,18 +58,16 @@ test.describe('17.0.26 Phase 1 Spanish interface', () => {
       await expect(page.getByText('Configuración', { exact: true })).toBeVisible();
       await page.keyboard.press('Escape');
 
-      await gotoTab(page, 'published');
-      await dismissBlockingDialogs(page);
+      await page.goto(appUrl('published'), { waitUntil: 'domcontentloaded' });
       await expect(page.getByRole('button', { name: /Mi horario/i }).first()).toBeVisible({ timeout: 20000 });
       await expect(page.getByRole('button', { name: /Pedir libre/i }).first()).toBeVisible();
       await expect(page.getByText(/FICHAR (ENTRADA|SALIDA)/i).first()).toBeVisible({ timeout: 15000 });
 
-      await gotoTab(page, 'prep');
-      await dismissBlockingDialogs(page);
+      await page.goto(appUrl('prep'), { waitUntil: 'domcontentloaded' });
       await expect(page.getByRole('button', { name: /Preparación/i }).first()).toBeVisible({ timeout: 20000 });
       await expect(page.getByRole('button', { name: /Control de línea/i }).first()).toBeVisible();
 
-      await gotoTab(page, 'today');
+      await page.goto(appUrl('today'), { waitUntil: 'domcontentloaded' });
       await expect(page.getByText(/Resumen del gerente|Resumen de cocina|Resumen del bar|Resumen de servicio|Resumen de hoy|Inicio de hoy/i).first()).toBeVisible({ timeout: 20000 });
     } finally {
       await page.goto(appUrl('settings'), { waitUntil: 'domcontentloaded' });
