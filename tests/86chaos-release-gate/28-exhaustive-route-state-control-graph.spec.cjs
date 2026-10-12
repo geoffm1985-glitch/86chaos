@@ -35,6 +35,9 @@ test.describe('28 ultimate route + nested-state + control graph', () => {
         if (!loggedLabel || (wanted === 'SYSTEM_ADMIN' && loggedLabel !== 'SYSTEM_ADMIN') || (wanted === 'OWNER' && loggedLabel === 'SYSTEM_ADMIN')) {
           await context?.close().catch(() => {});
           context = await browser.newContext(projectContextOptions(testInfo));
+          // Bound every descriptor lookup, not the total graph's coverage.
+          context.setDefaultTimeout(5000);
+          context.setDefaultNavigationTimeout(45000);
           page = await context.newPage();
           loggedLabel = await loginForRoute(page, route.tab);
         }
@@ -86,10 +89,10 @@ test.describe('28 ultimate route + nested-state + control graph', () => {
         report.routes.push(routeRow);
       }
     } finally {
+      // Retain the visited graph even if a later route fails or times out.
+      await attachJson(testInfo, '28-exhaustive-route-state-control-graph.json', report);
       await context?.close().catch(() => {});
     }
-
-    await attachJson(testInfo, '28-exhaustive-route-state-control-graph.json', report);
     expect(report.missingStates, 'Every source-derived nested application surface must be reachable; missing states are release blockers').toEqual([]);
     expect(report.totals.states, 'Exhaustive gate should visit a substantial state graph, not just route smoke pages').toBeGreaterThanOrEqual(80);
     expect(report.totals.controls, 'Exhaustive gate should observe hundreds of real interactive controls').toBeGreaterThanOrEqual(400);

@@ -33,7 +33,7 @@ export function assertFirebaseEmulatorBrowserHost(hostname = '') {
   if (!LOCAL_HOST_RE.test(clean)) throw new Error(`86 Chaos emulator mode is local-only. Browser host "${clean || '(missing)'}" is not allowed.`);
   return true;
 }
-const probe = async (name, port, timeoutMs = 3500, path = '/') => {
+const probeOnce = async (name, port, timeoutMs = 3500, path = '/') => {
   if (typeof fetch !== 'function') return { name, skipped: true };
   const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
   const timer = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
@@ -44,6 +44,14 @@ const probe = async (name, port, timeoutMs = 3500, path = '/') => {
     throw new Error(`Firebase ${name} emulator is unavailable at ${firebaseEmulatorSettings.host}:${port}. Emulator mode is fail-closed and will not fall back to live Firebase. ${error?.message || error}`);
   } finally { if (timer) clearTimeout(timer); }
 };
+const probe = async (...args) => {
+  let lastError;
+  for (let attempt=0; attempt<3; attempt+=1) {
+    try { return await probeOnce(...args); } catch (error) { lastError=error; }
+    if (attempt<2) await new Promise(resolve=>setTimeout(resolve,150));
+  }
+  throw lastError;
+};
 export async function verifyFirebaseEmulatorAvailability() {
   if (!isFirebaseEmulatorTarget || typeof window === 'undefined') return { ok: true, target: firebaseRuntimeTarget, services: [] };
   const services = await Promise.all([
@@ -51,7 +59,7 @@ export async function verifyFirebaseEmulatorAvailability() {
     probe('Authentication', firebaseEmulatorSettings.authPort),
     probe('Functions', firebaseEmulatorSettings.functionsPort),
     probe('Realtime Database', firebaseEmulatorSettings.databasePort),
-    probe('Storage', firebaseEmulatorSettings.storagePort, 3500, `/v0/b/${encodeURIComponent(`${firebaseEmulatorSettings.projectId}.appspot.com`)}/o`),
+    probe('Storage', firebaseEmulatorSettings.storagePort, 3500, `/v0/b/${encodeURIComponent(`${firebaseEmulatorSettings.projectId}.appspot.com`)}/o?maxResults=1`),
   ]);
   return { ok: true, target: firebaseRuntimeTarget, projectId: firebaseEmulatorSettings.projectId, services };
 }

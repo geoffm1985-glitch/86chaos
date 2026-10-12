@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
   "version": "18.0.14",
-  "sourceHash": "06485d2c6d34f65b99e8c24ac9ab57c4d2ce0b5ce3645ced83e361ab64cd4b42",
+  "sourceHash": "9f64ade595adf84e7dbf328e5c6f26b82897b30e1d7ad7561b42ee47670b8bae",
   "files": [
     {
       "file": ".gitattributes",
@@ -1277,11 +1277,11 @@
     },
     {
       "file": "api/mobile-capabilities.js",
-      "sha256": "23be88e8f70c8a0eba83788d83543374a49163ca6ee6ab51c7a88a133e4d2a24"
+      "sha256": "ad63ca24ea07a37628da989d52f816c238322293fed3c93c15fa17f22a27843d"
     },
     {
       "file": "api/mobile-capabilities.test.cjs",
-      "sha256": "2016fd2c1cab1eefc9c53094a8d889e517a2c16b0ac6dbea441dcc268dc5ab53"
+      "sha256": "a64924374c7dc59116bd5b6a53635e7bbc8250186d9a4500f3b3c2399b0fcfc9"
     },
     {
       "file": "api/mobile-native-api-bridge-18-0-1.test.cjs",
@@ -4245,7 +4245,7 @@
     },
     {
       "file": "src/components/IntelligenceReviewPanels.jsx",
-      "sha256": "bf0fe331b2cf55b3ec45ad37d9f2fd045e794962901531e1f6540ceed0a2809a"
+      "sha256": "afe68c49657b66d5bce586a97957cf93144e76229dec6c91fce88f3fcf405607"
     },
     {
       "file": "src/components/IntelligenceReviewPanels.test.jsx",
@@ -4285,7 +4285,7 @@
     },
     {
       "file": "src/components/OperationalReliability.test.jsx",
-      "sha256": "e370322b462cf7628c57c429e0df78af8e5205c6a4541d0600f3c6a049ca13ed"
+      "sha256": "817a390f80efdbe57072760cee357c56bf7c37fc6ec3d1eb6214623be268fec3"
     },
     {
       "file": "src/components/PlanGate.jsx",
@@ -4429,7 +4429,11 @@
     },
     {
       "file": "src/core/firebaseTarget.js",
-      "sha256": "0f267cc81b41111fc7957f014b121d1eb2f3d8ad36db6c21e74e2be14ea8c3a9"
+      "sha256": "f27a079d708b750043a9712b0b14e67fbf2ff5fca4b97bbdf4b25870387be03c"
+    },
+    {
+      "file": "src/core/firebaseTarget.test.js",
+      "sha256": "ac7e55dd295ac2895ff27427579caaef8a100700d9de44c47721e5d40b105e5a"
     },
     {
       "file": "src/core/foodSafety.cjs",
@@ -4841,7 +4845,7 @@
     },
     {
       "file": "src/core/workspaceContext.js",
-      "sha256": "c1a0d07d13eea159e939f9dca11d82c4917945aee69819d78a985c18d2fac1dc"
+      "sha256": "bf1f7b51e57af2d7da20c4df9cebc2050022a1c565af9e4e92af2fa40aeef6cd"
     },
     {
       "file": "src/core/workspaceContext.test.js",
@@ -4873,7 +4877,7 @@
     },
     {
       "file": "src/features/operations.jsx",
-      "sha256": "c1edc9ea932e05dbc61f3bbde78f61c2cf070b3df365eb9769ed6fb837b9318e"
+      "sha256": "a6a4358da6aac4c6c31a3659b762a225e25f79f2740a5a11bab9bfa0e82c480d"
     },
     {
       "file": "src/features/schedule.jsx",
@@ -4893,7 +4897,7 @@
     },
     {
       "file": "src/hooks/useOperationalHistory.js",
-      "sha256": "bbab2567d7119e11846157d4abb0268b3a68522603f15d3a0ffb52d7ffe4034c"
+      "sha256": "564113275efd4a9e96a53a38f9e4bc0861d455c3c96dd263a421bee431cd964c"
     },
     {
       "file": "src/hooks/usePlanAccess.js",
@@ -5197,7 +5201,7 @@
     },
     {
       "file": "tests/86chaos-new-implementations/08-phase1-spanish-interface.spec.cjs",
-      "sha256": "d24fc49076838f3d32c790aa93cd7d620b85054323a6e911cffc6dfce47804f2"
+      "sha256": "22be6924b24f4ced9bdbc4cd1498b2bee9b269f10dbe7aad241394680aef6cf7"
     },
     {
       "file": "tests/86chaos-new-implementations/09-schedule-builder-shift-assignment.spec.cjs",
@@ -5277,7 +5281,7 @@
     },
     {
       "file": "tests/86chaos-release-gate/28-exhaustive-route-state-control-graph.spec.cjs",
-      "sha256": "205ea5e7bd585c3640f5a5e965f0aa195ed3e5683d1d0eaa9a46b1eef22bfd49"
+      "sha256": "12fa9d3dc223136a5d1ef9dbe5e476427b16f8f6352fd86c2febcc6d0d373356"
     },
     {
       "file": "tests/86chaos-release-gate/29-source-exhaustiveness-ledger.spec.cjs",
@@ -5421,7 +5425,7 @@
     },
     {
       "file": "tests/86chaos-release-gate/61-native-container-insets.spec.cjs",
-      "sha256": "3cc19b38a7763fc28002ba1d225f08c1dad24b9754606d71b74d1373253e6c4d"
+      "sha256": "10278c2e70ffa008541c5251883d860ab9e3ebd1713b14d58c5e32fe29a9e9b9"
     },
     {
       "file": "tests/86chaos-release-gate/61-release-gate-surgical-repairs-17-0-46.spec.cjs",
@@ -5625,7 +5629,7 @@
     },
     {
       "file": "tests/86chaos-release-gate/utils/exhaustive-ui-helpers.cjs",
-      "sha256": "5159b9eccae3d47cc65839678d83744492bed7efbb3e86750f50bf0779667452"
+      "sha256": "b12bd10062dce56d89cad01ec71602c94c78b2f490a4d2658d239d869a533436"
     },
     {
       "file": "tests/86chaos-release-gate/utils/lazy-chunk-request.cjs",

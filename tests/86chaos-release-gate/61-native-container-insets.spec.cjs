@@ -7,6 +7,8 @@ const json=file=>JSON.parse(read(file));
 
 test.describe('61 Native container insets',()=>{
   test('Android microphone matches web spacing even when WebView reports system-bar insets',async({page})=>{
+    // The production spacing rule is mobile-only on every browser project.
+    await page.setViewportSize({width:390,height:844});
     const component=read('src/components/common.jsx');
     const dockClass=component.match(/className="(voice-command-dock[^"]+)"/)[1];
     // Exercise the real CSS against a nonzero inset. Android's native container

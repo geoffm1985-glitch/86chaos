@@ -5,11 +5,12 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const source = fs.readFileSync(require.resolve('./mobile-capabilities'), 'utf8');
 
-function request(method, credentialStatus) {
+function request(method, credentialStatus, emulator = false) {
   const module = { exports: {} };
   vm.runInNewContext(source, {
     module, process: { env: { VERCEL_GIT_COMMIT_SHA: 'local-commit' } },
     require(name) {
+      if (name === '../scripts/86chaos-firebase-target.cjs') return { getFirebaseTarget: () => ({emulator, projectId:'demo-86chaos'}) };
       if (name === './_version') return { APP_VERSION: '18.0.12' };
       if (name === './_firebase-project-admin') return { projectCredentialStatus: credentialStatus };
       throw new Error('Unexpected dependency: ' + name);
@@ -47,4 +48,12 @@ test('mobile readiness controls credential inspection failures without leaking d
 test('mobile readiness rejects writes before inspecting credentials', () => {
   const response = request('POST', () => { throw new Error('must not inspect credentials'); });
   assert.equal(response.statusCode, 405);
+});
+
+test('local emulator readiness inspects only the isolated project and never claims production credentials', () => {
+  const response = request('GET', project => { assert.equal(project, 'demo-86chaos'); return { configured: true }; }, true);
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.body.projectId, 'demo-86chaos');
+  assert.equal(response.body.target, 'EMULATOR');
+  assert.equal(response.body.productionCredentialsConfigured, false);
 });

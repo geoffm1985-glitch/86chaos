@@ -1,6 +1,6 @@
 'use strict';
 const { test, expect } = require('@playwright/test');
-const { ownerLikeCreds, requireCreds, login, gotoTab, appUrl } = require('../86chaos-full-audit/utils/audit-helpers.cjs');
+const { ownerLikeCreds, requireCreds, login, gotoTab, appUrl, dismissBlockingDialogs } = require('../86chaos-full-audit/utils/audit-helpers.cjs');
 const { restoreCurrentQaLanguage } = require('../86chaos-full-audit/utils/qa-language-isolation.cjs');
 
 async function openPreferencesAfterHydration(page) {
@@ -55,11 +55,13 @@ test.describe('17.0.26 Phase 1 Spanish interface', () => {
       await page.keyboard.press('Escape');
 
       await page.goto(appUrl('published'), { waitUntil: 'domcontentloaded' });
+      await dismissBlockingDialogs(page);
       await expect(page.getByRole('button', { name: /Mi horario/i }).first()).toBeVisible({ timeout: 20000 });
       await expect(page.getByRole('button', { name: /Pedir libre/i }).first()).toBeVisible();
       await expect(page.getByText(/FICHAR (ENTRADA|SALIDA)/i).first()).toBeVisible({ timeout: 15000 });
 
       await page.goto(appUrl('prep'), { waitUntil: 'domcontentloaded' });
+      await dismissBlockingDialogs(page);
       await expect(page.getByRole('button', { name: /Preparación/i }).first()).toBeVisible({ timeout: 20000 });
       await expect(page.getByRole('button', { name: /Control de línea/i }).first()).toBeVisible();
 

@@ -1,8 +1,9 @@
 import {useEffect,useRef,useState} from 'react';
 import {secureFetch} from '../core/appCore';
+import {operationalReviewBoundary} from '../core/workspaceContext';
 
 export function useOperationalHistory(appUser,enabled) {
-  const boundary=`${appUser?.restaurantId || ''}|${appUser?.uid || appUser?.id || ''}|${JSON.stringify(appUser?.permissions || {})}`;
+  const boundary=operationalReviewBoundary(appUser);
   const active=useRef(boundary);active.current=boundary;
   const controller=useRef(null),busy=useRef(false);
   const [state,setState]=useState({boundary,sources:{},loading:false});

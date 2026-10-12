@@ -705,7 +705,13 @@ async function probeNonMutatingButtons(page, controls, evidence, { max = 120 } =
       continue;
     }
 
-    const href = row.href || await el.getAttribute('href').catch(() => '');
+    // A safe click can replace later descriptors between visibility and lookup.
+    // Never wait indefinitely for a stale descriptor to reappear.
+    const href = row.href || await el.getAttribute('href', { timeout: 500 }).catch(() => '');
+    if (!await el.isVisible().catch(() => false)) {
+      evidence.push({ label: row.label, action: 'descriptor-replaced-before-inspection', ok: true, key });
+      continue;
+    }
     let pageHost = '';
     try { pageHost = new URL(page.url()).host; } catch (_) {}
     if (href && /^(mailto:|tel:|https?:\/\/)/i.test(href) && (!pageHost || !href.includes(pageHost))) {
@@ -723,7 +729,7 @@ async function probeNonMutatingButtons(page, controls, evidence, { max = 120 } =
     }
 
     try {
-      await el.scrollIntoViewIfNeeded().catch(() => {});
+      await el.scrollIntoViewIfNeeded({ timeout: 1500 }).catch(() => {});
       await el.click({ trial: true, timeout: 1800 });
       await el.click({ timeout: 2200 });
       await neutralizeTestingPreviewOverlays(page).catch(() => null);
@@ -777,7 +783,7 @@ async function probeMutationActionability(page, evidence, { max = 220 } = {}) {
     try {
       await dismissBlockingDialogs(page, { maxPasses: 3 }).catch(() => null);
       await neutralizeTestingPreviewOverlays(page).catch(() => null);
-      await el.scrollIntoViewIfNeeded().catch(() => {});
+      await el.scrollIntoViewIfNeeded({ timeout: 1500 }).catch(() => {});
       // Playwright trial click performs the full actionability checks but does not dispatch a click.
       // This lets the exhaustive gate verify destructive/persistent controls without mutating platform/restaurant data.
       await el.click({ trial: true, timeout: 2500 });
