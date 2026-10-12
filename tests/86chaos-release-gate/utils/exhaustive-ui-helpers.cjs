@@ -679,6 +679,17 @@ function locatorFromDescriptor(page, row = {}) {
   return page.locator('button:visible, a:visible, [role="button"]:visible, [role="tab"]:visible').nth(Number(row.index || 0));
 }
 
+async function inspectControlGeometry(locator) {
+  return locator.evaluateAll(elements => {
+    const element = elements[0];
+    if (!element || !element.isConnected) return { state: 'detached' };
+    const rect = element.getBoundingClientRect();
+    const style = getComputedStyle(element);
+    if (style.visibility === 'hidden' || style.display === 'none' || rect.width <= 0 || rect.height <= 0) return { state: 'hidden' };
+    return { state: 'visible', box: { x: rect.x, y: rect.y, width: rect.width, height: rect.height } };
+  });
+}
+
 async function probeNonMutatingButtons(page, controls, evidence, { max = 120 } = {}) {
   const candidates = (controls || []).filter(row => {
     if (row.disabled || !row.visible || !row.label) return false;
@@ -721,7 +732,15 @@ async function probeNonMutatingButtons(page, controls, evidence, { max = 120 } =
     }
 
     if (isGlobal || isNavigation) {
-      const box = await el.boundingBox().catch(() => null);
+      // A toast can expire between isVisible() and geometry inspection. Read its
+      // presence and rectangle in one DOM task; never re-resolve a detached toast.
+      // Evaluation errors still fail the audit rather than becoming missing boxes.
+      const geometry = await inspectControlGeometry(el);
+      if (geometry.state !== 'visible') {
+        evidence.push({ label: row.label, action: 'descriptor-replaced-before-geometry', ok: true, key, state: geometry.state });
+        continue;
+      }
+      const box = geometry.box;
       evidence.push({ label: row.label, action: 'navigation-control-visible-descriptor-proven', ok: Boolean(box), key, controlKind: row.controlKind || '' });
       if (isGlobal && box) globalSafeProbeRegistry.add(key);
       probed++;
@@ -833,4 +852,4 @@ async function auditState(page, testInfo, identity, options = {}) {
   return result;
 }
 
-module.exports = { newlyOpenedStateDialog, recoverExitedStateModal, rx, findStateControl, applyStatePath, recoverSiblingStatePath, collectControls, classifyControl, assertHealthy, auditState, formControlSelectorFor, locatorFromFormDescriptor };
+module.exports = { inspectControlGeometry, probeNonMutatingButtons, newlyOpenedStateDialog, recoverExitedStateModal, rx, findStateControl, applyStatePath, recoverSiblingStatePath, collectControls, classifyControl, assertHealthy, auditState, formControlSelectorFor, locatorFromFormDescriptor };

@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
   "version": "18.0.14",
-  "sourceHash": "6b24e7999452009ee7d13dcee8d2cf0be7ca3c987408839bc2dc8ebef2ed060b",
+  "sourceHash": "8d615c5b98a4292b3198638ccf4def70fdd4ed516e0b02ebf190866685916261",
   "files": [
     {
       "file": ".gitattributes",
@@ -2790,6 +2790,10 @@
     {
       "file": "scripts/86chaos-release-gate/collect-release-gate-report.cjs",
       "sha256": "5cb81b19f3f9920ea3b0f51aa3248b0296dc46ea8b0c44dad073904acbed36a6"
+    },
+    {
+      "file": "scripts/86chaos-release-gate/crawler-transient-control.test.cjs",
+      "sha256": "11b9259725f9e29fa9b536a556c1377d88db627ddc3f95c823e894caf4483229"
     },
     {
       "file": "scripts/86chaos-release-gate/critical-test-inventory.cjs",
@@ -5637,7 +5641,7 @@
     },
     {
       "file": "tests/86chaos-release-gate/utils/exhaustive-ui-helpers.cjs",
-      "sha256": "b12bd10062dce56d89cad01ec71602c94c78b2f490a4d2658d239d869a533436"
+      "sha256": "3cad12284473640a1eccbfd6512f6ea2bddc1b1dd95fd4ea7b66a071790860ce"
     },
     {
       "file": "tests/86chaos-release-gate/utils/lazy-chunk-request.cjs",
