@@ -49,7 +49,13 @@ test.describe('17.0.26 Phase 1 Spanish interface', () => {
 
     // A tour can appear after fresh profile hydration, including after reload.
     // Dismiss it at action time instead of checking once before it exists.
-    await page.addLocatorHandler(page.getByRole('button', { name: "Skip and don't show again", exact: true }), async button => { await button.click({ timeout: 2500 }); });
+    await page.addLocatorHandler(page.getByRole('button', { name: "Skip and don't show again", exact: true }), async button => {
+      // A tour can hydrate while the caller is waiting on another control.
+      // Activate its real button from the keyboard and prove dismissal before
+      // resuming the interrupted action; keep handler failures observable.
+      await button.press('Enter', { timeout: 2500 });
+      await expect(button).toBeHidden({ timeout: 2500 });
+    });
 
     await saveLanguagePreference(page, 'en');
 
