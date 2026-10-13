@@ -6,13 +6,16 @@ test.describe('17.0.27 Schedule Builder shift assignment emergency repair', () =
   test('manager can assign one future shift through Schedule Builder and remove the QA shift afterward', async ({ page }) => {
     const account = ownerLikeCreds();
     requireCreds(account, 'owner/admin-like');
-    // A tour can hydrate after navigation, while a grid action is waiting.
+    await login(page, account.email, account.password, { chooseWorkspace: true });
+    await gotoTab(page, 'schedule', { fullReload: true });
+
+    // Finish navigation's modal cleanup before installing the late-tour handler.
+    // Otherwise its short close action can exhaust the handler's deadline.
+    // The handler still protects every Schedule Builder grid action.
     await page.addLocatorHandler(page.getByRole('button', { name: "Skip and don't show again", exact: true }), async button => {
       await button.press('Enter', { timeout: 2500 });
       await expect(button).toBeHidden({ timeout: 2500 });
     });
-    await login(page, account.email, account.password, { chooseWorkspace: true });
-    await gotoTab(page, 'schedule', { fullReload: true });
 
     const assignButton = page.getByTestId('schedule-builder-assign');
     const cells = page.locator('td[data-testid="schedule-builder-cell"]');
