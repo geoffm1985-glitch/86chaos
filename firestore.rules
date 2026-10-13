@@ -1455,9 +1455,9 @@ allow delete: if signedIn() && resource.data.restaurantId is string && (isSuperA
 }
 match /tempLogs/{docId} {
 allow read: if signedIn() && (isSuperAdmin() || (resource.data.restaurantId is string && isTenantMatch(resource.data.restaurantId)));
-allow create: if signedIn() && request.resource.data.restaurantId is string && (isSuperAdmin() || canTenantWriteCollection('tempLogs', request.resource.data.restaurantId));
-allow update: if signedIn() && resource.data.restaurantId is string && request.resource.data.restaurantId == resource.data.restaurantId && (isSuperAdmin() || canTenantWriteCollection('tempLogs', resource.data.restaurantId));
-allow delete: if signedIn() && resource.data.restaurantId is string && (isSuperAdmin() || canTenantWriteCollection('tempLogs', resource.data.restaurantId));
+allow create: if !request.resource.data.keys().hasAny(['safetyRevision','intentDigest','closureRequired','closureEvidence','reviewedBy','reviewedAt','managerNote']) && request.resource.data.get('reviewedByManager',false) == false && signedIn() && request.resource.data.restaurantId is string && (isSuperAdmin() || canTenantWriteCollection('tempLogs', request.resource.data.restaurantId));
+allow update: if resource.data.get('safetyRevision',0) == 0 && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['safetyRevision','intentDigest','closureRequired','closureEvidence','reviewedByManager','reviewedBy','reviewedAt','managerNote']) && signedIn() && resource.data.restaurantId is string && request.resource.data.restaurantId == resource.data.restaurantId && (isSuperAdmin() || canTenantWriteCollection('tempLogs', resource.data.restaurantId));
+allow delete: if resource.data.get('safetyRevision',0) == 0 && signedIn() && resource.data.restaurantId is string && (isSuperAdmin() || canTenantWriteCollection('tempLogs', resource.data.restaurantId));
 }
 }
 }

@@ -1,12 +1,14 @@
 'use strict';
 const { safeId, assertTenant, hash } = require('./_invoice-approval');
 const { evaluateFoodSafety, expectation } = require('../src/core/foodSafety.cjs');
+const { foodSafetyEvidence } = require('./_food-safety-evidence.cjs');
 const fail = (message, statusCode = 400) => { throw Object.assign(new Error(message), { statusCode }); };
 function canSignOff(ctx) { return Boolean(ctx.isSuperAdmin || ctx.user?.isAdmin || ctx.user?.isOwner || ctx.user?.accountOwner || ctx.permissions?.team); }
 async function foodSafety({ db, ctx, body }) {
   if (!ctx.uid || !ctx.restaurantId) fail('Workspace authorization is required.', 403);
   const manager = canSignOff(ctx);
   if (!manager && !ctx.permissions?.prep && !ctx.permissions?.kitchen) fail('Prep permission is required.', 403);
+  if (['food-safety-export','food-safety-close'].includes(body.action)) return foodSafetyEvidence({db,ctx,body,manager});
   if (body.action === 'food-safety-config') {
     if (!manager) fail('Manager approval is required for log expectations.', 403);
     const input = body.item || {}; expectation(input);
@@ -42,11 +44,16 @@ async function foodSafety({ db, ctx, body }) {
   const ref = db.collection('tempLogs').doc(`log_${hash(ctx.restaurantId + '|' + ctx.uid + '|' + body.requestId)}`);
   return db.runTransaction(async tx => {
     const [prior, item] = await Promise.all([tx.get(ref), tx.get(db.collection('lineCheckItems').doc(body.itemId))]);
-    if (prior.exists) { assertTenant(prior.data(), ctx.restaurantId); return { id: ref.id, duplicate: true }; }
+    const intentDigest = hash(JSON.stringify([body.itemId,body.temp ?? null,body.checklistResult || '',body.correctiveAction || '',body.notes || '',body.localDate || '']));
+    if (prior.exists) {
+      assertTenant(prior.data(), ctx.restaurantId);
+      if (prior.data().intentDigest && prior.data().intentDigest !== intentDigest) fail('This request identity was already used with different check details.', 409);
+      return { id: ref.id, duplicate: true };
+    }
     assertTenant(item.exists ? item.data() : null, ctx.restaurantId);
     const result = evaluateFoodSafety(item.data(), body); const at = new Date().toISOString();
     const localDate = /^\d{4}-\d{2}-\d{2}$/.test(body.localDate || '') && Math.abs(Date.parse(body.localDate) - Date.parse(at.slice(0, 10))) <= 86400000 ? body.localDate : at.slice(0, 10);
-    tx.set(ref, { ...result, restaurantId: ctx.restaurantId, itemId: item.id, itemName: item.data().name, category: item.data().category,
+    tx.set(ref, { ...result, safetyRevision: 1, intentDigest, closureRequired: result.status === 'Attention', restaurantId: ctx.restaurantId, itemId: item.id, itemName: item.data().name, category: item.data().category,
       location: item.data().location || '', loggedBy: ctx.user?.name || ctx.uid, loggedByUid: ctx.uid, timestamp: at, date: localDate });
     tx.update(item.ref, { lastLoggedAt: at });
     return { id: ref.id, ...result };

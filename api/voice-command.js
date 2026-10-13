@@ -90,6 +90,6 @@ module.exports = async function handler(req, res) {
     return res.status(200).json(parsed || { intent: 'unknown' });
   } catch (err) {
     const status = err?.statusCode || (/authorization|token|login|sign in/i.test(err?.message || '') ? 401 : 200);
-    return res.status(status).json({ intent: 'unknown', error: err.message });
+    return res.status([400,401,403,413,429,503].includes(status) ? status : 200).json({ intent: 'unknown', error: 'Voice interpretation is unavailable. Type a command or open the review screen.' });
   }
 };

@@ -1,3 +1,4 @@
+const sourceCoverage=require('./sourceCoverage.cjs');
 const {buildNeedsAttention}=require('./needsAttention.cjs');
 const {evidenceQuality}=require('./operationalEvidence.cjs');
 
@@ -144,6 +145,11 @@ function buildRestaurantReadiness(input = {}) {
     row.sourceReasons = missing.flatMap(source=>source.reasons.map(reason=>`${source.key}: ${reason}`));
     if (missing.length) { row.score=null;if(row.status==='ready')row.status='needs-data';row.statusLabel=row.status==='critical'?'Critical':row.status==='attention'?'Needs attention':'Needs data';row.reason=`${row.reason} Coverage incomplete: ${row.sourceReasons.join(' ')}`; }
   }
+  const sourceRegistry=input.requiredSourceKeys?sourceCoverage.buildSourceCoverage(input.sourceStates || {},input.requiredSourceKeys):[];
+  for(const row of categories){
+    const missing=sourceRegistry.filter(source=>source.category===row.key&&!source.complete);
+    if(missing.length){row.score=null;row.completeness='incomplete';if(row.status==='ready')row.status='needs-data';row.statusLabel=row.status==='critical'?'Critical':row.status==='attention'?'Needs attention':'Needs data';row.sourceReasons=[...(row.sourceReasons||[]),...missing.map(source=>`${source.label}: ${source.reason}`)];row.reason=`${row.reason} ${missing.map(source=>`${source.label}: ${source.reason}`).join(' ')}`;}
+  }
   const scored=categories.filter(row => Number.isFinite(row.score));
   const overallScore=scored.length ? Math.round(scored.reduce((sum,row)=>sum+row.score,0)/scored.length) : null;
   const coveragePct=Math.round(scored.length/categories.length*100);
@@ -154,7 +160,7 @@ function buildRestaurantReadiness(input = {}) {
   for(const row of categories) row.attentionItems=(byCategory.get(categoryAliases[row.key] || row.key) || []).slice(0,8);
   const needsAttention=[...categories].filter(row => row.status !== 'ready').sort((a,b)=>(severityRank[b.status]||0)-(severityRank[a.status]||0) || a.label.localeCompare(b.label));
   const status=categories.some(row => row.status === 'critical') ? 'critical' : categories.some(row => row.status === 'attention') ? 'attention' : categories.some(row => row.status === 'needs-data') ? 'partial' : 'ready';
-  return { schemaVersion:2, currentDate, overallScore, coveragePct, groundedCategoryCount:scored.length, totalCategoryCount:categories.length, status, categories, needsAttention, attentionItems, reviewOnly:true };
+  return { schemaVersion:2, currentDate, overallScore, coveragePct, groundedCategoryCount:scored.length, totalCategoryCount:categories.length, sourceRegistry, status, categories, needsAttention, attentionItems, reviewOnly:true };
 }
 
-module.exports = { buildRestaurantReadiness };
+module.exports={buildRestaurantReadiness};

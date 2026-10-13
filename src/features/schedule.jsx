@@ -1,3 +1,4 @@
+import { ShiftChangeReview } from '../components/ShiftChangeReview';
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { Bell, Check, Camera, ChevronLeft, ChevronRight, MessageSquare, Plus, Trash2, Users, Calendar, Clock, X, Loader2, Package, ClipboardList, Menu, Settings, LogOut, Shield, Send, Repeat, Edit, Moon, Sun, TrendingUp, BookOpen, Search, ChefHat, Scale, Coffee, Star, Bug, Wrench, Globe } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
@@ -1575,6 +1576,8 @@ const handleOfferSwap = async (shift) => {
         </div>
       )}
 
+      {subTab === 'my-schedule' && <ShiftChangeReview appUser={appUser} />}
+      {subTab === 'full-schedule' && <ShiftChangeReview appUser={appUser} workspaceReview />}
       {subTab === 'my-schedule' && (
         <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
           {events.filter(e => e.type === 'note' && e.isImportant).slice(0,1).map(alert => (

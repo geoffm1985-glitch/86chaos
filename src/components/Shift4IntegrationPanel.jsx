@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { T, secureFetch } from '../core/appCore';
 
 async function responseJson(response) {
@@ -7,7 +7,13 @@ async function responseJson(response) {
   return payload;
 }
 
-export default function Shift4IntegrationPanel({ restaurantId, initialProvider = '', onSaveProvider, addToast }) {
+export default function Shift4IntegrationPanel(props) {
+  return <Shift4IntegrationWorkspace key={props.restaurantId} {...props}/>;
+}
+
+function Shift4IntegrationWorkspace({ restaurantId, initialProvider = '', onSaveProvider, addToast }) {
+  const alive = useRef(true), activeRequest = useRef(false), importOperation = useRef(null);
+  useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
   const [provider, setProvider] = useState(initialProvider || '');
   const [status, setStatus] = useState(null);
   const [locations, setLocations] = useState([]);
@@ -24,10 +30,11 @@ export default function Shift4IntegrationPanel({ restaurantId, initialProvider =
   useEffect(() => { setProvider(initialProvider || ''); }, [initialProvider]);
 
   const run = useCallback(async (label, action) => {
-    setBusy(label);
+    if (activeRequest.current || !alive.current) return null;
+    activeRequest.current = true; setBusy(label);
     try { return await action(); }
     catch (error) { addToast?.('Shift4', error.message || 'The request failed safely.'); return null; }
-    finally { setBusy(''); }
+    finally { activeRequest.current = false; if (alive.current) setBusy(''); }
   }, [addToast]);
 
   const loadStatus = useCallback(() => run('status', async () => {
@@ -46,7 +53,7 @@ export default function Shift4IntegrationPanel({ restaurantId, initialProvider =
   });
   const connect = () => run('connect', async () => {
     const payload = await responseJson(await secureFetch('/api/shift4-connect', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ restaurantId }) }));
-    window.location.assign(payload.authorizationUrl);
+    if (alive.current) window.location.assign(payload.authorizationUrl);
   });
   const testConnection = () => run('test', async () => {
     const payload = await responseJson(await secureFetch('/api/shift4-test', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ restaurantId }) }));
@@ -64,7 +71,12 @@ export default function Shift4IntegrationPanel({ restaurantId, initialProvider =
     addToast?.('Shift4 Location', `${payload.selectedLocation.name} selected.`);
   });
   const importRange = (requestedFrom = from, requestedTo = to) => run('import', async () => {
-    const payload = await responseJson(await secureFetch('/api/shift4-sync', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ restaurantId, from: requestedFrom, to: requestedTo }) }));
+    const rangeKey = `${restaurantId}|${selectedLocationId}|${requestedFrom}|${requestedTo}`;
+    if (importOperation.current?.rangeKey !== rangeKey) importOperation.current = {rangeKey,id:crypto.randomUUID()};
+    const operationId = importOperation.current.id;
+    const payload = await responseJson(await secureFetch('/api/shift4-sync', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ restaurantId, from: requestedFrom, to: requestedTo, operationId }) }));
+    importOperation.current = null;
+    if (!alive.current) return payload;
     setLatest(payload.summary); setRecords(payload.preview?.records || []); setReviewPage(null);
     addToast?.('Shift4 Import', payload.summary?.status !== 'complete' ? 'Incomplete/unverified source data was saved for review and was not marked complete.' : 'Read-only Shift4 import completed for review.');
   });
@@ -106,6 +118,7 @@ export default function Shift4IntegrationPanel({ restaurantId, initialProvider =
         <div className="p-3 bg-[#12161A] border border-[#2A353D] rounded-xl"><div className={T.label}>Connection Status</div><div className="text-sm font-black text-white" data-testid="shift4-status">{status?.state || 'Not checked'}</div><div className="text-[10px] text-slate-400 mt-1">{status?.configured === false ? 'Server environment setup is incomplete.' : status?.selectedLocation?.name || 'No Shift4 Dine location selected.'}</div></div>
         <div className="p-3 bg-[#12161A] border border-[#2A353D] rounded-xl"><div className={T.label}>Last Successful Import</div><div className="text-xs font-bold text-white">{status?.lastSuccessfulImportAt ? new Date(status.lastSuccessfulImportAt).toLocaleString() : 'None yet'}</div><div className="text-[10px] text-slate-400 mt-1">Latest: {latest?.status || status?.latestImportStatus?.status || 'No import'}</div></div>
       </div>
+      <p className="text-xs text-slate-400">If a response is lost, retry the same range to recover its recorded result. Changing the range starts a separate reviewed import. Provider completeness remains explicitly unverified.</p>
       <div className="grid sm:grid-cols-3 gap-2"><button type="button" className={T.btn} disabled={!!busy} onClick={connect}>{status?.state === 'connected' ? 'Reconnect Shift4' : 'Connect Shift4'}</button><button type="button" className={T.btnAlt} disabled={!!busy} onClick={testConnection}>Test Connection</button><button type="button" className={T.btnAlt} disabled={!!busy} onClick={loadLocations}>Load Locations</button></div>
       {locations.length > 0 && <div><label className={T.label}>Verified Shift4 Dine Location</label><div className="grid sm:grid-cols-[1fr_auto] gap-2"><select aria-label="Shift4 location" className={T.input} value={selectedLocationId} onChange={event => setSelectedLocationId(event.target.value)}><option value="">Choose location…</option>{locations.map(location => <option key={location.id} value={location.id} disabled={location.supportStatus !== 'supported'}>{location.name} — {location.supportStatus}</option>)}</select><button type="button" className={T.btnAlt} disabled={!!busy || selected?.supportStatus !== 'supported'} onClick={saveLocation}>Save Location</button></div>{selected && <p className="text-[10px] text-slate-400 mt-1">{selected.supportReason}</p>}</div>}
       <div className="grid sm:grid-cols-2 gap-2"><div><label className={T.label}>From</label><input aria-label="Shift4 import from" type="date" value={from} onChange={event => setFrom(event.target.value)} className={T.input}/></div><div><label className={T.label}>To (7-day maximum)</label><input aria-label="Shift4 import to" type="date" value={to} onChange={event => setTo(event.target.value)} className={T.input}/></div></div>

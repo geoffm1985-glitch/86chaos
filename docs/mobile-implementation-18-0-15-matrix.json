@@ -1,0 +1,595 @@
+{
+  "schemaVersion": 1,
+  "version": "18.0.15",
+  "baselineCommit": "4c27b34c94ccb610fe6c0a6e6e33772499775180",
+  "scopeCount": 47,
+  "items": [
+    {
+      "id": "R01",
+      "recommendation": "Keep source/deployment/version identity fail-closed and exact-commit verified.",
+      "baselineScope": "Source/commit/version guards reject mismatched or changing evidence.",
+      "sources": [
+        "scripts/86chaos-release-gate/source-identity.cjs",
+        "scripts/86chaos-release-gate/certification-truth.cjs",
+        "scripts/pin-local-release-runtime.cjs",
+        "api/local-runtime-pin-18-0-15.test.cjs"
+      ],
+      "implementation": "Extended in 18.0.15",
+      "validation": "Pending sealed pushed-source local validation; no certification claimed",
+      "externalAcceptance": ""
+    },
+    {
+      "id": "R02",
+      "recommendation": "Harden full/delta/failed-only/partial-resume test truth, retry accounting, Windows runner exit codes, hermetic fixtures, and emergency report ZIP finalization.",
+      "baselineScope": "Full/delta reporting, retry/timeout/interrupt accounting, source-bound run artifacts and cleanup guards exist.",
+      "sources": [
+        "scripts/86chaos-release-gate/collect-release-gate-report.cjs",
+        "scripts/86chaos-release-gate/run-context.cjs"
+      ],
+      "implementation": "Existing implementation retained; regression coverage required",
+      "validation": "Pending sealed pushed-source local validation; no certification claimed",
+      "externalAcceptance": ""
+    },
+    {
+      "id": "R03",
+      "recommendation": "Eliminate runtime/console defects and prove mobile Schedule Builder, request-off, shift publishing, and schedule recovery correctness.",
+      "baselineScope": "Schedule publication, tenant checks, concurrency recovery, preference-save and tour repairs are present.",
+      "sources": [
+        "src/features/schedule.jsx",
+        "tests/86chaos-new-implementations/09-schedule-builder-shift-assignment.spec.cjs"
+      ],
+      "implementation": "Existing implementation retained; regression coverage required",
+      "validation": "Pending sealed pushed-source local validation; no certification claimed",
+      "externalAcceptance": ""
+    },
+    {
+      "id": "R04",
+      "recommendation": "Ensure partial data is never silently shown as complete; surface incomplete/retry states.",
+      "baselineScope": "Loaded/incomplete/stale/error/retry states and bounded source windows are implemented and covered.",
+      "sources": [
+        "src/components/IntelligenceReviewPanels.jsx",
+        "src/hooks/useOperationalHistory.js"
+      ],
+      "implementation": "Existing implementation retained; regression coverage required",
+      "validation": "Pending sealed pushed-source local validation; no certification claimed",
+      "externalAcceptance": ""
+    },
+    {
+      "id": "R05",
+      "recommendation": "Harden backup/restore integrity, diagnostics, rollback evidence, and deployment validation.",
+      "baselineScope": "Backup status distinguishes verified, stale, failed and unknown; an emulator recovery drill passed.",
+      "sources": [
+        "api/_security-maturity.cjs",
+        "api/firestore-backup-watchdog.js"
+      ],
+      "implementation": "Existing implementation retained; regression coverage required",
+      "validation": "Pending sealed pushed-source local validation; no certification claimed",
+      "externalAcceptance": "Production restore and protection evidence requires live acceptance."
+    },
+    {
+      "id": "R06",
+      "recommendation": "Measure Firebase/RTDB read-write demand and remove wasteful/duplicate reads while preserving correctness.",
+      "baselineScope": "Bounded reads, listener diagnostics, lifecycle cleanup and no-op avoidance exist.",
+      "sources": [
+        "src/core/firebaseCostDiagnostics.cjs",
+        "api/_presence-diagnostics.cjs"
+      ],
+      "implementation": "Existing implementation retained; regression coverage required",
+      "validation": "Pending sealed pushed-source local validation; no certification claimed",
+      "externalAcceptance": ""
+    },
+    {
+      "id": "R07",
+      "recommendation": "Keep testing vs production visually unmistakable, including preview/PWA environment warning.",
+      "baselineScope": "Separate release/environment identities and native production targeting are explicit.",
+      "sources": [
+        "src/core/firebaseTarget.js",
+        "mobile/native-platform-contract.json"
+      ],
+      "implementation": "Existing implementation retained; regression coverage required",
+      "validation": "Pending sealed pushed-source local validation; no certification claimed",
+      "externalAcceptance": ""
+    },
+    {
+      "id": "R08",
+      "recommendation": "Remove/rotate any exposed credentials and keep secret scanning / service-account protection strong.",
+      "baselineScope": "Server-only credentials and diagnostic redaction are implemented.",
+      "sources": [
+        "api/_security-maturity.cjs",
+        "api/_firebase-project-admin.js"
+      ],
+      "implementation": "Existing implementation retained; regression coverage required",
+      "validation": "Pending sealed pushed-source local validation; no certification claimed",
+      "externalAcceptance": "Credential exposure inventory requires live account review."
+    },
+    {
+      "id": "R09",
+      "recommendation": "Build a shared needs-attention engine that normalizes actionable cards across inventory/par, 86 risk/menu impact, prep/tasks, maintenance, staffing/schedule, labor, time off/trades, vendors, invoice jumps, waste/burn, AI ordering, Python findings, owner/admin alerts, and setup gaps.",
+      "baselineScope": "The shared needs-attention engine already combines operating evidence and review actions.",
+      "sources": [
+        "src/core/needsAttention.js",
+        "src/features/operations.jsx",
+        "src/core/sourceCoverage.cjs",
+        "api/source-coverage-18-0-15.test.cjs"
+      ],
+      "implementation": "Extended in 18.0.15",
+      "validation": "Pending sealed pushed-source local validation; no certification claimed",
+      "externalAcceptance": ""
+    },
+    {
+      "id": "R10",
+      "recommendation": "Make the manager experience answer: \u201cwhat needs attention today, why it matters, and the button to fix it.\u201d",
+      "baselineScope": "Manager Brief presents evidence-linked attention items with actions.",
+      "sources": [
+        "src/features/operations.jsx",
+        "src/core/needsAttention.js",
+        "api/source-coverage-18-0-15.test.cjs"
+      ],
+      "implementation": "Extended in 18.0.15",
+      "validation": "Pending sealed pushed-source local validation; no certification claimed",
+      "externalAcceptance": ""
+    },
+    {
+      "id": "R11",
+      "recommendation": "Rank Restaurant Readiness across Inventory, Prep, Staffing, Maintenance, Food Safety, Financial, Operations, and System with direct actions and explainable reasons.",
+      "baselineScope": "Readiness categories, explained scores and review destinations exist.",
+      "sources": [
+        "src/core/restaurantReadiness.js",
+        "api/source-coverage-18-0-15.test.cjs"
+      ],
+      "implementation": "Extended in 18.0.15",
+      "validation": "Pending sealed pushed-source local validation; no certification claimed",
+      "externalAcceptance": ""
+    },
+    {
+      "id": "R12",
+      "recommendation": "Keep operational intelligence deterministic, grounded in real data, review-first, and measurable.",
+      "baselineScope": "Deterministic evidence and review-first intelligence guards are implemented and exercised.",
+      "sources": [
+        "src/core/needsAttention.js",
+        "src/core/intelligenceConnections.shared.js"
+      ],
+      "implementation": "Existing implementation retained; regression coverage required",
+      "validation": "Pending sealed pushed-source local validation; no certification claimed",
+      "externalAcceptance": ""
+    },
+    {
+      "id": "R13",
+      "recommendation": "Strengthen the menu \u2192 recipe \u2192 inventory \u2192 prep \u2192 vendor \u2192 invoice \u2192 cost \u2192 margin \u2192 86-risk dependency graph.",
+      "baselineScope": "The recipe/inventory/vendor/receiving/cost/menu dependency calculations have scoped regression coverage.",
+      "sources": [
+        "src/core/restaurantKnowledgeGraph.js"
+      ],
+      "implementation": "Existing implementation retained; regression coverage required",
+      "validation": "Pending sealed pushed-source local validation; no certification claimed",
+      "externalAcceptance": ""
+    },
+    {
+      "id": "R14",
+      "recommendation": "Include allergens, substitutions, vendor-cost changes, yield, portion cost, and menu impact.",
+      "baselineScope": "Allergen/substitution provenance, cost/yield/menu links and unresolved evidence are represented.",
+      "sources": [
+        "src/core/restaurantKnowledgeGraph.js",
+        "src/core/menuIntelligence.js"
+      ],
+      "implementation": "Existing implementation retained; regression coverage required",
+      "validation": "Pending sealed pushed-source local validation; no certification claimed",
+      "externalAcceptance": ""
+    },
+    {
+      "id": "R15",
+      "recommendation": "Make dependency ownership/reachability auditable and read-efficient.",
+      "baselineScope": "Dependency provenance and bounded graph construction exist.",
+      "sources": [
+        "src/core/restaurantKnowledgeGraph.js"
+      ],
+      "implementation": "Existing implementation retained; regression coverage required",
+      "validation": "Pending sealed pushed-source local validation; no certification claimed",
+      "externalAcceptance": ""
+    },
+    {
+      "id": "R16",
+      "recommendation": "Build deterministic PO \u2194 Receiving \u2194 Invoice reconciliation.",
+      "baselineScope": "Deterministic three-way reconciliation and discrepancy classification are implemented and regression-covered.",
+      "sources": [
+        "src/core/purchaseReconciliation.cjs",
+        "api/_invoice-approval.js"
+      ],
+      "implementation": "Existing implementation retained; regression coverage required",
+      "validation": "Pending sealed pushed-source local validation; no certification claimed",
+      "externalAcceptance": ""
+    },
+    {
+      "id": "R17",
+      "recommendation": "Harden case-pack, catch-weight, split-case, partial delivery, substitution/backorder, ordered/shipped/received quantities, unit conversion, yield, and portion-cost math.",
+      "baselineScope": "Package/unit/yield math and reviewed approval safeguards have business and API regression coverage.",
+      "sources": [
+        "src/core/restaurantPack.cjs",
+        "api/_invoice-approval.js"
+      ],
+      "implementation": "Existing implementation retained; regression coverage required",
+      "validation": "Pending sealed pushed-source local validation; no certification claimed",
+      "externalAcceptance": ""
+    },
+    {
+      "id": "R18",
+      "recommendation": "Add low-confidence product research using workspace history, vendor catalogs, UPC/GTIN, and controlled web lookup, always retaining evidence/confidence and requiring human review.",
+      "baselineScope": "Reviewed vendor catalogs, source URLs and evidence-based product research foundations exist.",
+      "sources": [
+        "src/components/VendorCatalogReview.jsx",
+        "api/_operational-review.js"
+      ],
+      "implementation": "Existing implementation retained; regression coverage required",
+      "validation": "Pending sealed pushed-source local validation; no certification claimed",
+      "externalAcceptance": ""
+    },
+    {
+      "id": "R19",
+      "recommendation": "Add editable/revocable vendor/workspace learned aliases with approval metadata, match explanations, and conflict-triggered review.",
+      "baselineScope": "Approved vendor/product memory and conflict-aware mappings exist.",
+      "sources": [
+        "src/core/vendorProductMemory.shared.js",
+        "api/_invoice-approval.js"
+      ],
+      "implementation": "Existing implementation retained; regression coverage required",
+      "validation": "Pending sealed pushed-source local validation; no certification claimed",
+      "externalAcceptance": ""
+    },
+    {
+      "id": "R20",
+      "recommendation": "Add a brutal end-to-end invoice \u2192 matching \u2192 review \u2192 approval \u2192 inventory/cost \u2192 menu costing/86 impact \u2192 AI order suggestion test.",
+      "baselineScope": "The actual Firestore purchasing workflow test exists; earlier testing records report two real workflows passing.",
+      "sources": [
+        "test-tools/intelligence-purchasing-emulator.test.cjs",
+        "src/core/purchasingWorkflow.test.js"
+      ],
+      "implementation": "Existing implementation retained; regression coverage required",
+      "validation": "Pending sealed pushed-source local validation; no certification claimed",
+      "externalAcceptance": ""
+    },
+    {
+      "id": "R21",
+      "recommendation": "Keep high-risk changes blocked until reviewed; no automatic ordering.",
+      "baselineScope": "Consequential invoice/inventory changes require review and tenant-checked transactions.",
+      "sources": [
+        "api/_invoice-approval.js",
+        "api/_operational-review.js"
+      ],
+      "implementation": "Existing implementation retained; regression coverage required",
+      "validation": "Pending sealed pushed-source local validation; no certification claimed",
+      "externalAcceptance": ""
+    },
+    {
+      "id": "R22",
+      "recommendation": "Build data-grounded demand \u2192 menu \u2192 recipe \u2192 inventory \u2192 prep \u2192 86-risk forecasting.",
+      "baselineScope": "Reviewed item sales, recipe mappings, serving conversions and bounded Smart Prep demand are implemented.",
+      "sources": [
+        "src/core/smartPrepIntelligence.cjs",
+        "src/components/IntelligenceReviewPanels.jsx"
+      ],
+      "implementation": "Existing implementation retained; regression coverage required",
+      "validation": "Pending sealed pushed-source local validation; no certification claimed",
+      "externalAcceptance": ""
+    },
+    {
+      "id": "R23",
+      "recommendation": "Generate explainable prep recommendations and risk alerts with human approval.",
+      "baselineScope": "Explainable recommendations and insufficient-data/review safeguards have scoped tests.",
+      "sources": [
+        "src/core/smartPrepIntelligence.cjs"
+      ],
+      "implementation": "Existing implementation retained; regression coverage required",
+      "validation": "Pending sealed pushed-source local validation; no certification claimed",
+      "externalAcceptance": ""
+    },
+    {
+      "id": "R24",
+      "recommendation": "Use price, waste, par, order, sales/POS, and operational history only when data quality is sufficient.",
+      "baselineScope": "Qualified price, open-order, sales and history evidence feeds bounded recommendations.",
+      "sources": [
+        "src/core/smartPrepIntelligence.cjs",
+        "src/core/intelligenceConnections.shared.js"
+      ],
+      "implementation": "Existing implementation retained; regression coverage required",
+      "validation": "Pending sealed pushed-source local validation; no certification claimed",
+      "externalAcceptance": ""
+    },
+    {
+      "id": "R25",
+      "recommendation": "Continue provider-neutral, server-only, tenant-isolated, authenticated, replay-protected, idempotent POS ingestion.",
+      "baselineScope": "Provider-neutral authenticated/replay-safe/idempotent staging exists and Firestore concurrency tests passed.",
+      "sources": [
+        "api/_pos-bridge-auth.js",
+        "api/_pos-bridge-events.js",
+        "api/_shift4-import-recovery.cjs",
+        "api/shift4-recovery-18-0-15.test.cjs"
+      ],
+      "implementation": "Extended in 18.0.15",
+      "validation": "Pending sealed pushed-source local validation; no certification claimed",
+      "externalAcceptance": ""
+    },
+    {
+      "id": "R26",
+      "recommendation": "Preserve integer-cents normalization, business date/timezone handling, pagination completeness, sequence windows, durable receipts, reconciliation, and export.",
+      "baselineScope": "Staged cents/date/schema normalization, receipts, sequence/pagination and reconciliation guards are regression-covered.",
+      "sources": [
+        "api/_pos-bridge-schema.js",
+        "api/_pos-bridge-reconciliation.js",
+        "api/_shift4-import-recovery.cjs",
+        "api/shift4-recovery-18-0-15.test.cjs"
+      ],
+      "implementation": "Extended in 18.0.15",
+      "validation": "Pending sealed pushed-source local validation; no certification claimed",
+      "externalAcceptance": "Provider pagination/completion contract remains unverified; imports remain staged/incomplete."
+    },
+    {
+      "id": "R27",
+      "recommendation": "Keep POS reads/staging unable to modify inventory, Daily Close, ledger, schedule, Time Clock, payroll, orders, recipes, or menu without explicit future approval.",
+      "baselineScope": "POS staging is separated from operational mutation paths and human-authority boundaries are tested.",
+      "sources": [
+        "api/_pos-bridge-boundaries.js",
+        "api/_pos-bridge-authority.js"
+      ],
+      "implementation": "Existing implementation retained; regression coverage required",
+      "validation": "Pending sealed pushed-source local validation; no certification claimed",
+      "externalAcceptance": ""
+    },
+    {
+      "id": "R28",
+      "recommendation": "Keep PCI boundary intact.",
+      "baselineScope": "The staged bridge retains a no-card/payment-data contract with boundary coverage.",
+      "sources": [
+        "api/_pos-bridge-schema.js",
+        "api/_pos-bridge-boundaries.js"
+      ],
+      "implementation": "Existing implementation retained; regression coverage required",
+      "validation": "Pending sealed pushed-source local validation; no certification claimed",
+      "externalAcceptance": ""
+    },
+    {
+      "id": "R29",
+      "recommendation": "Move from voice navigation toward safe, permission-aware actions.",
+      "baselineScope": "Voice matching/navigation and existing command foundations are present.",
+      "sources": [
+        "src/core/voiceIntelligence.js",
+        "api/voice-command.js",
+        "src/core/operationalVoice.cjs",
+        "api/operational-voice-18-0-15.test.cjs"
+      ],
+      "implementation": "Extended in 18.0.15",
+      "validation": "Pending sealed pushed-source local validation; no certification claimed",
+      "externalAcceptance": ""
+    },
+    {
+      "id": "R30",
+      "recommendation": "Require confirmation/approval for consequential actions.",
+      "baselineScope": "Existing action authority/review gates provide the foundation for consequential voice commands.",
+      "sources": [
+        "api/voice-command.js",
+        "src/core/voiceIntelligence.js",
+        "src/components/common.jsx",
+        "api/operational-voice-18-0-15.test.cjs"
+      ],
+      "implementation": "Extended in 18.0.15",
+      "validation": "Pending sealed pushed-source local validation; no certification claimed",
+      "externalAcceptance": ""
+    },
+    {
+      "id": "R31",
+      "recommendation": "Preserve mobile/desktop voice parity and accessible fallback.",
+      "baselineScope": "Native speech/fallback and web voice paths are implemented and locally checked.",
+      "sources": [
+        "mobile/native-platform-contract.json",
+        "api/mobile-native-speech-18-0-12.test.cjs"
+      ],
+      "implementation": "Existing implementation retained; regression coverage required",
+      "validation": "Pending sealed pushed-source local validation; no certification claimed",
+      "externalAcceptance": "USB Android acceptance deferred by Geoff."
+    },
+    {
+      "id": "R32",
+      "recommendation": "Mature HACCP-style logs, corrective actions, food-safety alerts, auditability, and completion evidence.",
+      "baselineScope": "Food-safety logs, readiness inputs and corrective-action foundations exist.",
+      "sources": [
+        "api/_food-safety.js",
+        "src/core/restaurantReadiness.js",
+        "api/_food-safety-evidence.cjs",
+        "api/implementation-completion-18-0-15.test.cjs"
+      ],
+      "implementation": "Extended in 18.0.15",
+      "validation": "Pending sealed pushed-source local validation; no certification claimed",
+      "externalAcceptance": ""
+    },
+    {
+      "id": "R33",
+      "recommendation": "Connect allergens/substitutions to recipe/menu/inventory intelligence.",
+      "baselineScope": "Recipe/menu/inventory graph carries reviewed allergen and substitution evidence.",
+      "sources": [
+        "src/core/restaurantKnowledgeGraph.js",
+        "src/core/menuIntelligence.js"
+      ],
+      "implementation": "Existing implementation retained; regression coverage required",
+      "validation": "Pending sealed pushed-source local validation; no certification claimed",
+      "externalAcceptance": ""
+    },
+    {
+      "id": "R34",
+      "recommendation": "Never allow AI to silently alter food-safety-critical data.",
+      "baselineScope": "Food-safety-critical changes remain authorized and review-first in the current architecture.",
+      "sources": [
+        "api/_food-safety.js"
+      ],
+      "implementation": "Existing implementation retained; regression coverage required",
+      "validation": "Pending sealed pushed-source local validation; no certification claimed",
+      "externalAcceptance": ""
+    },
+    {
+      "id": "R35",
+      "recommendation": "Bring Help Center coverage to feature parity with real workflows, deep links, direct fixes, and setup/empty-state guidance.",
+      "baselineScope": "Help/training guidance covers the operational workflows added in 17.0.86.",
+      "sources": [
+        "src/features/trainingManual.js"
+      ],
+      "implementation": "Existing implementation retained; regression coverage required",
+      "validation": "Pending sealed pushed-source local validation; no certification claimed",
+      "externalAcceptance": ""
+    },
+    {
+      "id": "R36",
+      "recommendation": "Build operational training intelligence around real incidents, repeated errors, readiness gaps, and role-specific coaching rather than a generic LMS.",
+      "baselineScope": "Operational causes can link to manager-reviewed HR checklists and follow-up evidence.",
+      "sources": [
+        "src/core/operationalHistoryIntelligence.cjs",
+        "src/features/hr.jsx",
+        "api/_training-competency.cjs",
+        "api/training-competency-18-0-15.test.cjs"
+      ],
+      "implementation": "Extended in 18.0.15",
+      "validation": "Pending sealed pushed-source local validation; no certification claimed",
+      "externalAcceptance": ""
+    },
+    {
+      "id": "R37",
+      "recommendation": "Keep training and Ask 86 grounded in actual app behavior/data.",
+      "baselineScope": "Training and Ask 86 use current operational context and documented review workflows.",
+      "sources": [
+        "src/features/trainingManual.js",
+        "src/features/hr.jsx"
+      ],
+      "implementation": "Existing implementation retained; regression coverage required",
+      "validation": "Pending sealed pushed-source local validation; no certification claimed",
+      "externalAcceptance": ""
+    },
+    {
+      "id": "R38",
+      "recommendation": "Tighten owner/admin boundaries, guarded alternate writes, precise authorization, MFA/App Check/security diagnostics, and audit evidence.",
+      "baselineScope": "Owner/admin authorization, MFA/App Check support, diagnostics and audit code exist.",
+      "sources": [
+        "api/_chaos-admin.js",
+        "api/account-security.js",
+        "api/security-diagnostics.js",
+        "api/security-posture-evidence-18-0-15.test.cjs"
+      ],
+      "implementation": "Extended in 18.0.15",
+      "validation": "Pending sealed pushed-source local validation; no certification claimed",
+      "externalAcceptance": "Production console MFA/App Check and deployed rules evidence remains separate."
+    },
+    {
+      "id": "R39",
+      "recommendation": "Improve runtime diagnostics, forensics, backup visibility, integration health, and failure explanations.",
+      "baselineScope": "Classified/redacted diagnostics, backup visibility, listener metrics and failure explanations exist.",
+      "sources": [
+        "api/_security-maturity.cjs",
+        "api/security-diagnostics.js"
+      ],
+      "implementation": "Existing implementation retained; regression coverage required",
+      "validation": "Pending sealed pushed-source local validation; no certification claimed",
+      "externalAcceptance": ""
+    },
+    {
+      "id": "R40",
+      "recommendation": "Keep System Administrator functions permission-gated and secrets server-side.",
+      "baselineScope": "System Administrator permission and server-only secret/redaction boundaries have scoped security coverage.",
+      "sources": [
+        "api/_chaos-admin.js",
+        "api/_security-maturity.cjs",
+        "api/security-diagnostics.js",
+        "api/security-posture-evidence-18-0-15.test.cjs"
+      ],
+      "implementation": "Extended in 18.0.15",
+      "validation": "Pending sealed pushed-source local validation; no certification claimed",
+      "externalAcceptance": ""
+    },
+    {
+      "id": "R41",
+      "recommendation": "Build adapter-based/provider-neutral integrations with explicit capabilities, tenant isolation, idempotency, audit trails, health/status, and safe failure behavior.",
+      "baselineScope": "Provider-neutral POS/Shift4 adapters and staged boundaries exist.",
+      "sources": [
+        "api/_pos-bridge-route.js",
+        "api/_shift4-service.js",
+        "api/_shift4-import-recovery.cjs",
+        "api/shift4-recovery-18-0-15.test.cjs"
+      ],
+      "implementation": "Extended in 18.0.15",
+      "validation": "Pending sealed pushed-source local validation; no certification claimed",
+      "externalAcceptance": "Integration code completed; live account setup deferred by Geoff."
+    },
+    {
+      "id": "R42",
+      "recommendation": "Prefer integrations over rebuilding payroll, accounting/GL, reservations, enterprise procurement, or proprietary hardware.",
+      "baselineScope": "The documented integration strategy defers replacement payroll/GL/reservations/hardware systems.",
+      "sources": [
+        "docs/intelligence-connection-implementation-plan.md"
+      ],
+      "implementation": "Existing implementation retained; regression coverage required",
+      "validation": "Pending sealed pushed-source local validation; no certification claimed",
+      "externalAcceptance": ""
+    },
+    {
+      "id": "R43",
+      "recommendation": "Keep mobile and desktop navigation/functionality at parity.",
+      "baselineScope": "Desktop/mobile browser surfaces share operational functionality and broad recorded browser coverage.",
+      "sources": [
+        "tests/86chaos-release-gate/100-operational-reliability.spec.cjs",
+        "test-tools/certification/device-acceptance.json"
+      ],
+      "implementation": "Existing implementation retained; regression coverage required",
+      "validation": "Pending sealed pushed-source local validation; no certification claimed",
+      "externalAcceptance": "Physical Android acceptance deferred by Geoff."
+    },
+    {
+      "id": "R44",
+      "recommendation": "Strengthen PWA/install behavior, deep links/direct routes, accessibility, resilient loading/empty/error states, and offline/degraded-state messaging.",
+      "baselineScope": "PWA/install metadata, routing, loading/error and degraded-state foundations exist.",
+      "sources": [
+        "tests/86chaos-release-gate/27-pwa-browser-icon-matrix.spec.cjs",
+        "test-tools/certification/device-acceptance.json"
+      ],
+      "implementation": "Existing implementation retained; regression coverage required",
+      "validation": "Pending sealed pushed-source local validation; no certification claimed",
+      "externalAcceptance": "Physical native flows require deferred device acceptance."
+    },
+    {
+      "id": "R45",
+      "recommendation": "Preserve current design direction unless a requested redesign specifically targets it.",
+      "baselineScope": "Existing design direction remains in the current source and APK.",
+      "sources": [
+        "src/App.js",
+        "docs/daily-briefing-feature-status.md"
+      ],
+      "implementation": "Existing implementation retained; regression coverage required",
+      "validation": "Pending sealed pushed-source local validation; no certification claimed",
+      "externalAcceptance": ""
+    },
+    {
+      "id": "R46",
+      "recommendation": "Published Schedule Change Acknowledgment Evidence: material shift changes, delivery and explicit acknowledgment, permissions and audit history; no payroll penalties.",
+      "baselineScope": "The October 9 weekly review proposed this candidate; existing HR/manual acknowledgments are a different workflow.",
+      "sources": [
+        "src/features/schedule.jsx",
+        "src/features/hr.jsx",
+        "api/_shift-change-review.cjs",
+        "api/_shift-change-cancellation.cjs",
+        "api/shift-cancellation-18-0-15.test.cjs",
+        "api/implementation-completion-18-0-15.test.cjs"
+      ],
+      "implementation": "Extended in 18.0.15",
+      "validation": "Pending sealed pushed-source local validation; no certification claimed",
+      "externalAcceptance": ""
+    },
+    {
+      "id": "R47",
+      "recommendation": "Review deprecated dependency/install-script/build warnings and identify actual security or compatibility issues before modernization.",
+      "baselineScope": "October 13 briefing records warnings; no fresh dependency-vulnerability audit was performed in this reconciliation.",
+      "sources": [
+        "package.json",
+        "package-lock.json",
+        "test-tools/security/dependency-maintenance.json",
+        "api/dependency-hardening-18-0-15.test.cjs"
+      ],
+      "implementation": "Extended in 18.0.15",
+      "validation": "Pending sealed pushed-source local validation; no certification claimed",
+      "externalAcceptance": "Three upstream advisory packages remain explicitly triaged; no zero-vulnerability claim."
+    }
+  ]
+}

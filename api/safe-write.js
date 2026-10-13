@@ -12,6 +12,8 @@ const { approveMenu } = require('./_menu-approval');
 const { recipeCosting } = require('./_recipe-costing');
 const { assertNotReservedBridgeRoot } = require('./_pos-bridge-boundaries');
 const crypto = require('node:crypto');
+const { trainingCompetency } = require('./_training-competency.cjs');
+const { shiftChangeReview } = require('./_shift-change-review.cjs');
 const MAX_BODY_BYTES = 1024 * 1024;
 function parseBoundedBody(req) {
   if (String(req.headers?.['content-encoding'] || 'identity').toLowerCase() !== 'identity') throw Object.assign(new Error('Compressed requests are not accepted.'), { statusCode:415, code:'invalid_request' });
@@ -41,7 +43,7 @@ const FORBIDDEN_AUTHORITY_FIELDS = new Set([
   'permissions','rolePermissions','platformRole','accountRole','securityEpoch','credentialVersion',
   'generation','leaseToken','leaseOwnerUid','leaseExpiresAt','tenantLeaseGeneration','planDigest',
   'publishGeneration','publishOperationId','authorityRevision','membershipMigrationVersion',
-  'legacyMembershipFallback'
+  'legacyMembershipFallback','acknowledgments','closureEvidence','closureRequired','safetyRevision','intentDigest'
 ]);
 const PUBLICATION_FIELDS = new Set([
   'isPublished','published','publishedAt','publishedBy','publishedByName','publishState','publishStatus',
@@ -52,7 +54,8 @@ const PUBLICATION_FIELDS = new Set([
 const DENIED_COLLECTIONS = new Set([
   'users','workspaceMembers','restaurants','system','auditLogs','apiRateLimits',
   'schedulePublishOperations','schedulePublishLeases','posBridgeInstallations','posBridgeScopes',
-  'posBridgeAuthReplays','posBridgeControl','inventoryMutationOperations'
+  'posBridgeAuthReplays','posBridgeControl','inventoryMutationOperations',
+  'scheduleChangeEvents','scheduleChangeHeads','foodSafetyClosures','trainingCompetencyReviews'
 ]);
 function canWrite(ctx, collectionName, restaurantId) {
   if (ctx.isSuperAdmin) return true;
@@ -75,7 +78,7 @@ function forbiddenPayloadPath(value, collectionName, prefix = '') {
   if (!value || typeof value !== 'object') return '';
   for (const [key, nested] of Object.entries(value)) {
     const path = prefix ? `${prefix}.${key}` : key;
-    if (FORBIDDEN_AUTHORITY_FIELDS.has(key) || (collectionName === 'shifts' && PUBLICATION_FIELDS.has(key))) return path;
+    if (FORBIDDEN_AUTHORITY_FIELDS.has(key) || (collectionName === 'shifts' && PUBLICATION_FIELDS.has(key)) || (collectionName === 'tempLogs' && ['reviewedByManager','reviewedAt','reviewedBy','managerNote'].includes(key))) return path;
     const child = forbiddenPayloadPath(nested, collectionName, path);
     if (child) return child;
   }
@@ -125,6 +128,7 @@ async function executeGenericMutation(db, { collectionName, action, docId, data,
         error.statusCode = 404; error.code = 'target_unavailable'; throw error;
       }
     }
+    if (collectionName === 'tempLogs' && existing.safetyRevision) throw Object.assign(new Error('Food safety evidence is immutable. Use the reviewed closure workflow.'), {statusCode:403,code:'immutable_safety_evidence'});
     if (action === 'delete') {
       if (!snap.exists) { const error = new Error('The requested record is unavailable.'); error.statusCode = 404; error.code = 'target_unavailable'; throw error; }
       tx.delete(ref); return;
@@ -226,6 +230,13 @@ module.exports = async function handler(req, res) {
     const docId = clean(body.docId || '');
     const data = body.data && typeof body.data === 'object' ? body.data : {};
     const restaurantId = clean(data.restaurantId || body.restaurantId || '');
+    if (['shift-change-list','shift-change-acknowledge','training-competency-list','training-competency-review','training-competency-revoke'].includes(action)) {
+      const auth = await authorize(req, app, { allowWorkspaceMember: true, targetRestaurantId: restaurantId });
+      if (!auth.ok) return res.status(auth.status).json({ ok: false, error: auth.error });
+      const check = await requireAppCheckIfEnforced(auth.app || app, req);
+      if (!check.ok) return res.status(check.status || 401).json({ ok: false, error: check.error });
+      return res.status(200).json({ ok: true, ...await (action.startsWith('training-competency-') ? trainingCompetency : shiftChangeReview)({ db: auth.db || db, ctx: auth, body }) });
+    }
     if (action.startsWith('food-safety-')) {
       const verified = await verifyRequestToken(req, { requireProjectCredentials: true });
       const check = await requireAppCheckIfEnforced(verified.app, req);

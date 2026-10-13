@@ -1,5 +1,6 @@
 const admin = require('./_firebase-admin-compat');
 const crypto = require('crypto');
+const {assertTelemetryHeaderBudget}=require('./_request-context-limits.cjs');
 const fs = require('fs');
 const { getFirebaseTarget, applyFirebaseEmulatorEnv } = require('../scripts/86chaos-firebase-target.cjs');
 const FIREBASE_TARGET = getFirebaseTarget(process.env);
@@ -342,6 +343,7 @@ function getConfiguredDefaultProjectId(req = null) {
 }
 
 function getRequestedProjectId(req, fallback = '') {
+  assertTelemetryHeaderBudget(req?.headers);
   const token = getBearerToken(req);
   if (token) {
     try { return getTokenProjectId(token); }

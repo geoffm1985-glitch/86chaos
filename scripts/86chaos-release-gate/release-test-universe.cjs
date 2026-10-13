@@ -9,6 +9,8 @@ const RELEASE_TEST_MATCH = Object.freeze([
 ]);
 
 const RELEASE_CRITICAL_SPECS = Object.freeze([
+  'tests/86chaos-release-gate/101-mobile-implementation-completion-18-0-15.spec.cjs',
+  'tests/e2e/mobile-implementation-18-0-15.spec.cjs',
   'tests/e2e/app-health.spec.cjs',
   'tests/e2e/authenticated-release.spec.cjs',
   'tests/e2e/chunk-recovery.spec.cjs',

@@ -284,7 +284,7 @@ async function readBody(req) {
   if (typeof req.body === 'object') return req.body;
   try { return JSON.parse(req.body); } catch (_) { return {}; }
 }
-async function authorize(req, app, { allowTenantAdmin = false, targetRestaurantId = '', allowCrossProjectMaster = false, requiredPermissions = [] } = {}) {
+async function authorize(req, app, { allowTenantAdmin = false, allowWorkspaceMember = false, targetRestaurantId = '', allowCrossProjectMaster = false, requiredPermissions = [] } = {}) {
   const token = (req.headers.authorization || '').replace('Bearer ', '').trim();
   if (!token) return { ok: false, status: 401, error: 'Missing Firebase authorization token.' };
   try {
@@ -330,7 +330,8 @@ async function authorize(req, app, { allowTenantAdmin = false, targetRestaurantI
     const permissions = workspaceUser?.permissions || {};
     const explicitPermission = (Array.isArray(requiredPermissions) ? requiredPermissions : [requiredPermissions]).filter(Boolean).some(permission => permissions?.[permission] === true);
     const tenantAdmin = Boolean(allowTenantAdmin && restaurantId && (isSuperAdmin || member || allowLegacyFallback) && (workspaceUser?.isAdmin === true || workspaceUser?.isOwner === true || workspaceUser?.accountOwner === true || permissions.settings === true || permissions.team === true || explicitPermission));
-    if (!isSuperAdmin && !tenantAdmin) return { ok: false, status: 403, error: 'System Administrator access is required for this tool.' };
+    const workspaceAccess = Boolean(allowWorkspaceMember && restaurantId && (member || allowLegacyFallback));
+    if (!isSuperAdmin && !tenantAdmin && !workspaceAccess) return { ok: false, status: 403, error: 'System Administrator access is required for this tool.' };
     const mfa = requireMfaIfEnforced(decoded, workspaceUser || user || {}, isSuperAdmin);
     if (!mfa.ok) return mfa;
     return { ok: true, decoded, uid: decoded.uid, userDocId, email: decoded.email || '', user: workspaceUser || user || {}, accountUser: user || {}, workspaceMember: member, isSuperAdmin, restaurantId, permissions, mfa, app: activeApp, db };

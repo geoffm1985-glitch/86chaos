@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { operationalReviewBoundary } from '../core/workspaceContext';
 import { T, secureFetch } from '../core/appCore';
 import restaurantPackHelpers from '../core/restaurantPack.js';
 import purchaseReconciliationHelpers from '../core/purchaseReconciliation.cjs';
@@ -54,7 +55,8 @@ export function InvoiceRowReview({ row, inventoryItem, onChange, onResearch }) {
   </div>;
 }
 
-export function VendorMemoryPanel({ appUser, vendors, inventoryItems, addToast }) {
+export function VendorMemoryPanel(props) { return <VendorMemoryWorkspace key={operationalReviewBoundary(props.appUser)} {...props}/>; }
+function VendorMemoryWorkspace({ appUser, vendors, inventoryItems, addToast }) {
   const [vendorId, setVendorId] = useState(''); const [rows, setRows] = useState([]); const [cursor, setCursor] = useState(null);
   const [busy, setBusy] = useState(false); const [edit, setEdit] = useState(null);
   const load = async (id, after = null) => {

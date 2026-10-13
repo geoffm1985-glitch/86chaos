@@ -502,6 +502,10 @@ async function cleanupQa(req, res, { app, auth, db, projectId, body, base }) {
     catch (error) { failures.push({ path: write.ref.path, error: String(error?.message || error).slice(0, 300) }); }
   }
   const remaining = [];
+  if(restaurantSnap.exists){
+    try{const {reviewedQaCleanupRefs}=require('./_qa-reviewed-cleanup');const leftover=await reviewedQaCleanupRefs({db,restaurant:restaurantSnap,runId:base.runId,vendors:[]});for(const ref of leftover)remaining.push({collection:ref.path.split('/')[0],path:ref.path,count:1});}
+    catch(_){failures.push({collection:'reviewed-evidence',error:'Reviewed QA evidence cleanup could not be verified.'});}
+  }
   for (const collection of ALLOWED_COLLECTIONS) {
     const docs = await queryQaDocs(db, collection, base.restaurantId, base.runId).catch(() => []);
     if (docs.length) remaining.push({ collection, count: docs.length });

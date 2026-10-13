@@ -1,11 +1,13 @@
 'use strict';
 const crypto = require('node:crypto');
+const { headRef, recordPublication } = require('./_shift-change-review.cjs');
 const {
   buildCanonicalServerPlan, clean, digest, stable, fingerprintsMatch, inactive
 } = require('./_schedule-publish-core.cjs');
 
 const LEASE_MS = 90 * 1000;
-const CHUNK_SIZE = 180;
+// At most 3 writes per shift (shift, immutable event, current head), plus fences.
+const CHUNK_SIZE = 120;
 const NOTIFICATION_BATCH_SIZE = 500;
 const operationIdPattern = /^[A-Za-z0-9_-]{16,160}$/;
 const datePattern = /^\d{4}-\d{2}-\d{2}$/;
@@ -205,6 +207,7 @@ async function commitChunk(db,operation,plan,rows,chunkIndex,ctx,clock=new Date(
   const now=asDate(clock),nowIso=now.toISOString();
   return fencedTransaction(db,operation,plan,clock,async(tx,op)=>{
     const snapshots=[];for(const row of rows)snapshots.push(await tx.get(db.collection('shifts').doc(row.id)));
+    const heads=[];for(const row of rows)heads.push(await tx.get(headRef(db,plan.restaurantId,row.id)));
     const committed=[],conflicted=[],committedEvidence={};
     snapshots.forEach((snap,index)=>{
       const row=rows[index];
@@ -213,6 +216,7 @@ async function commitChunk(db,operation,plan,rows,chunkIndex,ctx,clock=new Date(
       const role={rosterRoleId:row.rosterRoleId,rosterRoleNameSnapshot:row.rosterRoleNameSnapshot};
       if(tenant!==plan.restaurantId||!fingerprintsMatch(current,row.expected,role,row.intentionalOpen?null:row.desiredEmployeeIdentity)){conflicted.push(row.id);return;}
       const publishedAt=current.publishedAt||nowIso,patch={restaurantId:plan.restaurantId,workspaceId:clean(current.workspaceId||plan.restaurantId),date:row.date,scheduleDateKey:row.date,rosterRoleId:row.rosterRoleId,rosterRoleNameSnapshot:row.rosterRoleNameSnapshot,role:clean(current.role||row.rosterRoleNameSnapshot),...(row.desiredEmployeeIdentity||{}),revision:Number(current.revision||0)+1,isPublished:true,published:true,status:'published',publishStatus:'published',publishState:'published',schedulePublishStatus:'published',visibility:'published',scheduleBuilderDraft:false,readyToPublish:false,draft:false,isDraft:false,publishedAt,publishedBy:current.publishedBy||ctx.uid,publishedByName:current.publishedByName||ctx.user?.name||ctx.email||'Manager',scheduleId:current.scheduleId||`schedule_${plan.operationId}`,schedulePeriodStart:plan.dayKeys[0],schedulePeriodEnd:plan.dayKeys[plan.dayKeys.length-1],publishScope:plan.selectedWeekKeys.length?'selected-weeks':'full-period',publishWeekKeys:plan.selectedWeekKeys,publishOperationId:plan.operationId,publishGeneration:operation.state.generation,updatedAt:nowIso};
+      recordPublication({db,tx,head:heads[index].exists?heads[index].data():null,tenant:plan.restaurantId,shiftId:row.id,shift:{...current,...patch},operationId:plan.operationId,actor:ctx.uid,at:nowIso});
       tx.update(snap.ref,patch);committedEvidence[row.id]=publishedCommitEvidence({...current,...patch},row,plan,operation.state.generation);
       committed.push(row.id);
     });
@@ -272,12 +276,14 @@ async function processTimeOff(db,ctx,operation,plan,verifiedRows,clock=new Date(
   return{processed:processed.size,pendingMarked:pendingMarked.size,status:'complete'};
 }
 async function collectEligibleRecipients(db,auth,plan,verifiedRows){
-  const employeeSet=new Set(verifiedRows.map(row=>row.employeeId).filter(Boolean));if(!employeeSet.size)return[];
+  const employeeSet=new Set(verifiedRows.map(row=>row.employeeId).filter(Boolean));
+  for(const row of verifiedRows){const head=await headRef(db,plan.restaurantId,row.id).get();if(head.exists){const event=await db.collection('scheduleChangeEvents').doc(head.data().version).get();if(event.exists && event.data().restaurantId===plan.restaurantId)for(const uid of event.data().recipientUids || [])employeeSet.add(uid);}}
+  if(!employeeSet.size)return[];
   const members=await db.collection('workspaceMembers').where('restaurantId','==',plan.restaurantId).get();
   const memberByAlias=new Map();for(const doc of members.docs){const member={id:doc.id,...doc.data()};if(inactive(member))continue;for(const alias of identityAliases(member)){const rows=memberByAlias.get(alias)||[];rows.push(member);memberByAlias.set(alias,rows);}}
   const recipients=[];
-  for(const employeeId of employeeSet){const canonical=(memberByAlias.get(employeeId)||[]).filter(row=>!inactive(row));if(canonical.length!==1)continue;const member=canonical[0];const accountId=clean(member.authUid||member.uid||member.userId||employeeId);let userSnap=await db.collection('users').doc(accountId).get();if(!userSnap.exists&&member.email){const byEmail=await db.collection('users').where('email','==',clean(member.email).toLowerCase()).limit(1).get();if(!byEmail.empty)userSnap=byEmail.docs[0];}if(!userSnap.exists)continue;const user={id:userSnap.id,...userSnap.data()};if(inactive(user)||user.preferences?.notifSchedule===false)continue;if(clean(user.restaurantId)!==plan.restaurantId&&!user.workspaceIds?.includes?.(plan.restaurantId))continue;const authUid=clean(user.authUid||user.uid||user.userId||user.id);if(auth&&authUid){try{const authUser=await auth.getUser(authUid);if(authUser.disabled)continue;}catch(_){continue;}}const tokens=unique([user.fcmToken,...(Array.isArray(user.fcmTokens)?user.fcmTokens:[]),...(Array.isArray(user.pushTokens)?user.pushTokens.map(row=>typeof row==='string'?row:row?.token):[])]);if(tokens.length)recipients.push({userId:user.id,employeeId,tokens});}
-  return recipients;
+  for(const employeeId of employeeSet){const canonical=(memberByAlias.get(employeeId)||[]).filter(row=>!inactive(row));if(canonical.length!==1)continue;const member=canonical[0];const accountId=clean(member.authUid||member.uid||member.userId||employeeId);let userSnap=await db.collection('users').doc(accountId).get();if(!userSnap.exists&&member.email){const byEmail=await db.collection('users').where('email','==',clean(member.email).toLowerCase()).limit(1).get();if(!byEmail.empty)userSnap=byEmail.docs[0];}if(!userSnap.exists)continue;const user={id:userSnap.id,...userSnap.data()};if(inactive(user)||user.preferences?.notifSchedule===false)continue;if(clean(user.restaurantId)!==plan.restaurantId&&!user.workspaceIds?.includes?.(plan.restaurantId))continue;const authUid=clean(user.authUid||user.uid||user.userId||user.id);if(auth&&authUid){try{const authUser=await auth.getUser(authUid);if(authUser.disabled)continue;}catch(_){continue;}}const tokens=unique([user.fcmToken,...(Array.isArray(user.fcmTokens)?user.fcmTokens:[]),...(Array.isArray(user.pushTokens)?user.pushTokens.map(row=>typeof row==='string'?row:row?.token):[])]);if(tokens.length)recipients.push({userId:user.id,authUid,employeeId,tokens});}
+  return [...new Map(recipients.map(row=>[row.userId,row])).values()];
 }
 async function notifyAffected(db,messaging,auth,operation,plan,verifiedRows,restaurantName,clock=new Date()){
   const nowIso=asDate(clock).toISOString(),eligible=await collectEligibleRecipients(db,auth,plan,verifiedRows);
@@ -325,9 +331,12 @@ async function finalizeOperation(db,operation,plan,timeOff,notificationState,clo
     return result;
   });
 }
+function publicNotificationState(state={}) {
+  return {status:clean(state.status),recipientCount:Number(state.recipientCount||0),acceptedCount:Number(state.acceptedCount||0),failedCount:Number(state.failedCount||0),ambiguousCount:Number(state.ambiguousCount||0),updatedAt:clean(state.updatedAt),recipients:(state.recipients||[]).map(row=>({userId:clean(row.userId),employeeId:clean(row.employeeId),authUid:clean(row.authUid),status:clean(row.status),attemptCount:Number(row.attemptCount||0),errorCodes:(row.errorCodes||[]).map(code=>clean(code).slice(0,100))}))};
+}
 async function getOperationStatus(db,ctx,{restaurantId,operationId}){
   if(!operationIdPattern.test(clean(operationId))||!clean(restaurantId))throw Object.assign(new Error('A valid operation and tenant are required.'),{statusCode:400,code:'invalid_request'});
-  const snap=await db.collection('schedulePublishOperations').doc(clean(operationId)).get();if(!snap.exists||clean(snap.data()?.restaurantId)!==clean(restaurantId))throw Object.assign(new Error('Publication operation is unavailable.'),{statusCode:404,code:'not_found'});const data=snap.data()||{};return{operationId:data.operationId,planDigest:data.planDigest,status:data.status,plannedCount:(data.plannedShiftIds||[]).length,committedCount:(data.committedShiftIds||[]).length,verifiedCount:(data.verifiedShiftIds||[]).length,conflictedCount:(data.conflictedShiftIds||[]).length,remainingCount:(data.remainingShiftIds||[]).length,notificationState:data.notificationState,timeOffState:data.timeOffState,updatedAt:data.updatedAt};
+  const snap=await db.collection('schedulePublishOperations').doc(clean(operationId)).get();if(!snap.exists||clean(snap.data()?.restaurantId)!==clean(restaurantId))throw Object.assign(new Error('Publication operation is unavailable.'),{statusCode:404,code:'not_found'});const data=snap.data()||{};return{operationId:data.operationId,planDigest:data.planDigest,status:data.status,plannedCount:(data.plannedShiftIds||[]).length,committedCount:(data.committedShiftIds||[]).length,verifiedCount:(data.verifiedShiftIds||[]).length,conflictedCount:(data.conflictedShiftIds||[]).length,remainingCount:(data.remainingShiftIds||[]).length,notificationState:publicNotificationState(data.notificationState),timeOffState:data.timeOffState,updatedAt:data.updatedAt};
 }
 async function executeSchedulePublish({db,ctx,body,messaging,auth=null,clock=()=>new Date(),reauthorize=null}={}){
   const input=validateRequest(body),intent=requestDigest(body),existingRef=db.collection('schedulePublishOperations').doc(input.operationId),existingSnap=await existingRef.get();let plan;
@@ -375,4 +384,4 @@ async function reconcileScheduleRoles({db, ctx, body, clock = new Date()}) {
   });
 }
 
-module.exports={reconcileScheduleRoles,LEASE_MS,CHUNK_SIZE,NOTIFICATION_BATCH_SIZE,safeError,requestIntent,requestDigest,validateRequest,loadRoles,loadRoleConfiguration,loadCandidateShifts,loadRosterPeople,resolveEmployeeForShift,resolveEmployeeForPublishShift,buildShiftIdentityFallback,canonicalRosterPerson,assertFenceState,fencedTransaction,acquireOperation,publishedVerificationState,publishedCommitEvidence,publishedStateMatches,commitChunk,verifyCommitted,processTimeOff,collectEligibleRecipients,notifyAffected,buildFinalPublicationCounts,finalizeOperation,getOperationStatus,executeSchedulePublish};
+module.exports={publicNotificationState,reconcileScheduleRoles,LEASE_MS,CHUNK_SIZE,NOTIFICATION_BATCH_SIZE,safeError,requestIntent,requestDigest,validateRequest,loadRoles,loadRoleConfiguration,loadCandidateShifts,loadRosterPeople,resolveEmployeeForShift,resolveEmployeeForPublishShift,buildShiftIdentityFallback,canonicalRosterPerson,assertFenceState,fencedTransaction,acquireOperation,publishedVerificationState,publishedCommitEvidence,publishedStateMatches,commitChunk,verifyCommitted,processTimeOff,collectEligibleRecipients,notifyAffected,buildFinalPublicationCounts,finalizeOperation,getOperationStatus,executeSchedulePublish};

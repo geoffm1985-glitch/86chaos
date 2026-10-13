@@ -34,6 +34,7 @@ const sensitiveTicket = (grand = 1648) => ({
 
 test('manual sync is PCI-allowlisted, idempotent, update-aware, honestly partial, and operationally read-only', async () => {
   const db = memoryDb(); let grand = 1648;
+  db.docs.set(require('./_shift4-storage').credentialRef(db,'restaurant-a').path,{connectionGeneration:1,selectedLocation:{id:'17'}});
   const authPath = require.resolve('./_shift4-authority');
   const clientPath = require.resolve('./_shift4-client');
   const servicePath = require.resolve('./_shift4-service');

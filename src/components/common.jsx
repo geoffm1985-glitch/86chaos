@@ -1,3 +1,4 @@
+import operationalVoice from '../core/operationalVoice.cjs';
 import React, { useState, useEffect, useRef, useMemo, useDeferredValue, useCallback } from 'react';
 import { Bell, Check, Camera, ChevronLeft, ChevronRight, MessageSquare, Plus, Trash2, Users, Calendar, Clock, X, Loader2, Package, ClipboardList, Menu, Settings, LogOut, Shield, Send, Repeat, Edit, Moon, Sun, TrendingUp, BookOpen, Search, ChefHat, Scale, Coffee, Star, Bug, Wrench, Globe, Mic, MicOff, Sparkles, Network } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
@@ -1595,6 +1596,9 @@ const VoiceCommandDockBase = ({ appUser, inventoryItems = [], recipes = [], user
     }, 80);
   };
 
+  const liveOperationalVoiceBoundary = useRef('');
+  liveOperationalVoiceBoundary.current = operationalVoice.voiceReviewBoundary(appUser, clientFeatures);
+
   const parseCommand = async (spokenText) => {
     const raw = String(spokenText || '').trim();
     const q = normalizeVoiceText(raw);
@@ -1603,6 +1607,9 @@ const VoiceCommandDockBase = ({ appUser, inventoryItems = [], recipes = [], user
     if (isVoiceUndoCommand(raw)) {
       return { intent:'undo_last_voice', label:'Undo last voice command', summary:'Undo the most recent safe voice action if rollback is available.', needsConfirmation:false, safe:true };
     }
+
+    const operationalReview = operationalVoice.buildOperationalVoiceReview(raw, tab => canVoiceOpenTab(appUser, clientFeatures, tab, clientData));
+    if (operationalReview) return operationalReview;
 
     const aiOrderingAction = buildVoiceAiOrderingAction({ raw, inventoryItems, events, prepItems, menuDependencies, appUser, clientFeatures, clientData });
     if (aiOrderingAction) return aiOrderingAction;
@@ -2018,10 +2025,14 @@ const VoiceCommandDockBase = ({ appUser, inventoryItems = [], recipes = [], user
       addToast('Voice Cancelled', 'Pending voice action cancelled.');
       return;
     }
+    const reviewBoundary = operationalVoice.voiceReviewBoundary(appUser, clientFeatures);
+    const reviewCreatedAt = Date.now();
     const action = await parseCommand(text);
+    if (!voiceMountedRef.current || liveOperationalVoiceBoundary.current !== reviewBoundary) return;
     setHeardText(text);
     if (!action) return addToast('Voice Command', 'I did not hear a command. Try again or type it.');
-    const actionWithVoiceMeta = sourceMeta.fromVoice ? { ...action, voiceSessionId: sourceMeta.voiceSessionId, createdFromFinalTranscript: true } : action;
+    const reviewedAction = { ...action, reviewBoundary, reviewCreatedAt };
+    const actionWithVoiceMeta = sourceMeta.fromVoice ? { ...reviewedAction, voiceSessionId: sourceMeta.voiceSessionId, createdFromFinalTranscript: true } : reviewedAction;
     setPending(actionWithVoiceMeta);
     const instantIntents = ['navigate', 'navigate_schedule', 'help_search', 'open_recipe', 'smart_prep', 'complete_list_item', 'create_personal_reminder', 'upsert_task', 'status_summary', 'out_of_stock_summary', 'menu_impact_answer', 'event_summary', 'ai_order_summary', 'ai_insight_summary', 'food_lookup_request', 'undo_last_voice', 'blocked'];
     if (!actionWithVoiceMeta.needsConfirmation && instantIntents.includes(actionWithVoiceMeta.intent)) {
@@ -2129,6 +2140,9 @@ const VoiceCommandDockBase = ({ appUser, inventoryItems = [], recipes = [], user
 
   const executeAction = async (actionToRun = pending, sourceText = heardText, closeWhenDone = true, confirmedByUser = false) => {
     if (!actionToRun || !appUser?.restaurantId) return;
+    if (actionToRun.reviewBoundary && !operationalVoice.voiceReviewIsCurrent(actionToRun, liveOperationalVoiceBoundary.current)) {
+      setPending(null); addToast('Review expired', 'Your workspace, permissions or review window changed. Repeat the command before continuing.'); return;
+    }
     try {
       if (['navigate', 'navigate_schedule', 'help_search', 'open_recipe'].includes(actionToRun.intent)) {
         const targetTab = actionToRun.tab || 'today';
@@ -2148,6 +2162,7 @@ const VoiceCommandDockBase = ({ appUser, inventoryItems = [], recipes = [], user
             id: Date.now()
           });
         }
+        if (actionToRun.focus && ['inventory','prep'].includes(targetTab)) { try { sessionStorage.setItem(`${targetTab}Focus`, actionToRun.focus); } catch (_) {} }
         setActiveTab(targetTab);
         addToast('Voice Navigation', actionToRun.summary || `Opening ${targetTab}.`);
         if (closeWhenDone) setOpen(false);

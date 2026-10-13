@@ -1,6 +1,7 @@
 'use strict';
 
 const { initAdmin, authorize, requireAppCheckIfEnforced, writeAudit, clean } = require('./_chaos-admin');
+const { cancelPublishedRows } = require('./_shift-change-cancellation.cjs');
 const { getShiftDate } = require('./schedule-restore-utils');
 
 const MAX_BODY_BYTES = 512 * 1024;
@@ -128,7 +129,7 @@ function sameLogicalShift(candidate = {}, target = {}) {
 }
 
 function rowFromDoc(docSnap) {
-  return { id: String(docSnap.id || ''), ...(docSnap.data ? docSnap.data() : {}) };
+  return { ...(docSnap.data ? docSnap.data() : {}), id: String(docSnap.id || '') };
 }
 async function loadTenantShiftDocs(db, restaurantId) {
   const byId = new Map();
@@ -147,7 +148,8 @@ async function loadTenantShiftDocs(db, restaurantId) {
   return Array.from(byId.values());
 }
 
-async function deleteRows(db, rows = []) {
+async function deleteRows(db, rows = [], options = null) {
+  if(options)return cancelPublishedRows({db,rows,...options});
   const ids = [...new Set((rows || []).map(row => clean(row?.id)).filter(Boolean))];
   let deletedCount = 0;
   for (let start = 0; start < ids.length; start += 400) {
@@ -166,13 +168,13 @@ async function previewMonth(db, restaurantId, month) {
   return { rows: matches, count: matches.length };
 }
 
-async function clearMonth(db, restaurantId, month) {
+async function clearMonth(db, restaurantId, month, options = null) {
   // A successful Firestore batch commit is authoritative for every document in
   // the snapshot. Avoid repeatedly rescanning the whole tenant after a commit;
   // that made clearing a normal month feel dramatically slower than the write.
   const preview = await previewMonth(db, restaurantId, month);
   const initialCount = preview.count;
-  const deletedCount = await deleteRows(db, preview.rows);
+  const deletedCount = await deleteRows(db, preview.rows, options);
   return { initialCount, deletedCount, remainingCount: 0 };
 }
 
@@ -190,7 +192,7 @@ function expectedShiftFromBody(body = {}, restaurantId = '') {
   };
 }
 
-async function deleteSingleLogicalShift(db, restaurantId, body = {}) {
+async function deleteSingleLogicalShift(db, restaurantId, body = {}, options = null) {
   const shiftId = clean(body.shiftId || body.docId || '');
   // One tenant scan is enough to both prove the document belongs to this workspace
   // and locate hidden logical duplicates. The three legacy-identity queries inside
@@ -213,7 +215,7 @@ async function deleteSingleLogicalShift(db, restaurantId, body = {}) {
   const unique = Array.from(new Map(matches.map(row => [row.id, row])).values());
   if (!unique.length) throw Object.assign(new Error('That shift was already removed or could not be found. Refresh Schedule Builder.'), { statusCode: 404, code: 'shift_unavailable' });
 
-  const deletedCount = await deleteRows(db, unique);
+  const deletedCount = await deleteRows(db, unique, options);
   return { deletedCount, remainingCount: 0, targetCount: unique.length };
 }
 
@@ -248,13 +250,13 @@ module.exports = async function handler(req, res) {
     if (action === 'clear-month') {
       const month = clean(body.month).slice(0, 7);
       if (!/^\d{4}-\d{2}$/.test(month)) return res.status(400).json({ ok: false, code: 'invalid_month', error: 'A valid schedule month is required.' });
-      const result = await clearMonth(db, restaurantId, month);
+      const result = await clearMonth(db, restaurantId, month, {restaurantId,ctx,app:ctx.app || app});
       if (result.remainingCount) return res.status(409).json({ ok: false, action, month, ...result, code: 'schedule_clear_incomplete', error: `${result.remainingCount} shift record(s) still remain in ${month}.` });
       await writeAudit(db, ctx, 'SCHEDULE_CLEAR_MONTH', `shifts/${month}`, `Deleted ${result.deletedCount} schedule shift record(s) from ${month}.`, restaurantId);
       return res.status(200).json({ ok: true, action, month, ...result });
     }
 
-    const result = await deleteSingleLogicalShift(db, restaurantId, body);
+    const result = await deleteSingleLogicalShift(db, restaurantId, body, {restaurantId,ctx,app:ctx.app || app});
     if (result.remainingCount) return res.status(409).json({ ok: false, action, ...result, code: 'schedule_shift_delete_incomplete', error: `${result.remainingCount} matching shift record(s) still remain.` });
     await writeAudit(db, ctx, 'SCHEDULE_SHIFT_DELETE', `shifts/${clean(body.shiftId || body.docId || 'logical')}`, `Deleted ${result.deletedCount} matching schedule shift record(s).`, restaurantId);
     return res.status(200).json({ ok: true, action, ...result });

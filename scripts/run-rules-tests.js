@@ -428,6 +428,37 @@ async function runFirestoreTests(env) {
   await assertFails(deleteDoc(doc(anon, 'messages', 'msg_a')));
 }
 
+
+async function runImplementationProofRules(env) {
+  setRuleCase('18.0.15 private review proof cannot be read or forged by clients');
+  const tenant='tenant_a';
+  const manager=env.authenticatedContext('managerA').firestore();
+  const staff=env.authenticatedContext('staffA').firestore();
+  for(const collectionName of ['scheduleChangeEvents','scheduleChangeHeads','foodSafetyClosures','trainingCompetencyReviews']) {
+    await seedDoc(env,collectionName,'private_proof',{restaurantId:tenant,recipientUids:['staffA'],userId:'staffA'});
+    for(const client of [manager,staff]) {
+      await assertFails(getDoc(doc(client,collectionName,'private_proof')));
+      await assertFails(setDoc(doc(client,collectionName,'forged_proof'),{restaurantId:tenant,userId:'staffA'}));
+      await assertFails(updateDoc(doc(client,collectionName,'private_proof'),{acknowledged:true}));
+      await assertFails(deleteDoc(doc(client,collectionName,'private_proof')));
+    }
+  }
+  setRuleCase('18.0.15 original and follow-up food-safety evidence remains immutable');
+  for(const id of ['original_review_reading','followup_review_reading']) {
+    await seedDoc(env,'tempLogs',id,{restaurantId:tenant,itemId:'cooler',temp:38,safetyRevision:1,closureRequired:false});
+    for(const client of [manager,staff]) {
+      await assertFails(updateDoc(doc(client,'tempLogs',id),{temp:35}));
+      await assertFails(deleteDoc(doc(client,'tempLogs',id)));
+    }
+  }
+  for(const proof of [{safetyRevision:1},{closureRequired:false},{closureEvidence:{followUpLogId:'fake'}},{reviewedByManager:true},{managerNote:'Forged manager review'}]) {
+    await assertFails(setDoc(doc(manager,'tempLogs','forged_reading'),{restaurantId:tenant,itemId:'cooler',temp:49,...proof}));
+  }
+  await seedDoc(env,'tempLogs','legacy_reading',{restaurantId:tenant,itemId:'cooler',temp:38});
+  await assertFails(updateDoc(doc(manager,'tempLogs','legacy_reading'),{reviewedByManager:true}));
+  console.log('18.0.15 private proof and food-safety immutability rules passed.');
+}
+
 async function runStorageTests(env) {
   setRuleCase('Storage rules');
   await env.clearStorage();
@@ -503,6 +534,7 @@ async function runStorageTests(env) {
   });
   try {
     await runFirestoreTests(env);
+    await runImplementationProofRules(env);
     await runStorageTests(env);
     assertNoExpressionBudgetErrors();
     console.log('Firestore and Storage emulator security tests passed.');

@@ -1,3 +1,4 @@
+import { TrainingCompetencyReview } from '../components/TrainingCompetencyReview';
 import React, { useEffect, useMemo, useState } from 'react';
 import { readTrainingDraft } from '../core/intelligenceConnections';
 import {
@@ -477,6 +478,7 @@ export const TabHrTraining = ({ appUser, users = [], addToast }) => {
   const [performanceModal, setPerformanceModal] = useState(false);
   const [busyId, setBusyId] = useState('');
 
+  const competencyRoles = useLiveCollection('roles',restaurantId,{enabled:!!restaurantId && manager,limitCount:100});
   const manuals = useLiveCollection('trainingManuals', restaurantId, { enabled: !!restaurantId, whereClauses: manager ? [] : [['status', '==', 'Published']], limitCount: 150, fallbackLimitCount: manager ? 150 : 0 });
   const acknowledgements = useLiveCollection('trainingAcknowledgements', restaurantId, { enabled: !!restaurantId, whereClauses: manager ? [] : [['userId', '==', uid]], limitCount: 500, fallbackLimitCount: manager ? 500 : 0 });
   const onboardingTasks = useLiveCollection('hrOnboardingTasks', restaurantId, { enabled: !!restaurantId, whereClauses: manager ? [] : [['userId', '==', uid]], limitCount: 500, fallbackLimitCount: manager ? 500 : 0 });
@@ -602,6 +604,7 @@ export const TabHrTraining = ({ appUser, users = [], addToast }) => {
         </div>
       </div>
 
+      {activeTab === 'overview' && <TrainingCompetencyReview appUser={appUser} users={users.map(user=>({...user,id:employeeAuthUid(user)}))} roles={competencyRoles} tasks={onboardingTasks} manager={manager}/>}
       {activeTab === 'overview' && <>
         <SectionHeader eyebrow="At a glance" title={manager ? 'Staff training overview' : 'My training'} text={manager ? 'See published training, employee acknowledgments, onboarding progress, and certification deadlines. Confidential notes stay restricted.' : 'Review your required manuals, onboarding progress, and certification records.'} />
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">

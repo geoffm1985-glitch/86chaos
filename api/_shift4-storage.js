@@ -164,6 +164,7 @@ async function persistRecords(db, restaurantId, providerLocationId, records = []
     const chunk = deduped.slice(index, index + PERSIST_BATCH_SIZE);
     try {
       const batchStats = await db.runTransaction(async transaction => {
+        if (options.assertFence) await options.assertFence(transaction);
         const rows = [];
         for (const record of chunk) {
           const nextRef = collection.doc(record.idempotencyKey);
@@ -191,6 +192,7 @@ async function persistRecords(db, restaurantId, providerLocationId, records = []
       stats.superseded += batchStats.superseded; stats.conflicts += batchStats.conflicts;
       stats.scopedDocumentReads += batchStats.reads; stats.scopedDocumentWritesCommitted += batchStats.writes; stats.committedBatches += 1;
     } catch (error) {
+      if (['stale_import_fence','credential_superseded'].includes(error?.code)) throw error;
       stats.persistenceComplete = false; stats.failedBatch = Math.floor(index / PERSIST_BATCH_SIZE) + 1; stats.failureCode = 'persistence_batch_failed'; break;
     }
   }

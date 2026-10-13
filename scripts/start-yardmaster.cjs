@@ -6,6 +6,7 @@ function prepareYardmasterEnv(env) {
   // Yardmaster's pinned target takes precedence over inherited CRA/cloud settings.
   const selected = env.YARDMASTER_FIREBASE_TARGET || env.CHAOS_FIREBASE_TARGET || env.REACT_APP_86CHAOS_FIREBASE_TARGET;
   if (String(selected || '').trim().toLowerCase() !== 'emulator') throw new Error('Yardmaster local startup requires an explicit emulator target; live Firebase was not selected.');
+  for(const key of ['VERCEL','VERCEL_ENV','VERCEL_GIT_COMMIT_SHA','VERCEL_GIT_COMMIT_REF','VERCEL_DEPLOYMENT_ID','VERCEL_URL','CHAOS_VERCEL_DEPLOYMENT_ID','CHAOS_VERCEL_PROJECT_ID'])delete env[key];
   env.REACT_APP_86CHAOS_FIREBASE_TARGET = 'emulator';
   const target = getFirebaseTarget(env);
   applyFirebaseEmulatorEnv(env);
@@ -41,6 +42,7 @@ if (require.main === module) {
     } });
     return config;
   };
+  require('./modern-dev-server.cjs').installModernDevServer();
   require('react-scripts/scripts/start');
 }
 module.exports = { prepareYardmasterEnv };

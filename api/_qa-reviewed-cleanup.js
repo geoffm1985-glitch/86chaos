@@ -12,6 +12,7 @@ async function reviewedQaCleanupRefs({db,restaurant,runId,vendors=[]}) {
   };
   for(const name of ['demandItemHistory','demandImportLines'])await collect(restaurant.ref.collection(name),false);
   for(const ref of vendors){const vendor=await ref.get();if(!vendor.exists)continue;const row=vendor.data();if(row.restaurantId!==restaurant.id || row.qaOwned!==true || row.qaRunId!==runId)throw new Error('Current-run QA vendor ownership is required.');await collect(ref.collection('catalogProducts'),true);}
+  for(const name of ['scheduleChangeEvents','scheduleChangeHeads','foodSafetyClosures','trainingCompetencyReviews','lineCheckItems','tempLogs'])await collect(db.collection(name).where('restaurantId','==',restaurant.id),true);
   await collect(db.collection('shifts').where('restaurantId','==',restaurant.id).where('source','==','demand_forecast_review'),true);
   return refs;
 }

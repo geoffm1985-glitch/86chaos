@@ -1,0 +1,815 @@
+{
+  "schemaVersion": 1,
+  "checkedAt": "2026-10-13T21:30:44.902Z",
+  "baselineAudit": {
+    "critical": 2,
+    "high": 84,
+    "moderate": 50,
+    "low": 3,
+    "total": 139
+  },
+  "fixes": [
+    {
+      "package": "brace-expansion",
+      "from": [
+        "1.1.16"
+      ],
+      "to": "1.1.21",
+      "scope": "same-major supported upstream release",
+      "advisories": [
+        "https://github.com/advisories/GHSA-mh99-v99m-4gvg",
+        "https://github.com/advisories/GHSA-mh99-v99m-4gvg",
+        "https://github.com/advisories/GHSA-rgw5-rvv9-x895",
+        "https://github.com/advisories/GHSA-rgw5-rvv9-x895",
+        "https://github.com/advisories/GHSA-6j4f-fj2g-mc7p",
+        "https://github.com/advisories/GHSA-6j4f-fj2g-mc7p",
+        "https://github.com/advisories/GHSA-q2hr-2g5m-vwhr",
+        "https://github.com/advisories/GHSA-q2hr-2g5m-vwhr",
+        "https://github.com/advisories/GHSA-qhr7-859c-m2p7",
+        "https://github.com/advisories/GHSA-qhr7-859c-m2p7"
+      ]
+    },
+    {
+      "package": "brace-expansion",
+      "from": [
+        "2.1.2"
+      ],
+      "to": "2.1.7",
+      "scope": "same-major supported upstream release",
+      "advisories": [
+        "https://github.com/advisories/GHSA-mh99-v99m-4gvg",
+        "https://github.com/advisories/GHSA-mh99-v99m-4gvg",
+        "https://github.com/advisories/GHSA-rgw5-rvv9-x895",
+        "https://github.com/advisories/GHSA-rgw5-rvv9-x895",
+        "https://github.com/advisories/GHSA-6j4f-fj2g-mc7p",
+        "https://github.com/advisories/GHSA-6j4f-fj2g-mc7p",
+        "https://github.com/advisories/GHSA-q2hr-2g5m-vwhr",
+        "https://github.com/advisories/GHSA-q2hr-2g5m-vwhr",
+        "https://github.com/advisories/GHSA-qhr7-859c-m2p7",
+        "https://github.com/advisories/GHSA-qhr7-859c-m2p7"
+      ]
+    },
+    {
+      "package": "@fastify/busboy",
+      "from": [
+        "3.2.0"
+      ],
+      "to": "3.2.3",
+      "scope": "same-major supported upstream release",
+      "advisories": [
+        "https://github.com/advisories/GHSA-xjh9-v7x6-24jw",
+        "https://github.com/advisories/GHSA-x8mw-p69m-v3mx",
+        "https://github.com/advisories/GHSA-gxm5-99cw-xjw9"
+      ]
+    },
+    {
+      "package": "@grpc/grpc-js",
+      "from": [
+        "1.14.4",
+        "1.9.16"
+      ],
+      "to": "1.14.6",
+      "scope": "same-major supported upstream release",
+      "advisories": [
+        "https://github.com/advisories/GHSA-m9gg-hp2v-232j",
+        "https://github.com/advisories/GHSA-m9gg-hp2v-232j",
+        "https://github.com/advisories/GHSA-f596-whhp-79r4",
+        "https://github.com/advisories/GHSA-f596-whhp-79r4"
+      ]
+    },
+    {
+      "package": "js-yaml",
+      "from": [
+        "3.15.0"
+      ],
+      "to": "3.15.2",
+      "scope": "same-major supported upstream release",
+      "advisories": [
+        "https://github.com/advisories/GHSA-5p4m-2wfm-xmqj",
+        "https://github.com/advisories/GHSA-5p4m-2wfm-xmqj",
+        "https://github.com/advisories/GHSA-2883-xcg3-v3hh",
+        "https://github.com/advisories/GHSA-2883-xcg3-v3hh"
+      ]
+    },
+    {
+      "package": "js-yaml",
+      "from": [
+        "4.3.0"
+      ],
+      "to": "4.3.2",
+      "scope": "same-major supported upstream release",
+      "advisories": [
+        "https://github.com/advisories/GHSA-5p4m-2wfm-xmqj",
+        "https://github.com/advisories/GHSA-5p4m-2wfm-xmqj",
+        "https://github.com/advisories/GHSA-2883-xcg3-v3hh",
+        "https://github.com/advisories/GHSA-2883-xcg3-v3hh"
+      ]
+    },
+    {
+      "package": "@modelcontextprotocol/sdk",
+      "from": [
+        "1.29.0"
+      ],
+      "to": "1.32.1",
+      "scope": "same-major supported upstream release",
+      "advisories": [
+        "https://github.com/advisories/GHSA-6qxp-vccf-f47h"
+      ]
+    },
+    {
+      "package": "colord",
+      "from": [
+        "2.9.3"
+      ],
+      "to": "2.10.0",
+      "scope": "same-major supported upstream release",
+      "advisories": [
+        "https://github.com/advisories/GHSA-2wm5-q62r-hmrv"
+      ]
+    },
+    {
+      "package": "compression",
+      "from": [
+        "1.8.1"
+      ],
+      "to": "1.8.2",
+      "scope": "same-major supported upstream release",
+      "advisories": [
+        "https://github.com/advisories/GHSA-vc2v-76pw-4v95"
+      ]
+    },
+    {
+      "package": "fast-uri",
+      "from": [
+        "3.1.4"
+      ],
+      "to": "3.1.8",
+      "scope": "same-major supported upstream release",
+      "advisories": [
+        "https://github.com/advisories/GHSA-5jgf-p345-68v8",
+        "https://github.com/advisories/GHSA-f65p-4m7j-42xc",
+        "https://github.com/advisories/GHSA-fph4-wmhf-6fwf",
+        "https://github.com/advisories/GHSA-jqff-g426-hqxp",
+        "https://github.com/advisories/GHSA-7p8r-x3mc-p8w7",
+        "https://github.com/advisories/GHSA-qw65-cvwx-89v3",
+        "https://github.com/advisories/GHSA-hrr3-gc8f-f4qj"
+      ]
+    },
+    {
+      "package": "hono",
+      "from": [
+        "4.12.32"
+      ],
+      "to": "4.13.13",
+      "scope": "same-major supported upstream release",
+      "advisories": [
+        "https://github.com/advisories/GHSA-8j4g-w8fx-2239",
+        "https://github.com/advisories/GHSA-f23p-vx2j-j53r",
+        "https://github.com/advisories/GHSA-79qm-7rj5-m7r9",
+        "https://github.com/advisories/GHSA-54fx-42gc-7vw4",
+        "https://github.com/advisories/GHSA-gqvv-2mrq-wpjv",
+        "https://github.com/advisories/GHSA-g6gw-c38x-mqfc",
+        "https://github.com/advisories/GHSA-crvj-82cr-hjcx",
+        "https://github.com/advisories/GHSA-hxh3-vqpv-xpqv"
+      ]
+    },
+    {
+      "package": "ip-address",
+      "from": [
+        "10.3.1"
+      ],
+      "to": "10.7.4",
+      "scope": "same-major supported upstream release",
+      "advisories": [
+        "https://github.com/advisories/GHSA-rpw4-54j3-4h4q",
+        "https://github.com/advisories/GHSA-2vr4-cq9g-pvrc",
+        "https://github.com/advisories/GHSA-j6r3-76f7-8jcv",
+        "https://github.com/advisories/GHSA-h3mg-xc3c-68pw"
+      ]
+    },
+    {
+      "package": "morgan",
+      "from": [
+        "1.11.0"
+      ],
+      "to": "1.12.1",
+      "scope": "same-major supported upstream release",
+      "advisories": [
+        "https://github.com/advisories/GHSA-jxfw-x594-9x9m",
+        "https://github.com/advisories/GHSA-9f6g-j8ch-79g4"
+      ]
+    },
+    {
+      "package": "nanoid",
+      "from": [
+        "3.3.16"
+      ],
+      "to": "3.3.20",
+      "scope": "same-major supported upstream release",
+      "advisories": [
+        "https://github.com/advisories/GHSA-2v37-7h3g-55p8"
+      ]
+    },
+    {
+      "package": "undici",
+      "from": [
+        "6.19.7"
+      ],
+      "to": "6.29.0",
+      "scope": "same-major supported upstream release",
+      "advisories": [
+        "https://github.com/advisories/GHSA-c76h-2ccp-4975",
+        "https://github.com/advisories/GHSA-g9mf-h72j-4rw9",
+        "https://github.com/advisories/GHSA-cxrh-j4jr-qwg3",
+        "https://github.com/advisories/GHSA-f269-vfmq-vjvj",
+        "https://github.com/advisories/GHSA-2mjp-6q6p-2qxm",
+        "https://github.com/advisories/GHSA-vrm6-8vpv-qv8q",
+        "https://github.com/advisories/GHSA-v9p9-hfj2-hcw8",
+        "https://github.com/advisories/GHSA-4992-7rv2-5pvq",
+        "https://github.com/advisories/GHSA-8xcm-r25x-g524",
+        "https://github.com/advisories/GHSA-m8rv-5g2x-5cg5",
+        "https://github.com/advisories/GHSA-v3r7-h72x-cjcm",
+        "https://github.com/advisories/GHSA-p88m-4jfj-68fv",
+        "https://github.com/advisories/GHSA-vxpw-j846-p89q",
+        "https://github.com/advisories/GHSA-g8m3-5g58-fq7m",
+        "https://github.com/advisories/GHSA-35p6-xmwp-9g52",
+        "https://github.com/advisories/GHSA-3wwx-pv8p-q78v",
+        "https://github.com/advisories/GHSA-pmjh-fq2x-6v4x",
+        "https://github.com/advisories/GHSA-r53p-7pc4-xj5r",
+        "https://github.com/advisories/GHSA-r53p-7pc4-xj5r",
+        "https://github.com/advisories/GHSA-rfgv-xxqx-mfg5",
+        "https://github.com/advisories/GHSA-rfgv-xxqx-mfg5",
+        "https://github.com/advisories/GHSA-3xpg-4rpp-hhhm",
+        "https://github.com/advisories/GHSA-2jfj-6hjv-fm6j",
+        "https://github.com/advisories/GHSA-2gqq-gqf2-x968",
+        "https://github.com/advisories/GHSA-w293-vg96-wgc3",
+        "https://github.com/advisories/GHSA-8436-99hf-9mmv",
+        "https://github.com/advisories/GHSA-rx4f-c7p8-82vq"
+      ]
+    },
+    {
+      "package": "undici",
+      "from": [
+        "8.9.0"
+      ],
+      "to": "8.11.2",
+      "scope": "same-major supported upstream release",
+      "advisories": [
+        "https://github.com/advisories/GHSA-c76h-2ccp-4975",
+        "https://github.com/advisories/GHSA-g9mf-h72j-4rw9",
+        "https://github.com/advisories/GHSA-cxrh-j4jr-qwg3",
+        "https://github.com/advisories/GHSA-f269-vfmq-vjvj",
+        "https://github.com/advisories/GHSA-2mjp-6q6p-2qxm",
+        "https://github.com/advisories/GHSA-vrm6-8vpv-qv8q",
+        "https://github.com/advisories/GHSA-v9p9-hfj2-hcw8",
+        "https://github.com/advisories/GHSA-4992-7rv2-5pvq",
+        "https://github.com/advisories/GHSA-8xcm-r25x-g524",
+        "https://github.com/advisories/GHSA-m8rv-5g2x-5cg5",
+        "https://github.com/advisories/GHSA-v3r7-h72x-cjcm",
+        "https://github.com/advisories/GHSA-p88m-4jfj-68fv",
+        "https://github.com/advisories/GHSA-vxpw-j846-p89q",
+        "https://github.com/advisories/GHSA-g8m3-5g58-fq7m",
+        "https://github.com/advisories/GHSA-35p6-xmwp-9g52",
+        "https://github.com/advisories/GHSA-3wwx-pv8p-q78v",
+        "https://github.com/advisories/GHSA-pmjh-fq2x-6v4x",
+        "https://github.com/advisories/GHSA-r53p-7pc4-xj5r",
+        "https://github.com/advisories/GHSA-r53p-7pc4-xj5r",
+        "https://github.com/advisories/GHSA-rfgv-xxqx-mfg5",
+        "https://github.com/advisories/GHSA-rfgv-xxqx-mfg5",
+        "https://github.com/advisories/GHSA-3xpg-4rpp-hhhm",
+        "https://github.com/advisories/GHSA-2jfj-6hjv-fm6j",
+        "https://github.com/advisories/GHSA-2gqq-gqf2-x968",
+        "https://github.com/advisories/GHSA-w293-vg96-wgc3",
+        "https://github.com/advisories/GHSA-8436-99hf-9mmv",
+        "https://github.com/advisories/GHSA-rx4f-c7p8-82vq"
+      ]
+    },
+    {
+      "package": "postcss-selector-parser",
+      "from": [
+        "7.1.4"
+      ],
+      "to": "7.1.6",
+      "scope": "same-major supported upstream release",
+      "advisories": [
+        "https://github.com/advisories/GHSA-rj75-hqrm-r3gf"
+      ]
+    },
+    {
+      "package": "svgo",
+      "from": [
+        "2.8.3"
+      ],
+      "to": "2.8.4",
+      "scope": "same-major supported upstream release",
+      "advisories": [
+        "https://github.com/advisories/GHSA-2p49-hgcm-8545",
+        "https://github.com/advisories/GHSA-w27v-7q3p-w38r",
+        "https://github.com/advisories/GHSA-4vpr-x523-8j87"
+      ]
+    },
+    {
+      "package": "proxy-addr",
+      "from": [
+        "2.0.7"
+      ],
+      "to": "2.0.8",
+      "scope": "same-major supported upstream release",
+      "advisories": [
+        "https://github.com/advisories/GHSA-jqcg-44mw-7w3h"
+      ]
+    },
+    {
+      "package": "qs",
+      "from": [
+        "6.15.3"
+      ],
+      "to": "6.16.0",
+      "scope": "same-major supported upstream release",
+      "advisories": [
+        "https://github.com/advisories/GHSA-x5fp-wj9c-mxmx",
+        "https://github.com/advisories/GHSA-4mjr-xmp4-gh2g"
+      ]
+    },
+    {
+      "package": "shell-quote",
+      "from": [
+        "1.10.0"
+      ],
+      "to": "1.12.0",
+      "scope": "same-major supported upstream release",
+      "advisories": [
+        "https://github.com/advisories/GHSA-pqg4-j6r4-53mv"
+      ]
+    },
+    {
+      "package": "source-map-js",
+      "from": [
+        "1.2.1"
+      ],
+      "to": "1.2.2",
+      "scope": "same-major supported upstream release",
+      "advisories": [
+        "https://github.com/advisories/GHSA-68fv-2mgg-jv7q"
+      ]
+    },
+    {
+      "package": "underscore",
+      "from": [
+        "1.13.6"
+      ],
+      "to": "1.13.8",
+      "scope": "same-major supported upstream release",
+      "advisories": [
+        "https://github.com/advisories/GHSA-qpx9-hpmf-5gmw"
+      ]
+    }
+  ],
+  "parentUpdates": [
+    {
+      "package": "firebase-tools",
+      "from": "15.24.0",
+      "to": "15.33.0",
+      "reason": "Supported upstream fix for CLI dependency advisories; emulator/load validation remains mandatory."
+    }
+  ],
+  "remainingAuditRequired": false,
+  "certified": false,
+  "maintainedConsumerUpdates": [
+    {
+      "package": "webpack-dev-server",
+      "to": "5.2.6"
+    },
+    {
+      "package": "webpack-dev-middleware",
+      "to": "7.4.5"
+    },
+    {
+      "package": "@svgr/webpack",
+      "to": "8.1.0"
+    },
+    {
+      "package": "resolve-url-loader",
+      "to": "5.0.0"
+    },
+    {
+      "package": "serialize-javascript",
+      "to": "7.1.2"
+    },
+    {
+      "package": "postcss-selector-parser",
+      "to": "7.1.6"
+    },
+    {
+      "package": "basic-ftp",
+      "to": "6.2.3"
+    },
+    {
+      "package": "@tootallnate/once",
+      "to": "2.0.1"
+    },
+    {
+      "package": "uuid (7-10 consumers)",
+      "to": "11.1.1"
+    }
+  ],
+  "compatibilityValidation": [
+    "ordered local middleware, HTTPS-to-server option migration and proxy array contracts",
+    "critical IP trust and shell quoting adversarial regressions",
+    "selector/serialization/SVG transformations",
+    "production build and APK assembly",
+    "all client/server/rules tests and canonical full browser inventory"
+  ],
+  "initialUnresolvedCandidates": [
+    {
+      "package": "@opentelemetry/core",
+      "major": "1",
+      "installed": [
+        "1.30.1"
+      ],
+      "latest": "1.30.1",
+      "advisories": [
+        {
+          "url": "https://github.com/advisories/GHSA-8988-4f7v-96qf",
+          "severity": "moderate",
+          "title": "OpenTelemetry Core: Unbounded memory allocation in W3C Baggage propagation"
+        }
+      ]
+    },
+    {
+      "package": "@tootallnate/once",
+      "major": "1",
+      "installed": [
+        "1.1.2"
+      ],
+      "latest": "1.1.2",
+      "advisories": [
+        {
+          "url": "https://github.com/advisories/GHSA-vpq2-c234-7xj6",
+          "severity": "low",
+          "title": "@tootallnate/once vulnerable to Incorrect Control Flow Scoping"
+        }
+      ]
+    },
+    {
+      "package": "basic-ftp",
+      "major": "5",
+      "installed": [
+        "5.3.1"
+      ],
+      "latest": "5.3.1",
+      "advisories": [
+        {
+          "url": "https://github.com/advisories/GHSA-c475-qrg2-pj4r",
+          "severity": "high",
+          "title": "basic-ftp: Quadratic-time CPU denial of service in Client.list() Unix directory-listing parser (RE_LINE backtracking)"
+        }
+      ]
+    },
+    {
+      "package": "braces",
+      "major": "3",
+      "installed": [
+        "3.0.3"
+      ],
+      "latest": "3.0.3",
+      "advisories": [
+        {
+          "url": "https://github.com/advisories/GHSA-vfj7-8cjw-p6xm",
+          "severity": "high",
+          "title": "braces vulnerable to stack-exhaustion denial of service through deeply nested patterns"
+        }
+      ]
+    },
+    {
+      "package": "csv-parse",
+      "major": "5",
+      "installed": [
+        "5.6.0"
+      ],
+      "latest": "5.6.0",
+      "advisories": [
+        {
+          "url": "https://github.com/advisories/GHSA-8cw4-87c7-c6xx",
+          "severity": "moderate",
+          "title": "node-csv: Prototype replacement still reachable via columns path"
+        }
+      ]
+    },
+    {
+      "package": "uuid",
+      "major": "7",
+      "installed": [
+        "7.0.3"
+      ],
+      "latest": "7.0.3",
+      "advisories": [
+        {
+          "url": "https://github.com/advisories/GHSA-w5hq-g745-h8pq",
+          "severity": "moderate",
+          "title": "uuid: Missing buffer bounds check in v3/v5/v6 when buf is provided"
+        }
+      ]
+    },
+    {
+      "package": "uuid",
+      "major": "8",
+      "installed": [
+        "8.3.2"
+      ],
+      "latest": "8.3.2",
+      "advisories": [
+        {
+          "url": "https://github.com/advisories/GHSA-w5hq-g745-h8pq",
+          "severity": "moderate",
+          "title": "uuid: Missing buffer bounds check in v3/v5/v6 when buf is provided"
+        }
+      ]
+    },
+    {
+      "package": "uuid",
+      "major": "9",
+      "installed": [
+        "9.0.1"
+      ],
+      "latest": "9.0.1",
+      "advisories": [
+        {
+          "url": "https://github.com/advisories/GHSA-w5hq-g745-h8pq",
+          "severity": "moderate",
+          "title": "uuid: Missing buffer bounds check in v3/v5/v6 when buf is provided"
+        }
+      ]
+    },
+    {
+      "package": "node-forge",
+      "major": "1",
+      "installed": [
+        "1.4.0"
+      ],
+      "latest": "1.4.0",
+      "advisories": [
+        {
+          "url": "https://github.com/advisories/GHSA-86w9-cpqp-85rv",
+          "severity": "high",
+          "title": "node-forge RSA PKCS#1 v1.5 signature verification accepts extra nested DigestAlgorithm elements"
+        }
+      ]
+    },
+    {
+      "package": "nth-check",
+      "major": "1",
+      "installed": [
+        "1.0.2"
+      ],
+      "latest": "1.0.2",
+      "advisories": [
+        {
+          "url": "https://github.com/advisories/GHSA-rp65-9cf3-cjxr",
+          "severity": "high",
+          "title": "Inefficient Regular Expression Complexity in nth-check"
+        }
+      ]
+    },
+    {
+      "package": "postcss",
+      "major": "7",
+      "installed": [
+        "7.0.39"
+      ],
+      "latest": "7.0.39",
+      "advisories": [
+        {
+          "url": "https://github.com/advisories/GHSA-7fh5-64p2-3v2j",
+          "severity": "moderate",
+          "title": "PostCSS line return parsing error"
+        },
+        {
+          "url": "https://github.com/advisories/GHSA-fxqj-rqcc-2cmp",
+          "severity": "moderate",
+          "title": "PostCSS: incomplete fix of GHSA-6g55-p6wh-862q \u2014 attacker-controlled sourceMappingURL reads arbitrary .map files when `from` is unset"
+        },
+        {
+          "url": "https://github.com/advisories/GHSA-qx2v-qp2m-jg93",
+          "severity": "moderate",
+          "title": "PostCSS has XSS via Unescaped </style> in its CSS Stringify Output"
+        },
+        {
+          "url": "https://github.com/advisories/GHSA-6g55-p6wh-862q",
+          "severity": "high",
+          "title": "PostCSS: Arbitrary file read and information disclosure via attacker-controlled sourceMappingURL in CSS comments"
+        },
+        {
+          "url": "https://github.com/advisories/GHSA-r28c-9q8g-f849",
+          "severity": "high",
+          "title": "PostCSS: Path Traversal in Previous Source Map Auto-Loading (sourceMappingURL) leads to Arbitrary .map File Disclosure"
+        }
+      ]
+    },
+    {
+      "package": "postcss-selector-parser",
+      "major": "6",
+      "installed": [
+        "6.1.4"
+      ],
+      "latest": "6.1.4",
+      "advisories": [
+        {
+          "url": "https://github.com/advisories/GHSA-rj75-hqrm-r3gf",
+          "severity": "moderate",
+          "title": "PostCSS: Quadratic complexity in flat selector parsing allows CPU exhaustion"
+        }
+      ]
+    },
+    {
+      "package": "svgo",
+      "major": "1",
+      "installed": [
+        "1.3.2"
+      ],
+      "latest": "1.3.2",
+      "advisories": [
+        {
+          "url": "https://github.com/advisories/GHSA-2p49-hgcm-8545",
+          "severity": "high",
+          "title": "SVGO removeScripts plugin leaves some executable scripts intact"
+        },
+        {
+          "url": "https://github.com/advisories/GHSA-w27v-7q3p-w38r",
+          "severity": "high",
+          "title": "SVGO: removeScripts allows executable links through namespace and control-character bypasses"
+        },
+        {
+          "url": "https://github.com/advisories/GHSA-4vpr-x523-8j87",
+          "severity": "moderate",
+          "title": "SVGO: removeScripts incompletely sanitizes executable HTML in SVG foreignObject elements"
+        }
+      ]
+    },
+    {
+      "package": "serialize-javascript",
+      "major": "4",
+      "installed": [
+        "4.0.0"
+      ],
+      "latest": "4.0.0",
+      "advisories": [
+        {
+          "url": "https://github.com/advisories/GHSA-5c6j-r48x-rmvq",
+          "severity": "high",
+          "title": "Serialize JavaScript is Vulnerable to RCE via RegExp.flags and Date.prototype.toISOString()"
+        }
+      ]
+    },
+    {
+      "package": "serialize-javascript",
+      "major": "6",
+      "installed": [
+        "6.0.2"
+      ],
+      "latest": "6.0.2",
+      "advisories": [
+        {
+          "url": "https://github.com/advisories/GHSA-qj8w-gfj5-8c6v",
+          "severity": "moderate",
+          "title": "Serialize JavaScript has CPU Exhaustion Denial of Service via crafted array-like objects"
+        },
+        {
+          "url": "https://github.com/advisories/GHSA-5c6j-r48x-rmvq",
+          "severity": "high",
+          "title": "Serialize JavaScript is Vulnerable to RCE via RegExp.flags and Date.prototype.toISOString()"
+        }
+      ]
+    },
+    {
+      "package": "sprintf-js",
+      "major": "1",
+      "installed": [
+        "1.0.3"
+      ],
+      "latest": "1.1.3",
+      "advisories": [
+        {
+          "url": "https://github.com/advisories/GHSA-hp3w-g68c-fv3c",
+          "severity": "moderate",
+          "title": "sprintf-js vulnerable to denial of service through unbounded precision specifiers"
+        }
+      ]
+    },
+    {
+      "package": "stream-json",
+      "major": "1",
+      "installed": [
+        "1.9.1"
+      ],
+      "latest": "1.9.1",
+      "advisories": [
+        {
+          "url": "https://github.com/advisories/GHSA-hqr4-qq8f-hg3x",
+          "severity": "moderate",
+          "title": "stream-json: JSONC parser and verifier re-scan the whole accumulated comment on every input chunk"
+        },
+        {
+          "url": "https://github.com/advisories/GHSA-mjw6-4jj6-33hc",
+          "severity": "moderate",
+          "title": "stream-json has a prototype pollution issue: Assembler writes this.current[this.key] on plain objects"
+        },
+        {
+          "url": "https://github.com/advisories/GHSA-528h-pc64-c93x",
+          "severity": "moderate",
+          "title": "stream-json: pick/ignore/filter/replace filters are O(depth\u00b2) on nested input \u2014 small crafted JSON blocks the event loop for seconds\u2192minutes (DoS)"
+        }
+      ]
+    },
+    {
+      "package": "webpack-dev-middleware",
+      "major": "5",
+      "installed": [
+        "5.3.4"
+      ],
+      "latest": "5.3.4",
+      "advisories": [
+        {
+          "url": "https://github.com/advisories/GHSA-g84c-rxfj-3j2c",
+          "severity": "high",
+          "title": "webpack-dev-middleware vulnerable to Path Traversal via non-slash-terminated publicPath"
+        }
+      ]
+    },
+    {
+      "package": "webpack-dev-server",
+      "major": "4",
+      "installed": [
+        "4.15.2"
+      ],
+      "latest": "4.15.2",
+      "advisories": [
+        {
+          "url": "https://github.com/advisories/GHSA-9jgg-88mc-972h",
+          "severity": "moderate",
+          "title": "webpack-dev-server users' source code may be stolen when they access a malicious web site with non-Chromium based browser"
+        },
+        {
+          "url": "https://github.com/advisories/GHSA-4v9v-hfq4-rm2v",
+          "severity": "moderate",
+          "title": "webpack-dev-server users' source code may be stolen when they access a malicious web site"
+        },
+        {
+          "url": "https://github.com/advisories/GHSA-79cf-xcqc-c78w",
+          "severity": "moderate",
+          "title": "webpack-dev-server vulnerable to cross-origin source code exposure on non-HTTPS origins"
+        },
+        {
+          "url": "https://github.com/advisories/GHSA-mx8g-39q3-5c79",
+          "severity": "moderate",
+          "title": "webpack-dev-server vulnerable to HMR WebSocket interception via permissive user proxies"
+        },
+        {
+          "url": "https://github.com/advisories/GHSA-f5vj-f2hx-8m93",
+          "severity": "moderate",
+          "title": "webpack-dev-server vulnerable to cross-site request forgery via internal developer endpoints"
+        },
+        {
+          "url": "https://github.com/advisories/GHSA-m28w-2pqf-7qgj",
+          "severity": "moderate",
+          "title": "webpack-dev-server vulnerable to denial of service via a malformed Host or Origin header"
+        }
+      ]
+    }
+  ],
+  "finalLockAudit": {
+    "checkedAt": "2026-10-13T23:09:11.768867+00:00",
+    "lockSha256": "20362dedf9c9a877ae66dbf5b1cc4c5ec5e519f150da8e22a926948b3792a2fe",
+    "version": "18.0.15",
+    "packages": 1589,
+    "source": "https://registry.npmjs.org/-/npm/v1/security/advisories/bulk",
+    "mode": "read-only lockfile advisory query",
+    "ok": true,
+    "advisoryPackages": 3,
+    "advisories": 3
+  },
+  "validationStatus": "Source changes and lock resolution complete; runtime tests pending on pushed source.",
+  "remainingAdvisories": [
+    {
+      "package": "@opentelemetry/core",
+      "advisory": "GHSA-8988-4f7v-96qf",
+      "status": "Upstream SDK migration required; not reported fixed.",
+      "exposure": "Transitive Firebase/Google tracing SDK. No application inbound W3C baggage extraction configured.",
+      "mitigation": "Shared API authorization boundary rejects baggage over 8192 bytes and trace headers over 512 bytes before Firebase initialization; regression coverage added."
+    },
+    {
+      "package": "braces",
+      "advisory": "GHSA-vfj7-8cjw-p6xm",
+      "status": "Latest available 3.0.3 remains affected; no supported fixed upstream version.",
+      "exposure": "Build/test glob tooling; repository controlled patterns. Application API/UI does not accept or evaluate arbitrary brace glob patterns.",
+      "mitigation": "Retain controlled build patterns; no untrusted glob API. Recheck on next upstream maintenance."
+    },
+    {
+      "package": "sprintf-js",
+      "advisory": "GHSA-hp3w-g68c-fv3c",
+      "status": "Latest available 1.1.3 remains affected; no supported fixed upstream version.",
+      "exposure": "Transitive argparse/build CLI formatting; repository controlled format strings. No application user-controlled formatter.",
+      "mitigation": "No untrusted format-string interface. Recheck on upstream maintenance."
+    }
+  ]
+}

@@ -27,6 +27,7 @@ function fakeFirestore(seed = {}) {
       const pending = []; let writing = false;
       const tx = { get: async target => { if (writing) throw new Error('Transaction read after write'); return target.get(); },
         set: (target, data, options) => { writing = true; pending.push(() => { records.set(target.path, options?.merge ? { ...records.get(target.path), ...clone(data) } : clone(data)); writes.push(target.path); }); },
+        create: (target, data) => { if (records.has(target.path)) throw new Error('Document already exists'); writing = true; pending.push(() => { records.set(target.path, clone(data)); writes.push(target.path); }); },
         update: (target, data) => { writing = true; pending.push(() => { if (!records.has(target.path)) throw new Error('Missing update document'); records.set(target.path, { ...records.get(target.path), ...clone(data) }); writes.push(target.path); }); },
         delete: target => { writing = true; pending.push(() => { records.delete(target.path); writes.push(target.path); }); }
       };

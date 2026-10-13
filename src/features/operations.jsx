@@ -5,6 +5,7 @@ import menuApprovalHelpers from '../core/menuApproval';
 import {buildMenuCostBreakdowns} from '../core/menuCosting';
 import { LabelPrintSetup } from '../components/DayDotPrintScreen';
 import foodSafetyHelpers from '../core/foodSafety.js';
+import { FoodSafetyAuditReview } from '../components/FoodSafetyAuditReview';
 import { invoiceReviewRequest } from '../components/InvoiceReviewTools';
 import RecipeBatchCostEditor from '../components/RecipeBatchCostEditor';
 import React, { useState, useEffect, useRef, useMemo } from 'react';
@@ -86,7 +87,9 @@ const TabPrep = ({ currentDate, appUser, addToast, setLabelsToPrint }) => {
   const [prepDate, setPrepDate] = useState(currentDate);
   useEffect(() => {
     try {
-      if (sessionStorage.getItem('prepFocus') === 'plan') {
+      if (sessionStorage.getItem('prepFocus') === 'checks') {
+        sessionStorage.removeItem('prepFocus'); setSubTab('line-check');
+      } else if (sessionStorage.getItem('prepFocus') === 'plan') {
         sessionStorage.removeItem('prepFocus');
         setSubTab('prep');
         setTaskFreq('daily');
@@ -403,6 +406,7 @@ const TabPrep = ({ currentDate, appUser, addToast, setLabelsToPrint }) => {
         );})}
       </div>
 
+      {subTab === 'line-check' && canSignOffSafety && <FoodSafetyAuditReview appUser={appUser} />}
       {subTab === 'line-check' && (
         <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
           
@@ -2166,8 +2170,9 @@ const TabToday = ({ readinessSourceStates = {}, currentDate, appUser, users, shi
   const safetyItemsState=useLiveCollectionState('lineCheckItems',appUser?.restaurantId,{enabled:Boolean(canUseManagerBrief && hasAnyPermission(appUser,['prep','kitchen','lineCheck','team'])),requireServerSnapshot:true,limitCount:150,debugLabel:'today:required-line-checks'});
   const safetyLogsState=useLiveCollectionState('tempLogs',appUser?.restaurantId,{enabled:Boolean(canUseManagerBrief && hasAnyPermission(appUser,['prep','kitchen','lineCheck','team'])),whereClauses:[['date','==',today]],requireServerSnapshot:true,limitCount:200,debugLabel:'today:safety-corrective-actions'});
   const outstandingSafetyState=useLiveCollectionState('tempLogs',appUser?.restaurantId,{enabled:Boolean(canUseManagerBrief && hasAnyPermission(appUser,['prep','kitchen','lineCheck','team'])),whereClauses:[['managerReviewRequired','==',true],['reviewedByManager','==',false]],requireServerSnapshot:true,limitCount:100,debugLabel:'today:outstanding-safety-sign-offs'});
-  const safetyEvidenceLogs=useMemo(()=>[...new Map([...safetyLogsState.data,...outstandingSafetyState.data].map(row=>[row.id,row])).values()],[safetyLogsState.data,outstandingSafetyState.data]);
-  const foodSafetyEvidence=useMemo(()=>buildFoodSafetyEvidence({workspaceId:appUser?.restaurantId,items:safetyItemsState.data,logs:safetyEvidenceLogs,itemState:safetyItemsState,logState:{...safetyLogsState,complete:evidenceQuality(safetyLogsState).complete && evidenceQuality(outstandingSafetyState).complete}}),[appUser?.restaurantId,safetyItemsState,safetyEvidenceLogs,safetyLogsState,outstandingSafetyState]);
+    const outstandingSafetyClosureState=useLiveCollectionState('tempLogs',appUser?.restaurantId,{enabled:Boolean(canUseManagerBrief && hasAnyPermission(appUser,['prep','kitchen','lineCheck','team'])),whereClauses:[['closureRequired','==',true]],requireServerSnapshot:true,limitCount:100,debugLabel:'today:outstanding-safety-closures'});
+    const safetyEvidenceLogs=useMemo(()=>[...new Map([...safetyLogsState.data,...outstandingSafetyState.data,...outstandingSafetyClosureState.data].map(row=>[row.id,row])).values()],[safetyLogsState.data,outstandingSafetyState.data,outstandingSafetyClosureState.data]);
+  const foodSafetyEvidence=useMemo(()=>buildFoodSafetyEvidence({workspaceId:appUser?.restaurantId,items:safetyItemsState.data,logs:safetyEvidenceLogs,itemState:safetyItemsState,logState:{...safetyLogsState,complete:evidenceQuality(safetyLogsState).complete && evidenceQuality(outstandingSafetyState).complete && evidenceQuality(outstandingSafetyClosureState).complete}}),[appUser?.restaurantId,safetyItemsState,safetyEvidenceLogs,safetyLogsState,outstandingSafetyState,outstandingSafetyClosureState]);
   const historical=useOperationalHistory(appUser,canUseManagerBrief);
   const canReviewTraining=hasAnyPermission(appUser,['hr']);
   const trainingAssignmentsState=useLiveCollectionState('hrOnboardingTasks',appUser?.restaurantId,{enabled:Boolean(canUseManagerBrief && canReviewTraining),requireServerSnapshot:true,limitCount:300,debugLabel:'today:operational-training-follow-up'});
@@ -2240,8 +2245,8 @@ const TabToday = ({ readinessSourceStates = {}, currentDate, appUser, users, shi
   const pythonFindings=canUsePythonIntelligence && briefOpsIntel ? [...(briefOpsIntel.dataHealth || []),...(briefOpsIntel.laborWarnings || []),...(briefOpsIntel.menuCostWarnings || [])].map(row=>({...row,observedAt:briefOpsIntel.generatedAt,complete:evidenceQuality(currentOpsIntelState).complete,action:{label:'Review restaurant check',tab:'today',focus:'restaurant-check'}})) : [];
   const restaurantReadiness = useMemo(() => buildRestaurantReadiness({
     currentDate:today,workspaceId:appUser?.restaurantId,inventoryItems,prepItems,tasks,users,shifts,shiftTrades:shiftSwaps,timePunches,timeOffRequests,maintenanceLogs,sales,events,invoices:briefInvoices,wasteLogs:briefWasteLogs,integrations:Object.entries(clientData?.integrations || {}).map(([provider,value])=>({provider,...(typeof value==='object'?value:{status:value})})),restaurantAdminAlerts,
-    systemDataVisible:canReadSystemEvidence,backupStatus:backupEvidence,foodSafetyEvidence,setupGaps:setupGapsForReadiness,aiOrderFindings:aiBriefTop,pythonFindings,sourceStates:{...readinessSourceStates,backup:backupEvidenceState}
-  }),[today,appUser?.restaurantId,inventoryItems,prepItems,tasks,users,shifts,shiftSwaps,timePunches,timeOffRequests,maintenanceLogs,sales,events,briefInvoices,briefWasteLogs,clientData?.integrations,restaurantAdminAlerts,canReadSystemEvidence,backupEvidence,foodSafetyEvidence,setupGapsForReadiness,aiBriefTop,pythonFindings,readinessSourceStates,backupEvidenceState]);
+    systemDataVisible:canReadSystemEvidence,backupStatus:backupEvidence,foodSafetyEvidence,setupGaps:setupGapsForReadiness,aiOrderFindings:aiBriefTop,pythonFindings,requiredSourceKeys:['inventory','prep','tasks','users','shifts','timeOff','maintenance','sales','events','safety','backup',...(canUseScheduleBuilder?['trades']:[]),...(canUseLabor?['punches']:[]),...(canReviewTraining?['training']:[]),...(Object.values(clientData?.integrations || {}).some(value=>value && value!==false)?['integrations']:[]),...(canUseBasicInventory?['invoices','waste']:[]),...(canUseAiOrdering?['orders']:[])],sourceStates:{...readinessSourceStates,backup:backupEvidenceState,training:trainingAssignmentsState,integrations:{resolved:false,allowed:canReadSystemEvidence},safety:{resolved:true,complete:foodSafetyEvidence.complete},invoices:briefInvoicesState,waste:briefWasteState,orders:demandOrdersState}
+  }),[today,appUser?.restaurantId,inventoryItems,prepItems,tasks,users,shifts,shiftSwaps,timePunches,timeOffRequests,maintenanceLogs,sales,events,briefInvoices,briefWasteLogs,clientData?.integrations,restaurantAdminAlerts,canReadSystemEvidence,backupEvidence,foodSafetyEvidence,setupGapsForReadiness,aiBriefTop,pythonFindings,readinessSourceStates,backupEvidenceState,briefInvoicesState,briefWasteState,demandOrdersState,canUseBasicInventory,canUseAiOrdering,canUseScheduleBuilder,canUseLabor,canReviewTraining,trainingAssignmentsState]);
   const visibleAttentionItems=useMemo(()=>(restaurantReadiness.attentionItems || []).filter(item=>canViewAttentionItem(item,appUser)).slice(0,10),[restaurantReadiness.attentionItems,appUser]);
   const approvedGraphDependencies=useMemo(()=>menuDependencies.filter(menuApprovalHelpers.isApprovedDependency),[menuDependencies]);
   const menuRowsForGraph=useMemo(()=>buildGraphMenuRows({workspaceId:appUser?.restaurantId,dependencies:approvedGraphDependencies,recipes}),[appUser?.restaurantId,approvedGraphDependencies,recipes]);
@@ -2551,6 +2556,7 @@ const TabToday = ({ readinessSourceStates = {}, currentDate, appUser, users, shi
           <div className="text-[9px] font-black uppercase tracking-widest mt-2 text-[#D4A381]">{row.action?.label || 'Review'} →</div>
         </button>)}
       </div>
+      <details data-testid="readiness-source-coverage" className="mt-3 text-xs text-slate-400"><summary className="min-h-[44px] cursor-pointer">Readiness evidence coverage</summary>{(restaurantReadiness.sourceRegistry || []).map(source=><div key={source.key} className="border-t border-slate-700 py-2"><strong>{source.label}: {source.status}</strong><p>{source.reason}</p>{!source.complete && <button type="button" className={T.btnAlt} onClick={()=>openReadinessCategory({action:{tab:source.tab,label:`Review ${source.label}`}})}>Review {source.label}</button>}</div>)}</details>
       {restaurantReadiness.coveragePct < 100 && <p className="mt-3 text-[10px] font-bold text-slate-500">Coverage: {restaurantReadiness.coveragePct}%. Categories without enough loaded evidence stay marked Needs data instead of being counted as healthy.</p>}
     </section>}
 

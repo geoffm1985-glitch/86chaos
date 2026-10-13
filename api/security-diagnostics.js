@@ -1,6 +1,6 @@
 const admin = require('./_firebase-admin-compat');
 const { getAdminAppForRequest, projectCredentialStatus } = require('./_firebase-project-admin');
-const { requireMfaIfEnforced, masterEmails } = require('./_chaos-admin');
+const { authorize, roleNeedsMfa: sharedRoleNeedsMfa } = require('./_chaos-admin');
 const { redactText, redactDiagnostic, sanitizedCorrelationId, classifyDiagnosticError, buildSecurityMaturityReport } = require('./_security-maturity.cjs');
 
 function initAdmin(req) {
@@ -19,11 +19,7 @@ const parseDate = (value) => {
   const d = new Date(value);
   return Number.isNaN(d.getTime()) ? null : d;
 };
-const roleNeedsMfa = (user = {}) => {
-  const role = norm(user.role || user.accountRole || '');
-  return Boolean(user.isSuperAdmin || user.isAdmin || user.isOwner || user.accountOwner || user.owner || user.workspaceOwner || ['owner', 'manager', 'admin', 'general manager', 'super admin'].some(token => role.includes(token)));
-};
-const userHasMfaFlag = (user = {}) => Boolean(user.mfaEnabled || user.multiFactorEnabled || user.security?.mfaEnabled || user.accountSecurity?.mfaEnabled);
+const roleNeedsMfa = user => sharedRoleNeedsMfa(user);
 const boolEnv = (name) => /^(1|true|yes|enforce)$/i.test(String(process.env[name] || '').trim());
 const { APP_VERSION, SECURITY_SCHEMA_VERSION } = require('./_version');
 const SECURITY_BUILD_VERSION = APP_VERSION;
@@ -36,21 +32,11 @@ const expectedEnvironmentKind = req => {
   return 'unknown';
 };
 const decodedHasMfa = (decoded = {}) => Boolean(decoded.firebase?.sign_in_second_factor || decoded.firebase?.second_factor_identifier || decoded.sign_in_second_factor || decoded.mfa === true);
-const authUserHasMfa = async (app, user) => {
-  if (userHasMfaFlag(user)) return true;
-  try {
-    let authUser = null;
-    if (user?.id) authUser = await app.auth().getUser(user.id).catch(() => null);
-    if (!authUser && user?.email) authUser = await app.auth().getUserByEmail(user.email).catch(() => null);
-    return (authUser?.multiFactor?.enrolledFactors || []).length > 0;
-  } catch (_) {
-    return false;
-  }
-};
+const {readMfaEnrollment,mfaCoverage,configurationEvidence}=require('./_security-posture-evidence.cjs');
 
 async function verifyOptionalAppCheck(app, req) {
   const header = String(req.headers['x-firebase-appcheck'] || '').trim();
-  const enforce = /^(1|true|yes)$/i.test(String(process.env.APP_CHECK_ENFORCE || process.env.FIREBASE_APP_CHECK_ENFORCE || ''));
+  const enforce = boolEnv('APP_CHECK_ENFORCE') || boolEnv('FIREBASE_APP_CHECK_ENFORCE');
   if (!header) return { configured: hasEnv('APP_CHECK_ENFORCE') || hasEnv('FIREBASE_APP_CHECK_ENFORCE'), enforcedByApi: enforce, headerReceived: false, tokenValid: false, status: enforce ? 'missing' : 'not-sent' };
   try {
     if (typeof app.appCheck !== 'function') return { configured: true, enforcedByApi: enforce, headerReceived: true, tokenValid: false, status: 'admin-sdk-no-appcheck' };
@@ -67,13 +53,9 @@ module.exports = async function handler(req, res) {
     const token = (req.headers.authorization || '').replace('Bearer ', '').trim();
     if (!token) return res.status(401).json({ ok: false, error: 'Missing token' });
     const app = initAdmin(req);
-    const decoded = await app.auth().verifyIdToken(token, true);
-    const db = app.firestore();
-    const callerSnap = await db.collection('users').doc(decoded.uid).get();
-    const caller = callerSnap.exists ? (callerSnap.data() || {}) : {};
-    if (decoded.superAdmin !== true && caller.isSuperAdmin !== true && caller.systemAccess?.superAdmin !== true && !masterEmails().includes(norm(decoded.email))) return res.status(403).json({ ok: false, error: 'Super admin required' });
-    const mfaGate = requireMfaIfEnforced(decoded, caller, true);
-    if (!mfaGate.ok) return res.status(mfaGate.status || 403).json({ ok: false, error: mfaGate.error });
+    const authority = await authorize(req,app);
+    if(!authority.ok)return res.status(authority.status||403).json({ok:false,error:authority.error});
+    const decoded=authority.decoded,db=authority.db;
 
     const [securityStatusSnap, backupStatusSnap, restoreDrillSnap, usersSnap, auditSnap, rateSnap] = await Promise.all([
       db.collection('system').doc('securityStatus').get().catch(() => null),
@@ -89,9 +71,9 @@ module.exports = async function handler(req, res) {
     const restoreDrillStatus = restoreDrillSnap?.exists ? restoreDrillSnap.data() : {};
     const users = usersSnap.docs.map(d => ({ id: d.id, ...d.data() }));
     const elevatedUsers = users.filter(roleNeedsMfa);
-    const elevatedMfaPairs = await Promise.all(elevatedUsers.slice(0, 200).map(async user => ({ user, hasMfa: await authUserHasMfa(app, user) })));
+    const elevatedMfaPairs = await Promise.all(elevatedUsers.slice(0, 200).map(async user => ({ user, enrollment: await readMfaEnrollment(app, user) })));
     const riskyUsers = elevatedMfaPairs
-      .filter(row => !row.hasMfa)
+      .filter(row => row.enrollment.enrolled === false)
       .slice(0, 50)
       .map(({ user }) => ({ id: user.id, name: user.name || '', email: maskEmail(user.email), role: user.role || user.accountRole || '', restaurantId: user.restaurantId || user.activeRestaurantId || '', risk: 'MFA missing for elevated account' }));
 
@@ -131,11 +113,12 @@ module.exports = async function handler(req, res) {
       ok: true,
       generatedAt: new Date().toISOString(),
       caller: { uid: decoded.uid, email: decoded.email || '', superAdmin: decoded.superAdmin === true },
+      configurationEvidence:configurationEvidence({securityStatus,projectId:runtimeProjectId,appCheckEnforced:appCheck.enforcedByApi,mfaEnforced:mfaEnforcementEnabled()}),
       security: {
         firestoreRules: { status: securityStatus.firestoreRulesStatus || 'publish-date-needed', currentRulesVersion: rulesVersion, lastPublishedAt: securityStatus.firestoreRulesPublishedAt || securityStatus.rulesPublishedAt || '', note: 'Record publish dates in system/securityStatus after Firebase rule publishes.' },
         storageRules: { status: securityStatus.storageRulesStatus || 'publish-date-needed', currentRulesVersion: storageRulesVersion, lastPublishedAt: securityStatus.storageRulesPublishedAt || '', note: 'Record publish dates in system/securityStatus after Storage rule publishes.' },
         appCheck,
-        mfa: { requiredFor: 'owners, managers, admins, system admins; standard employees optional', riskyUserCount: riskyUsers.length, elevatedUserCount: elevatedUsers.length, status: riskyUsers.length ? 'action-needed' : 'clean', apiEnforcementEnabled: mfaEnforcementEnabled(), callerSecondFactor: decodedHasMfa(decoded), recoveryCodeSecretConfigured: String(process.env.RECOVERY_CODE_SECRET || '').trim().length >= 32, note: mfaEnforcementEnabled() ? 'Protected admin API routes require a second-factor sign-in where the shared guard is used.' : 'Enrollment can be tested safely. Enable MFA_ENFORCE_ELEVATED_ROLES only after elevated users enroll and the recovery reset flow has been tested.' },
+        mfa: { requiredFor: 'owners, managers, admins, system admins; standard employees optional', riskyUserCount: riskyUsers.length, elevatedUserCount: elevatedUsers.length, ...mfaCoverage({pairs:elevatedMfaPairs,elevatedCount:elevatedUsers.length,userCount:users.length}), apiEnforcementEnabled: mfaEnforcementEnabled(), callerSecondFactor: decodedHasMfa(decoded), recoveryCodeSecretConfigured: String(process.env.RECOVERY_CODE_SECRET || '').trim().length >= 32, note: mfaEnforcementEnabled() ? 'Protected admin API routes require a second-factor sign-in where the shared guard is used.' : 'Enrollment can be tested safely. Enable MFA_ENFORCE_ELEVATED_ROLES only after elevated users enroll and the recovery reset flow has been tested.' },
         environmentSeparation: {
           mode: process.env.VERCEL_ENV || process.env.NODE_ENV || 'unknown',
           projectId: runtimeProjectId,
@@ -210,6 +193,6 @@ module.exports = async function handler(req, res) {
     res.status(200).json(redactDiagnostic(report));
   } catch (err) {
     const correlationId=sanitizedCorrelationId(req.headers['x-correlation-id'] || req.headers['x-request-id'] || 'security-diagnostics');
-    res.status(500).json({ ok:false, error:redactText(err.message), errorCategory:classifyDiagnosticError(err), correlationId });
+    res.status(500).json({ ok:false, error:'Security evidence could not be verified. Retry or review the correlation ID.', errorCategory:classifyDiagnosticError(err), correlationId });
   }
 };
