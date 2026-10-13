@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
   "version": "18.0.14",
-  "sourceHash": "702909196afb8351a2b0cc837f31521f01e84d024111eff699fe9008a885a465",
+  "sourceHash": "223059d135972a2231fd44ad4919cf55ed095dbf38ef19825e0cae77775ad587",
   "files": [
     {
       "file": ".gitattributes",
@@ -505,7 +505,7 @@
     },
     {
       "file": "android/app/src/main/res/drawable/chaos86_notification.xml",
-      "sha256": "3d14f78cca7991f165faa154d85ec4e1a821589d0697c74ed60941bc2e07cd74"
+      "sha256": "1b5e3fcbe0784d4014f95f920825189d428d8f440debc938c13aac4549528ead"
     },
     {
       "file": "android/app/src/main/res/drawable/ic_launcher_background.xml",
