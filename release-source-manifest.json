@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
   "version": "18.0.15",
-  "sourceHash": "8b9fa657823011eb0b5c1edf88bc1ee225775b211995bceb15a12872d89d88d9",
+  "sourceHash": "75dd6b5272715d267a4ca730e6ee85e6bc7b18cdefff42f71bb1a28d787ef197",
   "files": [
     {
       "file": ".gitattributes",
@@ -1269,7 +1269,7 @@
     },
     {
       "file": "api/implementation-completion-18-0-15.test.cjs",
-      "sha256": "cd75ed97be904feb6a0643d437fe587dc710a668f35ca165407757114650af47"
+      "sha256": "e3ceea308e7fb594d8e45a234eb77f286a059b898940958199399708af17f7f7"
     },
     {
       "file": "api/import-cheers-july-schedule.js",

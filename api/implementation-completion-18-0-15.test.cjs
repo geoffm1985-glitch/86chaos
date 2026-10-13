@@ -13,6 +13,7 @@ async function publish(db, value = shift, operationId = 'publication_operation_1
     const ref = headRef(db, 'tenant-a', 'shift-a'), prior = await tx.get(ref);
     return recordPublication({ db, tx, head: prior.exists ? prior.data() : null, tenant: 'tenant-a', shiftId: 'shift-a', shift: value, operationId, actor: 'manager-a', at: '2026-10-13T12:00:00Z' });
   });
+}
 test('shift publication records exact material version and unchanged republish creates no new acknowledgment', async () => {
   const db = fakeFirestore(), event = await publish(db), before = db.writes.length;
   assert.equal(event.after.authUid, 'employee-a'); assert.equal(event.acknowledgmentRequired, true);
