@@ -1,3 +1,4 @@
+import PrepActionBar from '../components/PrepActionBar';
 import {buildFoodSafetyEvidence,buildGraphMenuRows,buildTrainingFollowUp,evidenceQuality} from '../core/operationalEvidence';
 import {useOperationalHistory} from '../hooks/useOperationalHistory';
 import {useWorkspaceBackupEvidence} from '../hooks/useWorkspaceBackupEvidence';
@@ -482,8 +483,7 @@ const TabPrep = ({ currentDate, appUser, addToast, setLabelsToPrint }) => {
       )}
 
       {subTab === 'prep' && (
-        <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
-          <LabelPrintSetup/>
+        <div className="space-y-4 animate-[slideIn_0.2s_ease-out]" style={{paddingBottom:'calc(var(--chaos-prep-action-bar-height, 0px) + 1rem)'}}>
           <div className={`${T.card} p-3 flex justify-between items-center bg-[#1A2126]`}>
             <h3 className={`font-black flex items-center gap-2 text-sm text-white uppercase tracking-wider`}><ClipboardList size={18} className={T.copper}/> {t('prep.targetDate')}</h3>
             <input type="date" value={prepDate} onChange={e=>setPrepDate(e.target.value)} className="p-1.5 bg-[#12161A] border border-[#2A353D] rounded-lg outline-none text-sm font-bold text-[#D4A381] shadow-inner"/>
@@ -491,9 +491,9 @@ const TabPrep = ({ currentDate, appUser, addToast, setLabelsToPrint }) => {
           <form onSubmit={handleAddPrep} className={`${T.card} p-3 flex flex-col sm:flex-row gap-3 items-center bg-[#1A2126]`}>
             <input type="text" value={text} onChange={e=>setText(e.target.value)} className="flex-1 w-full p-2 bg-[#12161A] border border-[#2A353D] rounded-xl text-sm outline-none font-medium text-white placeholder-slate-500" placeholder={t('prep.addItemPlaceholder')} required/>
             <div className="flex w-full sm:w-auto gap-3 items-center">
-              <select value={station} onChange={e=>setStation(e.target.value)} className="w-full sm:w-32 p-2 text-xs font-bold bg-[#12161A] border border-[#2A353D] rounded-xl outline-none text-white">{displayStations.map(s => <option key={s} value={s}>{s}</option>)}</select> 
-              <label className={`flex items-center gap-2 text-[10px] uppercase tracking-widest font-bold ${T.muted} cursor-pointer`}><input type="checkbox" checked={isMaster} onChange={e=>setIsMaster(e.target.checked)} className="w-4 h-4 accent-[#8F6040] bg-[#12161A] border-[#2A353D] rounded"/> Master</label>
-              <button className={`${T.btn} py-2 px-4`}><Plus size={18}/></button>
+              <select value={station} onChange={e=>setStation(e.target.value)} aria-label="Prep station" className="min-w-0 flex-1 w-0 sm:w-32 p-2 text-xs font-bold bg-[#12161A] border border-[#2A353D] rounded-xl outline-none text-white">{displayStations.map(s => <option key={s} value={s}>{s}</option>)}</select>
+              <label className={`flex items-center gap-2 whitespace-nowrap flex-shrink-0 text-[10px] uppercase tracking-widest font-bold ${T.muted} cursor-pointer`}><input type="checkbox" checked={isMaster} onChange={e=>setIsMaster(e.target.checked)} className="w-4 h-4 accent-[#8F6040] bg-[#12161A] border-[#2A353D] rounded"/> Master</label>
+              <button aria-label="Add prep item" className={`${T.btn} flex-shrink-0 py-2 px-4`}><Plus size={18}/></button>
             </div>
           </form>
           
@@ -524,7 +524,8 @@ const TabPrep = ({ currentDate, appUser, addToast, setLabelsToPrint }) => {
               </div>
             ))}
           </div>
-          <div className={`fixed bottom-0 left-0 right-0 p-4 bg-[#161D22] border-t ${T.border} z-50 backdrop-blur-md bg-opacity-95`}>
+          <section data-testid="prep-printer-information" className="space-y-3 pb-3"><LabelPrintSetup/><p className="text-center text-[10px] font-bold text-slate-500">* Intended for use with Brother QL-810W label printer.</p></section>
+          <PrepActionBar className={`fixed bottom-0 left-0 right-0 p-4 bg-[#161D22] border-t ${T.border} z-50 backdrop-blur-md bg-opacity-95`}>
             <div className="max-w-2xl mx-auto flex gap-3">
               <button onClick={() => {
                   if (selectedActivePrep.length === 0) {
@@ -538,7 +539,6 @@ const TabPrep = ({ currentDate, appUser, addToast, setLabelsToPrint }) => {
                   }));
                   setLabelsToPrint({items: labels, prepDate});
               }} disabled={selectedActivePrep.length===0} className={`flex-1 ${T.btn} disabled:opacity-50 flex items-center justify-center gap-2`}><ClipboardList size={18}/> {selectedActivePrep.length === 1 ? t('prep.printLabel', { count: selectedActivePrep.length || '' }) : t('prep.printLabels', { count: selectedActivePrep.length || '' })}</button>
-              <p className="absolute left-4 right-4 -top-5 text-center text-[10px] font-bold text-slate-500">* Intended for use with Brother QL-810W label printer.</p>
               
               <button onClick={async () => { 
                   for(const item of selectedActivePrep){
@@ -553,7 +553,7 @@ const TabPrep = ({ currentDate, appUser, addToast, setLabelsToPrint }) => {
                   setSelectedPreps([]);
               }} disabled={selectedActivePrep.length===0} className={`flex-1 ${T.btn} disabled:opacity-50 flex items-center justify-center gap-2`}><Check size={18}/> {t('prep.markDone')}</button>
             </div>
-          </div>
+          </PrepActionBar>
   
       </div>
       )}

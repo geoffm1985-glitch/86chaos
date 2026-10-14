@@ -1,9 +1,9 @@
 {
-  "version": "18.0.15",
-  "name": "86 Chaos 18.0.15",
-  "build": "18.0.15",
-  "label": "86 Chaos 18.0.15",
-  "title": "86 Chaos 18.0.15",
+  "version": "18.0.16",
+  "name": "86 Chaos 18.0.16",
+  "build": "18.0.16",
+  "label": "86 Chaos 18.0.16",
+  "title": "86 Chaos 18.0.16",
   "releasedAt": "2026-10-11T22:10:58.036Z",
   "releaseTitle": "Mobile implementation completion, reviewed safety and operational recovery",
   "summary": "Preserves schedule workspace during account refresh, bounds server verification, and repairs tenant-authorized publish queries.",
@@ -22,6 +22,6 @@
   "changes": [
     "Schedule tools require server-confirmed data before period actions.",
     "Selected-week publishing no longer issues unauthorized workspaceId queries.",
-    "Android versionCode 180014; release 18.0.15"
+    "Android versionCode 180014; release 18.0.16"
   ]
 }

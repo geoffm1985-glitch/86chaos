@@ -2,6 +2,9 @@ package com.chiltonappworks.chaos86;
 
 import android.graphics.Color;
 import android.os.Bundle;
+import android.os.SystemClock;
+import android.widget.Toast;
+import androidx.activity.OnBackPressedCallback;
 import android.view.View;
 import android.view.ViewGroup;
 
@@ -14,6 +17,9 @@ import androidx.core.view.WindowInsetsControllerCompat;
 import com.getcapacitor.BridgeActivity;
 
 public class MainActivity extends BridgeActivity {
+    private final BackExitGuard backExitGuard = new BackExitGuard();
+    @Override public void onPause() { backExitGuard.reset(); super.onPause(); }
+
     @Override
     public void onCreate(Bundle savedInstanceState) {
         registerPlugin(ChaosNativePlugin.class);
@@ -51,5 +57,21 @@ public class MainActivity extends BridgeActivity {
         });
 
         ViewCompat.requestApplyInsets(contentView);
+        getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
+            @Override public void handleOnBackPressed() {
+                getBridge().getWebView().evaluateJavascript(
+                    "(function(){if(typeof window.__CHAOS_NATIVE_BACK_HANDLER__==='function'){window.__CHAOS_NATIVE_BACK_HANDLER__();return true;}return false;})()",
+                    handled -> {
+                        if ("true".equals(handled)) return;
+                        if (getBridge().getWebView().canGoBack()) {
+                            backExitGuard.reset(); getBridge().getWebView().goBack();
+                        } else if (backExitGuard.shouldExit(SystemClock.elapsedRealtime())) {
+                            finish();
+                        } else {
+                            Toast.makeText(MainActivity.this, "Press back again within 2 seconds to close 86 Chaos.", Toast.LENGTH_SHORT).show();
+                        }
+                    });
+            }
+        });
     }
 }

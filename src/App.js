@@ -1,3 +1,5 @@
+import { isNativeAndroid, NativeCapabilities } from './core/nativeCapabilities';
+import { installNativeBackController } from './core/nativeBackController.mjs';
 import { withSelectedWorkspaceContext, resolvePersonalPreferences } from './core/workspaceContext';
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { Bell, Bug, ChevronLeft, ChevronRight, Loader2, Menu, Moon, Send, X } from 'lucide-react';
@@ -2586,6 +2588,20 @@ What I clicked / expected:
       }
     };
   }, [appUser?.preferences?.defaultTab, addToast, disarmPwaBackExit, transitionActiveTabState]);
+
+  useEffect(() => {
+    if (!isNativeAndroid()) return undefined;
+    return installNativeBackController({ target: window,
+      warn: () => addToast('Exit 86 Chaos', 'Press back again within 2 seconds to close the app.'),
+      exit: () => NativeCapabilities.closeApp().catch(() => addToast('Unable to close', 'Please try Back again.')),
+      closeTransient: () => {
+        const controls = [...document.querySelectorAll('[data-chaos-modal-close="true"], .app-drawer-readable .drawer-icon-button')];
+        const topmost = controls.filter(control => control.getClientRects().length).pop();
+        if (!topmost) return false;
+        topmost.click(); return true;
+      }
+    });
+  }, [addToast]);
 
   const offlineQueue = liveAppUser ? getOfflineQueue(liveAppUser.restaurantId, liveAppUser.id) : [];
   const openMenu = useCallback(() => setIsMenuOpen(true), []);

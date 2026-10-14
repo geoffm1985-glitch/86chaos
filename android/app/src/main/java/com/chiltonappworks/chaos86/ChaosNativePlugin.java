@@ -32,6 +32,10 @@ import java.util.ArrayList;
     @Permission(alias = "microphone", strings = { Manifest.permission.RECORD_AUDIO })
 })
 public class ChaosNativePlugin extends Plugin {
+    @PluginMethod public void closeApp(PluginCall call) {
+        getActivity().runOnUiThread(() -> { call.resolve(); getActivity().finish(); });
+    }
+
     private SpeechRecognizer recognizer;
     private String speechSession;
     private PluginCall pendingSpeech;

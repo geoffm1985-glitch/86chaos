@@ -1,9 +1,7 @@
 name: Mobile Targeted Gate
 
 on:
-  push:
-    branches:
-      - mobile
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -14,7 +12,7 @@ concurrency:
 
 jobs:
   targeted:
-    if: ${{ contains(github.event.head_commit.message, '[mobile-test]') }}
+    if: ${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'mobile' }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
@@ -139,8 +137,8 @@ jobs:
           apk_signer_tool=$(find "$ANDROID_HOME/build-tools" -maxdepth 2 -type f -name apksigner | sort -V | tail -n 1)
           "$apk_signer_tool" verify --print-certs android/app/build/outputs/apk/debug/app-debug.apk | grep -F "$preview_cert_hash"
           python3 scripts/verify-native-push-apk.py android/app/build/outputs/apk/debug/app-debug.apk
-          cp android/app/build/outputs/apk/debug/app-debug.apk 86Chaos-18.0.15-android-preview.apk
-          sha256sum 86Chaos-18.0.15-android-preview.apk > 86Chaos-18.0.15-android-preview.apk.sha256
+          cp android/app/build/outputs/apk/debug/app-debug.apk 86Chaos-18.0.16-android-preview.apk
+          sha256sum 86Chaos-18.0.16-android-preview.apk > 86Chaos-18.0.16-android-preview.apk.sha256
 
       - name: Publish Android preview release
         if: ${{ contains(github.event.head_commit.message, '[android-preview]') }}
@@ -148,13 +146,13 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
-          tag="mobile-v18.0.15-preview"
+          tag="mobile-v18.0.16-preview"
           if gh release view "$tag" >/dev/null 2>&1; then echo "Release already exists; refusing to replace its APK."; exit 1; fi
           gh release create "$tag" \
-            86Chaos-18.0.15-android-preview.apk \
-            86Chaos-18.0.15-android-preview.apk.sha256 \
+            86Chaos-18.0.16-android-preview.apk \
+            86Chaos-18.0.16-android-preview.apk.sha256 \
             --target "$GITHUB_SHA" \
-            --title "86 Chaos 18.0.15 Android Preview" \
+            --title "86 Chaos 18.0.16 Android Preview" \
             --prerelease \
             --notes "Internal Android preview for the 86 Chaos mobile branch. Includes testing 17.0.86 features, native PDF saving, printing, 86Voice, location and local reminders. Uses existing production accounts; changed API actions use the matching mobile branch backend. Preview signing is not the future Google Play production signing identity."
 

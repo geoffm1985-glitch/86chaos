@@ -1,6 +1,6 @@
 {
   "name": "86chaos",
-  "version": "18.0.15",
+  "version": "18.0.16",
   "private": true,
   "dependencies": {
     "@capacitor-firebase/messaging": "8.5.2",
@@ -300,9 +300,10 @@
     "build:android:production": "node scripts/build-production-apk.cjs",
     "test:mobile-testing-build": "node --test api/mobile-testing-build.test.cjs",
     "test:mobile-production-build": "node --test api/mobile-production-build.test.cjs",
-    "validate:18.0.15": "node scripts/validate-18-0-15.js",
-    "test:repair:18.0.15": "npm run test:current-release-targeted",
-    "test:implementation-completion": "node --test api/implementation-completion-18-0-15.test.cjs api/shift-cancellation-18-0-15.test.cjs api/training-competency-18-0-15.test.cjs api/operational-voice-18-0-15.test.cjs api/source-coverage-18-0-15.test.cjs api/shift4-recovery-18-0-15.test.cjs api/security-posture-evidence-18-0-15.test.cjs api/local-runtime-pin-18-0-15.test.cjs api/dependency-hardening-18-0-15.test.cjs api/mobile-implementation-transport-18-0-15.test.cjs && react-scripts test --watchAll=false --runInBand src/components/ImplementationCompletion18.test.jsx"
+    "validate:18.0.16": "node scripts/validate-18-0-15.js",
+    "test:repair:18.0.16": "npm run test:current-release-targeted",
+    "test:implementation-completion": "node --test api/implementation-completion-18-0-15.test.cjs api/shift-cancellation-18-0-15.test.cjs api/training-competency-18-0-15.test.cjs api/operational-voice-18-0-15.test.cjs api/source-coverage-18-0-15.test.cjs api/shift4-recovery-18-0-15.test.cjs api/security-posture-evidence-18-0-15.test.cjs api/local-runtime-pin-18-0-15.test.cjs api/dependency-hardening-18-0-15.test.cjs api/mobile-implementation-transport-18-0-15.test.cjs && react-scripts test --watchAll=false --runInBand src/components/ImplementationCompletion18.test.jsx",
+    "test:mobile-prep-back": "node --test api/mobile-prep-back-18-0-16.test.cjs"
   },
   "browserslist": {
     "production": [
