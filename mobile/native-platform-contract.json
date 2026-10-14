@@ -59,13 +59,13 @@
       "minSdk": 24,
       "compileSdk": 36,
       "targetSdk": 36,
-      "versionCode": 180014,
+      "versionCode": 180015,
       "versionName": "18.0.15"
     },
     "ios": {
       "bundleIdentifier": "com.chiltonappworks.chaos86",
       "minimumVersion": "15.0",
-      "currentProjectVersion": 180014,
+      "currentProjectVersion": 180015,
       "marketingVersion": "18.0.15",
       "packageManager": "SPM"
     }
@@ -97,7 +97,20 @@
         "/api/demand-history",
         "/api/operational-history",
         "/api/safe-write",
-        "/api/free-ai-services"
+        "/api/free-ai-services",
+        "/api/schedule-publish",
+        "/api/schedule-shift-delete",
+        "/api/security-diagnostics",
+        "/api/voice-command",
+        "/api/shift4-connect",
+        "/api/shift4-callback",
+        "/api/shift4-status",
+        "/api/shift4-locations",
+        "/api/shift4-select-location",
+        "/api/shift4-test",
+        "/api/shift4-sync",
+        "/api/shift4-records",
+        "/api/shift4-export"
       ],
       "firebaseProjectId": "cheers-34b8d"
     }

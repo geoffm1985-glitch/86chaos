@@ -1,5 +1,6 @@
 'use strict';
 const { safeId, assertTenant, hash } = require('./_invoice-approval');
+const {evaluateFoodSafety}=require('../src/core/foodSafety.cjs');
 const fail = (code, message, statusCode = 400) => { throw Object.assign(new Error(message), { code, statusCode }); };
 function recordDigest(record) {
   const { reviewedByManager, reviewedAt, reviewedBy, managerNote, closureEvidence, closureRequired, safetyRevision, ...original } = record;
@@ -53,6 +54,11 @@ async function foodSafetyEvidence({ db, ctx, body, manager, clock = () => new Da
     if (body.expectedTimestamp !== original.timestamp) fail('stale_safety_record', 'Reload the original check before closure.', 409);
     if (original.status !== 'Attention' || !original.correctiveAction || followUp.status !== 'Safe' || followUp.itemId !== original.itemId || (followUp.requiredMin ?? null) !== (original.requiredMin ?? null) || (followUp.requiredMax ?? null) !== (original.requiredMax ?? null) || followUp.category !== original.category || !(Date.parse(followUp.timestamp) > Date.parse(original.timestamp))) fail('closure_evidence_invalid', 'Closure requires an attention record, corrective action and a later safe check for the same item.');
     const at = clock().toISOString();
+    if(Date.parse(followUp.timestamp)>Date.parse(at)) fail('closure_evidence_invalid','The follow-up check cannot be dated in the future.');
+    let verifiedFollowUp;
+    try { verifiedFollowUp=evaluateFoodSafety({category:followUp.category,requiredMin:followUp.requiredMin,requiredMax:followUp.requiredMax},{temp:followUp.temp,checklistResult:followUp.result,notes:followUp.notes,correctiveAction:followUp.correctiveAction}); }
+    catch (_) { fail('closure_evidence_invalid','The follow-up values do not establish a valid safe check.'); }
+    if(verifiedFollowUp.status!=='Safe') fail('closure_evidence_invalid','The recorded follow-up values remain outside their safety limits.');
     const closure = { restaurantId: ctx.restaurantId, logId: body.logId, followUpLogId: body.followUpLogId, originalDigest, followUpDigest, intent, note, closedAt: at, closedBy: ctx.uid, status: 'closed' };
     tx.create(closureRef, closure);
     tx.update(ref, { safetyRevision:Math.max(1,Number(original.safetyRevision)||0), closureRequired: false, reviewedByManager: true, reviewedAt: at, reviewedBy: ctx.uid, managerNote: note, closureEvidence: { closedAt: at, followUpLogId: body.followUpLogId } });

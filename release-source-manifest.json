@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
   "version": "18.0.15",
-  "sourceHash": "87251b7362749b8d8d324d379815f2120d5179282108936b0b262f84caedccf3",
+  "sourceHash": "a9a3d04ea75349478de0a9e0a8d308dc5923d41c542e962440f56a9b8235ff39",
   "files": [
     {
       "file": ".gitattributes",
@@ -9,7 +9,7 @@
     },
     {
       "file": ".github/workflows/mobile-targeted-gate.yml",
-      "sha256": "d6e2471b875c0f3ade54941a5d0f44340a574ffec9cb30a64514cb6670a5aaa7"
+      "sha256": "c0da0fa32a5d9991effa440f2f10de1328b733d8b7cdf29e3d507356c1a76812"
     },
     {
       "file": ".github/workflows/testing-targeted-delta.yml",
@@ -701,7 +701,7 @@
     },
     {
       "file": "api/_food-safety-evidence.cjs",
-      "sha256": "5af2dab44d1d3b4a61ec89cc5d68c4a83f85d9f5a7e212d194afcb43e627c86e"
+      "sha256": "746bf947e2fb8f14c9a41f7d3a25715e4780114f14da8af1b956a68fe39a0e94"
     },
     {
       "file": "api/_food-safety.js",
@@ -1269,7 +1269,7 @@
     },
     {
       "file": "api/implementation-completion-18-0-15.test.cjs",
-      "sha256": "e3ceea308e7fb594d8e45a234eb77f286a059b898940958199399708af17f7f7"
+      "sha256": "ec37d6ba15d7c4e84a07ba85a5fd10a850a15272016c79b9f56e69a8928536be"
     },
     {
       "file": "api/import-cheers-july-schedule.js",
@@ -1328,6 +1328,10 @@
       "sha256": "a64924374c7dc59116bd5b6a53635e7bbc8250186d9a4500f3b3c2399b0fcfc9"
     },
     {
+      "file": "api/mobile-implementation-transport-18-0-15.test.cjs",
+      "sha256": "074af14685b1a1988d2d403ce61659be8d36a3045d9617d169c4122d61b14992"
+    },
+    {
       "file": "api/mobile-native-api-bridge-18-0-1.test.cjs",
       "sha256": "3a274471fb2de38d67785522c3c1f207370c5e4254cc38045dd9a4b8abe0fa31"
     },
@@ -1341,7 +1345,7 @@
     },
     {
       "file": "api/mobile-native-http-18-0-12.test.cjs",
-      "sha256": "3149eea261703d0da1192b6da05ff67fcc6032d9e6d9c3ff973eeed29ce94b3b"
+      "sha256": "2ee1ef02e96fc320c1c53b9c3181f8236ed9bd13ce134a2ad64c90aa762c1c6f"
     },
     {
       "file": "api/mobile-native-push-18-0-9.test.cjs",
@@ -2569,7 +2573,7 @@
     },
     {
       "file": "mobile/native-platform-contract.json",
-      "sha256": "58e6fa4126890a93c7bc91815075d97bd94ef1ac76d7299dc0a78810e408af83"
+      "sha256": "e5d86e77d8248e09ec85fd72608bfbe5c713e55fcb531646c33124ca9e3cd552"
     },
     {
       "file": "mobile/testing/README.md",
@@ -2585,7 +2589,7 @@
     },
     {
       "file": "package.json",
-      "sha256": "d4514efee53715ceb81711e7b55724efa240b9b8624f59caf33a49b5785d6492"
+      "sha256": "1efc3cc751750d738ab2c8824f41e1e475aa39e19959ead36b9dfe73c792e547"
     },
     {
       "file": "playwright.config.js",
@@ -4473,7 +4477,7 @@
     },
     {
       "file": "src/components/common.jsx",
-      "sha256": "91b16edad913ad7bef4d4404ed41bab2a374bff132d7bf37f522c3f519cb2c05"
+      "sha256": "452577a015fa2694aa7819e24f1c3dfebef267d8f7387c57c549a800e7e69fc8"
     },
     {
       "file": "src/config/plans.js",
@@ -4501,7 +4505,7 @@
     },
     {
       "file": "src/core/appCore.js",
-      "sha256": "54f29a18bc1bd4172190e8edf54a802555e298f2dcf50fb7f8d9d90f2f4605f3"
+      "sha256": "28fe1e9d9341865e6dfc8d5fc7f55dcd721e449795f3b39ca8a4f132b0fe7c2b"
     },
     {
       "file": "src/core/attendanceEvidence.cjs",
@@ -4693,7 +4697,15 @@
     },
     {
       "file": "src/core/operationalVoice.cjs",
-      "sha256": "034c100b8fc252ad523100e9d5c9d60ddc10e616ef4c6af1a6ac3427d101648f"
+      "sha256": "bd7083e559e3ecf1079e1761b311bafc1bbeeb635f0be84d598b4e3807245501"
+    },
+    {
+      "file": "src/core/operationalVoice.js",
+      "sha256": "341e9d39bd227a77b18c169a2d2ba49942d6d8978050b2b47b02358ce57677c6"
+    },
+    {
+      "file": "src/core/operationalVoice.shared.js",
+      "sha256": "426d4e47cf20d19c1e76ecd1f096fdd2dc71b8131c3064d06a55c9e9079e2dab"
     },
     {
       "file": "src/core/personalReminderQueries.js",
@@ -4793,7 +4805,7 @@
     },
     {
       "file": "src/core/restaurantReadiness.js",
-      "sha256": "500420d2a3bb7654f62500ccf022f27c9692755ab2aaac8dcd6931b9dd6323dd"
+      "sha256": "e3952d4d17c44190a0c8b0f0b502f8123893d225a7c1780a1291373f26aa82f7"
     },
     {
       "file": "src/core/reviewCsv.js",
@@ -4933,7 +4945,15 @@
     },
     {
       "file": "src/core/sourceCoverage.cjs",
-      "sha256": "acb047d99fe2289c846cfb2e019b4ffb68a79931859c1b92753695faa0e2c524"
+      "sha256": "2b74a7c2f4a4f1d26f8f4f114fddb1a0072030a499a4093ee6dd55e24f2b38a4"
+    },
+    {
+      "file": "src/core/sourceCoverage.js",
+      "sha256": "20d741dbc49d7fea6f5c981c2c9c72f3cf67195102c4e8c648d0123bc4be1411"
+    },
+    {
+      "file": "src/core/sourceCoverage.shared.js",
+      "sha256": "0af36d93daedf96c7e3e5b173fa5ee1e7fb40f028f26f7b47113bd90713886a2"
     },
     {
       "file": "src/core/systemAdminDataSafety.cjs",

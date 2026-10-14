@@ -56,7 +56,7 @@ test('material snapshot does not ingest arbitrary nested client authority or pay
   const snapshot = materialShift({ ...shift, isSuperAdmin: true, wages: 200, acknowledgments: { forged: 'yes' } });
   assert.equal(snapshot.wages, undefined); assert.equal(snapshot.acknowledgments, undefined);
 });
-const original = { restaurantId: 'tenant-a', itemId: 'cooler', itemName: 'Cooler', status: 'Attention', temp: 49, timestamp: '2026-10-13T12:00:00Z', correctiveAction: 'Move product to verified cold storage', notes: '', safetyRevision: 1 };
+const original = { restaurantId: 'tenant-a', itemId: 'cooler', itemName: 'Cooler', status: 'Attention', temp: 49, category: 'Cooler temperature', requiredMin: null, requiredMax: 41, timestamp: '2026-10-13T12:00:00Z', correctiveAction: 'Move product to verified cold storage', notes: '', safetyRevision: 1 };
 const followUp = { ...original, status: 'Safe', temp: 39, timestamp: '2026-10-13T12:15:00Z', correctiveAction: '' };
 const closeBody = { action: 'food-safety-close', logId: 'original', followUpLogId: 'followup', expectedTimestamp: original.timestamp, note: 'Verified replacement cooler and product temperature.', confirmed: true };
 const safetyDb = (patch = {}) => fakeFirestore({ 'tempLogs/original': original, 'tempLogs/followup': followUp, ...patch });
@@ -76,7 +76,7 @@ test('safety closure rejects missing permission, confirmation, stale original an
   await assert.rejects(() => close(db, { ...closeBody, note: 'Different verification' }), error => error.code === 'closure_conflict');
 });
 test('safety closure rejects foreign, wrong-item, unsafe and earlier follow-up evidence without writes', async () => {
-  for (const patch of [{ restaurantId: 'tenant-b' }, { itemId: 'oven' }, { status: 'Attention' }, { timestamp: '2026-10-13T11:00:00Z' }]) {
+  for (const patch of [{ restaurantId: 'tenant-b' }, { itemId: 'oven' }, { status: 'Attention' }, { temp: 99, status: 'Safe' }, { timestamp: '2099-10-13T12:15:00Z' }, { timestamp: '2026-10-13T11:00:00Z' }]) {
     const db = safetyDb({ 'tempLogs/followup': { ...followUp, ...patch } });
     await assert.rejects(() => close(db)); assert.equal(db.writes.length, 0);
   }

@@ -526,7 +526,7 @@ export const NATIVE_API_BASE_URL = String(env('REACT_APP_NATIVE_API_BASE_URL', '
 // These routes changed after the current production web release. Keep the
 // native release's server actions on its matching mobile branch deployment.
 export const NATIVE_UPDATED_API_BASE_URL = String(env('REACT_APP_NATIVE_UPDATED_API_BASE_URL', 'https://86chaos-git-mobile-cheers-portal-s-projects.vercel.app')).replace(/\/+$/, '');
-const nativeUpdatedRoutes = new Set(['/api/demand-history', '/api/operational-history', '/api/safe-write', '/api/free-ai-services']);
+const nativeUpdatedRoutes = new Set(["/api/demand-history", "/api/operational-history", "/api/safe-write", "/api/free-ai-services", "/api/schedule-publish", "/api/schedule-shift-delete", "/api/security-diagnostics", "/api/voice-command", "/api/shift4-connect", "/api/shift4-callback", "/api/shift4-status", "/api/shift4-locations", "/api/shift4-select-location", "/api/shift4-test", "/api/shift4-sync", "/api/shift4-records", "/api/shift4-export"]);
 const nativeOriginalFetch = typeof window !== 'undefined' && typeof window.fetch === 'function'
   ? window.fetch.bind(window)
   : null;

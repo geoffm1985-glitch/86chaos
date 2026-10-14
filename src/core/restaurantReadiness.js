@@ -1,4 +1,4 @@
-import sourceCoverage from './sourceCoverage.cjs';
+import sourceCoverage from './sourceCoverage.js';
 import { buildNeedsAttention } from './needsAttention.js';
 import { evidenceQuality } from './operationalEvidence.js';
 

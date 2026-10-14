@@ -19,7 +19,7 @@ test('mobile server actions use the matching branch backend and retain auth; oth
     assert.match(f.calls.at(-1).url,/^https:\/\/86chaos-git-mobile-/);
     assert.equal(f.calls.at(-1).headers.authorization,'Bearer identity-token');
   }
-  await f.fetch('/api/voice-command');assert.equal(f.calls.at(-1).url,'https://app.86chaos.com/api/voice-command');
+  await f.fetch('/api/scan-invoice');assert.equal(f.calls.at(-1).url,'https://app.86chaos.com/api/scan-invoice');
   await f.fetch('/api/safe-write-lookalike');assert.equal(f.calls.at(-1).url,'https://app.86chaos.com/api/safe-write-lookalike');
 });
 test('native multipart uploads preserve duplicate text fields and exact binary file bytes with a native boundary',async()=>{
