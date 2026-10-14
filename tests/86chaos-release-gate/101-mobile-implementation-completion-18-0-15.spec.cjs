@@ -3,6 +3,7 @@ const {test:base,expect}=require('@playwright/test');
 const crypto=require('node:crypto');
 const {ownerLikeCreds,requireCreds,login,gotoTab,ALLOW_MUTATION,RUN_ID,readSeedReport}=require('../86chaos-full-audit/utils/audit-helpers.cjs');
 const {recordPublication,headRef}=require('../../api/_shift-change-review.cjs');
+const fixtureDay=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'America/Chicago'}).format(new Date());
 const test=base.extend({completionFixture:async({},use,info)=>{
   expect(ALLOW_MUTATION).toBe(true);
   const target=require('../../scripts/86chaos-firebase-target.cjs').getFirebaseTarget(process.env);
@@ -13,16 +14,16 @@ const test=base.extend({completionFixture:async({},use,info)=>{
   const account=ownerLikeCreds();requireCreds(account,'owner-like implementation account');
   const uid=(await app.auth().getUserByEmail(account.email)).uid;
   const id=`qa_completion_${crypto.createHash('sha256').update(`${RUN_ID}|${info.project.name}|${info.title}`).digest('hex').slice(0,24)}`;
-  const label=`QA Completion ${id.slice(-8)}`,refs=[];
+  const label=`QA Completion ${id.slice(-8)}`,refs=[],authUsers=[];
   const put=async(collection,key,data)=>{const ref=db.collection(collection).doc(key);await ref.set({...data,restaurantId:tenant,qaOwned:true,qaRunId:RUN_ID});refs.push(ref);return ref;};
   const role=await put('roles',id,{name:label,revision:1});
-  const shift=await put('shifts',id,{date:new Date().toISOString().slice(0,10),scheduleDateKey:new Date().toISOString().slice(0,10),startTime:'09:00',endTime:'17:00',rosterRoleId:role.id,rosterRoleNameSnapshot:label,role:label,authUid:uid,accountUserId:uid,employeeId:uid,scheduleUserId:uid,employeeName:label,isPublished:true,status:'published'});
+  const shift=await put('shifts',id,{date:fixtureDay(),scheduleDateKey:fixtureDay(),startTime:'09:00',endTime:'17:00',rosterRoleId:role.id,rosterRoleNameSnapshot:label,role:label,authUid:uid,accountUserId:uid,employeeId:uid,scheduleUserId:uid,employeeName:label,isPublished:true,status:'published'});
   const publish=async patch=>db.runTransaction(async tx=>{const head=headRef(db,tenant,id),prior=await tx.get(head),current=await tx.get(shift);const value={...current.data(),...patch};const event=recordPublication({db,tx,head:prior.exists?prior.data():null,tenant,shiftId:id,shift:value,operationId:`${id}_${refs.length}`,actor:uid,at:new Date().toISOString()});tx.set(shift,value);if(event){refs.push(db.collection('scheduleChangeEvents').doc(event.version));if(!refs.some(ref=>ref.path===head.path))refs.push(head);}return event;});
   const event=await publish({});
   const item=await put('lineCheckItems',id,{name:label,category:'Cooler temperature',requiredMax:41});
-  const date=new Date().toISOString().slice(0,10),original=await put('tempLogs',`${id}_attention`,{itemId:item.id,itemName:label,category:'Cooler temperature',location:'QA Cooler',date,temp:49,status:'Attention',result:'attention',managerReviewRequired:true,reviewedByManager:false,closureRequired:true,safetyRevision:1,requiredMin:null,requiredMax:41,correctiveAction:'Moved product to verified cold storage',timestamp:new Date(Date.now()-120000).toISOString(),loggedBy:label});
+  const date=fixtureDay(),original=await put('tempLogs',`${id}_attention`,{itemId:item.id,itemName:label,category:'Cooler temperature',location:'QA Cooler',date,temp:49,status:'Attention',result:'attention',managerReviewRequired:true,reviewedByManager:false,closureRequired:true,safetyRevision:1,requiredMin:null,requiredMax:41,correctiveAction:'Moved product to verified cold storage',timestamp:new Date(Date.now()-120000).toISOString(),loggedBy:label});
   const followUp=await put('tempLogs',`${id}_safe`,{itemId:item.id,itemName:label,category:'Cooler temperature',date,temp:39,status:'Safe',result:'pass',safetyRevision:1,requiredMin:null,requiredMax:41,timestamp:new Date(Date.now()-60000).toISOString(),loggedBy:label});
-  const fixture={db,tenant,uid,id,label,event,shift,role,item,original,followUp,publish,refs};
+  const fixture={app,db,tenant,uid,id,label,event,shift,role,item,original,followUp,publish,refs,authUsers};
   try{await use(fixture);}finally{
     const current=await restaurant.ref.get();expect(current.data()).toMatchObject({qaOwned:true,qaRunId:RUN_ID});
     refs.push(db.collection('foodSafetyClosures').doc(original.id));
@@ -31,11 +32,12 @@ const test=base.extend({completionFixture:async({},use,info)=>{
     for(const row of audits.docs)if(paths.has(row.data().target))refs.push(row.ref);
     for(const ref of new Map(refs.map(ref=>[ref.path,ref])).values()){const snap=await ref.get();if(snap.exists){expect(snap.data().restaurantId).toBe(tenant);await ref.delete();}}
   }
+  for(const account of authUsers){const user=await app.auth().getUser(account.uid);expect(user.email).toBe(account.email);expect(account.uid.startsWith(id+'_')).toBe(true);await app.auth().deleteUser(account.uid);}
 }});
-test.use({actionTimeout:30000,navigationTimeout:60000});
+test.use({actionTimeout:30000,navigationTimeout:60000,timezoneId:'America/Chicago'});
 test.beforeEach(()=>test.setTimeout(360000));
-async function enter(page,tab){const account=ownerLikeCreds();requireCreds(account,'owner-like implementation account');await login(page,account.email,account.password);await gotoTab(page,tab,{settleMs:500});await page.addLocatorHandler(page.getByRole('button',{name:"Skip and don't show again",exact:true}),async button=>{await button.press('Enter');});}
-async function shiftRow(page,fixture){const panel=page.getByTestId('published-shift-changes');await expect(panel).toBeVisible();await panel.getByRole('button',{name:'Load published changes',exact:true}).click();const row=panel.locator('article').filter({hasText:fixture.label});for(let n=0;n<40&&await row.count()===0;n++){const more=panel.getByRole('button',{name:'Load more published changes'});if(!await more.count())break;await expect(more).toBeEnabled();await more.click();}await expect(row.first()).toBeVisible();return{panel,row};}
+async function enter(page,tab){const account=ownerLikeCreds();requireCreds(account,'owner-like implementation account');await login(page,account.email,account.password);await gotoTab(page,tab,{settleMs:500});await page.locator('main').waitFor({state:'visible'});await page.getByText('Loading section...',{exact:true}).waitFor({state:'hidden'});await page.addLocatorHandler(page.getByRole('button',{name:"Skip and don't show again",exact:true}),async button=>{await button.press('Enter');});}
+async function shiftRow(page,fixture){await page.locator('main').waitFor({state:'visible'});await page.getByText('Loading section...',{exact:true}).waitFor({state:'hidden'});const panel=page.getByTestId('published-shift-changes');await expect(panel).toBeVisible();await panel.getByRole('button',{name:'Load published changes',exact:true}).click();const row=panel.locator('article').filter({hasText:fixture.label});for(let n=0;n<40&&await row.count()===0;n++){const more=panel.getByRole('button',{name:'Load more published changes'});if(!await more.count())break;await expect(more).toBeEnabled();await more.click();}await expect(row.first()).toBeVisible();return{panel,row};}
 async function safetyPanel(page){await enter(page,'prep');await page.getByRole('button',{name:/^(?:Open )?Line Check$/i}).click();const panel=page.getByTestId('food-safety-audit');await expect(panel).toBeVisible();return panel;}
 test('published shift acknowledgment persists the exact version without changing the assignment',async({page,completionFixture:f})=>{
   await enter(page,'published');let {row}=await shiftRow(page,f);
@@ -64,9 +66,12 @@ test('food safety audit retries a failed read without claiming an empty verified
   await panel.getByRole('button',{name:'Load food safety audit'}).click();await expect(panel).toContainText('Window fully loaded');await expect(panel.getByRole('button',{name:'Export complete food safety audit CSV'})).toBeEnabled();
 });
 test('role and station competency requires completed evidence and separate manager verification',async({page,completionFixture:f})=>{
-  const members=await f.db.collection('workspaceMembers').where('restaurantId','==',f.tenant).get();let employee=null;
-  for(const member of members.docs){const uid=member.data().authUid||member.data().uid||member.data().userId;if(uid&&uid!==f.uid&&(await f.db.collection('users').doc(uid).get()).exists){employee=uid;break;}}
-  expect(employee,'A separate active QA employee is required for observed competency').toBeTruthy();const task=f.db.collection('hrOnboardingTasks').doc(f.id);await task.set({restaurantId:f.tenant,userId:employee,title:f.label,completed:true,completedAt:new Date(Date.now()-60000).toISOString(),qaOwned:true,qaRunId:RUN_ID});f.refs.push(task);
+  const employee=f.id+'_employee',email=employee+'@example.invalid';
+  await f.app.auth().createUser({uid:employee,email,displayName:f.label,emailVerified:true});f.authUsers.push({uid:employee,email});
+  const profile=f.db.collection('users').doc(employee),member=f.db.collection('workspaceMembers').doc(require('../../api/_chaos-admin').memberDocId(employee,f.tenant));
+  await profile.set({restaurantId:f.tenant,authUid:employee,name:f.label,role:'Cook',isActive:true,workspaceIds:[f.tenant],membershipMigrationVersion:2,qaOwned:true,qaRunId:RUN_ID});
+  await member.set({restaurantId:f.tenant,authUid:employee,uid:employee,userId:employee,name:f.label,isActive:true,role:'Cook',permissions:{prep:true},qaOwned:true,qaRunId:RUN_ID});f.refs.push(profile,member);
+  expect(employee).not.toBe(f.uid);const task=f.db.collection('hrOnboardingTasks').doc(f.id);await task.set({restaurantId:f.tenant,userId:employee,title:f.label,completed:true,completedAt:new Date(Date.now()-60000).toISOString(),qaOwned:true,qaRunId:RUN_ID});f.refs.push(task);
   await enter(page,'hr');const panel=page.getByTestId('training-competency-review');await expect(panel).toBeVisible();await panel.getByText('Record observed competency',{exact:true}).click();await panel.getByLabel('Competency employee').selectOption(employee);await panel.getByLabel('Competency role').selectOption(f.role.id);await panel.getByLabel('Competency station').fill(f.label);await panel.getByLabel('Competency verification note').fill('Observed safe thermometer use and corrective workflow.');
   await panel.getByLabel(new RegExp(f.label)).check();await expect(panel.getByRole('button',{name:'Save competency review'})).toBeDisabled();await panel.getByLabel('I observed the demonstrated workflow and verified these current records.').check();
   const pending=page.waitForResponse(r=>r.url().includes('/api/safe-write')&&r.request().postDataJSON()?.action==='training-competency-review');await panel.getByRole('button',{name:'Save competency review'}).click();expect((await pending).status()).toBe(200);await expect(panel).toContainText('Evidence remains current');expect((await task.get()).data().competent).toBeUndefined();

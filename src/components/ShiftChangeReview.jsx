@@ -37,7 +37,7 @@ function ShiftChangeWorkspace({ appUser, workspaceReview = false }) {
   return <section className={`${T.card} p-4 space-y-3`} data-testid="published-shift-changes">
     <h3 className="font-black text-white">{workspaceReview ? 'Published shift change evidence' : 'Review published shift changes'}</h3>
     <p className="text-xs text-slate-400">Acknowledgment confirms that you reviewed this published version. It does not approve a pay adjustment or determine an attendance penalty.</p>
-    <button type="button" disabled={busy} className={T.btnAlt} onClick={() => load(null)}>{loaded ? 'Refresh published changes' : 'Load published changes'}</button>
+    <button type="button" aria-label={loaded ? 'Refresh published changes' : 'Load published changes'} disabled={busy} className={T.btnAlt} onClick={() => load(null)}>{loaded ? 'Refresh published changes' : 'Load published changes'}</button>
     {loaded && !rows.length && <p role="status">No published changes are recorded in this page.</p>}
     {rows.map(row => <article key={row.version} className="border-t border-slate-700 pt-3 text-xs space-y-2">
       {row.after.cancelled && <p className="text-amber-200 font-bold">Published shift cancelled</p>}
@@ -45,9 +45,9 @@ function ShiftChangeWorkspace({ appUser, workspaceReview = false }) {
       <p>Published {row.publishedAt}. {row.current ? 'Current published version' : 'Superseded publication'}.</p>
       {row.before && <p>Previously: {row.before.date} · {row.before.startTime}–{row.before.endTime} · {row.before.role} · {row.before.employeeName || 'Open shift'}</p>}
       <p>Changed: {row.changedFields.join(', ')}.</p>
-      {workspaceReview ? <><p>{Object.keys(row.acknowledgments || {}).length}/{row.recipientUids.length} employee acknowledgments.</p><p>Push status: {row.notification?.state}. Provider acceptance does not prove delivery.</p></> : row.acknowledgments?.[uid] ? <p role="status">Acknowledged {row.acknowledgments[uid]}</p> : row.current && <button type="button" disabled={busy} className={T.btn} onClick={() => acknowledge(row)}>I reviewed this published shift</button>}
+      {workspaceReview ? <><p>{Object.keys(row.acknowledgments || {}).length}/{row.recipientUids.length} employee acknowledgments.</p><p>Push status: {row.notification?.state}. Provider acceptance does not prove delivery.</p></> : row.acknowledgments?.[uid] ? <p role="status">Acknowledged {row.acknowledgments[uid]}</p> : row.current && <button type="button" disabled={busy} className={T.btn} aria-label="I reviewed this published shift" onClick={() => acknowledge(row)}>I reviewed this published shift</button>}
     </article>)}
-    {cursor && <button type="button" disabled={busy} className={T.btnAlt} onClick={() => load(cursor)}>Load more published changes</button>}
+    {cursor && <button type="button" disabled={busy} className={T.btnAlt} aria-label="Load more published changes" onClick={() => load(cursor)}>Load more published changes</button>}
     {busy && <p role="status">Loading published shift evidence…</p>}{error && <p role="alert">{error}</p>}
   </section>;
 }

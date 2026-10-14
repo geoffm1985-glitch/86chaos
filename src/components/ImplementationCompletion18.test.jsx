@@ -5,7 +5,7 @@ import {FoodSafetyAuditReview} from './FoodSafetyAuditReview';
 import {TrainingCompetencyReview} from './TrainingCompetencyReview';
 import {secureFetch,downloadCsvRows} from '../core/appCore';
 import {invoiceReviewRequest} from './InvoiceReviewTools';
-jest.mock('../core/appCore',()=>({T:{card:'card',input:'input',btn:'button',btnAlt:'button'},secureFetch:jest.fn(),downloadCsvRows:jest.fn()}));
+jest.mock('../core/appCore',()=>({T:{card:'card',input:'input',btn:'button',btnAlt:'button'},secureFetch:jest.fn(),downloadCsvRows:jest.fn(),getToday:jest.fn(()=> '2026-10-13')}));
 jest.mock('./InvoiceReviewTools',()=>({invoiceReviewRequest:jest.fn()}));
 const employee={id:'employee',authUid:'employee',restaurantId:'r',permissions:{}};
 const owner={id:'manager',restaurantId:'r',isOwner:true};
@@ -63,4 +63,10 @@ test('competency is distinct from completed tasks and saves only after observed 
 });
 test('employees can review their competency evidence but cannot open the manager verification form',()=>{
   render(<TrainingCompetencyReview appUser={employee} manager={false} users={[]} roles={[]} tasks={[]}/>);expect(screen.queryByText('Record observed competency')).toBeNull();expect(screen.getByRole('button',{name:'Load competency reviews'})).toBeTruthy();
+});
+
+test('food safety audit defaults to the app local day at the UTC date boundary',()=>{
+  jest.useFakeTimers('modern');jest.setSystemTime(new Date('2026-10-14T00:30:00Z'));
+  try {render(<FoodSafetyAuditReview appUser={owner}/>);expect(screen.getByLabelText('Audit start date').value).toBe('2026-10-13');expect(screen.getByLabelText('Audit end date').value).toBe('2026-10-13');}
+  finally {jest.useRealTimers();}
 });

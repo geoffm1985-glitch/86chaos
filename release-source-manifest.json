@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
   "version": "18.0.15",
-  "sourceHash": "a9a3d04ea75349478de0a9e0a8d308dc5923d41c542e962440f56a9b8235ff39",
+  "sourceHash": "f012572692a291ccf2f1b145c78f9d5d04986aeb5a6364edf270b3ce4caaaf17",
   "files": [
     {
       "file": ".gitattributes",
@@ -4345,11 +4345,11 @@
     },
     {
       "file": "src/components/FoodSafetyAuditReview.jsx",
-      "sha256": "028300e8fb3b9e3ddd96c21b0c467efd1dcc1312c82cec95852220e98ebb204c"
+      "sha256": "731753a4f9d35387bf56af12ef695e90e0f2e0aa1f4112859267eed9ed138aa6"
     },
     {
       "file": "src/components/ImplementationCompletion18.test.jsx",
-      "sha256": "7a7b864b72ef3ed1807b147cd0455168171f91093521bd7bd2bf70c9ea8d37c3"
+      "sha256": "87f0249725c90c63e7332cd9f19ff1aa854d37b6652af547f394c6e75c0ce1ac"
     },
     {
       "file": "src/components/IntelligenceReviewPanels.jsx",
@@ -4413,7 +4413,7 @@
     },
     {
       "file": "src/components/ShiftChangeReview.jsx",
-      "sha256": "d2fe0bb5dc5795c8ea7deac9c03b8db4186fef33597f6c0b4df8d6c9af443921"
+      "sha256": "9cffac900285b498fa775c30e523ff90875d6f0d66830a3b3d73e72ba4eeb024"
     },
     {
       "file": "src/components/TabAuditLog.js",
@@ -4469,7 +4469,7 @@
     },
     {
       "file": "src/components/TrainingCompetencyReview.jsx",
-      "sha256": "e9f15366f6435e4f69b70b7859901d8cc6c6970f702f474b3355d2f57772971c"
+      "sha256": "9d674372adb59f59cd899f751e597c3a971decdee7f35e7e44d802d2c29a187e"
     },
     {
       "file": "src/components/VendorCatalogReview.jsx",
@@ -4477,7 +4477,7 @@
     },
     {
       "file": "src/components/common.jsx",
-      "sha256": "452577a015fa2694aa7819e24f1c3dfebef267d8f7387c57c549a800e7e69fc8"
+      "sha256": "7228caba3d0f93bb7a1c68dc50f5690452504b608c8f2781cb6bcc2bc49372b4"
     },
     {
       "file": "src/config/plans.js",
@@ -5373,7 +5373,7 @@
     },
     {
       "file": "tests/86chaos-release-gate/101-mobile-implementation-completion-18-0-15.spec.cjs",
-      "sha256": "c12bd304e2ed5228f6caba0e19b72ff255fe951a82f65e3f41eae9f57753ac31"
+      "sha256": "c01082d96f59a8c3c21069cfecf39efcebefb7ebc355319d60cb6c745df9fb45"
     },
     {
       "file": "tests/86chaos-release-gate/101-phone-navigation-repairs.spec.cjs",

@@ -2996,7 +2996,7 @@ const VoiceCommandDockBase = ({ appUser, inventoryItems = [], recipes = [], user
           {listening ? <MicOff size={16}/> : <Mic size={16}/>} {listening ? 'Listening...' : 'Start Listening'}
         </button>
         <textarea value={manualText} onChange={e=>setManualText(e.target.value)} className={T.input} rows="2" placeholder='Try: "86 salmon", "prep 2 pans tomatoes", "add event Friday at 6pm", "request off next Monday", "set availability Tuesday 10am to 4pm"' />
-        <button type="button" onClick={() => processText(manualText)} className={`${T.btnAlt} w-full`}>Check Typed Request</button>
+        <button type="button" aria-label="Check Typed Request" onClick={() => processText(manualText)} className={`${T.btnAlt} w-full`}>Check Typed Request</button>
         {heardText && <div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-2 text-xs"><span className="text-slate-500 font-black uppercase tracking-widest">Heard</span><div className="font-bold text-white mt-1">{heardText}</div></div>}
         {pending && <div className="bg-[#0B0E11] border border-[#D4A381]/40 rounded-xl p-3">
           <div className="text-[9px] uppercase tracking-widest font-black text-[#D4A381]">{pending.highRisk ? 'High-Risk Review' : 'Suggested Action'}</div>
