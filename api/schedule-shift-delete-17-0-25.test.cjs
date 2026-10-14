@@ -6,15 +6,15 @@ const path = require('node:path');
 
 function makeDb(initial = {}) {
   const rows = new Map(Object.entries(initial));
-  const metrics = { queryGets: 0, docGets: 0, batchCommits: 0 };
+  const metrics = { queryGets: 0, docGets: 0, batchCommits: 0, transactionCommits: 0, transactionReads: 0 };
   const docSnap = (id, data) => ({ id, exists: Boolean(data), data: () => data });
   const collection = (name) => {
-    if (name !== 'shifts') throw new Error(`Unexpected collection ${name}`);
+    if (!['shifts','scheduleChangeHeads'].includes(name)) throw new Error(`Unexpected collection ${name}`);
     return {
       doc(id) {
         return {
           id,
-          path: `shifts/${id}`,
+          path: `${name}/${id}`,
           async get() { metrics.docGets += 1; return docSnap(id, rows.get(id)); }
         };
       },
@@ -36,6 +36,20 @@ function makeDb(initial = {}) {
     rows,
     metrics,
     collection,
+    async runTransaction(callback) {
+      const pending = []; let writing = false;
+      const result = await callback({
+        async get(ref) {
+          assert.equal(writing, false, 'all cancellation validation reads precede writes');
+          metrics.transactionReads += 1;
+          return docSnap(ref.id, ref.path.startsWith('shifts/') ? rows.get(ref.id) : undefined);
+        },
+        delete(ref) { assert.match(ref.path, /^shifts\//); writing = true; pending.push(ref.id); }
+      });
+      for (const id of pending) rows.delete(id);
+      metrics.transactionCommits += 1;
+      return result;
+    },
     batch() {
       const deletes = [];
       return {
@@ -111,7 +125,9 @@ test('17.0.25 Clear Month counts and removes restaurantId, workspaceId, and tena
     assert.equal(cleared.body.deletedCount, 4);
     assert.equal(cleared.body.remainingCount, 0);
     assert.equal(db.metrics.queryGets, 6, 'preview uses three parallel tenant alias queries and clear performs one additional tenant scan only');
-    assert.equal(db.metrics.batchCommits, 1, 'normal month clear commits one delete batch without redundant verification rescans');
+    assert.equal(db.metrics.batchCommits, 0, 'authenticated deletion must use the cancellation transaction');
+    assert.equal(db.metrics.transactionCommits, 1);
+    assert.equal(db.metrics.transactionReads, 8, 'recheck each shift and publication head before deleting');
     assert.equal(db.rows.has('canonical'), false);
     assert.equal(db.rows.has('legacyWorkspace'), false);
     assert.equal(db.rows.has('legacyTenant'), false);
@@ -140,7 +156,9 @@ test('17.0.25 single-shift delete removes hidden logical duplicates across canon
     assert.equal(result.body.remainingCount, 0);
     assert.equal(db.metrics.queryGets, 3, 'single delete scans the three tenant aliases once');
     assert.equal(db.metrics.docGets, 0, 'tenant scan supplies the authoritative shift row without an extra document read');
-    assert.equal(db.metrics.batchCommits, 1);
+    assert.equal(db.metrics.batchCommits, 0);
+    assert.equal(db.metrics.transactionCommits, 1);
+    assert.equal(db.metrics.transactionReads, 6, 'recheck all three logical duplicates and their publication heads');
     assert.equal(db.rows.has('canonical'), false);
     assert.equal(db.rows.has('legacyDuplicate'), false);
     assert.equal(db.rows.has('contradictoryAliasDuplicate'), false);

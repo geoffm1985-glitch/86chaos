@@ -30,7 +30,7 @@ async function cancelPublishedRows({db,rows,restaurantId,ctx,app}) {
       const events=[];let count=0;
       for(const {row,ref,snap,head} of records){
         if(!snap.exists)continue;const current=snap.data();
-        if(String(current.restaurantId||current.workspaceId||current.tenantId)!==restaurantId)throw Object.assign(new Error('The shift workspace changed. Reload before deleting.'),{statusCode:409,code:'shift_workspace_changed'});
+        if(!['restaurantId','workspaceId','tenantId'].some(field=>String(current[field]||'').trim()===restaurantId)||['restaurantId','workspaceId','tenantId'].some(field=>String(current[field]||'').trim()!==String(row[field]||'').trim()))throw Object.assign(new Error('The shift workspace changed. Reload before deleting.'),{statusCode:409,code:'shift_workspace_changed'});
         if(current.revision!==row.revision||current.updatedAt!==row.updatedAt||JSON.stringify(materialShift(current))!==JSON.stringify(materialShift(row)))throw Object.assign(new Error('The shift changed after delete review. Reload before deleting.'),{statusCode:409,code:'shift_changed'});
         const previous=head.exists?head.data():null;
         if(previous||current.isPublished===true){

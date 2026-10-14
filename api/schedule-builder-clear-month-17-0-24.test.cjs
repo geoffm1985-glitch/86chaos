@@ -23,7 +23,7 @@ test('17.0.24 Clear Month now delegates canonical and legacy tenant cleanup to t
   assert.match(schedule, /scheduleShiftDeleteRequest\('clear-month'/);
   assert.match(route, /TENANT_FIELDS = \['restaurantId', 'workspaceId', 'tenantId'\]/);
   assert.match(route, /shiftBelongsToMonth/);
-  assert.match(route, /clearMonth\(db, restaurantId, month\)/);
+  assert.match(route, /clearMonth\(db, restaurantId, month, \{restaurantId,ctx,app:ctx\.app \|\| app\}\)/);
 });
 
 test('17.0.24 Clear Month still verifies deletion and refuses to silently accept remaining shift records', () => {

@@ -16,3 +16,23 @@ test('a changed shift or foreign workspace aborts cancellation before any data i
     await assert.rejects(()=>cancelPublishedRows({db,rows:[row],restaurantId:'r',ctx:{uid:'manager'}}),error=>error.statusCode===409);assert.equal(db.records.has('shifts/shift'),true);assert.equal(db.writes.length,0);
   }
 });
+
+test('stable canonical and legacy tenant aliases retain published cancellation evidence in the authorized workspace',async()=>{
+  for(const identity of [{workspaceId:'r'},{tenantId:'r'},{restaurantId:'retired',workspaceId:'r'}]){
+    const row={id:'shift',...identity,date:'2026-10-13',startTime:'09:00',endTime:'17:00',authUid:'employee',isPublished:true};
+    const db=fakeFirestore({'shifts/shift':row});
+    assert.equal(await cancelPublishedRows({db,rows:[row],restaurantId:'r',ctx:{uid:'manager'}}),1);
+    assert.equal(db.records.has('shifts/shift'),false);
+    const head=db.records.get(headRef(db,'r','shift').path),event=db.records.get(`scheduleChangeEvents/${head.version}`);
+    assert.equal(event.restaurantId,'r');assert.equal(event.after.cancelled,true);assert.deepEqual(event.recipientUids,['employee']);
+    assert.equal(db.records.has(headRef(db,'retired','shift').path),false);
+  }
+});
+test('tenant alias drift aborts the whole cancellation chunk even when another alias still matches',async()=>{
+  const first={id:'first',restaurantId:'r',startTime:'09:00'},second={id:'second',restaurantId:'r',workspaceId:'r',startTime:'10:00'};
+  for(const patch of [{workspaceId:'other'},{tenantId:'other'}]){
+    const db=fakeFirestore({'shifts/first':first,'shifts/second':{...second,...patch}});
+    await assert.rejects(()=>cancelPublishedRows({db,rows:[first,second],restaurantId:'r',ctx:{uid:'manager'}}),error=>error.statusCode===409&&error.code==='shift_workspace_changed');
+    assert.equal(db.records.has('shifts/first'),true);assert.equal(db.records.has('shifts/second'),true);assert.equal(db.writes.length,0);
+  }
+});
