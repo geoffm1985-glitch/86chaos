@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
   "version": "18.0.15",
-  "sourceHash": "f012572692a291ccf2f1b145c78f9d5d04986aeb5a6364edf270b3ce4caaaf17",
+  "sourceHash": "a0216ece17517cf56d630cecfba4cf9555785bda664963536025de44ca628659",
   "files": [
     {
       "file": ".gitattributes",
@@ -4349,7 +4349,7 @@
     },
     {
       "file": "src/components/ImplementationCompletion18.test.jsx",
-      "sha256": "87f0249725c90c63e7332cd9f19ff1aa854d37b6652af547f394c6e75c0ce1ac"
+      "sha256": "49dc8fdafd4a16d6698bd3775d4ac6d96b88e8b2423d48c42d370f482f94aaea"
     },
     {
       "file": "src/components/IntelligenceReviewPanels.jsx",
@@ -5373,7 +5373,7 @@
     },
     {
       "file": "tests/86chaos-release-gate/101-mobile-implementation-completion-18-0-15.spec.cjs",
-      "sha256": "c01082d96f59a8c3c21069cfecf39efcebefb7ebc355319d60cb6c745df9fb45"
+      "sha256": "41f0f0c721c9838a58fddd5d142bb332ce1a407244c5b77f0b4c3873f01282d2"
     },
     {
       "file": "tests/86chaos-release-gate/101-phone-navigation-repairs.spec.cjs",

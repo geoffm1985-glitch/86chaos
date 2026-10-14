@@ -31,8 +31,8 @@ const test=base.extend({completionFixture:async({},use,info)=>{
     const paths=new Set(refs.map(ref=>ref.path)),audits=await db.collection('auditLogs').where('restaurantId','==',tenant).get();
     for(const row of audits.docs)if(paths.has(row.data().target))refs.push(row.ref);
     for(const ref of new Map(refs.map(ref=>[ref.path,ref])).values()){const snap=await ref.get();if(snap.exists){expect(snap.data().restaurantId).toBe(tenant);await ref.delete();}}
-  }
   for(const account of authUsers){const user=await app.auth().getUser(account.uid);expect(user.email).toBe(account.email);expect(account.uid.startsWith(id+'_')).toBe(true);await app.auth().deleteUser(account.uid);}
+  }
 }});
 test.use({actionTimeout:30000,navigationTimeout:60000,timezoneId:'America/Chicago'});
 test.beforeEach(()=>test.setTimeout(360000));

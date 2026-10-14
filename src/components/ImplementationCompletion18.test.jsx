@@ -3,7 +3,7 @@ import {render,screen,fireEvent,waitFor,act} from '@testing-library/react';
 import {ShiftChangeReview} from './ShiftChangeReview';
 import {FoodSafetyAuditReview} from './FoodSafetyAuditReview';
 import {TrainingCompetencyReview} from './TrainingCompetencyReview';
-import {secureFetch,downloadCsvRows} from '../core/appCore';
+import {secureFetch,downloadCsvRows,getToday} from '../core/appCore';
 import {invoiceReviewRequest} from './InvoiceReviewTools';
 jest.mock('../core/appCore',()=>({T:{card:'card',input:'input',btn:'button',btnAlt:'button'},secureFetch:jest.fn(),downloadCsvRows:jest.fn(),getToday:jest.fn(()=> '2026-10-13')}));
 jest.mock('./InvoiceReviewTools',()=>({invoiceReviewRequest:jest.fn()}));
@@ -11,7 +11,7 @@ const employee={id:'employee',authUid:'employee',restaurantId:'r',permissions:{}
 const owner={id:'manager',restaurantId:'r',isOwner:true};
 const event={id:'event',version:'version',after:{date:'2026-10-13',startTime:'09:00',endTime:'17:00',role:'Cook',employeeName:'Employee'},before:null,publishedAt:'2026-10-12',current:true,recipientUids:['employee'],changedFields:['startTime'],acknowledgments:{}};
 const response=body=>({ok:true,json:async()=>({ok:true,...body})});
-beforeEach(()=>{jest.clearAllMocks();Object.defineProperty(global,'crypto',{configurable:true,value:{randomUUID:()=> 'qa_operation_identity_12345'}});});
+beforeEach(()=>{jest.clearAllMocks();getToday.mockReturnValue('2026-10-13');Object.defineProperty(global,'crypto',{configurable:true,value:{randomUUID:()=> 'qa_operation_identity_12345'}});});
 test('published shift review loads only on request and acknowledgment is explicit and version-bound',async()=>{
   secureFetch.mockResolvedValueOnce(response({rows:[event],complete:true})).mockResolvedValueOnce(response({acknowledgedAt:'2026-10-13T12:00:00Z'}));
   render(<ShiftChangeReview appUser={employee}/>);expect(secureFetch).not.toHaveBeenCalled();
