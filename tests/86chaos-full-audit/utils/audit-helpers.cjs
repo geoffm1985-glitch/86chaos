@@ -138,7 +138,7 @@ const ROUTE_SPECS = [
 
 const ROUTE_READY_HEADING_RE = {
   'back-office': [/^Back Office Suite$/i, /^Back Office Guardrails$/i],
-  financials: [/^Financial Center$/i, /^Daily Close$/i, /^Labor & Payroll$/i],
+  financials: [/^(?:Professional )?Financial Center$/i, /^Daily Close$/i, /^Labor & Payroll$/i],
 };
 
 async function renderedRouteIdentityReady(page, tab, spec, text) {
@@ -153,7 +153,7 @@ async function renderedRouteIdentityReady(page, tab, spec, text) {
   if (/Plan & Permission Gate|Restricted Platform Tools|Your role does not include this (?:tool|area)|This tool is not available for your account right now|not-platform-admin|HTTP:\s*403/i.test(text || '')) return true;
   const headingPatterns = ROUTE_READY_HEADING_RE[tab];
   if (headingPatterns?.length) {
-    return page.locator('h1,h2,h3,[data-chaos-route-id],[data-chaos-route]').evaluateAll((els, patterns) => {
+    return page.locator('main h1,main h2,main h3,main [data-chaos-route-id],main [data-chaos-route]').evaluateAll((els, patterns) => {
       const visible = el => {
         if (!el || el.hidden || el.getAttribute('aria-hidden') === 'true') return false;
         const style = window.getComputedStyle(el);

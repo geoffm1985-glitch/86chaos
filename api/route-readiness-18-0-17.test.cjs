@@ -22,6 +22,22 @@ test('pending administrator verification and loading cannot count as permission 
   assert.equal(await ready(pageFor({ text: 'Restricted Platform Tools', loading: false }), 'godmode', spec, 'Restricted Platform Tools HTTP: 403'), true);
 });
 
+test('financial readiness requires the actual Professional Financial Center heading inside main', async () => {
+  const headingSource = source.slice(source.indexOf('const ROUTE_READY_HEADING_RE ='), source.indexOf('const FATAL_TEXT_RE'));
+  const check = vm.runInNewContext(headingSource + '\nrenderedRouteIdentityReady;', { window: { getComputedStyle: () => ({ display: 'block', visibility: 'visible' }) } });
+  const financialPage = heading => ({
+    evaluate: async () => ({ text: 'Professional Financial Center Net Sales', loading: false }),
+    locator: selector => {
+      assert(selector.split(',').every(part => part.startsWith('main ')), 'Route heading proof must stay inside the rendered surface');
+      return { evaluateAll: async (fn, patterns) => fn(heading ? [{ hidden: false, getAttribute: () => null, textContent: heading, getBoundingClientRect: () => ({ width: 300, height: 32 }) }] : [], patterns) };
+    },
+  });
+  assert.equal(await check(financialPage('Professional Financial Center'), 'financials', {}, 'Financials'), true);
+  assert.equal(await check(financialPage('Financial Center'), 'financials', {}, 'Financials'), true);
+  assert.equal(await check(financialPage('Financials'), 'financials', {}, 'Financials'), false);
+  assert.equal(await check(financialPage(''), 'financials', {}, 'Financial Center'), false);
+});
+
 test('route readiness refuses an expired loading screen instead of returning it', async () => {
   let now = 0;
   const settleSource = source.slice(source.indexOf('async function waitForRouteSettle('), source.indexOf('async function openTabInApp('));
