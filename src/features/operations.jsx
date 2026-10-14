@@ -492,7 +492,7 @@ const TabPrep = ({ currentDate, appUser, addToast, setLabelsToPrint }) => {
             <input type="text" value={text} onChange={e=>setText(e.target.value)} className="flex-1 w-full p-2 bg-[#12161A] border border-[#2A353D] rounded-xl text-sm outline-none font-medium text-white placeholder-slate-500" placeholder={t('prep.addItemPlaceholder')} required/>
             <div className="flex w-full sm:w-auto gap-3 items-center">
               <select value={station} onChange={e=>setStation(e.target.value)} aria-label="Prep station" className="min-w-0 flex-1 w-0 sm:w-32 p-2 text-xs font-bold bg-[#12161A] border border-[#2A353D] rounded-xl outline-none text-white">{displayStations.map(s => <option key={s} value={s}>{s}</option>)}</select>
-              <label className={`flex items-center gap-2 whitespace-nowrap flex-shrink-0 text-[10px] uppercase tracking-widest font-bold ${T.muted} cursor-pointer`}><input type="checkbox" aria-label="Master" checked={isMaster} onChange={e=>setIsMaster(e.target.checked)} className="w-4 h-4 accent-[#8F6040] bg-[#12161A] border-[#2A353D] rounded"/> Master</label>
+              <label className={`prep-master-toggle flex items-center gap-2 whitespace-nowrap flex-shrink-0 text-[10px] uppercase tracking-widest font-bold ${T.muted} cursor-pointer`}><input type="checkbox" aria-label="Master" checked={isMaster} onChange={e=>setIsMaster(e.target.checked)} className="w-4 h-4 accent-[#8F6040] bg-[#12161A] border-[#2A353D] rounded"/> Master</label>
               <button aria-label="Add prep item" className={`${T.btn} flex-shrink-0 py-2 px-4`}><Plus size={18}/></button>
             </div>
           </form>

@@ -5840,3 +5840,5 @@ html.chaos-native-runtime body {
 /* Floating controls clear the actual prep action height, including wrapped text. */
 html:has([data-testid="prep-action-bar"]) .voice-command-dock.fixed.bottom-5.left-4,
 html:has([data-testid="prep-action-bar"]) .quick-action-dock { bottom: calc(var(--chaos-prep-action-bar-height, 0px) + 1.25rem); }
+
+.desktop-pro-shell label.prep-master-toggle { white-space: nowrap !important; overflow-wrap: normal !important; word-break: normal !important; min-width: max-content; flex-shrink: 0; }

@@ -13,3 +13,7 @@ test('live, foreign-project and nonlocal exclusions fail closed',()=>{
     assert.equal(scope.connectedPhoneExcluded,false);assert.equal(scope.excludedArtifactGroups.length,0);assert.equal(scope.failures.length,1);
   }
 });
+
+test('actual uppercase emulator preflight target supports the explicit local scope',()=>{
+  const scope=resolvePhoneAcceptanceScope({requested:true,target:'EMULATOR',projectId:'demo-86chaos',appUrl:'http://127.0.0.1:3000'});assert.equal(scope.connectedPhoneExcluded,true);assert.deepEqual(scope.failures,[]);
+});

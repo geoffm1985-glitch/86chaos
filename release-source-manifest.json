@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
   "version": "18.0.16",
-  "sourceHash": "e6091d62f48e8ca7d2a4cf77fd65565a0e5f8e90bab18eab6818c26de26a648c",
+  "sourceHash": "72ed789454b601888268f681788f1b7812caaaf7df58f48db26de510ed2a313d",
   "files": [
     {
       "file": ".gitattributes",
@@ -1469,7 +1469,7 @@
     },
     {
       "file": "api/phone-acceptance-scope-18-0-16.test.cjs",
-      "sha256": "9dba5812cc4d7a101fcf64eb8d0105acd5ad59455325b2756d1df25e1db26c31"
+      "sha256": "55f8eb79c42732fa0e1d6373f196d81d2b60b7870ac51463f012a02bc3e94e7e"
     },
     {
       "file": "api/platform-authority-fields.test.cjs",
@@ -2949,7 +2949,7 @@
     },
     {
       "file": "scripts/86chaos-release-gate/phone-acceptance-scope.cjs",
-      "sha256": "ccaedd206ee65b5ffef1b09dc8762e5df58887131282aea93f18f5a6c9e26afa"
+      "sha256": "2e91cf4f80a943482e0ab6f3a27fc98d99d7a322f0b445736550566a5e015c47"
     },
     {
       "file": "scripts/86chaos-release-gate/playwright-console.cjs",
@@ -5057,7 +5057,7 @@
     },
     {
       "file": "src/features/operations.jsx",
-      "sha256": "86f09553054cbe35cc34667392ddc4826fd4baddae11c7e2a43c99732b3db58a"
+      "sha256": "0e8d4bfe8a04d9af6b21376eb3e705c489e4390d169cb1b0134efd24194248e7"
     },
     {
       "file": "src/features/schedule.jsx",
@@ -5125,7 +5125,7 @@
     },
     {
       "file": "src/styles.css",
-      "sha256": "197bbe6d68e3488fdc6aebb5b6c6e7ac46845906d17cf54dd2eedf6c0d5112f2"
+      "sha256": "c7e7ad1dee3007087df83183713ecd62453a035c1034f2c867d7fc238e3d5ba6"
     },
     {
       "file": "storage.rules",
