@@ -567,7 +567,7 @@ class AppSurfaceErrorBoundary extends React.Component {
 }
 
 const RouteLoading = ({ label = 'Loading section...' }) => (
-  <div className={`${T.card} p-6 sm:p-8 max-w-xl mx-auto text-center space-y-3`}>
+  <div role="status" aria-live="polite" data-chaos-route-loading="true" className={`${T.card} p-6 sm:p-8 max-w-xl mx-auto text-center space-y-3`}>
     <Loader2 className="animate-spin mx-auto text-[#D4A381]" size={28} />
     <div className="text-[10px] font-black uppercase tracking-[0.25em] text-[#D4A381]">86 Chaos</div>
     <p className="text-sm font-bold text-slate-300">{label}</p>

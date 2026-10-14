@@ -4,7 +4,8 @@ const { getFirebaseTarget } = require('../../scripts/86chaos-firebase-target.cjs
 test.describe('17.0.58 failed+new Firebase target coherence', () => {
   test('Playwright process and browser diagnostics agree on LIVE versus EMULATOR', async ({ page }, testInfo) => {
     const selected = getFirebaseTarget(process.env);
-    await page.goto('/');
+    const response = await page.goto('/');
+    expect(response?.ok(), `Application document must load before Firebase diagnostics; HTTP ${response?.status()}`).toBe(true);
     await page.waitForFunction(() => Boolean(window.__CHAOS_FIREBASE_DIAGNOSTICS__), null, { timeout: 15000 });
     const diagnostics = await page.evaluate(() => window.__CHAOS_FIREBASE_DIAGNOSTICS__);
     expect(diagnostics.target).toBe(selected.target);

@@ -142,7 +142,15 @@ const ROUTE_READY_HEADING_RE = {
 };
 
 async function renderedRouteIdentityReady(page, tab, spec, text) {
-  if (/permission|restricted|not available|access denied/i.test(text || '')) return true;
+  // Shell titles and the hidden manager summary can mention the destination
+  // before its lazy component has rendered. Only inspect the actual surface.
+  const surface = await page.evaluate(() => {
+    const main = document.querySelector('main');
+    const text = main?.innerText || '';
+    return { text, loading: Boolean(main?.querySelector('[data-chaos-route-loading="true"]')) };
+  }).catch(() => ({ text: '', loading: true }));
+  if (surface.loading || /Loading section|Loading workspace|Preparing|SERVER-VERIFICATION-PENDING|VERIFYING SECURE ACCESS/i.test(`${surface.text}\n${text || ''}`)) return false;
+  if (/Plan & Permission Gate|Restricted Platform Tools|Your role does not include this (?:tool|area)|This tool is not available for your account right now|not-platform-admin|HTTP:\s*403/i.test(text || '')) return true;
   const headingPatterns = ROUTE_READY_HEADING_RE[tab];
   if (headingPatterns?.length) {
     return page.locator('h1,h2,h3,[data-chaos-route-id],[data-chaos-route]').evaluateAll((els, patterns) => {
@@ -162,7 +170,7 @@ async function renderedRouteIdentityReady(page, tab, spec, text) {
     }, headingPatterns.map(row => ({ source: row.source, flags: row.flags || 'i' }))).catch(() => false);
   }
   const re = spec?.expect ? new RegExp(spec.expect.source, 'i') : null;
-  return !re || re.test(text || '');
+  return Boolean(surface.text.trim()) && (!re || re.test(surface.text));
 }
 
 const FATAL_TEXT_RE = /Application error|Unhandled Runtime Error|Minified React error|Cannot read properties of undefined|Cannot read property|undefined is not a function|ReferenceError|TypeError:|Something went wrong|White screen/i;
@@ -539,6 +547,7 @@ async function waitForRouteSettle(page, tab, options = {}) {
   const timeout = options.timeout || 45000;
   const deadline = Date.now() + timeout;
   let selectedWorkspace = false;
+  let ready = false;
   while (Date.now() < deadline) {
     const text = await bodyText(page, 16000);
     if (/choose workspace|select workspace|select restaurant|choose restaurant/i.test(text)) {
@@ -551,9 +560,10 @@ async function waitForRouteSettle(page, tab, options = {}) {
     const activeTab = await page.evaluate(() => new URLSearchParams(window.location.search).get('tab') || '').catch(() => '');
     const routeLooksReady = !/Loading workspace|Preparing|Unlock System|Email Address\s*Password/i.test(text);
     const routeIdentityReady = await renderedRouteIdentityReady(page, tab, spec, text);
-    if (routeLooksReady && (activeTab === tab || !tab) && routeIdentityReady) break;
+    if (routeLooksReady && (activeTab === tab || !tab) && routeIdentityReady) { ready = true; break; }
     await page.waitForTimeout(350);
   }
+  if (!ready) throw new Error(`Route ${tab} did not render its declared surface within ${timeout}ms. Body: ${(await bodyText(page, 4000))}`);
   if (selectedWorkspace) await page.waitForTimeout(options.settleMs ?? 700);
   await dismissBlockingDialogs(page, { maxPasses: 4 }).catch(() => null);
   await dismissNoise(page);
@@ -599,7 +609,7 @@ async function gotoTab(page, tab, options = {}) {
     await chooseQaWorkspace(page);
     await dismissBlockingDialogs(page, { maxPasses: 6 }).catch(() => null);
     await dismissNoise(page);
-    return bodyText(page, options.maxText || 30000);
+    return waitForRouteSettle(page, tab, options);
   }
   return openTabInApp(page, tab, options);
 }

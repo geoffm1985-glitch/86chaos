@@ -10,6 +10,7 @@ const {
   BAD_VALUE_RE,
   PERMISSION_GATE_RE,
   ALLOW_MUTATION,
+  gotoTab,
 } = require('../../86chaos-full-audit/utils/audit-helpers.cjs');
 const { MUTATION_LABEL_RE, SESSION_OR_GLOBAL_DANGER_RE, SAFE_ACTION_RE, AUTO_CHANGE_BLOCK_RE } = require('../exhaustive-surface-matrix.cjs');
 
@@ -307,6 +308,7 @@ async function resetRouteRoot(page, route) {
   }
   await dismissBlockingDialogs(page, { maxPasses: 2 }).catch(() => null);
   await neutralizeTestingPreviewOverlays(page).catch(() => null);
+  await gotoTab(page, target, { settleMs: 0, timeout: 8000 });
 }
 
 function sharedStatePathDepth(previousPath = [], nextPath = []) {

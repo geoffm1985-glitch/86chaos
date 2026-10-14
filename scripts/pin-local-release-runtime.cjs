@@ -24,7 +24,7 @@ function createRuntimePin(root,{capture=captureSourceIdentity,stamp=buildIdentit
 function installRuntimePin(app,{root=path.resolve(__dirname,'..')}={}) {
   const pin=createRuntimePin(root);
   app.use((req,res,next)=>{
-    try{pin.verify();next();}catch(_){res.setHeader('Cache-Control','no-store');res.status(503).json({ok:false,code:'local_release_source_changed',error:'The local release runtime source changed. Restart it from the current sealed pushed commit.'});}
+    try{pin.verify();next();}catch(error){console.error('[local-runtime-pin] verification refused:',error.code||error.name,error.message);res.setHeader('Cache-Control','no-store');res.status(503).json({ok:false,code:'local_release_source_changed',error:'The local release runtime source changed. Restart it from the current sealed pushed commit.'});}
   });
   app.get('/build-identity.json',(req,res)=>{res.setHeader('Cache-Control','no-store');res.json(pin.identity);});
   app.get('/api/build-identity',(req,res)=>{
