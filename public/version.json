@@ -1,25 +1,25 @@
 {
-  "version": "18.0.18",
-  "name": "86 Chaos 18.0.18",
-  "build": "18.0.18",
-  "label": "86 Chaos 18.0.18",
-  "title": "86 Chaos 18.0.18",
-  "releasedAt": "2026-10-14T19:15:00Z",
-  "releaseTitle": "Rendered route identity and local source verification repair",
-  "summary": "Recognizes the rendered Professional Financial Center and avoids whole-tree verification for unchanged source notifications.",
-  "description": "Production Firebase Android preview. Local release validation remains pending until the authorized targeted, delta and full gates run.",
+  "version": "18.0.19",
+  "name": "86 Chaos 18.0.19",
+  "build": "18.0.19",
+  "label": "86 Chaos 18.0.19",
+  "title": "86 Chaos 18.0.19",
+  "releasedAt": "2026-10-14T21:50:00Z",
+  "releaseTitle": "Local release source watcher performance repair",
+  "summary": "Strict source verification watches eligible source and real worktree Git identity while filtering generated output notifications.",
+  "description": "Production Firebase Android preview; targeted/delta and full release certification remain pending.",
   "notes": [
     "Production Firebase cheers-34b8d and retained signing identity.",
-    "Visible route readiness requires actual page content; existing deadlines remain unchanged.",
-    "Local source verification checks notified file bytes before repeating full identity capture."
+    "Anonymous file notifications compare eligible directory contents before triggering full source verification.",
+    "Generated test/build output is excluded; source edits, new files, Git identity changes and watcher errors remain fail-closed."
   ],
   "highlights": [
-    "Rendered Financial Center identity",
-    "Strict local source verification with less request blocking"
+    "Strict source verification without output-triggered request stalls",
+    "Actual linked-worktree Git identity protection"
   ],
   "changes": [
-    "Financial Center readiness matches the actual Professional Financial Center heading.",
-    "Unchanged source file notifications do not repeat whole-tree Git/hash capture.",
-    "Android versionCode 180018; release 18.0.18"
+    "Directory-scoped source watchers exclude ignored output trees.",
+    "Anonymous notifications compare actual source bytes and directory membership.",
+    "Android versionCode180019; release18.0.19."
   ]
 }

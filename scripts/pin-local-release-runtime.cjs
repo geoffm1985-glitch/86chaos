@@ -2,10 +2,11 @@
 const fs=require('node:fs'),path=require('node:path');
 const {captureSourceIdentity,excludedFile,hash,sourceBytes}=require('./86chaos-release-gate/source-identity.cjs');
 const {buildIdentityPayload}=require('./stamp-build-identity.cjs');
+const {watchReleaseSource}=require('./watch-release-source.cjs');
 function assertPinMatches(pinned,current) {
   if(!pinned?.commit||!pinned?.sourceHash||!current?.commit||current.dirty||current.commit!==pinned.commit||current.branch!==pinned.branch||current.version!==pinned.version||current.sourceHash!==pinned.sourceHash)throw Object.assign(new Error('Local release source changed. Restart with the sealed pushed source before testing.'),{code:'local_release_source_changed'});
 }
-function createRuntimePin(root,{capture=captureSourceIdentity,stamp=buildIdentityPayload,watch=fs.watch}={}) {
+function createRuntimePin(root,{capture=captureSourceIdentity,stamp=buildIdentityPayload,watch=watchReleaseSource}={}) {
   const pinned=capture(root);
   if(pinned.dirty||!pinned.commit||!pinned.branch||!pinned.sourceHash)throw new Error('A local release runtime requires clean Git and sealed source identity.');
   const manifest=JSON.parse(fs.readFileSync(path.join(root,'release-source-manifest.json'),'utf8'));

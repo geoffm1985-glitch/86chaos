@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
-  "version": "18.0.18",
-  "sourceHash": "cb11bfa39e8cf9cff4535a0f62b20d59bd0c6b286097c4531d69d35a68d7469b",
+  "version": "18.0.19",
+  "sourceHash": "2471508d6c4b02e0853e745fd623c2286fb929da4211f69f48138b0192c45747",
   "files": [
     {
       "file": ".gitattributes",
@@ -9,7 +9,7 @@
     },
     {
       "file": ".github/workflows/mobile-targeted-gate.yml",
-      "sha256": "9919cd02454a97c55c36f92f24a949564d1d02eb628bd2ab62de4d75aec00a64"
+      "sha256": "14f939c424fa3c1a85c07fb9acc096b603d2b9b970e4ad232aaba09cc893b462"
     },
     {
       "file": ".github/workflows/testing-targeted-delta.yml",
@@ -348,6 +348,10 @@
       "sha256": "4abf447e1dc0b8f5bba801973b94b071a5a619097dbd0487b7dd506be6669420"
     },
     {
+      "file": "RELEASE_18_0_19.md",
+      "sha256": "cc85a277e87df6d288a8eea0838146b849ddc5c7b665473439e87b808b80097a"
+    },
+    {
       "file": "RELEASE_18_0_2.md",
       "sha256": "a48c45fb08e0cbf89becbbdac0061b5c94636d2625ff8c64520aabbce78d0cf5"
     },
@@ -421,7 +425,7 @@
     },
     {
       "file": "android/app/build.gradle",
-      "sha256": "acdedcfd7f1dc25f9aa48a5fa0ef30f8bcf0af496a24b08b75cb7457dc2b9f63"
+      "sha256": "3c0dd791dac95cae7b7be59bc5f1a9433d09024bbdb7ff1ddedbf0badf1e6340"
     },
     {
       "file": "android/app/capacitor.build.gradle",
@@ -781,7 +785,7 @@
     },
     {
       "file": "api/_pos-bridge-config.js",
-      "sha256": "dfc102493dbb2cb3976f48e129b42cea3bf30bdf16236c99f7403a9269e33966"
+      "sha256": "1c7b8eed13482f1412aca535ce9893321d9586ea17208fdaec366cea590dcc2b"
     },
     {
       "file": "api/_pos-bridge-events.js",
@@ -949,7 +953,7 @@
     },
     {
       "file": "api/_version.js",
-      "sha256": "596a2dd45109ddb3597fbaddb4507c02cb461976036a09de09c98c69bd2c424d"
+      "sha256": "f836efc7cdc289e78ed085ee6966109a21e44491192ef7e907b7650638d43428"
     },
     {
       "file": "api/account-deletion-request.js",
@@ -1322,6 +1326,10 @@
     {
       "file": "api/local-runtime-pin-18-0-18.test.cjs",
       "sha256": "510daf65fed5a3b232fc1ec4fafe025ebde06aebc3b47e46128eb9bed74dd292"
+    },
+    {
+      "file": "api/local-source-watcher-18-0-19.test.cjs",
+      "sha256": "ea2c57dee76a439d02e700546ff825c8e75f85bf4226834b593804ce6529db8f"
     },
     {
       "file": "api/login-bootstrap.js",
@@ -2521,7 +2529,7 @@
     },
     {
       "file": "ios/App/App.xcodeproj/project.pbxproj",
-      "sha256": "cae8a617dd675679535aaca9d28b1741c07c3d0a356ea0e9635e90b4221b6e5d"
+      "sha256": "00e2d462ca91de553af82134394d210a11a2a36763f409cb723eea9be8729ce1"
     },
     {
       "file": "ios/App/App.xcodeproj/project.xcworkspace/xcshareddata/IDEWorkspaceChecks.plist",
@@ -2609,7 +2617,7 @@
     },
     {
       "file": "mobile/native-platform-contract.json",
-      "sha256": "e4d9a6d1c0ca60f03e28e630b439e540b1181961615e2a9511e43f02b9b5db52"
+      "sha256": "40af5dfe68b51c3ab7350a379925909905b2e27f0568c20ccec3779b3377a8a7"
     },
     {
       "file": "mobile/testing/README.md",
@@ -2621,11 +2629,11 @@
     },
     {
       "file": "package-lock.json",
-      "sha256": "62e33d7eef1d70be073f27323074cdaf1b8834ad9167370b0da4d35fd2cf3ff2"
+      "sha256": "b951bf3fb7b0de47bc8d26ad500f1eb3991c673e847c35cbf03a42dbce64e570"
     },
     {
       "file": "package.json",
-      "sha256": "c9a933f0c404b7e2b590a09aa23cb8ced61841b862603c588180a61c3078fa0e"
+      "sha256": "5b99d0b6ce51e8ab07357fd4eaa69d1910eda84d7d426a9d59edbbc2f1ebf03f"
     },
     {
       "file": "playwright.config.js",
@@ -2849,7 +2857,7 @@
     },
     {
       "file": "public/version.json",
-      "sha256": "aab062a4297a3aec3ed77a4e914886c8e4588df5209586214bd5295fb7d758fb"
+      "sha256": "d3bf63a6de713e86afa2e444b20340140ea60cc967646ee577c31e1e636e53b2"
     },
     {
       "file": "public/wisco.png",
@@ -3169,7 +3177,7 @@
     },
     {
       "file": "scripts/pin-local-release-runtime.cjs",
-      "sha256": "e8dfbdab3fd943b78d8f24ecabd7c24c89a46b38a565508f6b3611d520c1a522"
+      "sha256": "7bd01b639839f94f52834bc161baec53ab49fe0d815f8d2b7bcfc125dd3b0890"
     },
     {
       "file": "scripts/python/ops_intelligence.py",
@@ -4292,6 +4300,10 @@
       "sha256": "badb8c52f27d9ff9fb8cc1d41cff6d3b0c6b51aafe7251c224ea934bef40f738"
     },
     {
+      "file": "scripts/validate-18-0-19.js",
+      "sha256": "7d07cea1d79f3104c9dab9e14442fa41cc3e74ced2fab1c201d6a50c43f7a107"
+    },
+    {
       "file": "scripts/validate-18-0-2.js",
       "sha256": "6be6271b8cae46fdf7fc1c196df79e099c3fab9236d08d6d4ef90b2674bd5734"
     },
@@ -4362,6 +4374,10 @@
     {
       "file": "scripts/verify-repository-safety.cjs",
       "sha256": "c82c97f1215ee6b02cb3f10e42cbc942cdb3921d852c2673f9a8598d0b85afdf"
+    },
+    {
+      "file": "scripts/watch-release-source.cjs",
+      "sha256": "7f05f44136c0831fc72a381fa417da596dfd91fc633befbf502b9e5a2e697679"
     },
     {
       "file": "scripts/yardmaster-api.cjs",
@@ -4565,7 +4581,7 @@
     },
     {
       "file": "src/core/appCore.js",
-      "sha256": "81d544ad2327f72895d4f881a88f3c2cbe7b141c981734701acfa4558af89758"
+      "sha256": "bf1d8fee6a29e3d329106c8df90f123e60461003172a130ffd1d8fc39234a9b2"
     },
     {
       "file": "src/core/attendanceEvidence.cjs",
@@ -4581,11 +4597,11 @@
     },
     {
       "file": "src/core/customerHelpKnowledge.cjs",
-      "sha256": "ea421f41136a3bac198fa38ac4dc3dd09b7df7d7bb04b6e7212825c69df304e8"
+      "sha256": "900c9497ecb90398d96b8a5e36afea8a1091e46edae5b0bd1d5e29c25e26e802"
     },
     {
       "file": "src/core/customerHelpKnowledge.js",
-      "sha256": "9403eda71409cf0345c89ea634d6f8468826c084b0b0cf6fcc8c84d336a42766"
+      "sha256": "337418a8cb9eef1a2bdc16e9c0e6d183bb221f8f535f4c229949c9bd90bab11e"
     },
     {
       "file": "src/core/fileCompression.js",
@@ -5169,7 +5185,7 @@
     },
     {
       "file": "test-tools/certification/cost-performance-baselines.json",
-      "sha256": "17cbc2aa7cbac2991dfd1e1e613e1cc7a2faadaff61675a587eadb505819d044"
+      "sha256": "927da812b2ea70f84f4e75613d13868679f9a5f0bc6413f3f21b92f51064d609"
     },
     {
       "file": "test-tools/certification/device-acceptance.json",
@@ -5177,7 +5193,7 @@
     },
     {
       "file": "test-tools/certification/groups.json",
-      "sha256": "2105bf80726175dd75542b959e34af82e4be06eceee1ff2dece37ebaad44d19f"
+      "sha256": "088de0afc8237768af078318c7cf3f99768241943e08c7e61e46951644970963"
     },
     {
       "file": "test-tools/certification/permission-matrix.json",
@@ -5241,7 +5257,7 @@
     },
     {
       "file": "test-tools/regressions/registry.json",
-      "sha256": "9ae328dbef1c53881826c58eb64c7fdecec8629f59518ad22386d9961958d90e"
+      "sha256": "68c75c5e27b41c18168256c147ccc5663231d54589580b772944d9161b0fc904"
     },
     {
       "file": "test-tools/reporters/chaos-release-gate-reporter.cjs",
