@@ -2,6 +2,8 @@ const {test,expect}=require('@playwright/test');
 const {ownerLikeCreds,requireCreds,login,gotoTab}=require('../86chaos-full-audit/utils/audit-helpers.cjs');
 test.beforeEach(async({page})=>{
   const account=ownerLikeCreds();requireCreds(account,'prep layout owner');await login(page,account.email,account.password);await gotoTab(page,'prep');
+  // Await the real lazy section under the existing test deadline before asserting layout.
+  await page.waitForFunction(()=>Boolean(document.querySelector('[data-testid="prep-action-bar"]')));
   await expect(page.getByTestId('prep-action-bar')).toBeVisible();
 });
 test('Master stays on one line at narrow phone width without overflowing the prep form',async({page})=>{

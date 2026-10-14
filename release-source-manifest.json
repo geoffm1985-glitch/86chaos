@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
   "version": "18.0.16",
-  "sourceHash": "3c601471c20448b24ecd9b74e8c0bc6a59acfe6b5af2250615649684d5d3b176",
+  "sourceHash": "e6091d62f48e8ca7d2a4cf77fd65565a0e5f8e90bab18eab6818c26de26a648c",
   "files": [
     {
       "file": ".gitattributes",
@@ -5057,7 +5057,7 @@
     },
     {
       "file": "src/features/operations.jsx",
-      "sha256": "be7030a7511025928130332e4f87338410d9fbc68c953e3b5fdf9a5f8dd2c096"
+      "sha256": "86f09553054cbe35cc34667392ddc4826fd4baddae11c7e2a43c99732b3db58a"
     },
     {
       "file": "src/features/schedule.jsx",
@@ -5425,7 +5425,7 @@
     },
     {
       "file": "tests/86chaos-release-gate/106-mobile-prep-layout-18-0-16.spec.cjs",
-      "sha256": "5729b8aa1cc56af7d4899563c53e3664255077ad91750e6c59fd2d19a64afa29"
+      "sha256": "9ce8dffda403a66c2d98e5f702d5481ff52e37d10a892686e9d812b7475ca6ea"
     },
     {
       "file": "tests/86chaos-release-gate/15-interactive-control-census.spec.cjs",
