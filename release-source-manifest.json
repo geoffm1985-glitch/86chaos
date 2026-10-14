@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
   "version": "18.0.16",
-  "sourceHash": "72ed789454b601888268f681788f1b7812caaaf7df58f48db26de510ed2a313d",
+  "sourceHash": "0ad4da2a2f366c87d74b5f39e37c75d5c3f624c67c0a5f7d04a0ce388ad7b325",
   "files": [
     {
       "file": ".gitattributes",
@@ -5125,7 +5125,7 @@
     },
     {
       "file": "src/styles.css",
-      "sha256": "c7e7ad1dee3007087df83183713ecd62453a035c1034f2c867d7fc238e3d5ba6"
+      "sha256": "047bac83f2e88d691c68e9699412cf3bddad9f17559c75ddea305bb561460c64"
     },
     {
       "file": "storage.rules",
