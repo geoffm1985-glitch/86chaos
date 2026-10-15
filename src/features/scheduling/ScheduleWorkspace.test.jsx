@@ -70,12 +70,32 @@ test('mobile day navigation preserves filtering and uses the same complete edito
 test('an uncertain request remains pending and requires an explicit retry of its original identity',async()=>{
   secureFetch.mockRejectedValueOnce(new Error('Network disconnected'));setup();fireEvent.click(desktop().getByRole('button',{name:/Edit shift .*Alex/}));fireEvent.change(screen.getByTestId('shift-editor-notes'),{target:{value:'Interrupted edit'}});fireEvent.click(screen.getByTestId('shift-editor-save'));
   await waitFor(()=>expect(screen.getByRole('status')).toHaveTextContent('Save outcome unknown'));
-  const first=JSON.parse(secureFetch.mock.calls[0][1].body);fireEvent.click(screen.getByRole('button',{name:'Review outcome and retry the same saved request'}));await waitFor(()=>expect(secureFetch).toHaveBeenCalledTimes(2));expect(JSON.parse(secureFetch.mock.calls[1][1].body)).toEqual(first);await waitFor(()=>expect(screen.getByRole('status')).toHaveTextContent('Saved and verified'));
+  const first=JSON.parse(secureFetch.mock.calls[0][1].body);
+  const editor=screen.getByRole('dialog',{name:'Edit shift'});
+  const retry=within(editor).getByRole('button',{name:'Review outcome and retry the same saved request'});
+  expect(screen.getAllByRole('button',{name:'Review outcome and retry the same saved request'})).toHaveLength(1);
+  fireEvent.click(retry);await waitFor(()=>expect(secureFetch).toHaveBeenCalledTimes(2));expect(JSON.parse(secureFetch.mock.calls[1][1].body)).toEqual(first);await waitFor(()=>expect(screen.getByRole('status')).toHaveTextContent('Saved and verified'));
 });
 test('published edits require an explicit reason and confirmation before an authoritative mutation',async()=>{
   useLiveCollectionState.mockImplementation(name=>({data:name==='shifts'?[{...original,isPublished:true,published:true}]:empty,resolved:true,stale:false,error:null}));
   setup({shifts:[{...original,isPublished:true,published:true}]});fireEvent.click(desktop().getByRole('button',{name:/Edit shift .*Alex/}));fireEvent.change(screen.getByTestId('shift-editor-end'),{target:{value:'22:00'}});fireEvent.click(screen.getByTestId('shift-editor-save'));
   expect(secureFetch).not.toHaveBeenCalled();expect(screen.getByRole('button',{name:'Confirm changes'})).toBeDisabled();fireEvent.change(screen.getByLabelText('Reason for published change'),{target:{value:'Manager approved later closing'}});fireEvent.click(screen.getByRole('button',{name:'Confirm changes'}));await waitFor(()=>expect(secureFetch).toHaveBeenCalledTimes(1));expect(JSON.parse(secureFetch.mock.calls[0][1].body).confirmedPublished).toBe(true);await waitFor(()=>expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+});
+
+test('retry confirms the original request without erasing a newer cancelled unsaved draft',async()=>{
+  secureFetch.mockRejectedValueOnce(new Error('Network disconnected'));
+  setup();fireEvent.click(desktop().getByRole('button',{name:/Edit shift .*Alex/}));
+  fireEvent.change(screen.getByTestId('shift-editor-notes'),{target:{value:'Original submitted notes'}});
+  fireEvent.click(screen.getByTestId('shift-editor-save'));
+  await waitFor(()=>expect(screen.getByRole('status')).toHaveTextContent('Save outcome unknown'));
+  const first=JSON.parse(secureFetch.mock.calls[0][1].body);
+  fireEvent.change(screen.getByTestId('shift-editor-notes'),{target:{value:'Newer unsaved notes'}});
+  fireEvent.click(screen.getByRole('button',{name:'Cancel',exact:true}));
+  fireEvent.click(screen.getByRole('button',{name:'Review outcome and retry the same saved request'}));
+  await waitFor(()=>expect(secureFetch).toHaveBeenCalledTimes(2));
+  expect(JSON.parse(secureFetch.mock.calls[1][1].body)).toEqual(first);
+  fireEvent.click(screen.getByRole('button',{name:'Recover unsaved shift draft'}));
+  expect(screen.getByTestId('shift-editor-notes')).toHaveValue('Newer unsaved notes');
 });
 
 test('verified empty snapshots remove stale shifts instead of presenting them as current',()=>{

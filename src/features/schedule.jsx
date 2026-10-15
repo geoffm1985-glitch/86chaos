@@ -1951,7 +1951,7 @@ const [eventDate, setEventDate] = useState(getToday());
       header.removeEventListener('touchcancel', reset);
       reset();
     };
-  }, [subTab]);
+  }, [subTab, legacyBuilderView]);
 
   useEffect(() => {
     if (subTab !== 'schedule' || typeof window === 'undefined') return undefined;
@@ -1981,7 +1981,7 @@ const [eventDate, setEventDate] = useState(getToday());
       window.removeEventListener('resize', updateStickyTop);
       observer?.disconnect();
     };
-  }, [subTab]);
+  }, [subTab, legacyBuilderView]);
 
   const monthStr = getMonthStr(currentDate); 
   const monthDays = Array.from({length: getDaysInMonth(monthStr)}).map((_, i) => `${monthStr}-${String(i+1).padStart(2, '0')}`);

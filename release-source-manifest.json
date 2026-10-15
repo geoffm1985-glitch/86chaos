@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
-  "version": "19.0.5",
-  "sourceHash": "206d63b0476e46374196c65e4bb302aa3849ad1f42706fb7d71dd228b80f9bb2",
+  "version": "19.0.6",
+  "sourceHash": "0ad73ae6082550df31cffd6f41a9c667132ab1094e99f1a825e68047fb095492",
   "files": [
     {
       "file": ".gitattributes",
@@ -437,7 +437,7 @@
     },
     {
       "file": "android/app/build.gradle",
-      "sha256": "4f4317da727a6ed24f90f498d2f02297f69cd1c719f9531925a271935e0fec6c"
+      "sha256": "2e1e1c7c615fe10ce45df3486f9b72d7a899035a3347069578724b374461e407"
     },
     {
       "file": "android/app/capacitor.build.gradle",
@@ -797,7 +797,7 @@
     },
     {
       "file": "api/_pos-bridge-config.js",
-      "sha256": "54ae0106c5afeb2403e4ca9c5da694cc7a33a8495d077f23cced07ed0fe10227"
+      "sha256": "0f30eaa393c662d443466932c35275014b6a6840255418c585329426709b9acf"
     },
     {
       "file": "api/_pos-bridge-events.js",
@@ -973,7 +973,7 @@
     },
     {
       "file": "api/_version.js",
-      "sha256": "418ad515bc066626e1bd86fdc738642a82f1a6b5da8381bb33dabfebcbf3dc56"
+      "sha256": "8f3497d556765eb5e4d88c6a37e85f77fb6897fe8cd886140f5d03da04fb4ba3"
     },
     {
       "file": "api/account-deletion-request.js",
@@ -2501,15 +2501,15 @@
     },
     {
       "file": "docs/SCHEDULING_PHASE_TEST_MATRIX.md",
-      "sha256": "c03f376a5d875c931dae92c543fd8b409e0b4477f0d578f997e17b2de5693e2f"
+      "sha256": "c45004e0b947620dabd3bfea771d523e19f7a57f7e5f81226f398463c3a5d7e2"
     },
     {
       "file": "docs/SCHEDULING_WORLD_CLASS_IMPLEMENTATION.md",
-      "sha256": "3999a7e729542ca82d63278d85d8990430d189698563876ec8e76698c9ec9f7c"
+      "sha256": "f6f0eee6a5f8675a4889b7f25bad7895539e52a1f5a398298aba2204c53650eb"
     },
     {
       "file": "docs/UNIVERSAL_PLATFORM_PARITY_MATRIX.md",
-      "sha256": "fe9287bda744d2e3f97a6c7a62a1b9c56bb9da5cc40d5434e55d1fddeef30f1f"
+      "sha256": "1ad4ead53077cd37284cf2fa1eff197fd50adda0659ed6fe1a5fbf1420c2be05"
     },
     {
       "file": "docs/daily-briefing-feature-status.md",
@@ -2585,7 +2585,7 @@
     },
     {
       "file": "ios/App/App.xcodeproj/project.pbxproj",
-      "sha256": "6d32c94d38fdfb1d300cf4c8eb7fa983504eaf4a83e577f93234963c5e49b215"
+      "sha256": "da8b40e2e2317c019a840cfe24947ff2bf76be61e6ba7e5b918d5e6e64080d4a"
     },
     {
       "file": "ios/App/App.xcodeproj/project.xcworkspace/xcshareddata/IDEWorkspaceChecks.plist",
@@ -2673,7 +2673,7 @@
     },
     {
       "file": "mobile/native-platform-contract.json",
-      "sha256": "b2278654f8d2b9dff8bee420403aa80530e89955a3ee7601f91807480aab4aed"
+      "sha256": "b4f15a0f65db08dc1cdfe446416912f79ef7d525db9901035c9b836b2cab953b"
     },
     {
       "file": "mobile/testing/README.md",
@@ -2685,11 +2685,11 @@
     },
     {
       "file": "package-lock.json",
-      "sha256": "8708a673de83cca385f39bd8d12a26416ac09a28e1c8c766d91f84c94ebdef02"
+      "sha256": "409eae1acf34861a8fb178fa511d5c240d18adaef5495de6c80406e19eae577b"
     },
     {
       "file": "package.json",
-      "sha256": "7d2e8177a2413d75a65432a477e339dbd420dd7ef45a61f13f908d1d8eae7682"
+      "sha256": "541eb09c688ea99e712235a7caa85736c209407f056fadaf551ca810fe18ed01"
     },
     {
       "file": "playwright.config.js",
@@ -2913,7 +2913,7 @@
     },
     {
       "file": "public/version.json",
-      "sha256": "d89a5bbe5b7371851fa02d2ef8da1c817c68c8b7e897314af2627a437ac0eb27"
+      "sha256": "edf73774c17836db9de93d4f3fd6034c1bfacd99bb2fb37432c66b30e0c53d62"
     },
     {
       "file": "public/wisco.png",
@@ -4661,7 +4661,7 @@
     },
     {
       "file": "src/core/appCore.js",
-      "sha256": "8b841edcb46a4c8f52edcadd7fd19d7ef4a276524dfb380da4e373d37a71076d"
+      "sha256": "5da1234f9cf01f610ae2d893e5c4f9dc55b930a5d0e8655ebbb1b79b5b840f78"
     },
     {
       "file": "src/core/attendanceEvidence.cjs",
@@ -4681,11 +4681,11 @@
     },
     {
       "file": "src/core/customerHelpKnowledge.cjs",
-      "sha256": "128ec99d11013423cc2f026045440cce700af23b777abc8cc7542cd7127bac69"
+      "sha256": "305038e265b67589cfbb408d08d965dd1c43a5530da3c547a8a5c7f4152293ef"
     },
     {
       "file": "src/core/customerHelpKnowledge.js",
-      "sha256": "ec8dafaaeaef9e316814f4601de346d49bc3506e38c49e5a1cdc66334b5ba25e"
+      "sha256": "327ce9e90727a8f3bc3ee08d4be835002020177b0df41a88aab6fb2f40382e5a"
     },
     {
       "file": "src/core/deploymentBoundary.cjs",
@@ -5205,15 +5205,15 @@
     },
     {
       "file": "src/features/schedule.jsx",
-      "sha256": "5ef8e8580ab3629c86b9da2f22b24f9e06a76ca0d3bc5325a032fe50446e2380"
+      "sha256": "59f70087769ce49b7e856eeaf1864caf3b9423ddc8e8e00f4064f6af6c6151fc"
     },
     {
       "file": "src/features/scheduling/ScheduleWorkspace.jsx",
-      "sha256": "1fe78fb7d3195aced08fbb4ea2a7d087a44bf06679183180deabf7bf19ecdd51"
+      "sha256": "676d4682ea8e194bc36b7a372674edf3c1b0ea0a6faab13d95794c0633274dd5"
     },
     {
       "file": "src/features/scheduling/ScheduleWorkspace.test.jsx",
-      "sha256": "b066bb68032496f2682730b94890371b23813c88a28764b065805ac9ba056f07"
+      "sha256": "b936813aed2dc525dcfa1f083b5a81bdaa5ff209a1a948d55f98fbba4d463743"
     },
     {
       "file": "src/features/scheduling/ShiftChangePreview.jsx",
@@ -5221,7 +5221,7 @@
     },
     {
       "file": "src/features/scheduling/scheduleWorkspace.css",
-      "sha256": "80fd944107cd1d6f84e325636de73183bd16c359e09df693d8572fea0eab8f6e"
+      "sha256": "2a68abe6ecc0b917018c5cb2babc7ddbcc0f6e06f02ac3a28acc1a596fa662d5"
     },
     {
       "file": "src/features/scheduling/scheduleWorkspaceData.js",
@@ -5313,7 +5313,7 @@
     },
     {
       "file": "test-tools/certification/cost-performance-baselines.json",
-      "sha256": "0f766a4f4d505cc66936f867e3acfa4bdf31d493666cfafa6058813f170d4d0a"
+      "sha256": "fbcf0277b757fe16ae300553be1294970dec05e039fc153f96ed4ea2d1d92f62"
     },
     {
       "file": "test-tools/certification/device-acceptance.json",
@@ -5321,7 +5321,7 @@
     },
     {
       "file": "test-tools/certification/groups.json",
-      "sha256": "1f399f85a096012b502ea847dbb8bb575b231d31d2b30e8e97fef6b88e37ae77"
+      "sha256": "2904ab6ed38ca08e237bed2b5eb03486e4ced6681b051a8ca889fc2e22d3f30f"
     },
     {
       "file": "test-tools/certification/permission-matrix.json",
@@ -5385,7 +5385,7 @@
     },
     {
       "file": "test-tools/regressions/registry.json",
-      "sha256": "15c7956911a071254e0486cd3b81a84c6425677c12247df794409ff49ff4c587"
+      "sha256": "c9d088a1cd4ef760edecd1a26ae75b0b2bd4656163f22987bd880ac9f4b3e90f"
     },
     {
       "file": "test-tools/reporters/chaos-release-gate-reporter.cjs",
@@ -6161,7 +6161,7 @@
     },
     {
       "file": "tests/fixtures/schedule-builder-phase1-scenarios.cjs",
-      "sha256": "d69f79d0b7c162de664b6878bd71582fc637d77b1a88e57226ed5824e679881a"
+      "sha256": "1e3cb8e051543f75522c582910d31bcaebb4ffd650c01a8015808c8986f6ed5c"
     },
     {
       "file": "tests/fixtures/testing-promotion-scenarios.cjs",
@@ -6192,14 +6192,13 @@
       "sha256": "88ee1e1a65882a5986548278695529bcda7fb6142d776114bcc8386ebbafcaf9"
     }
   ],
-  "commit": "7279db043bc9dddf5198cde1dddf5ef9f88983ae",
+  "commit": "bbcbc93c26105520fc86fbac0873dc973a32abd1",
   "branch": "testing",
   "dirty": true,
   "dirtyPaths": [
     " M android/app/build.gradle",
     " M api/_pos-bridge-config.js",
     " M api/_version.js",
-    " M api/schedule-workspace-19.test.cjs",
     " M docs/SCHEDULING_PHASE_TEST_MATRIX.md",
     " M docs/SCHEDULING_WORLD_CLASS_IMPLEMENTATION.md",
     " M docs/UNIVERSAL_PLATFORM_PARITY_MATRIX.md",
@@ -6211,14 +6210,16 @@
     " M src/core/appCore.js",
     " M src/core/customerHelpKnowledge.cjs",
     " M src/core/customerHelpKnowledge.js",
+    " M src/features/schedule.jsx",
+    " M src/features/scheduling/ScheduleWorkspace.jsx",
+    " M src/features/scheduling/ScheduleWorkspace.test.jsx",
+    " M src/features/scheduling/scheduleWorkspace.css",
     " M test-tools/certification/cost-performance-baselines.json",
     " M test-tools/certification/groups.json",
     " M test-tools/regressions/registry.json",
-    " M tests/86chaos-release-gate/108-schedule-builder-phase1-19.spec.cjs",
-    " M tests/e2e/schedule-builder-phase1-19.spec.cjs",
     " M tests/fixtures/schedule-builder-phase1-scenarios.cjs"
   ],
-  "capturedAt": "2026-10-15T07:44:39.333Z",
+  "capturedAt": "2026-10-15T08:20:24.200Z",
   "previewUrl": null,
   "intendedProductionUrl": "https://app.86chaos.com",
   "sourceArtifact": null

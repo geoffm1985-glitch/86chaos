@@ -103,7 +103,10 @@ async function verifyMoveCopy({page}) {
       await mutate(page,ctx,()=>page.getByTestId('shift-editor-save').click());
     } else {
       const employeeId=await page.locator('.sw-desktop-scroll tr').filter({has:page.getByText('Mara Manager QA',{exact:true})}).locator('[data-employee-id]').first().getAttribute('data-employee-id');
-      await card(page,ctx,row.id).dragTo(page.locator(`.sw-desktop-scroll [data-date="${row.date}"][data-employee-id="${employeeId}"]`));
+      const source=card(page,ctx,row.id);
+      await source.scrollIntoViewIfNeeded();
+      expect(await source.evaluate(element=>{const r=element.getBoundingClientRect();return element.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2));}),'A sticky header must not intercept the dragged shift').toBe(true);
+      await source.dragTo(page.locator(`.sw-desktop-scroll [data-date="${row.date}"][data-employee-id="${employeeId}"]`));
       await expect(page.getByRole('dialog',{name:'Preview moved shifts'})).toBeVisible();expect((await authoritativeRows(page,ctx))[0].employeeId).toBe(row.employeeId);
       await mutate(page,ctx,()=>page.getByTestId('schedule-confirm-preview').click());
     }
@@ -125,9 +128,22 @@ async function verifyInterruptedSave({page,context}) {
     await page.route('**/api/schedule-workspace',async route=>{const body=route.request().postDataJSON();if(body.action==='read')return route.continue();attempts.push(body);if(abort){abort=false;return route.abort('failed');}return route.continue();});
     await page.getByTestId('shift-editor-save').click();await expect(ctx.workspace.getByRole('status').first()).toContainText('Save outcome unknown');
     expect(attempts).toHaveLength(1);await context.setOffline(true);await context.setOffline(false);
-    await expect(page.getByRole('button',{name:'Review outcome and retry the same saved request'})).toBeEnabled();expect(attempts).toHaveLength(1);
-    await mutate(page,ctx,()=>page.getByRole('button',{name:'Review outcome and retry the same saved request'}).click());
+    const retry=page.getByRole('dialog',{name:'Edit shift',exact:true}).getByRole('button',{name:'Review outcome and retry the same saved request'});
+    await expect(retry).toBeVisible();await expect(retry).toBeEnabled();expect(attempts).toHaveLength(1);
+    await mutate(page,ctx,()=>retry.click());
     expect(attempts).toHaveLength(2);expect(attempts[1]).toEqual(attempts[0]);expect((await authoritativeRows(page,ctx))[0].notes).toBe('Explicit retry retains its operation identity');
+    abort=true;
+    await card(page,ctx,row.id).getByRole('button',{name:/Edit shift/}).click();
+    await page.getByTestId('shift-editor-notes').fill('Second explicitly submitted request');await page.getByTestId('shift-editor-save').click();
+    await expect(ctx.workspace.getByRole('status').first()).toContainText('Save outcome unknown');expect(attempts).toHaveLength(3);
+    await page.getByTestId('shift-editor-notes').fill('Newer unsaved draft must survive recovery');
+    await page.getByRole('dialog').getByRole('button',{name:'Cancel',exact:true}).click();
+    await mutate(page,ctx,()=>ctx.workspace.getByRole('button',{name:'Review outcome and retry the same saved request'}).click());
+    expect(attempts).toHaveLength(4);expect(attempts[3]).toEqual(attempts[2]);
+    expect((await authoritativeRows(page,ctx))[0].notes).toBe('Second explicitly submitted request');
+    await ctx.workspace.getByRole('button',{name:'Recover unsaved shift draft'}).click();
+    await expect(page.getByTestId('shift-editor-notes')).toHaveValue('Newer unsaved draft must survive recovery');
+    await page.getByRole('dialog').getByRole('button',{name:'Cancel',exact:true}).click();
     await page.unroute('**/api/schedule-workspace');
 }
 async function verifyLayoutAndKeyboard({page}) {
@@ -145,6 +161,9 @@ async function verifyLayoutAndKeyboard({page}) {
     const moved=await scroll.evaluate(element=>{element.scrollTop=180;element.scrollLeft=160;return{top:element.scrollTop,left:element.scrollLeft};});expect(moved.top).toBeGreaterThan(0);
     const after=await header.boundingBox(),labelAfter=await label.boundingBox();expect(Math.abs(after.y-before.y)).toBeLessThanOrEqual(2);expect(Math.abs(labelAfter.x-left.x)).toBeLessThanOrEqual(2);
     expect(Math.abs((before.x-after.x)-moved.left)).toBeLessThanOrEqual(2);
+    expect(await scroll.locator('tbody .sw-role-group>th').first().evaluate(element=>getComputedStyle(element).position),'Role groups must not cover date headers or shifts').toBe('static');
+    expect(await label.evaluate(element=>getComputedStyle(element).top),'Employee labels stick horizontally, not over later rows').toBe('auto');
+    expect(await scroll.locator('thead th').nth(3).evaluate(element=>{const r=element.getBoundingClientRect();return element.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2));}),'Day/date header must remain readable above the scrolled rows').toBe(true);
   }
   await ctx.workspace.getByRole('button',{name:'Add Shift',exact:true}).click();
   const dialog=page.getByRole('dialog',{name:'Add shift',exact:true}),first=dialog.locator('button').first(),last=dialog.getByRole('button',{name:'Cancel',exact:true});

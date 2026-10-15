@@ -24,6 +24,12 @@
 .sw-week-table thead th { position:sticky; top:0; z-index:30; background:#1a2126; color:#e4bda2; font-size:15px; text-align:center; height:54px; }
 .sw-week-table tr>th:first-child { width:190px; position:sticky; left:0; z-index:20; background:#1a2126; text-align:left; }
 .sw-week-table thead tr>th:first-child { z-index:40; }
+/* The application's compact table defaults also target th. Keep weekly headers
+   above rows, and never let role or employee headers stick vertically over shifts. */
+.desktop-pro-shell .app-content-shell .sw-week-table thead th { top:0; z-index:30; }
+.desktop-pro-shell .app-content-shell .sw-week-table thead tr>th:first-child { z-index:40; }
+.desktop-pro-shell .app-content-shell .sw-week-table tbody th { top:auto; z-index:20; }
+.desktop-pro-shell .app-content-shell .sw-week-table .sw-role-group>th { position:static; }
 .sw-week-table tbody th span { display:block; font-size:13px; font-weight:400; color:#a8b6c4; margin-top:4px; }
 .sw-week-table .sw-role-group>th { position:static; padding:0; background:#20272c; }
 .sw-role-group button { position:sticky; left:0; text-align:left; border:0; background:transparent; color:#d4a381; font-weight:750; }
