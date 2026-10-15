@@ -1,7 +1,7 @@
 'use strict';
 const {initAdmin,authorize,requireAppCheckIfEnforced} = require('./_chaos-admin');
 const {parseBody} = require('./schedule-shift-assign')._test;
-const {editScheduleWorkspace,readScheduleWorkspace} = require('./_schedule-workspace.cjs');
+const {editScheduleWorkspace,readScheduleWorkspace,readScheduleWeek} = require('./_schedule-workspace.cjs');
 module.exports = async function scheduleWorkspace(req,res) {
   if(req.method!=='POST')return res.status(405).json({ok:false,code:'method_not_allowed',error:'Use POST.'});
   try {
@@ -13,7 +13,7 @@ module.exports = async function scheduleWorkspace(req,res) {
     if(!ctx.ok)return res.status(ctx.status || 403).json({ok:false,error:ctx.error});
     const appCheck=await requireAppCheckIfEnforced(ctx.app || app,req);
     if(!appCheck.ok)return res.status(appCheck.status || 401).json({ok:false,error:appCheck.error});
-    const operation=body.action==='read'?readScheduleWorkspace:editScheduleWorkspace;
+    const operation=body.action==='read'?readScheduleWorkspace:body.action==='read-week'?readScheduleWeek:editScheduleWorkspace;
     return res.status(200).json(await operation({db:ctx.db || app.firestore(),ctx,body}));
   } catch(error) {
     const status=Number(error.statusCode || 500);

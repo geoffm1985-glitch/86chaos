@@ -2,7 +2,7 @@
 const test=require('node:test'),assert=require('node:assert/strict');
 const {initializeApp,deleteApp}=require('firebase-admin/app');
 const {getFirestore}=require('firebase-admin/firestore');
-const {editScheduleWorkspace,readScheduleWorkspace}=require('../api/_schedule-workspace.cjs');
+const {editScheduleWorkspace,readScheduleWorkspace,readScheduleWeek}=require('../api/_schedule-workspace.cjs');
 const {prepareScheduleClear,advanceScheduleClear}=require('../api/_schedule-clear-workspace.cjs');
 const {assignRows}=require('../api/schedule-shift-assign')._test;
 const {workspaceEvidence}=require('../src/core/scheduleWorkspace.shared.js');
@@ -46,6 +46,12 @@ test('actual isolated Firestore enforces edit concurrency, undo, publication evi
     assert.equal(replay.currentResults.every(row=>row.after===null),true,'old receipts cannot resurrect newer deletions');
     await db.doc('shifts/'+row.id).update({hourlyRate:999,privateNotificationToken:'private-fixture-token'});
     const verified=await readScheduleWorkspace({db,ctx,body:{restaurantId:tenant,ids:[row.id,'missing_shift']}});
+    await db.doc('shifts/inactive_read_fixture').set({restaurantId:tenant,date:'2026-10-20',cancelledAt:'2026-10-14T12:00:00Z'});
+    const week=await readScheduleWeek({db,ctx,body:{restaurantId:tenant,weekStart:'2026-10-19'}});
+    assert.equal(week.authoritative,true);assert.equal(week.restaurantId,tenant);assert.equal(week.shifts.find(shift=>shift.id===row.id).endTime,'22:00');
+    assert.equal(JSON.stringify(week).includes('private-fixture-token'),false);assert.equal(JSON.stringify(week).includes('hourlyRate'),false);
+    assert.equal(week.shifts.some(shift=>shift.id==='inactive_read_fixture'),false);
+    await assert.rejects(readScheduleWeek({db,ctx,body:{restaurantId:'other_tenant',weekStart:'2026-10-19'}}),error=>error.statusCode===403);
     assert.equal(verified.shifts[0].endTime,'22:00');assert.equal('hourlyRate' in verified.shifts[0],false);assert.equal('privateNotificationToken' in verified.shifts[0],false);assert.deepEqual(verified.shifts[1],{id:'missing_shift',exists:false});
     const review=await prepareScheduleClear({db,ctx,restaurantId:tenant,month:'2026-10',rows:[verified.shifts[0]]});
     const later=await execute({operationId:'emulator_after_month_review',changes:[{kind:'create',patch:{...patch,isOpenShift:true,employeeId:'',notes:'New shift after the reviewed snapshot'}}]});

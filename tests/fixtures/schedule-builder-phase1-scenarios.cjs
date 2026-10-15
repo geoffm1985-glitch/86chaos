@@ -26,7 +26,7 @@ async function openWorkspace(page) {
   scenarios.set(page,ctx);return ctx;
 }
 async function mutate(page,ctx,action) {
-  const waiting=page.waitForResponse(response=>response.url().endsWith('/api/schedule-workspace') && response.request().method()==='POST' && JSON.parse(response.request().postData() || '{}').action!=='read');
+  const waiting=page.waitForResponse(response=>response.url().endsWith('/api/schedule-workspace') && response.request().method()==='POST' && !['read','read-week'].includes(JSON.parse(response.request().postData() || '{}').action));
   await action();const response=await waiting;const result=await response.json();
   expect(response.status(),result.error || 'Scheduling API failed').toBe(200);expect(result.ok).toBe(true);expect(result.authoritative).toBe(true);
   const headers=await response.request().allHeaders();
@@ -52,7 +52,7 @@ async function cleanup(page,ctx) {
 // Playwright gives afterEach its own cleanup budget after a body timeout. Keeping cleanup
 // out of finally preserves the original failure and prevents an owned shift poisoning later cases.
 async function cleanupScenario({page,context},testInfo) {
-  await context.setOffline(false);await page.unroute('**/api/schedule-workspace');
+  await context.setOffline(false);await page.unroute('**/api/schedule-workspace');await page.unroute('**/google.firestore.v1.Firestore/Listen/channel**');
   const proof=await cleanup(page,scenarios.get(page));scenarios.delete(page);
   await testInfo.attach('phase1-workflow-cleanup',{body:JSON.stringify(proof),contentType:'application/json'});
 }
@@ -85,9 +85,9 @@ async function verifyEditingRecovery({page}) {
     expect((await authoritativeRows(page,ctx))[0]).toMatchObject({endTime:'22:00',notes:'Reviewed dinner extension',paidBreak:true});
     await mutate(page,ctx,()=>ctx.workspace.getByRole('button',{name:'Undo',exact:true}).click());expect((await authoritativeRows(page,ctx))[0].endTime).toBe('21:00');
     await mutate(page,ctx,()=>ctx.workspace.getByRole('button',{name:'Redo',exact:true}).click());expect((await authoritativeRows(page,ctx))[0].endTime).toBe('22:00');
-    await page.reload();await dismissBlockingDialogs(page);await expect(ctx.workspace).toBeVisible();await revealDate(page,ctx,row.date);await card(page,ctx,row.id).getByRole('button',{name:/Edit shift/}).click();
+    await page.reload();await dismissBlockingDialogs(page);await expect(ctx.workspace).toBeVisible();await expect(ctx.workspace.getByRole('status').first()).toContainText('Schedule loaded from the server');await revealDate(page,ctx,row.date);await card(page,ctx,row.id).getByRole('button',{name:/Edit shift/}).click();
     await expect(page.getByTestId('shift-editor-notes')).toHaveValue('Reviewed dinner extension');
-    let mutations=0;const count=request=>{if(request.url().endsWith('/api/schedule-workspace') && JSON.parse(request.postData() || '{}').action!=='read')mutations++;};page.on('request',count);
+    let mutations=0;const count=request=>{if(request.url().endsWith('/api/schedule-workspace') && !['read','read-week'].includes(JSON.parse(request.postData() || '{}').action))mutations++;};page.on('request',count);
     await page.getByTestId('shift-editor-save').click();await expect(page.getByRole('dialog')).toHaveCount(0);expect(mutations).toBe(0);page.off('request',count);
     await card(page,ctx,row.id).getByRole('button',{name:/Edit shift/}).click();await page.getByRole('button',{name:'Delete shift',exact:true}).click();
     expect((await authoritativeRows(page,ctx))[0].exists).not.toBe(false);
@@ -142,7 +142,7 @@ async function verifyInterruptedSave({page,context}) {
   const ctx=await openWorkspace(page);
     const row=await createShift(page,ctx);await card(page,ctx,row.id).getByRole('button',{name:/Edit shift/}).click();await page.getByTestId('shift-editor-notes').fill('Explicit retry retains its operation identity');
     const attempts=[];let abort=true;
-    await page.route('**/api/schedule-workspace',async route=>{const body=route.request().postDataJSON();if(body.action==='read')return route.continue();attempts.push(body);if(abort){abort=false;return route.abort('failed');}return route.continue();});
+    await page.route('**/api/schedule-workspace',async route=>{const body=route.request().postDataJSON();if(['read','read-week'].includes(body.action))return route.continue();attempts.push(body);if(abort){abort=false;return route.abort('failed');}return route.continue();});
     await page.getByTestId('shift-editor-save').click();await expect(ctx.workspace.getByRole('status').first()).toContainText('Save outcome unknown');
     expect(attempts).toHaveLength(1);await context.setOffline(true);await context.setOffline(false);
     const retry=page.getByRole('dialog',{name:'Edit shift',exact:true}).getByRole('button',{name:'Review outcome and retry the same saved request'});
@@ -205,4 +205,20 @@ async function verifyReviewedMonthRecovery({page}) {
     expect(restore.status()).toBe(200);expect(await restore.json()).toMatchObject({ok:true,done:true,restoredCount:1});
     const restored=await authoritativeRows(page,ctx,[row.id,later.id]);expect(restored[0]).toMatchObject({date:'2031-02-12',notes:row.notes});expect(restored[1].notes).toBe('Added after frozen month review');
 }
-module.exports={cleanupScenario,verifyEditingRecovery,verifyMoveCopy,verifyInterruptedSave,verifyLayoutAndKeyboard,verifyReviewedMonthRecovery};
+async function verifyServerReadFallback({page,context}) {
+  const ctx=await openWorkspace(page),row=await createShift(page,ctx),date=shiftDateBy(row.date,7);
+  const response=await page.request.post('/api/schedule-workspace',{headers:ctx.headers,data:{restaurantId:ctx.seed.restaurantId,operationId:'qa_fallback_'+require('node:crypto').randomUUID(),acknowledgedWarnings:true,changes:[{kind:'create',patch:{...workspaceEditable(row),date,employeeId:'',isOpenShift:true,notes:'Verified while live snapshots are unavailable'}}]}});
+  expect(response.status()).toBe(200);const result=await response.json(),future=result.results[0].after;ctx.ids.add(future.id);
+  await page.route('**/google.firestore.v1.Firestore/Listen/channel**',route=>route.abort('failed'));
+  const waiting=page.waitForResponse(response=>response.url().endsWith('/api/schedule-workspace') && response.request().postDataJSON()?.action==='read-week');
+  await ctx.workspace.getByRole('button',{name:'Next week',exact:true}).click();
+  const read=await waiting;expect(read.status()).toBe(200);const verified=await read.json();expect(verified.authoritative).toBe(true);expect(verified.restaurantId).toBe(ctx.seed.restaurantId);expect(verified.shifts.find(shift=>shift.id===future.id)?.notes).toBe(future.notes);
+  expect(JSON.stringify(verified)).not.toMatch(/hourlyRate|privateNotificationToken/);
+  const status=ctx.workspace.getByRole('status').first();await expect(status).toHaveAttribute('data-verification-source','api');await expect(status).toContainText('Live updates are still connecting');
+  await revealDate(page,ctx,date);await expect(card(page,ctx,future.id)).toBeVisible();
+  let mutations=0;const count=request=>{if(request.url().endsWith('/api/schedule-workspace') && !['read','read-week'].includes(request.postDataJSON()?.action))mutations++;};page.on('request',count);
+  await context.setOffline(true);await expect(status).toHaveAttribute('data-verification-source','unverified');
+  await context.setOffline(false);await ctx.workspace.getByRole('button',{name:'Refresh verified schedule',exact:true}).click();await expect(status).toHaveAttribute('data-verification-source','api');expect(mutations).toBe(0);page.off('request',count);
+  await page.unroute('**/google.firestore.v1.Firestore/Listen/channel**');
+}
+module.exports={cleanupScenario,verifyEditingRecovery,verifyMoveCopy,verifyInterruptedSave,verifyLayoutAndKeyboard,verifyReviewedMonthRecovery,verifyServerReadFallback};

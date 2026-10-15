@@ -1,7 +1,7 @@
 'use strict';
 const test=require('node:test'),assert=require('node:assert/strict');
 const rules=require('../src/core/scheduleWorkspace.shared.js');
-const {editScheduleWorkspace,readScheduleWorkspace}=require('./_schedule-workspace.cjs');
+const {editScheduleWorkspace,readScheduleWorkspace,readScheduleWeek}=require('./_schedule-workspace.cjs');
 const {prepareScheduleClear,advanceScheduleClear}=require('./_schedule-clear-workspace.cjs');
 test('browser cleanup hook verifies only owned shifts and reports authoritative removal',async()=>{
   const fs=require('node:fs'),vm=require('node:vm');
@@ -19,7 +19,7 @@ test('browser cleanup hook verifies only owned shifts and reports authoritative 
   sandbox.module.exports.scenariosForTest.set(page,ctx);
   let attachment;
   await sandbox.module.exports.cleanupScenario({page,context:{setOffline:async value=>events.push(value)}},{attach:async(name,options)=>{attachment={name,body:JSON.parse(options.body)};}});
-  assert.deepEqual(events,[false,'**/api/schedule-workspace']);assert.equal(requests.length,3);
+  assert.deepEqual(events,[false,'**/api/schedule-workspace','**/google.firestore.v1.Firestore/Listen/channel**']);assert.equal(requests.length,3);
   assert.equal(requests[1].body.changes.length,1);assert.equal(requests[1].body.changes[0].id,row.id);
   assert.equal(requests[1].body.changes[0].expected,rules.workspaceEvidence(row));
   assert.deepEqual(attachment,{name:'phase1-workflow-cleanup',body:{ownedShiftCount:1,remaining:0,authoritative:true}});
@@ -59,6 +59,31 @@ function fixture() {
   const execute=body=>editScheduleWorkspace({db,ctx,body,clock:()=>new Date('2026-10-14T12:00:00Z')});
   return {store,db,ctx,patch,request,execute,writes:()=>writes};
 }
+
+test('verified week read merges canonical identities, bounds scope and never returns private fields or writes',async()=>{
+  const f=fixture();
+  f.store.set('shifts/date_only',{restaurantId:'tenant',date:'2026-10-20',hourlyRate:999,privateNotificationToken:'secret'});
+  f.store.set('shifts/canonical_only',{restaurantId:'tenant',scheduleDateKey:'2026-10-21'});
+  f.store.set('shifts/outside',{restaurantId:'tenant',date:'2026-11-20'});
+  f.store.set('shifts/other',{restaurantId:'other',date:'2026-10-20'});
+  for(const [id,flags] of Object.entries({cancelled:{cancelledAt:'2026-10-14T12:00:00Z'},archived:{archived:true},deleted:{deletedAt:'2026-10-14T12:00:00Z'},status:{status:'canceled'}}))f.store.set('shifts/inactive_'+id,{restaurantId:'tenant',date:'2026-10-20',...flags});
+  const result=await readScheduleWeek({db:f.db,ctx:f.ctx,body:{restaurantId:'tenant',weekStart:'2026-10-19'}});
+  assert.equal(result.authoritative,true);assert.equal(result.dateStart,'2026-10-18');assert.equal(result.dateEnd,'2026-10-26');
+  assert.deepEqual(result.shifts.map(row=>row.id).sort(),['canonical_only','date_only']);
+  assert.equal(JSON.stringify(result).includes('secret'),false);assert.equal(JSON.stringify(result).includes('hourlyRate'),false);assert.equal(f.writes(),0);
+  const empty=await readScheduleWeek({db:f.db,ctx:f.ctx,body:{restaurantId:'tenant',weekStart:'2027-01-04'}});assert.deepEqual(empty.shifts,[]);assert.equal(empty.authoritative,true);
+  await assert.rejects(readScheduleWeek({db:f.db,ctx:f.ctx,body:{restaurantId:'other',weekStart:'2026-10-19'}}),e=>e.statusCode===403);
+  await assert.rejects(readScheduleWeek({db:f.db,ctx:{...f.ctx,permissions:{}},body:{restaurantId:'tenant',weekStart:'2026-10-19'}}),e=>e.statusCode===403);
+  await assert.rejects(readScheduleWeek({db:f.db,ctx:f.ctx,body:{restaurantId:'tenant',weekStart:'2026-10-20'}}),e=>e.code==='invalid_week');
+});
+
+test('verified week refuses truncated or conflicting tenant evidence',async()=>{
+  const f=fixture();
+  for(let n=0;n<5001;n++)f.store.set('shifts/bulk_'+n,{restaurantId:'tenant',date:'2026-10-20'});
+  await assert.rejects(readScheduleWeek({db:f.db,ctx:f.ctx,body:{restaurantId:'tenant',weekStart:'2026-10-19'}}),e=>e.code==='incomplete_context');
+  f.store.clear();f.store.set('shifts/conflicting',{restaurantId:'tenant',workspaceId:'foreign',date:'2026-10-20'});
+  await assert.rejects(readScheduleWeek({db:f.db,ctx:f.ctx,body:{restaurantId:'tenant',weekStart:'2026-10-19'}}),e=>e.code==='workspace_mismatch');assert.equal(f.writes(),0);
+});
 test('calendar editing preserves week boundaries, overnight time and DST evidence',()=>{
   assert.deepEqual(rules.workspaceWeek('2027-01-01'),['2026-12-28','2026-12-29','2026-12-30','2026-12-31','2027-01-01','2027-01-02','2027-01-03']);
   assert.equal(rules.workspaceInterval({date:'2026-10-20',startTime:'22:00',endTime:'02:00'}).hours,4);

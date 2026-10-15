@@ -1,17 +1,17 @@
 {
-  "version": "19.0.8",
-  "name": "86 Chaos 19.0.8",
-  "build": "19.0.8",
-  "label": "86 Chaos 19.0.8",
-  "title": "86 Chaos 19.0.8",
-  "releasedAt": "2026-10-15T10:05:51.176Z",
-  "releaseTitle": "Schedule Builder mobile form and touch verification repair",
-  "summary": "Preserve finger-sized editor dropdowns and verify visible sticky-header gestures.",
-  "description": "Phase 1 candidate; targeted/delta, native backend and device acceptance pending.",
+  "version": "19.0.9",
+  "name": "86 Chaos 19.0.9",
+  "build": "19.0.9",
+  "label": "86 Chaos 19.0.9",
+  "title": "86 Chaos 19.0.9",
+  "releasedAt": "2026-10-15T11:45:37.481Z",
+  "releaseTitle": "Schedule Builder verified week reads across browsers",
+  "summary": "Verify complete schedule weeks through the protected API when live snapshots are delayed.",
+  "description": "Phase 1 candidate; exact targeted/delta and native backend/device acceptance pending.",
   "notes": [
-    "Scoped compact-form specificity protects all weekly/editor controls at 44px.",
-    "Both browser inventories verify visible header hit targets and actual touch handoff scrolling.",
-    "Testing web/API remains chaos-test-d1601; APK production Firebase/signing preserved.",
+    "Read-only bounded API fallback retains authorization and tenant/privacy boundaries.",
+    "Freshness expires and offline previews remain explicitly unverified.",
+    "All six scheduling workflows must be discovered across both browser inventories and six projects.",
     "No production deployment, GitHub Actions or full gate."
   ],
   "highlights": [
@@ -19,8 +19,8 @@
     "Actual linked-worktree Git identity protection"
   ],
   "changes": [
-    "Repair mobile editor dropdown minimum size.",
-    "Pin and hit-test the actual day/date header before touch regression gestures.",
-    "Preserve completed failure and authoritative cleanup evidence."
+    "Add protected transactionally consistent week reads.",
+    "Fence stale responses and preserve offline draft/preview integrity.",
+    "Add blocked-watch, privacy, scope and freshness regressions."
   ]
 }

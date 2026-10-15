@@ -205,4 +205,23 @@ async function readScheduleWorkspace({db,ctx,body,clock=()=>new Date()}) {
     return {ok:true,authoritative:true,verifiedAt:clock().toISOString(),shifts:snapshots.map((snapshot,index)=>snapshot.exists && tenantMatches(snapshot.data(),tenant)?publicShift({id:body.ids[index],...snapshot.data()}):{id:body.ids[index],exists:false})};
   });
 }
-module.exports={editScheduleWorkspace,readScheduleWorkspace,loadEditContext,normalizeProposal,publicShift,boundedRead,operationResult,tenantMatches};
+async function readScheduleWeek({db,ctx,body,clock=()=>new Date()}) {
+  const tenant=clean(body.restaurantId),weekStart=clean(body.weekStart);
+  assertScheduleContext(ctx,tenant);
+  if(!rules.workspaceDate(weekStart) || rules.workspaceWeek(weekStart)[0]!==weekStart)fail('invalid_week','Choose a Monday schedule week.',400);
+  const dateStart=rules.shiftDateBy(weekStart,-1),dateEnd=rules.shiftDateBy(weekStart,7);
+  return db.runTransaction(async tx=>{
+    const rows=new Map();
+    for(const field of ['date','scheduleDateKey']){
+      for(const row of await boundedRead(tx,db.collection('shifts').where('restaurantId','==',tenant).where(field,'>=',dateStart).where(field,'<=',dateEnd),5000)){
+        if(!tenantMatches(row,tenant))fail('workspace_mismatch','The schedule contains conflicting workspace identities.',409);
+        // The editor projection omits archival metadata. Filter before projecting
+        // so a cancelled/deleted legacy record can never reappear as an active shift.
+        if(rules.workspaceActive(row))rows.set(row.id,publicShift(row));
+      }
+    }
+    if(rows.size>5000)fail('incomplete_context','This week exceeds the safe verification limit. Narrow the schedule selection.');
+    return {ok:true,authoritative:true,restaurantId:tenant,weekStart,dateStart,dateEnd,verifiedAt:clock().toISOString(),shifts:[...rows.values()]};
+  });
+}
+module.exports={editScheduleWorkspace,readScheduleWorkspace,readScheduleWeek,loadEditContext,normalizeProposal,publicShift,boundedRead,operationResult,tenantMatches};

@@ -1,6 +1,6 @@
 import React from 'react';
 import '@testing-library/jest-dom';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { ScheduleWorkspace } from './ScheduleWorkspace';
 import { secureFetch, useLiveCollectionState } from '../../core/appCore';
 import { loadScheduleWeekVerified } from './scheduleWorkspaceData';
@@ -16,6 +16,48 @@ const appUser={id:'manager_a',restaurantId:'tenant',permissions:{schedule:true},
 function setup(extra={}){return render(<ScheduleWorkspace currentDate="2026-10-20" users={users} roles={roles} shifts={[original]} appUser={appUser} {...extra}/>);}
 function desktop(){return within(document.querySelector('.sw-desktop-scroll'));}
 function response(results=[],operationId='server_operation_123'){return{ok:true,json:async()=>({ok:true,authoritative:true,operationId,results,events:[]})};}
+const verifiedWeekResponse=(extra={})=>({ok:true,json:async()=>({ok:true,authoritative:true,restaurantId:'tenant',weekStart:'2026-10-19',dateStart:'2026-10-18',dateEnd:'2026-10-26',verifiedAt:'2026-10-15T12:00:00Z',shifts:[],...extra})});
+const stalled=()=>useLiveCollectionState.mockImplementation(()=>({data:empty,resolved:false,stale:true,error:null}));
+async function readFallback(){await act(async()=>{jest.advanceTimersByTime(1500);await Promise.resolve();await Promise.resolve();});}
+
+test('a stalled live stream uses a verified empty API week and expires its freshness without automatic writes',async()=>{
+  jest.useFakeTimers();try{
+    stalled();secureFetch.mockResolvedValue(verifiedWeekResponse());setup();expect(screen.getByRole('status')).toHaveTextContent('cached or loading');
+    await readFallback();expect(JSON.parse(secureFetch.mock.calls[0][1].body)).toEqual({action:'read-week',restaurantId:'tenant',weekStart:'2026-10-19'});
+    expect(screen.getByRole('status')).toHaveAttribute('data-verification-source','api');expect(desktop().queryByRole('button',{name:/Edit shift .*Alex/})).not.toBeInTheDocument();
+    act(()=>jest.advanceTimersByTime(30000));expect(screen.getByRole('status')).toHaveAttribute('data-verification-source','unverified');expect(secureFetch).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole('button',{name:'Refresh verified schedule'}));await readFallback();expect(secureFetch).toHaveBeenCalledTimes(2);expect(screen.getByRole('status')).toHaveAttribute('data-verification-source','api');
+    act(()=>window.dispatchEvent(new Event('offline')));expect(screen.getByRole('status')).toHaveAttribute('data-verification-source','unverified');expect(secureFetch).toHaveBeenCalledTimes(2);
+  }finally{jest.useRealTimers();}
+});
+
+test('a live server snapshot cancels delayed verification and is never overwritten by an older API response',async()=>{
+  jest.useFakeTimers();try{
+    let resolve;stalled();secureFetch.mockImplementation(()=>new Promise(done=>{resolve=done;}));const view=setup();await readFallback();
+    useLiveCollectionState.mockImplementation(name=>({data:name==='shifts'?[{...original,revision:9,notes:'Newer server state'}]:empty,resolved:true,stale:false,error:null}));
+    view.rerender(<ScheduleWorkspace currentDate="2026-10-20" users={users} roles={roles} shifts={[original]} appUser={appUser}/>);
+    await act(async()=>{resolve(verifiedWeekResponse());await Promise.resolve();});expect(screen.getByRole('status')).toHaveAttribute('data-verification-source','listener');expect(desktop().getByRole('button',{name:/Edit shift .*Alex/})).toBeInTheDocument();
+    act(()=>jest.advanceTimersByTime(30000));expect(secureFetch).toHaveBeenCalledTimes(1);
+  }finally{jest.useRealTimers();}
+});
+
+test('mismatched API scope cannot certify a cached schedule',async()=>{
+  jest.useFakeTimers();try{stalled();secureFetch.mockResolvedValue(verifiedWeekResponse({restaurantId:'other'}));setup();await readFallback();expect(screen.getByRole('status')).toHaveAttribute('data-verification-source','unverified');expect(screen.getByRole('status')).toHaveTextContent('verification failed');}finally{jest.useRealTimers();}
+});
+
+test('switching weeks fences a delayed API response from the previous scope',async()=>{
+  jest.useFakeTimers();try{
+    let resolve;stalled();secureFetch.mockImplementation(()=>new Promise(done=>{resolve=done;}));setup();await readFallback();fireEvent.click(screen.getByRole('button',{name:'Next week'}));
+    await act(async()=>{resolve(verifiedWeekResponse({shifts:[original]}));await Promise.resolve();});expect(screen.getByRole('status')).toHaveAttribute('data-verification-source','unverified');expect(desktop().queryByRole('button',{name:/Edit shift .*Alex/})).not.toBeInTheDocument();
+  }finally{jest.useRealTimers();}
+});
+
+test('going offline retains the last API rows as an explicitly unverified preview',async()=>{
+  jest.useFakeTimers();try{
+    stalled();secureFetch.mockResolvedValue(verifiedWeekResponse({shifts:[original]}));setup({shifts:[]});await readFallback();expect(desktop().getByRole('button',{name:/Edit shift .*Alex/})).toBeInTheDocument();
+    act(()=>window.dispatchEvent(new Event('offline')));expect(screen.getByRole('status')).toHaveAttribute('data-verification-source','unverified');expect(desktop().getByRole('button',{name:/Edit shift .*Alex/})).toBeInTheDocument();expect(secureFetch).toHaveBeenCalledTimes(1);
+  }finally{jest.useRealTimers();}
+});
 test('automatic control metadata preserves authored names and edited break details',async()=>{
   setup();fireEvent.click(desktop().getByRole('button',{name:/Edit shift .*Alex/}));
   document.querySelectorAll('button, input, select, textarea').forEach(control=>{
