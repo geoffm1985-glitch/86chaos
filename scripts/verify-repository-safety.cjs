@@ -9,6 +9,7 @@ try{
  for(const f of ['package.json','package-lock.json','vercel.json','firebase.json','RUN_86CHAOS_PLAY_STORE_RELEASE_GATE.ps1','.gitignore','release-source-manifest.json'])if(!fs.existsSync(f))throw new Error('Missing required source: '+f);
  const files=git(['ls-files','-z']).split('\0').filter(Boolean);
  const allowedTrackedExclusions=new Set(['release-source-manifest.json']);
+ if(files.includes('.npmrc')&&require('./npm-config-safety.cjs').safeNpmConfig(fs.readFileSync('.npmrc','utf8')))allowedTrackedExclusions.add('.npmrc');
  const forbidden=files.filter(file=>(excludedFile(file)&&!allowedTrackedExclusions.has(file))||/(?:service[-_]?account|credentials|private[-_]?key).*\.json$/i.test(file));
  if(forbidden.length)throw new Error('Generated files or secrets are tracked: '+forbidden.join(', ')+'. Remove only these exact paths from the index after review; never clear the whole index.');
  if(files.length<800)throw new Error('Application source inventory is unexpectedly small.');

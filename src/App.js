@@ -3746,7 +3746,14 @@ return (
       )}
 
       <header className="app-header sticky top-0 z-40 shadow-sm border-b h-16 flex items-center justify-between px-4 bg-[#12161A]/95 backdrop-blur-md border-[#2A353D]">
-        <CheersLogo clientData={displayClientData} />
+        <div className="flex items-center gap-2 min-w-0">
+          <CheersLogo clientData={displayClientData} />
+          {['chaos-test-d1601','demo-86chaos'].includes(firebaseConfig?.projectId) && (
+            <span data-testid="testing-environment" className="rounded border border-[#D4A381]/50 px-1.5 py-1 text-[10px] font-bold text-[#D4A381]" title={`Firebase: ${firebaseConfig.projectId}`}>
+              {firebaseConfig.projectId === 'demo-86chaos' ? 'LOCAL EMULATOR' : 'TESTING'}
+            </span>
+          )}
+        </div>
 
         {/* ACTIVE WORKSPACE NAME / SWITCHER */}
         {liveAppUser && (

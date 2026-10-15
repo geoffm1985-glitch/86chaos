@@ -12,13 +12,13 @@ test('18.0.0 is pinned to the exact deployed 17.0.42 mobile baseline',()=>{
   const lock=json('package-lock.json');
   const version=json('public/version.json');
   const contract=json('mobile/native-platform-contract.json');
-  assert.match(pkg.version,/^18\.0\./);
+  assert.equal(pkg.version,contract.release);
   assert.equal(lock.version,pkg.version);
   assert.equal(lock.packages[''].version,pkg.version);
   assert.equal(version.version,pkg.version);
   assert.equal(contract.baseline.version,'17.0.42');
   assert.equal(contract.baseline.commit,'e35079bccabb967b5a637b8faa6f40b5f0af2e31');
-  assert.equal(contract.branch,'mobile');
+  assert.equal(contract.branch,'testing');
 });
 
 test('Capacitor contract packages the local React build for both Android and iOS',()=>{
@@ -71,12 +71,13 @@ test('backgrounded native Android and iOS sessions shed idle Firestore listeners
   const androidManifest=read('android/app/src/main/AndroidManifest.xml');
   const iosProject=read('ios/App/App.xcodeproj/project.pbxproj');
   const iosPlist=read('ios/App/App/Info.plist');
-  assert.match(androidBuild,/versionCode 18\d{4}/);
+  const code=pkg.version.split('.').map(Number).reduce((a,n)=>a*100+n,0);
+  assert.match(androidBuild,new RegExp(`versionCode ${code}\\b`));
   assert.match(androidBuild,new RegExp(`versionName "${pkg.version.replace(/\./g,'\\.') }"`));
   assert.match(androidManifest,/android\.permission\.CAMERA/);
   assert.match(androidManifest,/android\.permission\.RECORD_AUDIO/);
   assert.match(androidManifest,/android\.permission\.POST_NOTIFICATIONS/);
-  assert.match(iosProject,/CURRENT_PROJECT_VERSION = 18\d{4};/);
+  assert.match(iosProject,new RegExp(`CURRENT_PROJECT_VERSION = ${code};`));
   assert.match(iosProject,new RegExp(`MARKETING_VERSION = ${pkg.version.replace(/\./g,'\\.')};`));
   assert.match(iosPlist,/NSCameraUsageDescription/);
   assert.match(iosPlist,/NSMicrophoneUsageDescription/);

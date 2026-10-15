@@ -29,7 +29,7 @@ test('current 18.0.x native release identities align on Android and iOS',()=>{
   const contract=json('mobile/native-platform-contract.json');
   const android=read('android/app/build.gradle');
   const ios=read('ios/App/App.xcodeproj/project.pbxproj');
-  assert.match(pkg.version,/^18\.0\.\d+$/);
+  assert.equal(pkg.version,JSON.parse(fs.readFileSync(path.join(root,'mobile/native-platform-contract.json'),'utf8')).release);
   assert.equal(contract.release,pkg.version);
   assert.equal(contract.capacitor.android.versionName,pkg.version);
   assert.equal(contract.capacitor.ios.marketingVersion,pkg.version);
@@ -48,6 +48,9 @@ test('Android preview publishing stays isolated to explicit mobile preview commi
   assert.match(workflow,/umask 077/);
   assert.match(workflow,/verify --print-certs/);
   assert.match(read('android/app/build.gradle'),/System\.getenv\('CHAOS_PREVIEW_KEYSTORE'\)/);
-  assert.match(workflow,new RegExp('mobile-v'+escVersion(pkg.version)+'-preview'));
+  assert.match(workflow,/release_version=\$\(node -p "require\('\.\/package\.json'\)\.version"\)/);
+  assert.ok(workflow.includes('tag="mobile-v${release_version}-preview"'));
+  assert.match(workflow,/github\.event_name == 'workflow_dispatch' && github\.ref_name == 'mobile'/);
+  assert.doesNotMatch(workflow,/^\s+(?:push|pull_request|schedule|workflow_run):/m);
   assert.match(workflow,/--prerelease/);
 });

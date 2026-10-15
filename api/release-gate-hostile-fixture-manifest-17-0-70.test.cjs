@@ -30,7 +30,7 @@ test('17.0.70 synthetic hostile fixture manifest satisfies the current source va
       sourceHash: captured.sourceHash,
       files: captured.files,
     }, null, 2) + '\n');
-    const currentValidator = String(require('../package.json').scripts['test:source'] || '').match(/^node\s+(.+\.js)$/)?.[1];
+    const currentValidator = String(require('../package.json').scripts['test:source'] || '').match(/^node\s+(scripts\/[A-Za-z0-9_-]+\.(?:cjs|js))$/)?.[1];
     assert.ok(currentValidator, 'current test:source script exposes the active source validator');
     const result = cp.spawnSync(process.execPath, [currentValidator], {
       cwd: repo,

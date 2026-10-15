@@ -12,7 +12,7 @@ test.describe('60 Native system bars and branding',()=>{
     const version=await (await request.get('/version.json')).json();
     const currentVersion=json('package.json').version;
     expect(version.version).toBe(currentVersion);
-    expect(currentVersion).toMatch(/^18\.0\.\d+$/);
+    expect(currentVersion).toBe(JSON.parse(fs.readFileSync(path.join(root,'mobile/native-platform-contract.json'),'utf8')).release);
     const response=await page.goto('/',{waitUntil:'domcontentloaded',timeout:30000});
     expect(response && response.ok()).toBeTruthy();
     const viewport=await page.locator('meta[name="viewport"]').getAttribute('content');

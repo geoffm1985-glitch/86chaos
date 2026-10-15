@@ -13,7 +13,7 @@ test.describe('59 Native packaged API bridge',()=>{
     const deployedVersion=(await versionResponse.json()).version;
     const currentVersion=json('package.json').version;
     expect(deployedVersion).toBe(currentVersion);
-    expect(currentVersion).toMatch(/^18\.0\.\d+$/);
+    expect(currentVersion).toBe(JSON.parse(fs.readFileSync(path.join(root,'mobile/native-platform-contract.json'),'utf8')).release);
     const response=await page.goto('/',{waitUntil:'domcontentloaded',timeout:30000});
     expect(response && response.ok()).toBeTruthy();
     await expect(page.locator('body')).toBeVisible();

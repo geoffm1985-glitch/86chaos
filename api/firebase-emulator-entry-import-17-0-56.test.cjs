@@ -22,7 +22,8 @@ test('17.0.56 appCore keeps runtime target local and exports emulator readiness'
 
 test('17.0.56 regression is wired into targeted and Playwright coverage', () => {
   const pkg = JSON.parse(read('package.json'));
-  const activeValidator = `validate-${pkg.version.replace(/\./g, '-')}.js`;
+  const activeValidator = pkg.scripts['test:source'].replace(/^node scripts\//, '');
+  assert.equal(fs.existsSync(path.join(root,'scripts',activeValidator)),true);
   assert.match(pkg.scripts['test:current-release-targeted'], /firebase-emulator-entry-import-17-0-56\.test\.cjs/);
   assert.ok(pkg.scripts['test:current-release-targeted'].includes(activeValidator), `targeted gate must run ${activeValidator}`);
   assert.equal(fs.existsSync(path.join(root, 'tests/86chaos-release-gate/68-firebase-emulator-entry-import-17-0-56.spec.cjs')), true);

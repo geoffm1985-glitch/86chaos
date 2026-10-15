@@ -11,9 +11,10 @@ const pkg = JSON.parse(read('package.json'));
 
 test('17.0.59 historical emulator-entry coverage follows the active validator instead of a stale patch version', () => {
   const historical = read('api/firebase-emulator-entry-import-17-0-56.test.cjs');
-  const activeValidator = `validate-${pkg.version.replace(/\./g, '-')}.js`;
+  const activeValidator = pkg.scripts['test:source'].replace(/^node scripts\//, '');
   assert.doesNotMatch(historical, /validate-17-0-57\.js/);
-  assert.match(historical, /pkg\.version\.replace\(\/\\\.\/g, '-'\)/);
+  assert.match(historical, /pkg\.scripts\['test:source'\]/);
+  assert.equal(fs.existsSync(path.join(root,'scripts',activeValidator)),true);
   assert.ok(pkg.scripts['test:current-release-targeted'].includes(activeValidator));
   assert.match(pkg.scripts['test:current-release-targeted'], /release-gate-staleness-manifest-17-0-59\.test\.cjs/);
 });

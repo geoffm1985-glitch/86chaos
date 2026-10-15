@@ -13,14 +13,14 @@ function assertCurrentReleaseIdentity(root) {
   const apiVersion = read('api/_version.js');
   const appCore = read('src/core/appCore.js');
   const escaped = pkg.version.replaceAll('.', '\\.');
-  const versionSlug = pkg.version.replaceAll('.', '-');
 
   assert.equal(lock.version, pkg.version);
   assert.equal(lock.packages[''].version, pkg.version);
   assert.equal(publicVersion.version, pkg.version);
   assert.equal(publicVersion.build, pkg.version);
-  assert.equal(pkg.scripts['test:source'], `node scripts/validate-${versionSlug}.js`);
-  assert.ok(fs.existsSync(path.join(root, `scripts/validate-${versionSlug}.js`)));
+  assert.equal(pkg.scripts['test:source'], 'node scripts/validate-current-release.cjs');
+  assert.equal(pkg.scripts[`validate:${pkg.version}`],pkg.scripts['test:source']);
+  assert.ok(fs.existsSync(path.join(root, 'scripts/validate-current-release.cjs')));
   assert.match(apiVersion, new RegExp(`APP_VERSION = '${escaped}'`));
   assert.match(apiVersion, new RegExp(`SECURITY_SCHEMA_VERSION = '${escaped}'`));
   assert.match(appCore, new RegExp(`CURRENT_VERSION = '${escaped}'`));

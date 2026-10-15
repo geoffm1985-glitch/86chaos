@@ -4,6 +4,9 @@ const path=require('node:path');
 const root=path.resolve(__dirname,'../..');
 const read=file=>fs.readFileSync(path.join(root,file),'utf8');
 const json=file=>JSON.parse(read(file));
+const currentVersion=json('package.json').version;
+const currentCode=currentVersion.split('.').map(Number).reduce((a,n)=>a*100+n,0);
+const escapedVersion=currentVersion.replace(/\./g,'\\.');
 
 test.describe('58 Native mobile and Firebase cost foundation',()=>{
   test('deployed/local 18.0.0 identity loads on Android Chromium and iPhone WebKit',async({page,request},testInfo)=>{
@@ -17,7 +20,7 @@ test.describe('58 Native mobile and Firebase cost foundation',()=>{
     const versionResponse=await request.get('/version.json');
     expect(versionResponse.ok()).toBeTruthy();
     const version=await versionResponse.json();
-    expect(version.version).toMatch(/^18\.0\./);
+    expect(version.version).toBe(currentVersion);
 
     const response=await page.goto('/',{waitUntil:'domcontentloaded',timeout:30000});
     expect(response && response.ok(),testInfo.project.name+' root document should load').toBeTruthy();
@@ -41,17 +44,17 @@ test.describe('58 Native mobile and Firebase cost foundation',()=>{
     expect(cap.server.url).toBeUndefined();
     expect(contract.capacitor.version).toBe('8.5.2');
     expect(contract.capacitor.android.versionCode).toBeGreaterThanOrEqual(180000);
-    expect(contract.capacitor.android.versionName).toMatch(/^18\.0\./);
+    expect(contract.capacitor.android.versionName).toBe(currentVersion);
     expect(contract.capacitor.ios.currentProjectVersion).toBeGreaterThanOrEqual(180000);
-    expect(contract.capacitor.ios.marketingVersion).toMatch(/^18\.0\./);
+    expect(contract.capacitor.ios.marketingVersion).toBe(currentVersion);
 
-    expect(androidBuild).toMatch(/versionCode 18\d{4}/);
-    expect(androidBuild).toMatch(/versionName "18\.0\.\d+"/);
+    expect(androidBuild).toMatch(new RegExp(`versionCode ${currentCode}\\b`));
+    expect(androidBuild).toMatch(new RegExp(`versionName "${escapedVersion}"`));
     expect(androidManifest).toMatch(/android\.permission\.CAMERA/);
     expect(androidManifest).toMatch(/android\.permission\.RECORD_AUDIO/);
     expect(androidManifest).toMatch(/android\.permission\.POST_NOTIFICATIONS/);
-    expect(iosProject).toMatch(/CURRENT_PROJECT_VERSION = 18\d{4};/);
-    expect(iosProject).toMatch(/MARKETING_VERSION = 18\.0\.\d+;/);
+    expect(iosProject).toMatch(new RegExp(`CURRENT_PROJECT_VERSION = ${currentCode};`));
+    expect(iosProject).toMatch(new RegExp(`MARKETING_VERSION = ${escapedVersion};`));
     expect(iosPlist).toMatch(/NSCameraUsageDescription/);
     expect(iosPlist).toMatch(/NSMicrophoneUsageDescription/);
 

@@ -99,6 +99,11 @@ function isProductionWebHost(hostname = '') {
 }
 
 function deploymentLooksLikeTesting(req = null) {
+  // Deployment identity outranks generic production credentials. A production
+  // token must never select a production Admin app on the testing deployment.
+  const deployedBranch = String(process.env.VERCEL_GIT_COMMIT_REF || '').trim();
+  const deployedHost = requestHost(req);
+  if (deployedBranch === 'testing' || deployedHost === 'testing.86chaos.com' || /^86chaos-git-testing-.*\.vercel\.app$/.test(deployedHost)) return true;
   const explicitMode = String(process.env.FIREBASE_DEPLOYMENT_MODE || process.env.REACT_APP_FIREBASE_DEPLOYMENT_MODE || '').toLowerCase().trim();
   if (['test', 'testing', 'preview', 'staging', 'dev', 'development'].includes(explicitMode)) return true;
   if (['prod', 'production', 'live'].includes(explicitMode)) return false;
@@ -227,6 +232,7 @@ function readProjectCredential(projectId) {
   const splitEmail = readFirstEnv(aliases.clientEmail || []);
   const splitKey = readFirstEnv(aliases.privateKey || []).replace(/\\n/g, '\n').replace(/^"|"$/g, '');
   if (splitEmail && splitKey) {
+    if (splitProject !== projectId) throw Object.assign(new Error('Firebase credential project mismatch. No operation was performed.'), { code: 'firebase_environment_mismatch', statusCode: 403 });
     return {
       credential: { projectId: splitProject, clientEmail: splitEmail, privateKey: splitKey },
       source: `${projectId} project-specific split environment variables`
@@ -303,6 +309,10 @@ function readGenericCredentialProject() {
 
 function getConfiguredDefaultProjectId(req = null) {
   if (FIREBASE_TARGET.emulator) { applyFirebaseEmulatorEnv(process.env); return FIREBASE_TARGET.projectId; }
+  // A trusted testing deployment must not inherit a generic production key's
+  // default. Credential loading below still requires a matching testing key.
+  const deployedHost = requestHost(req);
+  if (process.env.VERCEL_GIT_COMMIT_REF === 'testing' || deployedHost === 'testing.86chaos.com' || /^86chaos-git-testing-.*\.vercel\.app$/.test(deployedHost)) return 'chaos-test-d1601';
   // 86 Chaos uses one Firebase Admin JSON per deployment. For server-to-server
   // routes, the project_id inside FIREBASE_SERVICE_ACCOUNT_KEY is the source of
   // truth. This keeps testing deployments on chaos-test-d1601 even if an old
@@ -345,13 +355,16 @@ function getConfiguredDefaultProjectId(req = null) {
 function getRequestedProjectId(req, fallback = '') {
   assertTelemetryHeaderBudget(req?.headers);
   const token = getBearerToken(req);
+  let selected = '';
   if (token) {
-    try { return getTokenProjectId(token); }
+    try { selected = getTokenProjectId(token); }
     catch (_) {}
   }
-
-  if (fallback) return clean(fallback);
-  return getConfiguredDefaultProjectId(req);
+  selected = selected || (fallback ? clean(fallback) : getConfiguredDefaultProjectId(req));
+  if (!FIREBASE_TARGET.emulator && deploymentLooksLikeTesting(req)) {
+    require('../src/core/deploymentBoundary.cjs').assertDeploymentBoundary({ branch: 'testing', projectId: selected });
+  }
+  return selected;
 }
 
 function appNameForProject(projectId) {
@@ -362,6 +375,9 @@ function getAdminAppForProject(projectId, { requireCredentials = true } = {}) {
   const wanted = clean(projectId);
   if (!wanted) throw new Error('Could not determine the Firebase project for this request.');
   if (!TRUSTED_PROJECTS.includes(wanted)) throw new Error(`Firebase project ${wanted} is not approved for 86 Chaos.`);
+  if (!FIREBASE_TARGET.emulator && process.env.VERCEL_GIT_COMMIT_REF === 'testing') {
+    require('../src/core/deploymentBoundary.cjs').assertDeploymentBoundary({ branch: 'testing', projectId: wanted, storageBucket: getStorageBucketForProject(wanted), databaseURL: getDatabaseUrlForProject(wanted) });
+  }
 
   const appName = appNameForProject(wanted);
   const existing = admin.apps.find(app => app.name === appName);
@@ -451,7 +467,7 @@ async function verifyTrustedFirebaseIdToken(token) {
 async function verifyRequestToken(req, { requireProjectCredentials = false } = {}) {
   const token = getBearerToken(req);
   if (!token) throw new Error('Missing Firebase authorization token.');
-  const projectId = getTokenProjectId(token);
+  const projectId = getRequestedProjectId(req);
   const app = getAdminAppForProject(projectId, { requireCredentials: false });
   if (app) {
     const decoded = await app.auth().verifyIdToken(token, true);

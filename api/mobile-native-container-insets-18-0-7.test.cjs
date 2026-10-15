@@ -24,7 +24,7 @@ test('18.0.7 native container inset contract remains active for the current Andr
   const pkg=json('package.json');
   const contract=json('mobile/native-platform-contract.json');
   const android=read('android/app/build.gradle');
-  assert.match(pkg.version,/^18\.0\.\d+$/);
+  assert.equal(pkg.version,JSON.parse(fs.readFileSync(path.join(root,'mobile/native-platform-contract.json'),'utf8')).release);
   assert.equal(contract.release,pkg.version);
   assert.equal(contract.nativeViewport.android.containerPadding,true);
   assert.equal(contract.nativeViewport.android.webViewPadding,false);

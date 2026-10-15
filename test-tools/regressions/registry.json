@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "release": "18.0.19",
+  "release": "19.0.0",
   "defects": [
     {
       "defectId": "RG-API-WRAPPER-FIDELITY",
@@ -1071,6 +1071,16 @@
       "fidelity": "ACTUAL 17.0.83 OWNED FULL-GATE PLAYWRIGHT EVIDENCE / DISPOSABLE QA FIXTURE / BOUNDED AUTH RECOVERY / ONE-SHOT CHUNK NAVIGATION / REAL FIREBASE SIGN-OUT / TARGETED NODE / RELEASE-GATE PLAYWRIGHT / INDEPENDENT PLAYWRIGHT",
       "fixedVersion": "17.0.84",
       "mandatoryGroup": "deployed"
+    },
+    {
+      "defectId": "TESTING-MOBILE-PROMOTION-19",
+      "fixedVersion": "19.0.0",
+      "invariant": "Complete source promotion preserves testing/native isolation and exact identities",
+      "tests": [
+        "api/testing-promotion-boundary-19.test.cjs",
+        "tests/e2e/testing-promotion-19.spec.cjs",
+        "tests/86chaos-release-gate/107-testing-promotion-19.spec.cjs"
+      ]
     }
   ]
 }

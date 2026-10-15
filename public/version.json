@@ -1,25 +1,24 @@
 {
-  "version": "18.0.19",
-  "name": "86 Chaos 18.0.19",
-  "build": "18.0.19",
-  "label": "86 Chaos 18.0.19",
-  "title": "86 Chaos 18.0.19",
-  "releasedAt": "2026-10-14T21:50:00Z",
-  "releaseTitle": "Local release source watcher performance repair",
-  "summary": "Strict source verification watches eligible source and real worktree Git identity while filtering generated output notifications.",
-  "description": "Production Firebase Android preview; targeted/delta and full release certification remain pending.",
+  "version": "19.0.0",
+  "name": "86 Chaos 19.0.0",
+  "build": "19.0.0",
+  "label": "86 Chaos 19.0.0",
+  "title": "86 Chaos 19.0.0",
+  "releasedAt": "2026-10-14T23:52:50.739Z",
+  "releaseTitle": "Complete mobile source promoted to testing",
+  "summary": "The complete mobile application is the testing foundation with guarded Firebase isolation and universal platform parity requirements.",
+  "description": "Testing candidate. Scheduling phases and final certification are pending.",
   "notes": [
-    "Production Firebase cheers-34b8d and retained signing identity.",
-    "Anonymous file notifications compare eligible directory contents before triggering full source verification.",
-    "Generated test/build output is excluded; source edits, new files, Git identity changes and watcher errors remain fail-closed."
+    "Complete current mobile source retained.",
+    "Testing web/API uses chaos-test-d1601; APK production configuration remains protected.",
+    "No GitHub Actions or production deployment authorized."
   ],
   "highlights": [
     "Strict source verification without output-triggered request stalls",
     "Actual linked-worktree Git identity protection"
   ],
   "changes": [
-    "Directory-scoped source watchers exclude ignored output trees.",
-    "Anonymous notifications compare actual source bytes and directory membership.",
-    "Android versionCode180019; release18.0.19."
+    "Testing candidate 19.0.0",
+    "Baseline targeted/delta validation required before Phase 1."
   ]
 }

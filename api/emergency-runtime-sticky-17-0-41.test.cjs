@@ -58,6 +58,6 @@ test('17.0.41 Schedule Builder day header reserves only a sticky control deck on
 
 test('17.0.41 build-only push suppression prevents automatic targeted or full-gate execution', () => {
   const workflow = read('.github/workflows/testing-targeted-delta.yml');
-  assert.match(workflow, /!contains\(github\.event\.head_commit\.message, '\[build-only\]'\)/);
+  assert.deepEqual(require('../scripts/verify-manual-workflows.cjs').workflowEvents(workflow), ['workflow_dispatch']);
   assert.match(workflow, /56-manager-brief-sticky-day-header\.spec\.cjs/);
 });

@@ -27,6 +27,6 @@ test('17.0.42 day header preserves native horizontal swiping while blocking nest
 
 test('17.0.42 stays build-only until further instruction',()=>{
   const workflow=read('.github/workflows/testing-targeted-delta.yml');
-  assert.match(workflow,/!contains\(github\.event\.head_commit\.message, '\[build-only\]'\)/);
+  assert.deepEqual(require('../scripts/verify-manual-workflows.cjs').workflowEvents(workflow),['workflow_dispatch']);
   assert.match(workflow,/57-sticky-header-touch-handoff\.spec\.cjs/);
 });

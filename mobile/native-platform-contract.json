@@ -1,12 +1,12 @@
 {
   "schemaVersion": 1,
-  "release": "18.0.19",
+  "release": "19.0.0",
   "baseline": {
     "branch": "testing",
     "version": "17.0.42",
     "commit": "e35079bccabb967b5a637b8faa6f40b5f0af2e31"
   },
-  "branch": "mobile",
+  "branch": "testing",
   "applicationId": "com.chiltonappworks.chaos86",
   "platforms": [
     "android",
@@ -59,14 +59,14 @@
       "minSdk": 24,
       "compileSdk": 36,
       "targetSdk": 36,
-      "versionCode": 180019,
-      "versionName": "18.0.19"
+      "versionCode": 190000,
+      "versionName": "19.0.0"
     },
     "ios": {
       "bundleIdentifier": "com.chiltonappworks.chaos86",
       "minimumVersion": "15.0",
-      "currentProjectVersion": 180019,
-      "marketingVersion": "18.0.19",
+      "currentProjectVersion": 190000,
+      "marketingVersion": "19.0.0",
       "packageManager": "SPM"
     }
   },
@@ -165,5 +165,12 @@
       "uploads": "CapacitorHttp multipart base64File"
     },
     "physicalDeviceCertification": "required; not established by automated or emulator checks"
+  },
+  "sourcePromotion": {
+    "branch": "mobile",
+    "version": "18.0.19",
+    "commit": "f9e20e876b11de41ea8f1037fa4117f7ab9bf5a5",
+    "originalTestingCommit": "cc153755c074bda8c0e7d4e3d4642c0248d4f8cb",
+    "method": "fast-forward"
   }
 }

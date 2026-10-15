@@ -8,6 +8,7 @@ import { getStorage, connectStorageEmulator } from 'firebase/storage';
 import { getDatabase, connectDatabaseEmulator, ref as rtdbRef, onValue as onRtdbValue, onDisconnect as rtdbOnDisconnect, set as rtdbSet, serverTimestamp as rtdbServerTimestamp } from 'firebase/database';
 import { getFunctions, connectFunctionsEmulator } from 'firebase/functions';
 import { firebaseRuntimeTarget, isFirebaseEmulatorTarget, firebaseEmulatorSettings, assertFirebaseEmulatorBrowserHost, verifyFirebaseEmulatorAvailability } from './firebaseTarget';
+import { assertDeploymentBoundary } from './deploymentBoundary';
 import L from 'leaflet';
 import { Capacitor, CapacitorHttp } from '@capacitor/core';
 import { NativeCapabilities, isNativeAndroid, installNativeDocumentBridge, blobToBase64 } from './nativeCapabilities';
@@ -139,6 +140,12 @@ export const firebaseDiagnostics = {
 };
 
 export const app = initializeApp(firebaseConfig);
+export const verifiedDeploymentBoundary = assertDeploymentBoundary({
+  ...firebaseConfig,
+  hostname: currentHostname,
+  native: Capacitor.isNativePlatform(),
+  emulator: isFirebaseEmulatorTarget,
+});
 // Android WebView/proxy buffering must not leave the initial listen pending.
 export const db = Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android'
   ? initializeFirestore(app, { experimentalForceLongPolling: true, experimentalAutoDetectLongPolling: false })
@@ -472,7 +479,7 @@ export const MASTER_ADMIN_EMAIL = (process.env.REACT_APP_MASTER_ADMIN_EMAIL || '
 export const EVENT_TAGS = ['Standard Day', 'Packers Game', 'Brewers Game', 'Live Music', 'Severe Weather', 'Private Catering', 'Holiday'];
 
 // --- VERSION TRACKING ---
-export const CURRENT_VERSION = '18.0.19';
+export const CURRENT_VERSION = '19.0.0';
 
 // --- Helpers ---
 const usePageVisible = () => {

@@ -53,7 +53,7 @@ test('current 18.0.x native identities remain aligned',()=>{
   const android=read('android/app/build.gradle');
   const ios=read('ios/App/App.xcodeproj/project.pbxproj');
   const escaped=String(pkg.version).split('.').join('\\.');
-  assert.match(pkg.version,/^18\.0\.\d+$/);
+  assert.equal(pkg.version,JSON.parse(fs.readFileSync(path.join(root,'mobile/native-platform-contract.json'),'utf8')).release);
   assert.equal(contract.release,pkg.version);
   assert.equal(contract.capacitor.android.versionName,pkg.version);
   assert.equal(contract.capacitor.ios.marketingVersion,pkg.version);

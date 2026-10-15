@@ -10,7 +10,8 @@ test.describe('17.0.59 release-gate staleness and manifest parity repair', () =>
   test('historical release-gate wiring tracks the active validator across later patch versions', () => {
     const pkg = JSON.parse(read('package.json'));
     const historical = read('api/firebase-emulator-entry-import-17-0-56.test.cjs');
-    const activeValidator = `validate-${pkg.version.replace(/\./g, '-')}.js`;
+    const activeValidator = pkg.scripts['test:source'].replace(/^node scripts\//, '');
+    expect(fs.existsSync(path.join(root,'scripts',activeValidator))).toBe(true);
     expect(historical).not.toMatch(/validate-17-0-57\.js/);
     expect(pkg.scripts['test:current-release-targeted']).toContain(activeValidator);
     expect(pkg.scripts['test:current-release-targeted']).toContain('release-gate-staleness-manifest-17-0-59.test.cjs');
