@@ -32,3 +32,9 @@
 - Once idle retain the latest full and scoped reports, latest unresolved failure media, and newest three completed folders unless current lineage needs more. Target at most 2 GiB; report protected evidence exceeding that budget.
 - Restrict cleanup to resolved test-output paths inside the intended checkout. Reject reparse points; use native PowerShell without forced removal. Record removals/reclaimed space in host cache outside source. Never delete source, APKs, signing material or active service data.
 - Close task-owned PowerShell windows on completion after checking console-attached processes; preserve active tests/services. Housekeeping does not authorize starting or restarting flows.
+
+
+## Explicit October 15 testing authorization
+
+- Geoff authorized only narrow classification of the independently reproduced Windows WebKit navigation-cancellation test-engine error. Keep every business assertion and every other runtime error fatal. Require exact known engine versions, a successful same-project read, explicit main-frame reload before document commit, no application ErrorEvent, and separately retained secret-free evidence. Native Safari/device acceptance remains pending; this is not application-error suppression or universal certification.
+- Geoff explicitly refused production deployment during this work. Never deploy a production website or API unless he separately and explicitly authorizes that deployment. Production-backed native scheduling availability is deferred; it must not hold up testing website/API validation. Testing web/API remains chaos-test-d1601; packaged APKs retain cheers-34b8d, production destinations and retained signing. Validate native contracts with isolated emulators/mocks and report native end-to-end saves as pending. Do not repeatedly seek production deployment approval during phase validation.

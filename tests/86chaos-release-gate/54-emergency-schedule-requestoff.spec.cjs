@@ -104,3 +104,6 @@ test.describe('54 emergency Schedule + Request Off regression coverage', () => {
     await attachJson(testInfo, '54-request-off-backwards-time.json', { nativeValidity, project: testInfo.project.name });
   });
 });
+
+const { verifyWarningDismissalIsolation } = require('../fixtures/schedule-request-off-management.cjs');
+test('Schedule warning dismissal preserves approved leave, shifts and other conflicts across reload', verifyWarningDismissalIsolation);

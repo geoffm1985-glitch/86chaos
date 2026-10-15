@@ -5,6 +5,7 @@ const {workspaceEvidence,workspaceEditable,shiftDateBy}=require('../../src/core/
 const scenarios=new WeakMap();
 const {postScheduleQa}=require('./schedule-qa-request.cjs');
 const {verifyHeaderTouchHandoff}=require('./schedule-header-touch-scenario.cjs');
+const {observeSchedulingRuntime}=require('./webkit-navigation-evidence.cjs');
 
 async function openWorkspace(page) {
   const seed=readSeedReport();
@@ -76,8 +77,8 @@ async function createShift(page,ctx,dateOverride='') {
   expect(row.restaurantId).toBe(ctx.seed.restaurantId);expect(row.isPublished).toBe(false);expect(row.breakMinutes).toBe(30);
   if(!dateOverride){await revealDate(page,ctx,date);await expect(card(page,ctx,row.id)).toBeVisible();}return row;
 }
-async function verifyEditingRecovery({page}) {
-  const errors=[],listenTypes=[];page.on('pageerror',error=>errors.push(error.message));
+async function verifyEditingRecovery({page},testInfo) {
+  const runtime=await observeSchedulingRuntime(page),listenTypes=[];
   const observeListen=request=>{if(request.url().includes('/google.firestore.v1.Firestore/Listen/channel'))listenTypes.push(request.resourceType());};
   page.on('request',observeListen);
   const ctx=await openWorkspace(page);
@@ -89,7 +90,7 @@ async function verifyEditingRecovery({page}) {
     expect((await authoritativeRows(page,ctx))[0]).toMatchObject({endTime:'22:00',notes:'Reviewed dinner extension',paidBreak:true});
     await mutate(page,ctx,()=>ctx.workspace.getByRole('button',{name:'Undo',exact:true}).click());expect((await authoritativeRows(page,ctx))[0].endTime).toBe('21:00');
     await mutate(page,ctx,()=>ctx.workspace.getByRole('button',{name:'Redo',exact:true}).click());expect((await authoritativeRows(page,ctx))[0].endTime).toBe('22:00');
-    await page.reload();await dismissBlockingDialogs(page);await expect(ctx.workspace).toBeVisible();await expect(ctx.workspace.getByRole('status').first()).toContainText('Schedule loaded from the server');await revealDate(page,ctx,row.date);await card(page,ctx,row.id).getByRole('button',{name:/Edit shift/}).click();
+    await runtime.reload();await dismissBlockingDialogs(page);await expect(ctx.workspace).toBeVisible();await expect(ctx.workspace.getByRole('status').first()).toContainText('Schedule loaded from the server');await revealDate(page,ctx,row.date);await card(page,ctx,row.id).getByRole('button',{name:/Edit shift/}).click();
     await expect(page.getByTestId('shift-editor-notes')).toHaveValue('Reviewed dinner extension');
     let mutations=0;const count=request=>{if(request.url().endsWith('/api/schedule-workspace') && !['read','read-week'].includes(JSON.parse(request.postData() || '{}').action))mutations++;};page.on('request',count);
     await page.getByTestId('shift-editor-save').click();await expect(page.getByRole('dialog')).toHaveCount(0);expect(mutations).toBe(0);page.off('request',count);
@@ -97,7 +98,7 @@ async function verifyEditingRecovery({page}) {
       expect(listenTypes,'WebKit must exercise real Firestore XMLHttpRequest transport across reload').toContain('xhr');
       expect(listenTypes).not.toContain('fetch');
     }
-    page.off('request',observeListen);expect(errors).toEqual([]);
+    page.off('request',observeListen);expect((await runtime.finish(testInfo)).fatalErrors).toEqual([]);
 }
 async function verifyDeletionRecovery({page}) {
   let legacyDeletes=0;
@@ -176,8 +177,11 @@ async function verifyInterruptedSave({page,context}) {
     expect(attempts).toHaveLength(2);expect(attempts[1]).toEqual(attempts[0]);expect((await authoritativeRows(page,ctx))[0].notes).toBe('Explicit retry retains its operation identity');
     abort=true;
     await card(page,ctx,row.id).getByRole('button',{name:/Edit shift/}).click();
+    const verifiedBeforeSecond=(await authoritativeRows(page,ctx))[0];
+    await expect(page.getByTestId('shift-editor-notes')).toHaveValue(verifiedBeforeSecond.notes);
     await page.getByTestId('shift-editor-notes').fill('Second explicitly submitted request');await page.getByTestId('shift-editor-save').click();
     await expect(ctx.workspace.getByRole('status').first()).toContainText('Save outcome unknown');expect(attempts).toHaveLength(3);
+    expect(attempts[2].changes[0].expected).toBe(workspaceEvidence(verifiedBeforeSecond));
     await page.getByTestId('shift-editor-notes').fill('Newer unsaved draft must survive recovery');
     await page.getByRole('dialog').getByRole('button',{name:'Cancel',exact:true}).click();
     await mutate(page,ctx,()=>ctx.workspace.getByRole('button',{name:'Review outcome and retry the same saved request'}).click());

@@ -10,7 +10,9 @@ const read = rel => fs.readFileSync(path.join(root, rel), 'utf8');
 test('17.0.83 historical 16.0.210 maturity check follows the extracted Request Off anchor helper', () => {
   const maturity = read('api/release-gate-maturity-16-0-210.test.cjs');
   const helper = read('tests/e2e/utils/schedule-request-off-fixture-anchor.cjs');
-  const spec = read('tests/e2e/schedule-request-off-management.spec.cjs');
+  const specEntry = read('tests/e2e/schedule-request-off-management.spec.cjs');
+  assert.match(specEntry, /require\(['"]\.\.\/fixtures\/schedule-request-off-management\.cjs['"]\)/);
+  const spec = specEntry + '\n' + read('tests/fixtures/schedule-request-off-management.cjs');
 
   assert.match(maturity, /const anchorHelper = read\('tests\/e2e\/utils\/schedule-request-off-fixture-anchor\.cjs'\)/);
   assert.match(maturity, /assert\.match\(anchorHelper, \/return fixture\\\.currentWeekStart/);
@@ -21,7 +23,9 @@ test('17.0.83 historical 16.0.210 maturity check follows the extracted Request O
 });
 
 test('17.0.83 archive-only maturity evidence remains attached to the real Request Off workflow row', () => {
-  const spec = read('tests/e2e/schedule-request-off-management.spec.cjs');
+  const specEntry = read('tests/e2e/schedule-request-off-management.spec.cjs');
+  assert.match(specEntry, /require\(['"]\.\.\/fixtures\/schedule-request-off-management\.cjs['"]\)/);
+  const spec = specEntry + '\n' + read('tests/fixtures/schedule-request-off-management.cjs');
   const archiveOnlyBlock = spec.slice(spec.indexOf("test('Archive All Visible archives only filtered visible eligible requests'"));
   assert.ok(archiveOnlyBlock.length > 0, 'Archive All Visible test remains present');
   assert.match(archiveOnlyBlock, /openRequestOffView\(page, 'All'\)/);

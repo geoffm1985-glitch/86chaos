@@ -53,7 +53,9 @@ test('16.0.194 harness fixes address the exact second-layer failures without cha
   const vault = read('tests/86chaos-full-audit/13-back-office-document-vault.spec.cjs');
   const helper = read('tests/86chaos-release-gate/utils/exhaustive-ui-helpers.cjs');
   const matrix = read('scripts/86chaos-release-gate/route-access-matrix.cjs');
-  const requestOff = read('tests/e2e/schedule-request-off-management.spec.cjs');
+  const requestOffEntry = read('tests/e2e/schedule-request-off-management.spec.cjs');
+  assert.match(requestOffEntry, /require\(['"]\.\.\/fixtures\/schedule-request-off-management\.cjs['"]\)/);
+  const requestOff = requestOffEntry + '\n' + read('tests/fixtures/schedule-request-off-management.cjs');
   assert.match(vault, /finish attaching its file before the test refreshes the page/);
   assert.equal(vault.includes('toHaveText(/Preview \\/ Download/i, { timeout:45000 })'), true);
   assert.match(helper, /stateLabelAlreadyVisible/);

@@ -9,7 +9,9 @@ const json = rel => JSON.parse(read(rel));
 const { assertCurrentReleaseIdentity } = require('./_current-release-identity.cjs');
 
 test('16.0.209 Request Off Warnings helper targets the current tab semantics before stale button fallback', () => {
-  const spec = read('tests/e2e/schedule-request-off-management.spec.cjs');
+  const specEntry = read('tests/e2e/schedule-request-off-management.spec.cjs');
+  assert.match(specEntry, /require\(['"]\.\.\/fixtures\/schedule-request-off-management\.cjs['"]\)/);
+  const spec = specEntry + '\n' + read('tests/fixtures/schedule-request-off-management.cjs');
   assert.match(spec, /getByTestId\(['"]schedule-copilot-warnings-tab['"]\)/);
   assert.match(spec, /Warnings tool control should use the current accessible tab\/button name/);
   assert.match(spec, /Warnings panel should open after activating the current Warnings control/);

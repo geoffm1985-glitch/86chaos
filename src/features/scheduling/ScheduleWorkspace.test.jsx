@@ -85,6 +85,23 @@ test('an existing shift opens an editor, preserves the scroll container, and sav
   const body=JSON.parse(secureFetch.mock.calls[0][1].body);expect(body.changes[0].kind).toBe('update');expect(body.changes[0].patch.notes).toBe('New dinner notes');expect(body.changes[0].expected).toContain('revision');
   expect(screen.getByTestId('weekly-schedule-scroll')).toBe(scroll);expect(scroll.scrollLeft).toBe(220);expect(scroll.scrollTop).toBe(90);expect(screen.getByRole('status')).toHaveTextContent('Saved and verified');
 });
+
+test('a late older live snapshot cannot regress the next editor after the saved revision was acknowledged',async()=>{
+  let current=[original];
+  useLiveCollectionState.mockImplementation(name=>({data:name==='shifts'?current:empty,resolved:true,stale:false,error:null}));
+  const view=setup();fireEvent.click(desktop().getByRole('button',{name:/Edit shift .*Alex/}));
+  fireEvent.change(screen.getByTestId('shift-editor-notes'),{target:{value:'Verified revision two'}});fireEvent.click(screen.getByTestId('shift-editor-save'));
+  await waitFor(()=>expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  current=[{...original,revision:2,updatedAt:'2026-10-14T13:00:00Z',notes:'Verified revision two'}];
+  view.rerender(<ScheduleWorkspace currentDate="2026-10-20" users={users} roles={roles} shifts={[original]} appUser={appUser}/>);
+  await act(async()=>{});
+  current=[original];view.rerender(<ScheduleWorkspace currentDate="2026-10-20" users={users} roles={roles} shifts={[original]} appUser={appUser}/>);
+  fireEvent.click(desktop().getByRole('button',{name:/Edit shift .*Alex/}));
+  expect(screen.getByTestId('shift-editor-notes')).toHaveValue('Verified revision two');
+  fireEvent.change(screen.getByTestId('shift-editor-notes'),{target:{value:'Next explicit edit'}});fireEvent.click(screen.getByTestId('shift-editor-save'));
+  await waitFor(()=>expect(secureFetch).toHaveBeenCalledTimes(2));
+  expect(JSON.parse(JSON.parse(secureFetch.mock.calls[1][1].body).changes[0].expected).revision).toBe(2);
+});
 test('cancel retains a recoverable draft and no-op Save does not make a network request',async()=>{
   setup();fireEvent.click(desktop().getByRole('button',{name:/Edit shift .*Alex/}));fireEvent.click(screen.getByTestId('shift-editor-save'));
   expect(secureFetch).not.toHaveBeenCalled();

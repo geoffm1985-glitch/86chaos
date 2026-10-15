@@ -9,7 +9,9 @@ const json = rel => JSON.parse(read(rel));
 const { assertCurrentReleaseIdentity } = require('./_current-release-identity.cjs');
 
 test('16.0.210 archive-only Request Off check uses the seeded date and an actual workflow row', () => {
-  const spec = read('tests/e2e/schedule-request-off-management.spec.cjs');
+  const specEntry = read('tests/e2e/schedule-request-off-management.spec.cjs');
+  assert.match(specEntry, /require\(['"]\.\.\/fixtures\/schedule-request-off-management\.cjs['"]\)/);
+  const spec = specEntry + '\n' + read('tests/fixtures/schedule-request-off-management.cjs');
   const anchorHelper = read('tests/e2e/utils/schedule-request-off-fixture-anchor.cjs');
   assert.match(anchorHelper, /return fixture\.currentWeekStart \|\| overCoverageDate \|\| fixture\.anchor/);
   assert.match(spec, /scheduleFixtureDateFromSeed/);

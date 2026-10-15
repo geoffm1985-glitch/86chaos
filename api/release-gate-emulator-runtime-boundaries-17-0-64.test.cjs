@@ -10,7 +10,9 @@ const read = file => fs.readFileSync(path.join(root, file), 'utf8');
 test('17.0.64 Request Off fixture safety follows LIVE versus EMULATOR target without weakening project checks', () => {
   assert.equal(expectedFirebaseProject({ YARDMASTER_FIREBASE_TARGET: 'emulator' }), 'demo-86chaos');
   assert.equal(expectedFirebaseProject({ YARDMASTER_FIREBASE_TARGET: 'live' }), 'chaos-test-d1601');
-  const spec = read('tests/e2e/schedule-request-off-management.spec.cjs');
+  const specEntry = read('tests/e2e/schedule-request-off-management.spec.cjs');
+  assert.match(specEntry, /require\(['"]\.\.\/fixtures\/schedule-request-off-management\.cjs['"]\)/);
+  const spec = specEntry + '\n' + read('tests/fixtures/schedule-request-off-management.cjs');
   assert.match(spec, /expectedFirebaseProject\(process\.env\)/);
   assert.doesNotMatch(spec, /const QA_TEST_PROJECT_ID = ['"]chaos-test-d1601['"]/);
   assert.match(spec, /data\?\.projectId !== QA_TEST_PROJECT_ID/);
