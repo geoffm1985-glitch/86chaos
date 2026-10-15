@@ -8,6 +8,9 @@ test.describe('17.0.27 Schedule Builder shift assignment emergency repair', () =
     requireCreds(account, 'owner/admin-like');
     await login(page, account.email, account.password, { chooseWorkspace: true });
     await gotoTab(page, 'schedule', { fullReload: true });
+    if (!await page.getByTestId('schedule-workspace').isVisible()) {
+      await page.getByRole('button', { name: 'Schedule Builder', exact: true }).first().click();
+    }
     await page.getByRole('button',{name:'Monthly & advanced tools',exact:true}).click();
 
     // Finish navigation's modal cleanup before installing the late-tour handler.

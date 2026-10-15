@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "release": "19.0.3",
+  "release": "19.0.4",
   "baseline": {
     "branch": "testing",
     "version": "17.0.42",
@@ -59,14 +59,14 @@
       "minSdk": 24,
       "compileSdk": 36,
       "targetSdk": 36,
-      "versionCode": 190003,
-      "versionName": "19.0.3"
+      "versionCode": 190004,
+      "versionName": "19.0.4"
     },
     "ios": {
       "bundleIdentifier": "com.chiltonappworks.chaos86",
       "minimumVersion": "15.0",
-      "currentProjectVersion": 190003,
-      "marketingVersion": "19.0.3",
+      "currentProjectVersion": 190004,
+      "marketingVersion": "19.0.4",
       "packageManager": "SPM"
     }
   },

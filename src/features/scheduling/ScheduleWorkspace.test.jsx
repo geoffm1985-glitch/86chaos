@@ -4,6 +4,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { ScheduleWorkspace } from './ScheduleWorkspace';
 import { secureFetch, useLiveCollectionState } from '../../core/appCore';
 import { loadScheduleWeekVerified } from './scheduleWorkspaceData';
+import { authoredScheduleControlName } from '../../core/authoredControlName';
 jest.mock('../../core/appCore',()=>({secureFetch:jest.fn(),useLiveCollectionState:jest.fn()}));
 jest.mock('./scheduleWorkspaceData',()=>({loadScheduleWeekVerified:jest.fn()}));
 jest.mock('../../components/common',()=>({Modal:({isOpen,title,children,onClose})=>isOpen?<div role="dialog" aria-label={title}><h2>{title}</h2><button onClick={onClose}>Close dialog</button>{children}</div>:null}));
@@ -15,6 +16,22 @@ const appUser={id:'manager_a',restaurantId:'tenant',permissions:{schedule:true},
 function setup(extra={}){return render(<ScheduleWorkspace currentDate="2026-10-20" users={users} roles={roles} shifts={[original]} appUser={appUser} {...extra}/>);}
 function desktop(){return within(document.querySelector('.sw-desktop-scroll'));}
 function response(results=[],operationId='server_operation_123'){return{ok:true,json:async()=>({ok:true,authoritative:true,operationId,results,events:[]})};}
+test('automatic control metadata preserves authored names and edited break details',async()=>{
+  setup();fireEvent.click(desktop().getByRole('button',{name:/Edit shift .*Alex/}));
+  document.querySelectorAll('button, input, select, textarea').forEach(control=>{
+    const name=authoredScheduleControlName(control);
+    if(name && !control.hasAttribute('aria-label'))control.setAttribute('aria-label',name);
+  });
+  expect(screen.getByRole('button',{name:'Monthly & advanced tools',exact:true})).toBeInTheDocument();
+  expect(screen.getByRole('button',{name:'Undo',exact:true})).toBeInTheDocument();
+  expect(screen.getByLabelText('Assigned employee',{exact:true})).toBe(screen.getByTestId('shift-editor-employee'));
+  const minutes=screen.getByRole('spinbutton',{name:'Break minutes',exact:true});
+  fireEvent.change(minutes,{target:{value:'30'}});fireEvent.click(screen.getByLabelText('Paid break',{exact:true}));
+  fireEvent.click(screen.getByTestId('shift-editor-save'));
+  await waitFor(()=>expect(secureFetch).toHaveBeenCalledTimes(1));
+  expect(JSON.parse(secureFetch.mock.calls[0][1].body).changes[0].patch).toMatchObject({breakMinutes:30,paidBreak:true});
+  await waitFor(()=>expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+});
 beforeEach(()=>{sessionStorage.clear();jest.clearAllMocks();useLiveCollectionState.mockImplementation(name=>({data:name==='shifts'?[original]:empty,resolved:true,stale:false,error:null}));secureFetch.mockImplementation(async(url,options)=>{const body=JSON.parse(options.body);const change=body.changes?.[0];const after=change?.kind==='delete'?null:{...original,...change?.patch,revision:2,updatedAt:'2026-10-14T13:00:00Z'};return response([{id:original.id,before:original,after}]);});});
 test('an existing shift opens an editor, preserves the scroll container, and saves reviewed values',async()=>{
   setup();const scroll=screen.getByTestId('weekly-schedule-scroll');scroll.scrollLeft=220;scroll.scrollTop=90;

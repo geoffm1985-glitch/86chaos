@@ -22,6 +22,7 @@ import { initChaosPostHog, identifyChaosPostHogUser, resetChaosPostHogIdentity, 
 import { I18nProvider, LANGUAGE_STORAGE_KEY, normalizeAppLanguage } from './core/i18n';
 import { nativePush } from './core/nativePush';
 import { installPwaCloseWatcher } from './core/pwaCloseWatcher';
+import { authoredScheduleControlName } from './core/authoredControlName';
 
 const resolveCommonJsModule = (moduleValue) => {
   const candidate = moduleValue?.default && typeof moduleValue.default === 'object' ? moduleValue.default : moduleValue;
@@ -2251,9 +2252,11 @@ if (liveAppUser && clientData) {
       const labelledBy = el.getAttribute('aria-labelledby') || '';
       const labelledByText = cleanLabel(validLabelledByText(labelledBy));
       const title = cleanLabel(el.getAttribute('title') || '');
+      const authoredName = authoredScheduleControlName(el);
       const labelText = cleanLabel(
         explicitAria ||
         labelledByText ||
+        authoredName ||
         title ||
         nearbyLabel?.textContent ||
         el.closest?.('label')?.textContent ||
@@ -2265,7 +2268,7 @@ if (liveAppUser && clientData) {
         ''
       );
       const hasExplicitName = Boolean(explicitAria || labelledByText);
-      const normalized = normalizeControlLabel(labelText, el, index);
+      const normalized = authoredName || normalizeControlLabel(labelText, el, index);
       const intent = classifyControlIntent(labelText || normalized, el);
       if (!el.getAttribute('data-chaos-control-kind')) el.setAttribute('data-chaos-control-kind', intent);
       const workflowId = workflowIdFor(labelText || normalized, intent);

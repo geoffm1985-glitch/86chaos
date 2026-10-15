@@ -12,6 +12,8 @@ async function openWorkspace(page) {
   const workspace=page.getByTestId('schedule-workspace');
   if(!await workspace.isVisible())await page.getByRole('button',{name:/^Schedule Builder$/i}).first().click();
   await expect(workspace).toBeVisible();await expect(workspace.getByRole('status').first()).toContainText('Schedule loaded from the server');
+  await expect(workspace.getByRole('button',{name:'Monthly & advanced tools',exact:true})).toBeVisible();
+  await expect(workspace.getByRole('button',{name:'Undo',exact:true})).toBeVisible();
   return{seed,workspace,mobile:await page.getByTestId('mobile-schedule-calendar').isVisible(),headers:null,ids:new Set()};
 }
 async function mutate(page,ctx,action) {
@@ -49,6 +51,8 @@ async function createShift(page,ctx,dateOverride='') {
   await page.getByTestId('shift-editor-role').selectOption({label:'Owner'});
   await page.getByTestId('shift-editor-start').fill('16:00');await page.getByTestId('shift-editor-end').fill('21:00');
   await page.getByTestId('shift-editor-notes').fill('Phase 1 owned regression shift');await page.getByLabel('Break minutes',{exact:true}).fill('30');
+  await expect(page.getByRole('spinbutton',{name:'Break minutes',exact:true})).toHaveValue('30');
+  await expect(page.getByRole('combobox',{name:'Assigned employee',exact:true})).toHaveValue(await page.getByTestId('shift-editor-employee').inputValue());
   const result=await mutate(page,ctx,()=>page.getByTestId('shift-editor-save').click());
   expect(result.results).toHaveLength(1);const row=result.results[0].after;
   expect(row.restaurantId).toBe(ctx.seed.restaurantId);expect(row.isPublished).toBe(false);expect(row.breakMinutes).toBe(30);
