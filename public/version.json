@@ -1,25 +1,25 @@
 {
-  "version": "19.0.6",
-  "name": "86 Chaos 19.0.6",
-  "build": "19.0.6",
-  "label": "86 Chaos 19.0.6",
-  "title": "86 Chaos 19.0.6",
-  "releasedAt": "2026-10-15T08:20:19.949Z",
-  "releaseTitle": "Schedule Builder header and recovery interaction repair",
-  "summary": "Weekly header layering and legacy sticky offsets are corrected; explicit save recovery is reachable inside dialogs.",
-  "description": "Phase 1 repair candidate. Exact targeted/delta, native API and device acceptance remain pending.",
+  "version": "19.0.7",
+  "name": "86 Chaos 19.0.7",
+  "build": "19.0.7",
+  "label": "86 Chaos 19.0.7",
+  "title": "86 Chaos 19.0.7",
+  "releasedAt": "2026-10-15T09:15:32.129Z",
+  "releaseTitle": "Schedule Builder native gesture and mobile target repair",
+  "summary": "Scheduling controls preserve 44-pixel touch targets and readable text; native drag regressions initiate movement before scrolling.",
+  "description": "Phase 1 repair candidate. Exact targeted/delta, production-backed native API and device acceptance remain pending.",
   "notes": [
-    "Weekly role and employee headers preserve horizontal context without covering shifts.",
-    "Legacy header measurement and touch handling refresh when monthly tools mount.",
-    "Explicit retry remains inside the active dialog and preserves newer unsaved drafts."
+    "Weekly and editor controls resist legacy compact styling below 44 CSS pixels.",
+    "Both browser inventories verify real trusted drag/drop before authoritative reassignment.",
+    "Existing scheduling functionality, Firebase isolation and signing identity remain protected."
   ],
   "highlights": [
     "Strict source verification without output-triggered request stalls",
     "Actual linked-worktree Git identity protection"
   ],
   "changes": [
-    "Repair scheduling header layering and legacy mounting effects.",
-    "Make pending-save recovery reachable and preserve newer unsaved drafts.",
-    "Strengthen both functional browser inventories; no full gate."
+    "Protect mobile scheduling touch targets and control readability.",
+    "Correct real native mouse gesture initialization in both regression suites.",
+    "No full release gate or Phase 2 acceptance claimed."
   ]
 }

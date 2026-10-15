@@ -1,6 +1,13 @@
 .schedule-workspace { color:#e2e8f0; background:#12161a; border:1px solid #2a353d; border-radius:16px; padding:16px; margin-bottom:16px; padding-bottom:max(16px,env(safe-area-inset-bottom)); }
 .schedule-workspace button,.schedule-workspace select,.schedule-workspace input:not([type=checkbox]),.sw-editor button,.sw-editor select,.sw-editor input:not([type=checkbox]),.sw-editor textarea { min-height:44px; border:1px solid #42505a; border-radius:10px; padding:9px 12px; background:#1a2126; color:#f1f5f9; font:inherit; font-size:14px; }
 .schedule-workspace button,.sw-editor button { min-width:44px; cursor:pointer; }
+/* Legacy compact/tap metadata uses 42px !important. Preserve the scheduler's
+   44px interaction contract without changing other modules' visual density. */
+.desktop-pro-shell .app-content-shell .schedule-workspace :is(button,select,input:not([type=checkbox]),textarea),
+.desktop-pro-shell .app-content-shell .sw-editor :is(button,select,input:not([type=checkbox]),textarea),
+.schedule-workspace .chaos-release-tap-target:not(:disabled),
+.sw-editor .chaos-release-tap-target:not(:disabled),
+.chaos-modal-panel [data-chaos-modal-close]:not(:disabled) { min-width:44px !important; min-height:44px !important; font-size:14px !important; line-height:1.4 !important; }
 .schedule-workspace button:hover,.sw-editor button:hover { border-color:#d4a381; }
 .schedule-workspace button:focus-visible,.schedule-workspace input:focus-visible,.schedule-workspace select:focus-visible,.schedule-workspace summary:focus-visible,.sw-editor :focus-visible { outline:3px solid #d4a381; outline-offset:2px; }
 .schedule-workspace button:disabled,.sw-editor button:disabled { opacity:.5; cursor:wait; }
@@ -30,6 +37,7 @@
 .desktop-pro-shell .app-content-shell .sw-week-table thead tr>th:first-child { z-index:40; }
 .desktop-pro-shell .app-content-shell .sw-week-table tbody th { top:auto; z-index:20; }
 .desktop-pro-shell .app-content-shell .sw-week-table .sw-role-group>th { position:static; }
+.desktop-pro-shell .app-content-shell .sw-week-table :is(th,td) { font-size:14px !important; line-height:1.4 !important; }
 .sw-week-table tbody th span { display:block; font-size:13px; font-weight:400; color:#a8b6c4; margin-top:4px; }
 .sw-week-table .sw-role-group>th { position:static; padding:0; background:#20272c; }
 .sw-role-group button { position:sticky; left:0; text-align:left; border:0; background:transparent; color:#d4a381; font-weight:750; }

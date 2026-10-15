@@ -106,7 +106,23 @@ async function verifyMoveCopy({page}) {
       const source=card(page,ctx,row.id);
       await source.scrollIntoViewIfNeeded();
       expect(await source.evaluate(element=>{const r=element.getBoundingClientRect();return element.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2));}),'A sticky header must not intercept the dragged shift').toBe(true);
-      await source.dragTo(page.locator(`.sw-desktop-scroll [data-date="${row.date}"][data-employee-id="${employeeId}"]`));
+      // Start native dragging before scrolling to a different employee. dragTo scrolls
+      // the target after pointer-down but before the first movement, losing dragstart.
+      await source.evaluate(element=>{window.__phase1DragStarted=false;element.addEventListener('dragstart',event=>{window.__phase1DragStarted=event.isTrusted;},{once:true});});
+      const start=await source.boundingBox();
+      await page.mouse.move(start.x+start.width/2,start.y+start.height/2);await page.mouse.down();
+      try {
+        await page.mouse.move(start.x+start.width/2+10,start.y+start.height/2,{steps:5});
+        await expect.poll(()=>page.evaluate(()=>window.__phase1DragStarted),'A real native drag must start before destination scrolling').toBe(true);
+        const target=page.locator(`.sw-desktop-scroll [data-date="${row.date}"][data-employee-id="${employeeId}"]`);
+        await target.evaluate(element=>{window.__phase1Drop=null;element.addEventListener('drop',event=>{window.__phase1Drop={trusted:event.isTrusted,types:[...event.dataTransfer.types]};},{once:true});});
+        await target.scrollIntoViewIfNeeded();const end=await target.boundingBox();
+        await page.mouse.move(end.x+end.width/2,end.y+end.height/2,{steps:12});
+        await page.mouse.move(end.x+end.width/2+1,end.y+end.height/2);
+      } finally {await page.mouse.up();}
+      const dropped=await page.evaluate(()=>window.__phase1Drop);
+      expect(dropped?.trusted,'The drop must come from the native mouse gesture').toBe(true);
+      expect(dropped.types).toContain('application/x-86chaos-shifts');
       await expect(page.getByRole('dialog',{name:'Preview moved shifts'})).toBeVisible();expect((await authoritativeRows(page,ctx))[0].employeeId).toBe(row.employeeId);
       await mutate(page,ctx,()=>page.getByTestId('schedule-confirm-preview').click());
     }
@@ -149,7 +165,7 @@ async function verifyInterruptedSave({page,context}) {
 async function verifyLayoutAndKeyboard({page}) {
   const ctx=await openWorkspace(page);
   if(ctx.mobile) {
-    for(const button of await ctx.workspace.locator('.sw-toolbar button').all()){const rect=await button.boundingBox();expect(rect.height).toBeGreaterThanOrEqual(44);expect(rect.width).toBeGreaterThanOrEqual(44);}
+    for(const button of await ctx.workspace.locator('button').all()){if(!await button.isVisible())continue;const rect=await button.boundingBox();expect(rect.height).toBeGreaterThanOrEqual(44);expect(rect.width).toBeGreaterThanOrEqual(44);expect(await button.evaluate(element=>parseFloat(getComputedStyle(element).fontSize))).toBeGreaterThanOrEqual(14);}
     const strip=page.locator('.sw-day-strip');await strip.scrollIntoViewIfNeeded();const before=await strip.boundingBox();
     await page.getByTestId('mobile-schedule-calendar').evaluate(element=>{element.scrollTop=180;});
     const after=await strip.boundingBox();expect(Math.abs(after.y-before.y)).toBeLessThanOrEqual(2);
@@ -167,6 +183,7 @@ async function verifyLayoutAndKeyboard({page}) {
   }
   await ctx.workspace.getByRole('button',{name:'Add Shift',exact:true}).click();
   const dialog=page.getByRole('dialog',{name:'Add shift',exact:true}),first=dialog.locator('button').first(),last=dialog.getByRole('button',{name:'Cancel',exact:true});
+  if(ctx.mobile)for(const control of await dialog.locator('button,input:not([type="checkbox"]),select,textarea').all()){if(!await control.isVisible())continue;const rect=await control.boundingBox();expect(rect.height).toBeGreaterThanOrEqual(44);expect(rect.width).toBeGreaterThanOrEqual(44);}
   await last.focus();await page.keyboard.press('Tab');await expect(first).toBeFocused();await page.keyboard.press('Shift+Tab');await expect(last).toBeFocused();
   await page.keyboard.press('Escape');await expect(dialog).toHaveCount(0);
 }
