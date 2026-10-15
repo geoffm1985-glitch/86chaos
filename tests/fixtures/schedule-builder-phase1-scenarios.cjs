@@ -3,6 +3,7 @@ const {expect}=require('@playwright/test');
 const {ownerLikeCreds,login,gotoTab,dismissBlockingDialogs,readSeedReport,ALLOW_MUTATION,RUN_ID}=require('../86chaos-full-audit/utils/audit-helpers.cjs');
 const {workspaceEvidence,workspaceEditable,shiftDateBy}=require('../../src/core/scheduleWorkspace.shared.js');
 const scenarios=new WeakMap();
+const {verifyHeaderTouchHandoff}=require('./schedule-header-touch-scenario.cjs');
 
 async function openWorkspace(page) {
   const seed=readSeedReport();
@@ -183,9 +184,10 @@ async function verifyLayoutAndKeyboard({page}) {
   }
   await ctx.workspace.getByRole('button',{name:'Add Shift',exact:true}).click();
   const dialog=page.getByRole('dialog',{name:'Add shift',exact:true}),first=dialog.locator('button').first(),last=dialog.getByRole('button',{name:'Cancel',exact:true});
-  if(ctx.mobile)for(const control of await dialog.locator('button,input:not([type="checkbox"]),select,textarea').all()){if(!await control.isVisible())continue;const rect=await control.boundingBox();expect(rect.height).toBeGreaterThanOrEqual(44);expect(rect.width).toBeGreaterThanOrEqual(44);}
+  if(ctx.mobile)for(const control of await dialog.locator('button,input:not([type="checkbox"]),select,textarea').all()){if(!await control.isVisible())continue;const rect=await control.boundingBox();const name=await control.evaluate(element=>element.getAttribute('aria-label')||element.closest('label')?.textContent||element.tagName);expect(rect.height,`${name} must have a 44px touch height`).toBeGreaterThanOrEqual(44);expect(rect.width,`${name} must have a 44px touch width`).toBeGreaterThanOrEqual(44);}
   await last.focus();await page.keyboard.press('Tab');await expect(first).toBeFocused();await page.keyboard.press('Shift+Tab');await expect(last).toBeFocused();
   await page.keyboard.press('Escape');await expect(dialog).toHaveCount(0);
+  if(ctx.mobile){await ctx.workspace.getByRole('button',{name:'Monthly & advanced tools',exact:true}).click();await verifyHeaderTouchHandoff(page);}
 }
 async function verifyReviewedMonthRecovery({page}) {
   const ctx=await openWorkspace(page);

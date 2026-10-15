@@ -3,8 +3,10 @@
 .schedule-workspace button,.sw-editor button { min-width:44px; cursor:pointer; }
 /* Legacy compact/tap metadata uses 42px !important. Preserve the scheduler's
    44px interaction contract without changing other modules' visual density. */
-.desktop-pro-shell .app-content-shell .schedule-workspace :is(button,select,input:not([type=checkbox]),textarea),
-.desktop-pro-shell .app-content-shell .sw-editor :is(button,select,input:not([type=checkbox]),textarea),
+/* Match the compact form rule's input exclusions: :is() takes the most specific
+   arm even for a select. The extra workspace scope must win for every control. */
+.desktop-pro-shell .app-content-shell .schedule-workspace :is(button,select,textarea,input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=color]):not([type=file])),
+.desktop-pro-shell .app-content-shell .sw-editor :is(button,select,textarea,input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=color]):not([type=file])),
 .schedule-workspace .chaos-release-tap-target:not(:disabled),
 .sw-editor .chaos-release-tap-target:not(:disabled),
 .chaos-modal-panel [data-chaos-modal-close]:not(:disabled) { min-width:44px !important; min-height:44px !important; font-size:14px !important; line-height:1.4 !important; }
