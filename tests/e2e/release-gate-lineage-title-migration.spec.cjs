@@ -58,3 +58,15 @@ test('failed+new accepts the real Playwright lineage shape with a Windows spec-f
   expect(qualified.selected[0]).toMatchObject({ exactTestTitle: current, fullSuitePath: suite, project, priorStatus: 'failed', migratedFromRetiredIdentity: true });
 });
 
+
+const {schedulePartitionFixture,currentTitles:schedulePartitionTitles,retiredTitle:scheduleRetiredTitle}=require('../fixtures/schedule-phase1-lineage.cjs');
+test('failed+new retains both scheduling workflows when a combined failure is partitioned',async()=>{
+  for(const specPath of ['e2e/schedule-builder-phase1-19.spec.cjs','86chaos-release-gate/108-schedule-builder-phase1-19.spec.cjs']){
+    const f=schedulePartitionFixture(specPath,'webkit-pwa');
+    const result=qualifyManifestSelectionsWithCurrentInventory(f.manifest,{currentRecords:f.currentRecords});
+    expect(result.selected.map(row=>row.exactTestTitle).sort()).toEqual([...schedulePartitionTitles].sort());
+    for(const row of result.selected){expect(row).toMatchObject({project:'webkit-pwa',priorStatus:'failed',migratedFromRetiredIdentity:true,migrationSourceStableKey:f.manifest.selected[0].stableKey});expect(row.selectionReasons).toContain('previous_failure');}
+    const incomplete=qualifyManifestSelectionsWithCurrentInventory(f.manifest,{currentRecords:f.currentRecords.slice(0,1)});
+    expect(incomplete.selected).toHaveLength(1);expect(incomplete.selected[0]).toMatchObject({exactTestTitle:scheduleRetiredTitle,migratedFromRetiredIdentity:false});
+  }
+});

@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const { expect } = require('@playwright/test');
 const { submitAuditLogin, createFirestoreListenRecovery } = require('./firebase-transport-recovery.cjs');
+const { waitForAuditAuthSurface } = require('../../fixtures/audit-auth-surface.cjs');
 let runContext = null;
 try { runContext = require('../../../scripts/86chaos-release-gate/run-context.cjs'); } catch (_) { runContext = null; }
 const { parseHost, isProductionHost, isTestingPreviewHost } = require('../../../scripts/86chaos-release-gate/mutation-safety.cjs');
@@ -473,6 +474,7 @@ async function dismissBlockingDialogs(page, options = {}) {
 async function login(page, email, password, options = {}) {
   await page.goto(appUrl(options.tab || 'today'), { waitUntil: 'domcontentloaded', timeout: 45000 });
   await page.waitForLoadState('domcontentloaded');
+  await waitForAuditAuthSurface(page);
   let text = await bodyText(page, 8000);
   if (!LOGIN_RE.test(text)) {
     await dismissNoise(page);

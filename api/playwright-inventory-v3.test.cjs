@@ -87,6 +87,6 @@ test('real Playwright list discovery does not recurse when Playwright is install
   }
   const phaseSpecs=['e2e/schedule-builder-phase1-19.spec.cjs','86chaos-release-gate/108-schedule-builder-phase1-19.spec.cjs'];
   const phase=parsed.filter(row=>phaseSpecs.includes(row.specPath));
-  assert.equal(phase.length,72,'all six Phase 1 workflows in both wrappers and six browser projects must be discovered');
-  for(const spec of phaseSpecs)for(const project of ['chromium','mobile-chromium','edge-pwa','firefox-pwa','webkit-pwa','mobile-webkit-pwa'])assert.equal(phase.filter(row=>row.specPath===spec && row.project===project).length,6,`${spec}/${project}`);
+  assert.equal(phase.length,84,'all seven Phase 1 workflows in both wrappers and six browser projects must be discovered');
+  for(const spec of phaseSpecs)for(const project of ['chromium','mobile-chromium','edge-pwa','firefox-pwa','webkit-pwa','mobile-webkit-pwa'])assert.equal(phase.filter(row=>row.specPath===spec && row.project===project).length,7,`${spec}/${project}`);
 });

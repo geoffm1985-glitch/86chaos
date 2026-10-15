@@ -6,12 +6,12 @@ const {prepareScheduleClear,advanceScheduleClear}=require('./_schedule-clear-wor
 test('browser cleanup hook verifies only owned shifts and reports authoritative removal',async()=>{
   const fs=require('node:fs'),vm=require('node:vm');
   const filename=require.resolve('../tests/fixtures/schedule-builder-phase1-scenarios.cjs');
-  const sandbox={module:{exports:{}},require:name=>name==='@playwright/test'?{expect:value=>({toBe:expected=>assert.equal(value,expected)})}:name.startsWith('node:')?require(name):name.includes('audit-helpers')?{}:rules};
+  const sandbox={module:{exports:{}},require:name=>name==='@playwright/test'?{expect:value=>({toBe:expected=>assert.equal(value,expected)})}:name.startsWith('node:')?require(name):name.includes('audit-helpers')?{}:name.includes('schedule-qa-request')?require('../tests/fixtures/schedule-qa-request.cjs'):rules};
   vm.runInNewContext(fs.readFileSync(filename,'utf8')+'\nmodule.exports.scenariosForTest=scenarios;',sandbox,{filename});
   const row={id:'qa_owned_shift',restaurantId:'qa_fixture',date:'2026-10-15',employeeId:'qa_employee',startTime:'16:00',endTime:'21:00',revision:2};
   const requests=[],events=[];let exists=true;
   const page={unroute:async path=>events.push(path),request:{post:async(url,options)=>{
-    requests.push({url,body:options.data});
+    requests.push({url,body:options.data,maxRetries:options.maxRetries});
     if(options.data.action==='read')return{status:()=>200,json:async()=>({authoritative:true,shifts:[exists?row:{id:row.id,exists:false}]})};
     exists=false;return{status:()=>200};
   }}};
@@ -20,6 +20,7 @@ test('browser cleanup hook verifies only owned shifts and reports authoritative 
   let attachment;
   await sandbox.module.exports.cleanupScenario({page,context:{setOffline:async value=>events.push(value)}},{attach:async(name,options)=>{attachment={name,body:JSON.parse(options.body)};}});
   assert.deepEqual(events,[false,'**/api/schedule-workspace','**/google.firestore.v1.Firestore/Listen/channel**']);assert.equal(requests.length,3);
+  assert.deepEqual(requests.map(row=>row.maxRetries),[2,0,2]);
   assert.equal(requests[1].body.changes.length,1);assert.equal(requests[1].body.changes[0].id,row.id);
   assert.equal(requests[1].body.changes[0].expected,rules.workspaceEvidence(row));
   assert.deepEqual(attachment,{name:'phase1-workflow-cleanup',body:{ownedShiftCount:1,remaining:0,authoritative:true}});
@@ -28,7 +29,7 @@ test('browser cleanup hook verifies only owned shifts and reports authoritative 
 test('browser cleanup cannot claim success when its authoritative read is refused',async()=>{
   const fs=require('node:fs'),vm=require('node:vm');
   const filename=require.resolve('../tests/fixtures/schedule-builder-phase1-scenarios.cjs');
-  const sandbox={module:{exports:{}},require:name=>name==='@playwright/test'?{expect:value=>({toBe:expected=>assert.equal(value,expected)})}:name.startsWith('node:')?require(name):name.includes('audit-helpers')?{}:rules};
+  const sandbox={module:{exports:{}},require:name=>name==='@playwright/test'?{expect:value=>({toBe:expected=>assert.equal(value,expected)})}:name.startsWith('node:')?require(name):name.includes('audit-helpers')?{}:name.includes('schedule-qa-request')?require('../tests/fixtures/schedule-qa-request.cjs'):rules};
   vm.runInNewContext(fs.readFileSync(filename,'utf8')+'\nmodule.exports.scenariosForTest=scenarios;',sandbox,{filename});
   let attached=false,writes=0;
   const page={unroute:async()=>{},request:{post:async()=>{writes++;return{status:()=>403};}}};

@@ -445,6 +445,14 @@ const RETIRED_PLAYWRIGHT_IDENTITY_ALIASES = Object.freeze([
     fromTitle: 'Schedule Builder day/date header stays below the sticky control deck during vertical scroll',
     toTitle: 'Schedule Builder day/date header stays pinned while compact control deck scrolls away',
   }),
+  ...['e2e/schedule-builder-phase1-19.spec.cjs', '86chaos-release-gate/108-schedule-builder-phase1-19.spec.cjs'].map(specPath => Object.freeze({
+    specPath,
+    fromTitle: 'Phase 1 edits persist, no-op writes are avoided and deletion has safe Undo and Redo',
+    toTitles: Object.freeze([
+      'Phase 1 edits persist, no-op writes are avoided and time edits have safe Undo and Redo',
+      'Phase 1 deletion is explicitly confirmed and safely restored with Undo and Redo',
+    ]),
+  })),
 ]);
 
 function canonicalSuitePathForSpec(fullSuitePath = '', specPath = '') {
@@ -459,22 +467,26 @@ function resolveRetiredPlaywrightIdentitySelection(row = {}, manifest = {}, look
   const title = String(normalized.exactTestTitle || normalized.title || normalized.leafTitle || '').trim();
   const alias = RETIRED_PLAYWRIGHT_IDENTITY_ALIASES.find(item => item.specPath === specPath && item.fromTitle === title);
   if (!alias) return [];
-  const candidates = (lookup.records || []).filter(candidate => {
-    const candidateSpec = normalizeRel(candidate.specPath || candidate.spec || '');
-    const candidateProject = String(candidate.project || candidate.projectName || '');
-    const candidateTitle = String(candidate.exactTestTitle || candidate.title || candidate.leafTitle || '').trim();
-    if (candidateSpec !== alias.specPath || candidateProject !== normalized.project || candidateTitle !== alias.toTitle) return false;
-    const expectedSuite = canonicalSuitePathForSpec(normalized.fullSuitePath, normalized.specPath);
-    const candidateSuite = canonicalSuitePathForSpec(candidate.fullSuitePath, candidateSpec);
-    return !expectedSuite || !candidateSuite || candidateSuite === expectedSuite;
-  });
-  if (candidates.length !== 1) return [];
-  return [{
-    ...inventorySelectionFromRow(candidates[0], normalized, manifest),
+  const destinations = [];
+  for (const targetTitle of alias.toTitles || [alias.toTitle]) {
+    const candidates = (lookup.records || []).filter(candidate => {
+      const candidateSpec = normalizeRel(candidate.specPath || candidate.spec || '');
+      const candidateProject = String(candidate.project || candidate.projectName || '');
+      const candidateTitle = String(candidate.exactTestTitle || candidate.title || candidate.leafTitle || '').trim();
+      if (candidateSpec !== alias.specPath || candidateProject !== normalized.project || candidateTitle !== targetTitle) return false;
+      const expectedSuite = canonicalSuitePathForSpec(normalized.fullSuitePath, normalized.specPath);
+      const candidateSuite = canonicalSuitePathForSpec(candidate.fullSuitePath, candidateSpec);
+      return !expectedSuite || !candidateSuite || candidateSuite === expectedSuite;
+    });
+    if (candidates.length !== 1) return [];
+    destinations.push(candidates[0]);
+  }
+  return destinations.map(candidate => ({
+    ...inventorySelectionFromRow(candidate, normalized, manifest),
     migratedFromRetiredIdentity: true,
     migrationSourceStableKey: normalized.stableKey || selectionKey(normalized),
     selectionReasons: Array.from(new Set([...(normalized.selectionReasons || []), 'retired_identity_migration'])),
-  }];
+  }));
 }
 
 function isLegacyResponsiveMatrixSelection(row = {}) {

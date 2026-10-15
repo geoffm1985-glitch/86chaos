@@ -1,8 +1,10 @@
 'use strict';
 const {test}=require('@playwright/test');
-const {cleanupScenario,verifyEditingRecovery,verifyMoveCopy,verifyInterruptedSave,verifyLayoutAndKeyboard,verifyReviewedMonthRecovery,verifyServerReadFallback}=require('../fixtures/schedule-builder-phase1-scenarios.cjs');
+const {cleanupScenario,verifyEditingRecovery,verifyDeletionRecovery,verifyMoveCopy,verifyInterruptedSave,verifyLayoutAndKeyboard,verifyReviewedMonthRecovery,verifyServerReadFallback}=require('../fixtures/schedule-builder-phase1-scenarios.cjs');
 test.afterEach(cleanupScenario);
-test('Phase 1 edits persist, no-op writes are avoided and deletion has safe Undo and Redo',verifyEditingRecovery);
+test('Phase 1 edits persist, no-op writes are avoided and time edits have safe Undo and Redo',verifyEditingRecovery);
+
+test('Phase 1 deletion is explicitly confirmed and safely restored with Undo and Redo',verifyDeletionRecovery);
 test('Phase 1 drag and accessible reassignment preview copies and preserve original shifts',verifyMoveCopy);
 test('Phase 1 interrupted saves require an explicit retry of the same operation',verifyInterruptedSave);
 test('Phase 1 weekly headers, touch targets and keyboard focus preserve navigation',verifyLayoutAndKeyboard);

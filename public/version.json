@@ -1,26 +1,26 @@
 {
-  "version": "19.0.9",
-  "name": "86 Chaos 19.0.9",
-  "build": "19.0.9",
-  "label": "86 Chaos 19.0.9",
-  "title": "86 Chaos 19.0.9",
-  "releasedAt": "2026-10-15T11:45:37.481Z",
-  "releaseTitle": "Schedule Builder verified week reads across browsers",
-  "summary": "Verify complete schedule weeks through the protected API when live snapshots are delayed.",
-  "description": "Phase 1 candidate; exact targeted/delta and native backend/device acceptance pending.",
+  "version": "19.0.10",
+  "name": "86 Chaos 19.0.10",
+  "build": "19.0.10",
+  "label": "86 Chaos 19.0.10",
+  "title": "86 Chaos 19.0.10",
+  "releasedAt": "2026-10-15T13:31:10.901Z",
+  "releaseTitle": "Schedule Builder reliable cross-browser validation",
+  "summary": "Bounded independent read recovery, explicit login hydration and complete cross-browser scheduling workflow validation.",
+  "description": "Testing Phase 1 repair candidate. Targeted/delta and native backend/device acceptance remain pending.",
   "notes": [
-    "Read-only bounded API fallback retains authorization and tenant/privacy boundaries.",
-    "Freshness expires and offline previews remain explicitly unverified.",
-    "All six scheduling workflows must be discovered across both browser inventories and six projects.",
-    "No production deployment, GitHub Actions or full gate."
+    "Independent authoritative QA reads recover connection resets without automatic mutation retries.",
+    "Editing and confirmed deletion recovery have independent end-to-end coverage with preserved failure lineage.",
+    "Trusted native drag payload is checked at dragstart before platform serialization; actual preview and reassignment remain mandatory.",
+    "Testing web/API stays chaos-test-d1601; signed APK keeps production Firebase and retained signing."
   ],
   "highlights": [
     "Strict source verification without output-triggered request stalls",
     "Actual linked-worktree Git identity protection"
   ],
   "changes": [
-    "Add protected transactionally consistent week reads.",
-    "Fence stale responses and preserve offline draft/preview integrity.",
-    "Add blocked-watch, privacy, scope and freshness regressions."
+    "19.0.10 Phase 1 repair candidate",
+    "All seven Phase 1 workflows must be discovered across both inventories and six browser projects.",
+    "No Phase 2, production deployment, GitHub Actions or full release gate has started."
   ]
 }
