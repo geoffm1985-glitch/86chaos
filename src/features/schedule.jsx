@@ -1,3 +1,5 @@
+import { deletionOverlayEvidence, deletionOverlayMatches, preferDeletionOverlay } from '../core/scheduleDeletionOverlay';
+import { workspaceEvidence } from '../core/scheduleWorkspace';
 import { ShiftChangeReview } from '../components/ShiftChangeReview';
 import { ScheduleWorkspace } from './scheduling/ScheduleWorkspace';
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
@@ -639,7 +641,6 @@ export const buildShiftFingerprint = (shift = {}) => {
 const SHIFT_LOCAL_DELETE_MARKER_GRACE_MS = 5000;
 const SHIFT_LOCAL_DELETE_MARKER_TTL_MS = 120000;
 const SHIFT_SAVED_DELETE_MARKER_TTL_MS = 12 * 60 * 60 * 1000;
-const SHIFT_SAVED_DELETE_RETRY_MS = 15000;
 
 const getScheduleDeletedShiftStorageKey = (restaurantId = '') => `86chaos:scheduleBuilderDeletedShiftIds:${String(restaurantId || 'unknown').trim() || 'unknown'}`;
 
@@ -651,14 +652,18 @@ const readScheduleDeletedShiftMarkersFromStorage = (restaurantId = '', now = Dat
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
     return parsed
-      .filter(marker => marker && String(marker.key || '').startsWith('id:') && Number(marker.expiresAt || 0) > now)
+      .filter(marker => marker && (!marker.restaurantId || marker.restaurantId === restaurantId) && String(marker.key || '').startsWith('id:') && Number(marker.expiresAt || 0) > now)
       .map(marker => ({
         key: String(marker.key || ''),
         shiftId: String(marker.shiftId || String(marker.key || '').replace(/^id:/, '')),
         restaurantId: String(marker.restaurantId || restaurantId || ''),
+        sourceShiftId: String(marker.sourceShiftId || marker.shiftId || String(marker.key || '').replace(/^id:/, '')),
+        sourceRevision: typeof marker.sourceRevision === "number" ? marker.sourceRevision : null,
+        sourceRecordTime: Number(marker.sourceRecordTime || 0),
         createdAt: Number(marker.createdAt || now),
         expiresAt: Number(marker.expiresAt || now + SHIFT_SAVED_DELETE_MARKER_TTL_MS),
-        persisted: true
+        persisted: true,
+        renderOnly: true
       }));
   } catch {
     return [];
@@ -669,11 +674,15 @@ const writeScheduleDeletedShiftMarkersToStorage = (restaurantId = '', markers = 
   if (typeof window === 'undefined') return;
   try {
     const idMarkers = (markers || [])
-      .filter(marker => marker && String(marker.key || '').startsWith('id:') && Number(marker.expiresAt || 0) > now)
+      .filter(marker => marker && (!marker.restaurantId || marker.restaurantId === restaurantId) && String(marker.key || '').startsWith('id:') && Number(marker.expiresAt || 0) > now)
       .map(marker => ({
         key: String(marker.key || ''),
         shiftId: String(marker.shiftId || String(marker.key || '').replace(/^id:/, '')),
         restaurantId: String(marker.restaurantId || restaurantId || ''),
+        sourceShiftId: String(marker.sourceShiftId || marker.shiftId || String(marker.key || '').replace(/^id:/, '')),
+        sourceRevision: typeof marker.sourceRevision === 'number' ? marker.sourceRevision : null,
+        sourceRecordTime: Number(marker.sourceRecordTime || 0),
+        renderOnly: true,
         createdAt: Number(marker.createdAt || now),
         expiresAt: Number(marker.expiresAt || now + SHIFT_SAVED_DELETE_MARKER_TTL_MS)
       }));
@@ -721,7 +730,7 @@ const buildLocalShiftDeletionMarkers = (shiftList = [], now = Date.now()) => {
         shiftId: isSavedId ? String(key).replace(/^id:/, '') : '',
         restaurantId: String(shift?.restaurantId || ''),
         createdAt: now,
-        sourceRecordTime: getShiftRecordTimeMs(shift),
+        ...deletionOverlayEvidence(shift),
         expiresAt: now + (isSavedId ? SHIFT_SAVED_DELETE_MARKER_TTL_MS : SHIFT_LOCAL_DELETE_MARKER_TTL_MS)
       };
     });
@@ -733,7 +742,7 @@ const mergeLocalShiftDeletionMarkers = (existing = [], incoming = []) => {
   [...(existing || []), ...(incoming || [])].forEach(marker => {
     if (!marker?.key) return;
     const prev = byKey.get(marker.key);
-    if (!prev || Number(marker.expiresAt || 0) > Number(prev.expiresAt || 0)) byKey.set(marker.key, marker);
+    if (preferDeletionOverlay(prev, marker)) byKey.set(marker.key, marker);
   });
   return Array.from(byKey.values());
 };
@@ -743,17 +752,13 @@ const scheduleShiftHasLocalDeleteKey = (shift = {}, key = '') => getScheduleShif
 const shiftMatchesLocalDeleteMarkers = (shift = {}, markerKeySet = new Set(), markerMap = null) => {
   if (!markerKeySet || markerKeySet.size === 0) return false;
   const id = String(shift?.id || '').trim();
-  if (id && markerKeySet.has(`id:${id}`)) return true;
+  if (id && markerKeySet.has(`id:${id}`)) return markerMap ? deletionOverlayMatches(shift, markerMap.get(`id:${id}`)) : true;
   const candidateKeys = getScheduleShiftLocalPruneKeys(shift);
   return candidateKeys.some(key => {
     if (!markerKeySet.has(key)) return false;
     const marker = markerMap?.get?.(key);
     if (!marker) return true;
-    const shiftTime = getShiftRecordTimeMs(shift);
-    const markerTime = Number(marker.createdAt || marker.sourceRecordTime || 0);
-    // Fingerprint tombstones hide old deleted copies but should not hide a brand-new shift
-    // re-added after the deletion was confirmed.
-    return !shiftTime || !markerTime || shiftTime <= markerTime;
+    return deletionOverlayMatches(shift, marker);
   });
 };
 
@@ -1879,7 +1884,6 @@ const [eventDate, setEventDate] = useState(getToday());
   const [localBuilderShiftEchoes, setLocalBuilderShiftEchoes] = useState([]);
   const [localBuilderDeletedShiftMarkers, setLocalBuilderDeletedShiftMarkers] = useState(() => readScheduleDeletedShiftMarkersFromStorage(appUser?.restaurantId));
   const [localBuilderPublishedShiftIds, setLocalBuilderPublishedShiftIds] = useState([]);
-  const localBuilderDeleteRetryRef = useRef({});
   const [isPublishPickerOpen, setIsPublishPickerOpen] = useState(false);
   const [selectedPublishWeekKeys, setSelectedPublishWeekKeys] = useState([]);
   const [publishAllRoles, setPublishAllRoles] = useState(true);
@@ -2007,10 +2011,16 @@ const [eventDate, setEventDate] = useState(getToday());
 
   useEffect(() => {
     if (!scheduleRestaurantId) return;
-    const storedMarkers = readScheduleDeletedShiftMarkersFromStorage(scheduleRestaurantId);
-    if (storedMarkers.length) {
-      setLocalBuilderDeletedShiftMarkers(prev => mergeLocalShiftDeletionMarkers(prev, storedMarkers));
-    }
+    const syncMarkers = () => setLocalBuilderDeletedShiftMarkers(prev => mergeLocalShiftDeletionMarkers(
+      prev.filter(marker => marker.restaurantId === scheduleRestaurantId),
+      readScheduleDeletedShiftMarkersFromStorage(scheduleRestaurantId)
+    ));
+    syncMarkers();
+    const onStorage = event => {
+      if (event.key === getScheduleDeletedShiftStorageKey(scheduleRestaurantId)) syncMarkers();
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
   }, [scheduleRestaurantId]);
 
   useEffect(() => {
@@ -2035,54 +2045,11 @@ const [eventDate, setEventDate] = useState(getToday());
     }));
   }, [shifts, localBuilderDeletedShiftMarkers.length]);
 
-  useEffect(() => {
-    if (!scheduleRestaurantId || !localBuilderDeletedShiftMarkers.length) return;
-    const now = Date.now();
-    const activeDeletedIds = new Set(localBuilderDeletedShiftMarkers
-      .filter(marker => String(marker?.key || '').startsWith('id:') && Number(marker?.expiresAt || 0) > now)
-      .map(marker => String(marker.shiftId || String(marker.key || '').replace(/^id:/, '')).trim())
-      .filter(Boolean));
-    if (!activeDeletedIds.size) return;
-    (shifts || []).forEach(shift => {
-      const id = String(shift?.id || '').trim();
-      if (!id || !activeDeletedIds.has(id)) return;
-      const shiftRestaurantId = String(shift?.restaurantId || shift?.workspaceId || scheduleRestaurantId || '');
-      if (shiftRestaurantId && shiftRestaurantId !== scheduleRestaurantId) return;
-      const lastRetryAt = Number(localBuilderDeleteRetryRef.current[id] || 0);
-      if (now - lastRetryAt < SHIFT_SAVED_DELETE_RETRY_MS) return;
-      localBuilderDeleteRetryRef.current[id] = now;
-      secureFetch('/api/schedule-shift-delete', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'delete-single',
-          restaurantId: scheduleRestaurantId,
-          shiftId: id,
-          dateKey: getShiftDateKey(shift),
-          expectedShift: {
-            date: getShiftDateKey(shift),
-            scheduleDateKey: getShiftDateKey(shift),
-            startTime: shift?.startTime || '',
-            endTime: shift?.endTime || '',
-            employeeId: shift?.employeeId || '',
-            userId: shift?.userId || '',
-            uid: shift?.uid || shift?.authUid || '',
-            employeeEmail: shift?.employeeEmail || shift?.userEmail || shift?.email || '',
-            employeeName: shift?.employeeName || shift?.userName || shift?.name || ''
-          }
-        })
-      }).then(async response => {
-        if (!response.ok) {
-          const payload = await response.json().catch(() => ({}));
-          throw new Error(payload?.error || `HTTP ${response.status}`);
-        }
-      }).catch(err => {
-        console.warn('[86chaos] Could not retry-delete schedule shift through the server boundary', id, err?.message || err);
-      });
-    });
-  }, [shifts, scheduleRestaurantId, localBuilderDeletedShiftMarkers]);
+  // Deletion overlays only hide stale cached copies. Authoritative operations
+  // already committed; snapshots and storage events must never enqueue writes.
 
-  const activeLocalDeleteMarkers = localBuilderDeletedShiftMarkers.filter(marker => Number(marker?.expiresAt || 0) > Date.now());
+
+  const activeLocalDeleteMarkers = localBuilderDeletedShiftMarkers.filter(marker => marker.restaurantId === scheduleRestaurantId && Number(marker?.expiresAt || 0) > Date.now());
   const activeLocalDeleteMarkerMap = new Map(activeLocalDeleteMarkers.map(marker => [marker.key, marker]).filter(([key]) => Boolean(key)));
   const activeLocalDeleteKeySet = new Set(activeLocalDeleteMarkers.map(marker => marker.key).filter(Boolean));
   const localBuilderPublishedShiftIdSet = new Set((localBuilderPublishedShiftIds || []).filter(Boolean));
@@ -2712,7 +2679,8 @@ const [eventDate, setEventDate] = useState(getToday());
       const result = await scheduleShiftDeleteRequest('delete-single', {
         shiftId: getShiftWritableDocId(shift),
         dateKey,
-        expectedShift
+        expectedShift,
+        expectedEvidence: workspaceEvidence(shift)
       });
       if (Number(result?.remainingCount || 0) > 0) {
         throw new Error(`${result.remainingCount} matching shift record${result.remainingCount === 1 ? '' : 's'} still remain. Refresh before publishing.`);

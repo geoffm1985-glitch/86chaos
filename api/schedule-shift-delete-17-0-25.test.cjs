@@ -103,6 +103,20 @@ async function call(handler, body) {
   return res;
 }
 
+test('legacy deletion refuses missing or obsolete intent after a newer restoration and accepts an explicit current review', async () => {
+  const {workspaceEvidence}=require('../src/core/scheduleWorkspace.shared.js');
+  const original={id:'sw_reviewed',restaurantId:'rest-a',date:'2026-10-10',employeeId:'u1',startTime:'10:00',endTime:'18:00',revision:2,updatedAt:'2026-10-15T12:00:00Z'};
+  const restored={...original,revision:6,updatedAt:'2026-10-15T14:00:00Z'};
+  const db=makeDb({sw_reviewed:restored}),loaded=loadHandler(db);
+  try{
+    const intent={action:'delete-single',restaurantId:'rest-a',shiftId:original.id};
+    const missing=await call(loaded.handler,intent);assert.equal(missing.statusCode,409);assert.equal(missing.body.code,'shift_review_required');
+    const stale=await call(loaded.handler,{...intent,expectedEvidence:workspaceEvidence(original)});assert.equal(stale.statusCode,409);assert.equal(stale.body.code,'shift_changed');
+    assert.equal(db.rows.get(original.id).revision,6);assert.equal(db.metrics.transactionCommits,0);
+    const reviewed=await call(loaded.handler,{...intent,expectedEvidence:workspaceEvidence(restored)});assert.equal(reviewed.statusCode,200);assert.equal(reviewed.body.deletedCount,1);assert.equal(db.rows.has(original.id),false);
+  }finally{loaded.restore();}
+});
+
 test('legacy month preview counts tenant aliases while unreviewed authenticated clears are refused', async () => {
   const db = makeDb({
     canonical: { restaurantId: 'rest-a', date: '2026-10-05', employeeId: 'u1', startTime: '10:00', endTime: '18:00' },

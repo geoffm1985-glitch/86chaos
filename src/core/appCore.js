@@ -1,3 +1,4 @@
+import { selectFirestoreTransport } from './firestorePlatformTransport';
 import React, { useState, useEffect } from 'react';
 import { appendOfflineQueueItem, classifyRuntimeIssue, normalizeOfflineQueue, readJsonFromStorage, recordLocalRuntimeEvent, writeJsonToStorage } from './maturityGuards';
 import { initializeApp } from 'firebase/app';
@@ -147,9 +148,10 @@ export const verifiedDeploymentBoundary = assertDeploymentBoundary({
   emulator: isFirebaseEmulatorTarget,
 });
 // Android WebView/proxy buffering must not leave the initial listen pending.
-export const db = Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android'
-  ? initializeFirestore(app, { experimentalForceLongPolling: true, experimentalAutoDetectLongPolling: false })
-  : getFirestore(app);
+const firestorePlatformSettings = selectFirestoreTransport({native:Capacitor.isNativePlatform(),platform:Capacitor.getPlatform(),userAgent:typeof navigator !== 'undefined'?navigator.userAgent:''});
+// WebKit explicitly selects the pinned SDK's XMLHttpRequest transport. Android
+// retains forced long polling. Keep server-read fallback and error callbacks intact.
+export const db = firestorePlatformSettings ? initializeFirestore(app, firestorePlatformSettings) : getFirestore(app);
 export const storage = getStorage(app);
 export const auth = getAuth(app);
 export const firebaseFunctions = getFunctions(app, env('REACT_APP_FIREBASE_FUNCTIONS_REGION', 'us-central1'));
@@ -479,7 +481,7 @@ export const MASTER_ADMIN_EMAIL = (process.env.REACT_APP_MASTER_ADMIN_EMAIL || '
 export const EVENT_TAGS = ['Standard Day', 'Packers Game', 'Brewers Game', 'Live Music', 'Severe Weather', 'Private Catering', 'Holiday'];
 
 // --- VERSION TRACKING ---
-export const CURRENT_VERSION = '19.0.10';
+export const CURRENT_VERSION = '19.0.11';
 
 // --- Helpers ---
 const usePageVisible = () => {

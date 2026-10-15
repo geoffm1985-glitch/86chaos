@@ -5,6 +5,7 @@ import { ScheduleWorkspace } from './ScheduleWorkspace';
 import { secureFetch, useLiveCollectionState } from '../../core/appCore';
 import { loadScheduleWeekVerified } from './scheduleWorkspaceData';
 import { authoredScheduleControlName } from '../../core/authoredControlName';
+import { deletionOverlayEvidence, deletionOverlayMatches } from '../../core/scheduleDeletionOverlay';
 jest.mock('../../core/appCore',()=>({secureFetch:jest.fn(),useLiveCollectionState:jest.fn()}));
 jest.mock('./scheduleWorkspaceData',()=>({loadScheduleWeekVerified:jest.fn()}));
 jest.mock('../../components/common',()=>({Modal:({isOpen,title,children,onClose})=>isOpen?<div role="dialog" aria-label={title}><h2>{title}</h2><button onClick={onClose}>Close dialog</button>{children}</div>:null}));
@@ -95,6 +96,36 @@ test('delete is secondary and confirmed; cancellation and draft recovery retain 
   expect(secureFetch).not.toHaveBeenCalled();expect(screen.queryByRole('dialog',{name:'Edit shift'})).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole('button',{name:'Confirm changes'}));await waitFor(()=>expect(secureFetch).toHaveBeenCalledTimes(1));
   await waitFor(()=>expect(screen.getByRole('button',{name:'Undo'})).toBeEnabled());expect(desktop().queryByRole('button',{name:/Edit shift .*Alex/})).not.toBeInTheDocument();await waitFor(()=>expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+});
+
+test('repeated deletion compensation survives stale parent snapshots and persisted display overlays without background writes',async()=>{
+  let revision=1,current=original;
+  let liveRows=[original];
+  useLiveCollectionState.mockImplementation(name=>({data:name==='shifts'?liveRows:empty,resolved:true,stale:false,error:null}));
+  secureFetch.mockImplementation(async(url,options)=>{
+    expect(url).toBe('/api/schedule-workspace');const body=JSON.parse(options.body),before=current;
+    revision++;current=body.changes?.[0]?.kind==='delete' || revision===4?null:{...original,revision,updatedAt:`2026-10-15T14:00:0${revision}Z`};
+    return response([{id:original.id,before,after:current}],`compensating_operation_${revision}`);
+  });
+  function Parent(){
+    const [state,setState]=React.useState({rows:[original],markers:[]});
+    const applied=result=>setState(previous=>{
+      const row=result.results[0];
+      const next=row.after?{...previous,rows:[row.after]}:{...previous,markers:[...previous.markers,JSON.parse(JSON.stringify(deletionOverlayEvidence(row.before)))]};
+      liveRows=next.rows;return next;
+    });
+    return <ScheduleWorkspace currentDate="2026-10-20" users={users} roles={roles} appUser={appUser} shifts={state.rows.filter(row=>!state.markers.some(marker=>deletionOverlayMatches(row,marker)))} onApplied={applied}/>;
+  }
+  render(<Parent/>);
+  fireEvent.click(desktop().getByRole('button',{name:/Edit shift .*Alex/}));fireEvent.click(screen.getByRole('button',{name:'Delete shift'}));fireEvent.click(screen.getByRole('button',{name:'Confirm changes'}));
+  await waitFor(()=>expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  for(const [index,name] of ['Undo','Redo','Undo'].entries()){
+    await waitFor(()=>expect(screen.getByRole('button',{name,exact:true})).toBeEnabled());fireEvent.click(screen.getByRole('button',{name,exact:true}));
+    await waitFor(()=>expect(secureFetch).toHaveBeenCalledTimes(index+2));
+  }
+  await waitFor(()=>expect(desktop().getByRole('button',{name:/Edit shift .*Alex/})).toBeInTheDocument());
+  expect(current.revision).toBe(5);expect(secureFetch).toHaveBeenCalledTimes(4);
+  jest.useFakeTimers();try{act(()=>jest.advanceTimersByTime(30000));expect(secureFetch).toHaveBeenCalledTimes(4);}finally{jest.useRealTimers();}
 });
 test('dragging previews reassignment and requires confirmation before saving',async()=>{
   setup();const card=document.querySelector('.sw-desktop-scroll [data-shift-id="shift_original"]');

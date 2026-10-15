@@ -4,6 +4,7 @@ const { initAdmin, authorize, requireAppCheckIfEnforced, writeAudit, clean } = r
 const { cancelPublishedRows } = require('./_shift-change-cancellation.cjs');
 const { getShiftDate } = require('./schedule-restore-utils');
 const { prepareScheduleClear, advanceScheduleClear } = require('./_schedule-clear-workspace.cjs');
+const { workspaceEvidence } = require('../src/core/scheduleWorkspace.shared.js');
 
 const MAX_BODY_BYTES = 512 * 1024;
 const TENANT_FIELDS = ['restaurantId', 'workspaceId', 'tenantId'];
@@ -204,6 +205,14 @@ async function deleteSingleLogicalShift(db, restaurantId, body = {}, options = n
     throw Object.assign(new Error('The requested shift is unavailable.'), { statusCode: 404, code: 'shift_unavailable' });
   }
   if (!target) target = expectedShiftFromBody(body, restaurantId);
+  // Older UI tombstones are not authorization to delete a restored/versioned
+  // scheduler record. Current clients submit the original immutable review.
+  if ((Number(target.revision || 0) > 0 || shiftId.startsWith('sw_')) && !body.expectedEvidence) {
+    throw Object.assign(new Error('Reload and review the current shift before deleting.'), { statusCode: 409, code: 'shift_review_required' });
+  }
+  if (body.expectedEvidence !== undefined && (typeof body.expectedEvidence !== 'string' || body.expectedEvidence !== workspaceEvidence(target))) {
+    throw Object.assign(new Error('The shift changed after your review. Reload before deleting.'), { statusCode: 409, code: 'shift_changed' });
+  }
   if (!shiftDateKey(target) || !timeKey(target.startTime) || !timeKey(target.endTime)) {
     throw Object.assign(new Error('The shift identity is incomplete. Refresh Schedule Builder and try again.'), { statusCode: 400, code: 'invalid_shift_identity' });
   }

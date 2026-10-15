@@ -5,6 +5,7 @@ const {getFirestore}=require('firebase-admin/firestore');
 const {editScheduleWorkspace,readScheduleWorkspace,readScheduleWeek}=require('../api/_schedule-workspace.cjs');
 const {prepareScheduleClear,advanceScheduleClear}=require('../api/_schedule-clear-workspace.cjs');
 const {assignRows}=require('../api/schedule-shift-assign')._test;
+const {deleteSingleLogicalShift}=require('../api/schedule-shift-delete')._test;
 const {workspaceEvidence}=require('../src/core/scheduleWorkspace.shared.js');
 test('actual isolated Firestore enforces edit concurrency, undo, publication evidence and legacy retry integrity',async()=>{
   assert.match(process.env.FIRESTORE_EMULATOR_HOST || '',/^127\.0\.0\.1:\d+$/);
@@ -25,6 +26,17 @@ test('actual isolated Firestore enforces edit concurrency, undo, publication evi
     const undone=await execute({operationId:'emulator_fresh_undo',undoOf:winner.operationId});assert.equal(undone.results[0].after.notes,'Original');
     const after=undone.results[0].after;await db.doc('shifts/'+row.id).update({isPublished:true,published:true,status:'published',scheduleId:'emulator_published'});
     const published={...after,isPublished:true,published:true};
+    const draft=await execute({operationId:'emulator_delete_race_create',changes:[{kind:'create',patch:{...patch,date:'2026-10-21',notes:'Latest reviewed draft'}}]});
+    const draftRow=draft.results[0];
+    const deleted=await execute({operationId:'emulator_delete_race_delete',changes:[{kind:'delete',id:draftRow.id,expected:workspaceEvidence(draftRow.after)}]});
+    const restore=await execute({operationId:'emulator_delete_race_undo',undoOf:deleted.operationId});
+    const redo=await execute({operationId:'emulator_delete_race_redo',undoOf:restore.operationId});
+    const secondUndo=await execute({operationId:'emulator_delete_race_second_undo',undoOf:redo.operationId});
+    await assert.rejects(deleteSingleLogicalShift(db,tenant,{shiftId:draftRow.id},{restaurantId:tenant,ctx}),error=>error.code==='shift_review_required');
+    await assert.rejects(deleteSingleLogicalShift(db,tenant,{shiftId:draftRow.id,expectedEvidence:workspaceEvidence(draftRow.after)},{restaurantId:tenant,ctx}),error=>error.code==='shift_changed');
+    const protectedDraft=(await db.doc('shifts/'+draftRow.id).get()).data();
+    assert.equal(protectedDraft.notes,'Latest reviewed draft');assert.equal(protectedDraft.revision,secondUndo.results[0].after.revision);
+    const explicitDelete=await deleteSingleLogicalShift(db,tenant,{shiftId:draftRow.id,expectedEvidence:workspaceEvidence(secondUndo.results[0].after)},{restaurantId:tenant,ctx});assert.equal(explicitDelete.deletedCount,1);
     const revised=await execute({operationId:'emulator_publish_edit',confirmedPublished:true,reason:'Manager reviewed new close',changes:[{kind:'update',id:row.id,expected:workspaceEvidence(published),patch:{endTime:'22:00'}}]});
     assert.equal(revised.events.length,1);const event=await db.doc('scheduleChangeEvents/'+revised.events[0].version).get();assert.equal(event.data().before.endTime,'21:00');assert.equal(event.data().after.endTime,'22:00');
     await assert.rejects(execute({operationId:'emulator_bad_overlap',changes:[{kind:'create',patch}]}),error=>error.findings?.some(row=>row.code==='overlap'));

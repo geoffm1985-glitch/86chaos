@@ -1,26 +1,28 @@
 {
-  "version": "19.0.10",
-  "name": "86 Chaos 19.0.10",
-  "build": "19.0.10",
-  "label": "86 Chaos 19.0.10",
-  "title": "86 Chaos 19.0.10",
-  "releasedAt": "2026-10-15T13:31:10.901Z",
-  "releaseTitle": "Schedule Builder reliable cross-browser validation",
-  "summary": "Bounded independent read recovery, explicit login hydration and complete cross-browser scheduling workflow validation.",
-  "description": "Testing Phase 1 repair candidate. Targeted/delta and native backend/device acceptance remain pending.",
+  "version": "19.0.11",
+  "name": "86 Chaos 19.0.11",
+  "build": "19.0.11",
+  "label": "86 Chaos 19.0.11",
+  "title": "86 Chaos 19.0.11",
+  "releasedAt": "2026-10-15T15:13:04.268Z",
+  "releaseTitle": "Phase 1 safe restoration and WebKit reload repair",
+  "summary": "Revision-aware display overlays protect repeated restoration; stale legacy deletion reviews are refused; WebKit uses verified XMLHttpRequest transport.",
+  "description": "Phase 1 testing candidate. Exact targeted/delta, native backend compatibility and device acceptance remain pending.",
   "notes": [
-    "Independent authoritative QA reads recover connection resets without automatic mutation retries.",
-    "Editing and confirmed deletion recovery have independent end-to-end coverage with preserved failure lineage.",
-    "Trusted native drag payload is checked at dragstart before platform serialization; actual preview and reassignment remain mandatory.",
-    "Testing web/API stays chaos-test-d1601; signed APK keeps production Firebase and retained signing."
+    "Removed destructive automatic legacy retries from display overlays.",
+    "Versioned legacy deletes require immutable reviewed revision evidence.",
+    "WebKit transport is isolated and verified against the installed Firebase SDK; runtime errors remain mandatory failures.",
+    "94 Node checks, 20 React tests and isolated real Firestore passed with shutdown.",
+    "Testing web/API stays chaos-test-d1601; signed APK stays cheers-34b8d.",
+    "Native scheduling API unavailable; production API deployment authorization pending. No Phase 3 authorization."
   ],
   "highlights": [
     "Strict source verification without output-triggered request stalls",
     "Actual linked-worktree Git identity protection"
   ],
   "changes": [
-    "19.0.10 Phase 1 repair candidate",
-    "All seven Phase 1 workflows must be discovered across both inventories and six browser projects.",
-    "No Phase 2, production deployment, GitHub Actions or full release gate has started."
+    "Delete/Undo/Redo/Undo preserves newer restorations and latest notes.",
+    "Persisted deletion markers are render-only, tenant-scoped and revision-aware.",
+    "Both functional inventories verify zero redundant delete requests and actual WebKit XHR across reload."
   ]
 }

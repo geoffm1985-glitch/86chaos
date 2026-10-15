@@ -77,7 +77,10 @@ async function createShift(page,ctx,dateOverride='') {
   if(!dateOverride){await revealDate(page,ctx,date);await expect(card(page,ctx,row.id)).toBeVisible();}return row;
 }
 async function verifyEditingRecovery({page}) {
-  const ctx=await openWorkspace(page);const errors=[];page.on('pageerror',error=>errors.push(error.message));
+  const errors=[],listenTypes=[];page.on('pageerror',error=>errors.push(error.message));
+  const observeListen=request=>{if(request.url().includes('/google.firestore.v1.Firestore/Listen/channel'))listenTypes.push(request.resourceType());};
+  page.on('request',observeListen);
+  const ctx=await openWorkspace(page);
     const row=await createShift(page,ctx);
     await card(page,ctx,row.id).getByRole('button',{name:/Edit shift/}).click();
     const editor=page.getByRole('dialog',{name:'Edit shift',exact:true});await expect(editor).toBeVisible();
@@ -90,9 +93,16 @@ async function verifyEditingRecovery({page}) {
     await expect(page.getByTestId('shift-editor-notes')).toHaveValue('Reviewed dinner extension');
     let mutations=0;const count=request=>{if(request.url().endsWith('/api/schedule-workspace') && !['read','read-week'].includes(JSON.parse(request.postData() || '{}').action))mutations++;};page.on('request',count);
     await page.getByTestId('shift-editor-save').click();await expect(page.getByRole('dialog')).toHaveCount(0);expect(mutations).toBe(0);page.off('request',count);
-    expect(errors).toEqual([]);
+    if(await page.evaluate(()=>/AppleWebKit\//.test(navigator.userAgent) && !/(?:Chrome|Chromium|Edg|OPR|SamsungBrowser)\//.test(navigator.userAgent))){
+      expect(listenTypes,'WebKit must exercise real Firestore XMLHttpRequest transport across reload').toContain('xhr');
+      expect(listenTypes).not.toContain('fetch');
+    }
+    page.off('request',observeListen);expect(errors).toEqual([]);
 }
 async function verifyDeletionRecovery({page}) {
+  let legacyDeletes=0;
+  const observeLegacy=request=>{if(request.url().endsWith('/api/schedule-shift-delete') && JSON.parse(request.postData() || '{}').action==='delete-single')legacyDeletes++;};
+  page.on('request',observeLegacy);
   const ctx=await openWorkspace(page),row=await createShift(page,ctx);
     await card(page,ctx,row.id).getByRole('button',{name:/Edit shift/}).click();
     await page.getByTestId('shift-editor-notes').fill('Reviewed dinner extension');
@@ -103,6 +113,9 @@ async function verifyDeletionRecovery({page}) {
     await mutate(page,ctx,()=>ctx.workspace.getByRole('button',{name:'Undo',exact:true}).click());expect((await authoritativeRows(page,ctx))[0].notes).toBe('Reviewed dinner extension');
     await mutate(page,ctx,()=>ctx.workspace.getByRole('button',{name:'Redo',exact:true}).click());expect((await authoritativeRows(page,ctx))[0].exists).toBe(false);
     await mutate(page,ctx,()=>ctx.workspace.getByRole('button',{name:'Undo',exact:true}).click());expect((await authoritativeRows(page,ctx))[0].notes).toBe('Reviewed dinner extension');
+    await expect(card(page,ctx,row.id)).toBeVisible();
+    expect(legacyDeletes,'Authoritative deletion overlays must never enqueue a second destructive API request').toBe(0);
+    page.off('request',observeLegacy);
 }
 async function verifyMoveCopy({page}) {
   const ctx=await openWorkspace(page);
