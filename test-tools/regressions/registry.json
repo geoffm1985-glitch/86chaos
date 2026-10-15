@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "release": "19.0.2",
+  "release": "19.0.3",
   "defects": [
     {
       "defectId": "RG-API-WRAPPER-FIDELITY",
@@ -788,6 +788,19 @@
       "fidelity": "ACTUAL ANDROID NATIVE SOURCE / ANDROID CHROMIUM / IPHONE WEBKIT / REAL DEVICE",
       "fixedVersion": "18.0.7",
       "mandatoryGroup": "native-mobile-foundation"
+    },
+    {
+      "defectId": "SCHEDULING-PHASE1-INTEGRITY",
+      "fixedVersion": "19.0.3",
+      "invariant": "Direct editing, reviewed movement and compensating recovery preserve authoritative revisions and immutable published history on every supported surface",
+      "tests": [
+        "api/schedule-workspace-19.test.cjs",
+        "src/features/scheduling/ScheduleWorkspace.test.jsx",
+        "test-tools/schedule-workspace-emulator.test.cjs",
+        "tests/e2e/schedule-builder-phase1-19.spec.cjs",
+        "tests/86chaos-release-gate/108-schedule-builder-phase1-19.spec.cjs"
+      ],
+      "mandatoryGroup": "scheduling-phase1"
     }
   ],
   "regressions": [

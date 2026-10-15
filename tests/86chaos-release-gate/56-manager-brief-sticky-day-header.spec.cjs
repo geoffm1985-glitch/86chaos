@@ -21,6 +21,7 @@ test.describe('56 Manager Brief runtime + sticky Schedule Builder day header', (
     requireCreds(account, 'owner-like account');
     await login(page, account.email, account.password);
     await gotoTab(page, 'schedule', { settleMs: 1400, maxText: 50000 });
+    await page.getByRole('button',{name:'Monthly & advanced tools',exact:true}).click();
 
     const deck = page.getByTestId('schedule-builder-control-deck').first();
     const sticky = page.getByTestId('schedule-builder-sticky-day-header').first();

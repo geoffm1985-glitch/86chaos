@@ -92,3 +92,9 @@ Required surfaces: Android APK, Android browser, iPhone browser, Windows Chrome/
 ## Additional capability audit
 
 The feature-key catalog is not exhaustive. Audit every route/subroute in App.js and feature components, enabled flags, API contracts and docs/feature-status.json, including Demo Mode, 86Voice, HR/training, Food Safety, events, labels, vendors/purchasing/receiving, calendar access, POS, backup/restore/forensics, preferences and native services. Expand this matrix with distinct workflows and evidence during the phases. Do not equate route presence with functional coverage.
+
+## Phase 1 Schedule Builder evidence
+
+Shared rules: src/core/scheduleWorkspace.shared.js. Server authority and recovery: api/_schedule-workspace.cjs and api/_schedule-clear-workspace.cjs. Weekly/mobile rendering: src/features/scheduling/. Roles remain schedule-authorized managers/owners and server-verified tenant administrators; wages are excluded from endpoint responses. Browser, touch and keyboard workflows share these rules and authoritative endpoints. Both Playwright and release-gate wrappers contain actual create/edit/reassign/copy/undo/delete/restore/retry/layout workflows across six browser projects; execution is pending. Development component and real emulator transaction checks passed on an earlier working-tree snapshot; exact candidate acceptance remains pending.
+
+Android packaging must use testing source, production Firebase and retained signing. Native transport mock exercises the actual Capacitor request/response adapter; production destinations currently lack the new scheduling endpoint (404 probes). This is an unresolved backend compatibility limitation, not certified APK parity. Native iOS build and physical-device acceptance remain pending.

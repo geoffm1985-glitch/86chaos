@@ -129,7 +129,7 @@ const MAIN_PROJECTS = ['chromium', 'mobile-chromium'];
 const PWA_PROJECTS = ['edge-pwa', 'firefox-pwa', 'webkit-pwa', 'mobile-webkit-pwa'];
 function projectsForSpec(rel) {
   const normalized = normalizeRel(rel);
-  if (/86chaos-release-gate\/(26-pwa-icon-source-deployed-parity|27-pwa-browser-icon-matrix)\.spec\.cjs$/.test(normalized)) return [...MAIN_PROJECTS, ...PWA_PROJECTS];
+  if (/86chaos-release-gate\/(26-pwa-icon-source-deployed-parity|27-pwa-browser-icon-matrix)\.spec\.cjs$/.test(normalized) || /schedule-builder-phase1-19\.spec\.cjs$/.test(normalized)) return [...MAIN_PROJECTS, ...PWA_PROJECTS];
   if (/21-runtime-code-coverage\.spec\.cjs|runtime-code-coverage/i.test(normalized)) return ['chromium'];
   return MAIN_PROJECTS;
 }

@@ -115,17 +115,35 @@ async function assignRows(db, restaurantId, assignments = [], actorId = '', oper
     throw Object.assign(new Error(`A maximum of ${MAX_ASSIGNMENTS} shifts can be assigned at once.`), { statusCode: 400, code: 'too_many_assignments' });
   }
   const nowIso = new Date().toISOString();
-  const safeOperationId = clean(operationId || `assign-${nowIso}`);
+  const safeOperationId = clean(operationId);
+  if (!safeOperationId || safeOperationId.length>200) throw Object.assign(new Error('A durable assignment operation identity is required.'),{statusCode:400,code:'operation_required'});
   const rows = assignments.map(input => sanitizeAssignment(input, restaurantId, actorId, nowIso));
-  const batch = db.batch();
-  const created = rows.map((row, index) => {
-    const id = deterministicShiftId(safeOperationId, row, index);
-    const ref = db.collection('shifts').doc(id);
-    batch.set(ref, row, { merge: false });
-    return { id, ...row };
+  const intent = crypto.createHash('sha256').update(JSON.stringify(rows.map(({createdAt,updatedAt,...row})=>row))).digest('hex');
+  const receiptId=crypto.createHash('sha256').update(JSON.stringify([restaurantId,safeOperationId])).digest('hex');
+  const receiptRef=db.collection('scheduleAssignmentOperations').doc(receiptId);
+  return db.runTransaction(async tx=>{
+    const receipt=await tx.get(receiptRef);
+    if(receipt.exists && (receipt.data().intent!==intent || receipt.data().actorId!==actorId))throw Object.assign(new Error('This assignment operation identity was already used for a different request.'),{statusCode:409,code:'operation_reused'});
+    const candidates=[];
+    for(let index=0;index<rows.length;index++){
+      const row=rows[index],id=deterministicShiftId(safeOperationId,row,index),ref=db.collection('shifts').doc(id),snapshot=await tx.get(ref);
+      if(snapshot.exists && (snapshot.data().restaurantId!==restaurantId || (snapshot.data().workspaceId && snapshot.data().workspaceId!==restaurantId)))throw Object.assign(new Error('The assignment identity belongs to another workspace.'),{statusCode:409,code:'shift_workspace_changed'});
+      candidates.push({row,id,ref,snapshot});
+    }
+    const created=[];let written=0;
+    for(const {row,id,ref,snapshot} of candidates){
+      if(snapshot.exists){
+        const current=snapshot.data();
+        const safeFields=[...IDENTITY_FIELDS,...OPTIONAL_FIELDS,'date','scheduleDateKey','scheduleMonth','restaurantId','workspaceId','revision','startTime','endTime','isPublished','published','publishState','status','publishStatus','scheduleId','createdAt','updatedAt','createdBy','updatedBy'];
+        created.push({id,...Object.fromEntries(safeFields.filter(field=>current[field]!==undefined).map(field=>[field,current[field]]))});
+      } else if(!receipt.exists){tx.create(ref,{...row,assignmentOperationId:safeOperationId,assignmentIntentDigest:intent});created.push({id,...row});written++;}
+    }
+    if(!receipt.exists){
+      tx.create(receiptRef,{restaurantId,actorId,intent,shiftIds:candidates.map(row=>row.id),createdAt:nowIso});
+      tx.create(db.collection('auditLogs').doc(),{restaurantId,userId:actorId,action:'SCHEDULE_SHIFT_ASSIGN',target:receiptRef.path,timestamp:nowIso,details:{operationId:safeOperationId,shiftIds:candidates.map(row=>row.id),written}});
+    }
+    return {createdCount:created.length,created,duplicate:receipt.exists || written===0,writtenCount:written};
   });
-  await batch.commit();
-  return { createdCount: created.length, created };
 }
 
 module.exports = async function handler(req, res) {
@@ -145,7 +163,6 @@ module.exports = async function handler(req, res) {
     const db = ctx.db || app.firestore();
     const actorId = clean(ctx.uid || ctx.user?.uid || ctx.email || 'schedule-builder-server');
     const result = await assignRows(db, restaurantId, body.assignments, actorId, body.operationId);
-    await writeAudit(db, ctx, 'SCHEDULE_SHIFT_ASSIGN', `shifts/${clean(body.operationId || 'assignment')}`, `Assigned ${result.createdCount} schedule shift(s).`, restaurantId);
     return res.status(200).json({ ok: true, ...result });
   } catch (error) {
     const status = Number(error?.statusCode || 500);

@@ -17,7 +17,7 @@ const REPORT_PATH = getCleanupReportPath(RUN_ID);
 const GHOST_TARGET_AUTH_PATH = path.join(RELEASE_RUN_DIR, 'ghost-target-auth.json');
 const QA_RESTAURANT_NAME = resolveQaWorkspaceName(process.env, RUN_ID);
 const COLLECTIONS = [
-  'restaurantAdminAlerts', 'eventReminders', 'personalReminders', 'scheduleCoverageTargets',
+  'roles', 'restaurantAdminAlerts', 'eventReminders', 'personalReminders', 'scheduleCoverageTargets',
   'scheduleTemplates', 'availabilityRecords', 'shiftSwaps', 'timePunches', 'timeOffRequests',
   'shifts', 'events', 'financialExpenses', 'sales', 'maintenanceLogs', 'pmSchedules', 'tasks',
   'hrOnboardingTasks', 'prepItems', 'menuDependencies', 'recipes', 'inventoryItems', 'vendors', 'users', 'workspaceMembers'

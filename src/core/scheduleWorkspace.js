@@ -1,0 +1,2 @@
+import './scheduleWorkspace.shared.js';
+export const { editableFields, workspaceDate, shiftDateBy, workspaceWeek, workspaceMinutes, workspaceInterval, workspaceAliases, workspaceSamePerson, workspaceActive, workspaceEditable, workspaceStamp, workspaceEvidence, workspaceSnapshotReady, workspaceMergeSnapshots, workspaceAvailability, validateWorkspaceShift } = globalThis.__86ChaosScheduleWorkspaceShared;

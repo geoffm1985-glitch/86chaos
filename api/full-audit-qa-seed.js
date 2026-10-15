@@ -11,7 +11,7 @@ const ALLOWED_COLLECTIONS = new Set([
   'users', 'vendors', 'inventoryItems', 'recipes', 'menuDependencies', 'shifts', 'timeOffRequests',
   'events', 'timePunches', 'prepItems', 'tasks', 'maintenanceLogs', 'pmSchedules', 'sales',
   'financialExpenses', 'restaurantAdminAlerts', 'personalReminders', 'availabilityRecords',
-  'scheduleTemplates', 'scheduleCoverageTargets', 'hrOnboardingTasks', 'workspaceMembers'
+  'scheduleTemplates', 'scheduleCoverageTargets', 'hrOnboardingTasks', 'workspaceMembers', 'roles'
 ]);
 
 function safeId(value = '', max = 240) {

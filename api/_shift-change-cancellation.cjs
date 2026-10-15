@@ -35,7 +35,7 @@ async function cancelPublishedRows({db,rows,restaurantId,ctx,app}) {
         const previous=head.exists?head.data():null;
         if(previous||current.isPublished===true){
           const before=previous?.after||materialShift(current);
-          const event=recordPublication({db,tx,head:previous||{after:before},tenant:restaurantId,shiftId:row.id,shift:{date:before.date,scheduleDateKey:before.date,startTime:before.startTime,endTime:before.endTime,rosterRoleId:before.roleId,rosterRoleNameSnapshot:before.role,location:before.location,authUid:before.authUid,accountUserId:before.authUid,employeeId:before.employeeId,scheduleUserId:before.employeeId,employeeName:before.employeeName,cancelled:true},operationId:`withdraw_${previous?.version||row.id}`,actor:ctx.uid,at:new Date().toISOString()});
+          const event=recordPublication({db,tx,head:previous?{...previous,after:{...materialShift(current),...previous.after}}:{after:before},tenant:restaurantId,shiftId:row.id,shift:{...current,date:before.date,scheduleDateKey:before.date,startTime:before.startTime,endTime:before.endTime,rosterRoleId:before.roleId,rosterRoleNameSnapshot:before.role,location:before.location,authUid:before.authUid,accountUserId:before.authUid,employeeId:before.employeeId,scheduleUserId:before.employeeId,employeeName:before.employeeName,cancelled:true},operationId:`withdraw_${previous?.version||row.id}`,actor:ctx.uid,at:new Date().toISOString()});
           if(event)events.push(event);
         }
         tx.delete(ref);count++;

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "release": "19.0.2",
+  "release": "19.0.3",
   "baseline": {
     "branch": "testing",
     "version": "17.0.42",
@@ -59,14 +59,14 @@
       "minSdk": 24,
       "compileSdk": 36,
       "targetSdk": 36,
-      "versionCode": 190002,
-      "versionName": "19.0.2"
+      "versionCode": 190003,
+      "versionName": "19.0.3"
     },
     "ios": {
       "bundleIdentifier": "com.chiltonappworks.chaos86",
       "minimumVersion": "15.0",
-      "currentProjectVersion": 190002,
-      "marketingVersion": "19.0.2",
+      "currentProjectVersion": 190003,
+      "marketingVersion": "19.0.3",
       "packageManager": "SPM"
     }
   },
@@ -110,7 +110,8 @@
         "/api/shift4-test",
         "/api/shift4-sync",
         "/api/shift4-records",
-        "/api/shift4-export"
+        "/api/shift4-export",
+        "/api/schedule-workspace"
       ],
       "firebaseProjectId": "cheers-34b8d"
     }
@@ -172,5 +173,10 @@
     "commit": "f9e20e876b11de41ea8f1037fa4117f7ab9bf5a5",
     "originalTestingCommit": "cc153755c074bda8c0e7d4e3d4642c0248d4f8cb",
     "method": "fast-forward"
+  },
+  "androidSigning": {
+    "certificateSha256": "3b8bbff2d6aa23946e6a0f54dfe1c37e54c58a78c086c96f502c7cf80c3ad633",
+    "retainedIdentity": "86 Chaos Mobile Preview",
+    "sourceBranch": "testing"
   }
 }

@@ -7,6 +7,7 @@ test.describe('57 Schedule Builder direct-touch sticky header handoff', () => {
     const account=ownerLikeCreds(); requireCreds(account,'owner-like account');
     await login(page,account.email,account.password);
     await gotoTab(page,'schedule',{ settleMs:1400,maxText:50000 });
+    await page.getByRole('button',{name:'Monthly & advanced tools',exact:true}).click();
     const deck=page.getByTestId('schedule-builder-control-deck').first();
     const header=page.getByTestId('schedule-builder-sticky-day-header').first();
     const headerScroll=page.getByTestId('schedule-builder-header-scroll').first();

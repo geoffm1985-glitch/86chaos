@@ -3,6 +3,7 @@
 const { initAdmin, authorize, requireAppCheckIfEnforced, writeAudit, clean } = require('./_chaos-admin');
 const { cancelPublishedRows } = require('./_shift-change-cancellation.cjs');
 const { getShiftDate } = require('./schedule-restore-utils');
+const { prepareScheduleClear, advanceScheduleClear } = require('./_schedule-clear-workspace.cjs');
 
 const MAX_BODY_BYTES = 512 * 1024;
 const TENANT_FIELDS = ['restaurantId', 'workspaceId', 'tenantId'];
@@ -226,7 +227,7 @@ module.exports = async function handler(req, res) {
     const action = clean(body.action || '');
     const restaurantId = clean(body.restaurantId || '');
     if (!restaurantId) return res.status(400).json({ ok: false, code: 'restaurant_required', error: 'Restaurant workspace is required.' });
-    if (!['preview-month', 'clear-month', 'delete-single'].includes(action)) return res.status(400).json({ ok: false, code: 'invalid_action', error: 'Unsupported schedule delete action.' });
+    if (!['preview-month', 'review-month', 'clear-month', 'restore-cleared-month', 'delete-single'].includes(action)) return res.status(400).json({ ok: false, code: 'invalid_action', error: 'Unsupported schedule delete action.' });
 
     const app = initAdmin(req);
     const authorizeSchedule = () => authorize(req, app, { allowTenantAdmin: true, targetRestaurantId: restaurantId, requiredPermissions: ['schedule'] });
@@ -244,18 +245,17 @@ module.exports = async function handler(req, res) {
       return res.status(200).json({ ok: true, action, month, count: preview.count });
     }
 
+    if (action === 'review-month') {
+      const month=clean(body.month).slice(0,7);
+      if(!/^\d{4}-(0[1-9]|1[0-2])$/.test(month))return res.status(400).json({ok:false,code:'invalid_month',error:'A valid schedule month is required.'});
+      const preview=await previewMonth(db,restaurantId,month);
+      return res.status(200).json(await prepareScheduleClear({db,ctx,restaurantId,month,rows:preview.rows}));
+    }
+    if(action==='clear-month' || action==='restore-cleared-month')return res.status(200).json(await advanceScheduleClear({db,ctx,body}));
+
     // Authorization and App Check were just verified for this request. Re-running
     // the same workspace authorization immediately before the write only adds a
     // second network round-trip without strengthening the tenant boundary.
-    if (action === 'clear-month') {
-      const month = clean(body.month).slice(0, 7);
-      if (!/^\d{4}-\d{2}$/.test(month)) return res.status(400).json({ ok: false, code: 'invalid_month', error: 'A valid schedule month is required.' });
-      const result = await clearMonth(db, restaurantId, month, {restaurantId,ctx,app:ctx.app || app});
-      if (result.remainingCount) return res.status(409).json({ ok: false, action, month, ...result, code: 'schedule_clear_incomplete', error: `${result.remainingCount} shift record(s) still remain in ${month}.` });
-      await writeAudit(db, ctx, 'SCHEDULE_CLEAR_MONTH', `shifts/${month}`, `Deleted ${result.deletedCount} schedule shift record(s) from ${month}.`, restaurantId);
-      return res.status(200).json({ ok: true, action, month, ...result });
-    }
-
     const result = await deleteSingleLogicalShift(db, restaurantId, body, {restaurantId,ctx,app:ctx.app || app});
     if (result.remainingCount) return res.status(409).json({ ok: false, action, ...result, code: 'schedule_shift_delete_incomplete', error: `${result.remainingCount} matching shift record(s) still remain.` });
     await writeAudit(db, ctx, 'SCHEDULE_SHIFT_DELETE', `shifts/${clean(body.shiftId || body.docId || 'logical')}`, `Deleted ${result.deletedCount} matching schedule shift record(s).`, restaurantId);

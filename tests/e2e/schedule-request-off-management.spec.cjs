@@ -74,10 +74,7 @@ async function openSchedule(page, seed = {}, fixtureDateOverride = '') {
 async function openWarnings(page) {
   const warningsControl = page.getByTestId('schedule-copilot-warnings-tab');
   if (!await warningsControl.isVisible().catch(() => false)) {
-    const openCopilot = page.getByRole('button', { name: /^Open Copilot Tools$/i }).first();
-    await expect(openCopilot, 'Schedule Copilot should already be open or expose Open Copilot Tools').toBeVisible({ timeout: 10000 });
-    await openCopilot.click();
-    await page.waitForTimeout(400);
+    await page.getByRole('button',{name:'Smart Schedule',exact:true}).click();
   }
   await expect(warningsControl, 'Warnings tool control should use the current accessible tab/button name').toBeVisible({ timeout: 10000 });
   await warningsControl.click();

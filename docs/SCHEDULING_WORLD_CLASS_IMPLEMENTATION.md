@@ -32,10 +32,26 @@ Geoff authorizes automatic Phase 1 advancement after baseline acceptance. Comple
 
 | Phase | Candidate | Status |
 |---|---|---|
-| 1 — Schedule Builder | Next sequential patch | Not started; baseline must pass |
+| 1 — Schedule Builder | 19.0.3 planned | In progress; 19.0.2 baseline accepted |
 | 2 — Smart Schedule | Next sequential patch | Not started |
 | 3 — Restaurant intelligence | Next sequential patch | Not started |
 | 4 — Employee experience | Next sequential patch | Not started |
 | 5 — Publishing/reliability/parity | Next sequential patch | Not started |
 
 Runtime evidence is retained outside sealed source. Entries identify actual tested commits and run IDs when available; pending work is not a pass.
+
+### Baseline acceptance — 19.0.2
+
+Accepted 2026-10-14 after exact commit 31e5a67d38c676b3425b79be0dda64023199f6a2 / source hash c1e61d8f301e1a5fa0cbab14d4803a8c76c3a0e161b1c90c10be4221236fdbd5 passed sealed checks (44/44, zero skips), canonical current-release prerequisites, local targeted baseline-targeted-local-20261014-224045 (34/34), deployed targeted baseline-targeted-deployed-20261014-223630 (34/34), and canonical delta 2026-10-14T22-52-33 (16/16, all promotion identities selected). Both targeted runs and delta passed server-verified QA cleanup without leftovers. Actual inventory: 759 declarations, including 16 unique promotion identities. Vercel dpl_9JbhJYJVkahroWZdKYDpF2TWR6GJ is READY; testing.86chaos.com client/API identities match and actual server Firebase boundary is chaos-test-d1601. Zero GitHub Actions runs for the commit. External acceptance proof: baseline-19.0.2-acceptance.json. Physical-device acceptance remains pending; no APK or full release gate was executed.
+
+### Phase 1 implementation candidate — 19.0.3 planned
+
+Weekly desktop and mobile calendars, direct shift editing, move/copy previews, multiple selection, keyboard alternatives, role/station/employee/publication filters, draft recovery and transactional Undo/Redo are implemented in the working tree. Existing monthly tools, Schedule Copilot, publishing, request-off and all application modules are retained. The shared editing service checks canonical identities, current revisions, overlaps, approved leave, availability evidence, verified station competencies, overnight times and DST. Published edits create immutable compensating events. Reviewed month clearing freezes IDs, uses resumable bounded chunks and retains authorized restoration receipts; newer edits and later-created shifts are protected. Assignment retries cannot overwrite later publication.
+
+Development preflight phase1-component-20261015-005515 passed 54 Node checks, 11 component checks and one extensive real Firestore scenario with emulator cleanup. Source changed afterward: current-candidate preflight, deployed targeted and delta acceptance remain pending. Both browser and release-gate wrappers now declare five functional workflows across Chromium, Android Chromium, Edge, Firefox, WebKit and iPhone WebKit (60 discovery identities); execution remains pending. No full gate has run.
+
+Geoff changed the delivery order: build the signed APK from testing before candidate targeted/delta tests, and provide its GitHub release-page link immediately after package verification/upload, with pending acceptance disclosed. The retained signing key matches certificate SHA-256 3b8bbff2d6aa23946e6a0f54dfe1c37e54c58a78c086c96f502c7cf80c3ad633. Existing Android SDK and Gradle cache are available under the separate Documents/86chaos checkout cache; application source development remains exclusively in Documents/GitHub/86chaos on testing.
+
+Native backend dependency: non-mutating GET probes on both authorized production destinations returned 404 for /api/schedule-workspace. APK Firebase and native API destinations remain production; the testing website/API remains chaos-test-d1601. A compiled APK is not evidence of a working production-backed scheduling API. No production deployment is authorized or performed. Physical Android and Apple acceptance remain pending. Stop before Phase 2.
+
+Phase 1 local preflight phase1-component-20261015-011205: 56 Node checks, 12 React component checks and the extensive real Firestore scenario passed with emulator shutdown. Discovery verified all 60 Phase 1 browser identities without running the full gate. Candidate advanced to 19.0.3; source is sealed for APK packaging before candidate targeted/delta execution. Deployment and browser acceptance remain pending.

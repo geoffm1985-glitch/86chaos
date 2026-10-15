@@ -7,6 +7,7 @@ test.describe('54 emergency Schedule + Request Off regression coverage', () => {
     requireCreds(account, 'owner-like account');
     await login(page, account.email, account.password);
     await gotoTab(page, 'schedule', { settleMs: 1400, maxText: 50000 });
+    await page.getByRole('button',{name:'Monthly & advanced tools',exact:true}).click();
 
     const sticky = page.getByTestId('schedule-builder-sticky-day-header').first();
     const headerScroll = page.getByTestId('schedule-builder-header-scroll').first();
@@ -80,6 +81,7 @@ test.describe('54 emergency Schedule + Request Off regression coverage', () => {
     requireCreds(account, 'owner-like account');
     await login(page, account.email, account.password);
     await gotoTab(page, 'schedule', { settleMs: 1000, maxText: 50000 });
+    await page.getByRole('button',{name:'Monthly & advanced tools',exact:true}).click();
 
     const requestOffTab = page.getByTestId('schedule-request-off-tab');
     await expect(requestOffTab, 'Request Off must be reachable from Time Clock & Schedule').toBeVisible({ timeout: 12000 });

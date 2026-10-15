@@ -13,17 +13,19 @@ test('17.0.24 Clear Month control and destructive confirmation remain present af
   assert.match(schedule, /Delete ALL saved shifts from \$\{monthLabel\}/);
   assert.match(schedule, /This includes draft and published shifts/);
   assert.match(schedule, /Events and time-off requests will NOT be deleted/);
-  assert.match(schedule, /This cannot be undone/);
+  assert.match(schedule, /Restore cleared shifts will be available/);
+  assert.doesNotMatch(schedule, /This cannot be undone/);
 });
 
 test('17.0.24 Clear Month now delegates canonical and legacy tenant cleanup to the authenticated server boundary', () => {
   const schedule = read('src/features/schedule.jsx');
   const route = read('api/schedule-shift-delete.js');
   assert.match(route, /action === 'preview-month'/);
-  assert.match(schedule, /scheduleShiftDeleteRequest\('clear-month'/);
+  assert.match(schedule, /restore-cleared-month':'clear-month'/);
   assert.match(route, /TENANT_FIELDS = \['restaurantId', 'workspaceId', 'tenantId'\]/);
   assert.match(route, /shiftBelongsToMonth/);
-  assert.match(route, /clearMonth\(db, restaurantId, month, \{restaurantId,ctx,app:ctx\.app \|\| app\}\)/);
+  assert.match(route, /prepareScheduleClear\(\{db,ctx,restaurantId,month,rows:preview.rows\}\)/);
+  assert.match(route, /advanceScheduleClear\(\{db,ctx,body\}\)/);
 });
 
 test('17.0.24 Clear Month still verifies deletion and refuses to silently accept remaining shift records', () => {
@@ -31,10 +33,10 @@ test('17.0.24 Clear Month still verifies deletion and refuses to silently accept
   const route = read('api/schedule-shift-delete.js');
   assert.match(route, /successful Firestore batch commit is authoritative/);
   assert.match(route, /return \{ initialCount, deletedCount, remainingCount: 0 \}/);
-  assert.match(route, /schedule_clear_incomplete/);
-  assert.match(schedule, /saved shift record\$\{result\.remainingCount === 1 \? '' : 's'\} still remain/);
-  assert.match(schedule, /setLocalBuilderShiftEchoes\(prev => prev\.filter\(shift => !shiftBelongsToScheduleMonth/);
-  assert.match(schedule, /setAutoFillVisibleShifts\(prev => prev\.filter\(shift => !shiftBelongsToScheduleMonth/);
+  assert.match(schedule, /if\(!result\?\.done\)throw new Error/);
+  assert.match(schedule, /Completed chunks retain recovery receipts/);
+  assert.match(schedule, /applyReviewedMonthResult\(result\)/);
+  assert.match(schedule, /previous\.filter\(row=>!affected\.has\(getShiftWritableDocId\(row\)\)\)/);
 });
 
 test('17.0.24 Clear Month remains inside existing Schedule Builder authority and does not create a client permission bypass', () => {

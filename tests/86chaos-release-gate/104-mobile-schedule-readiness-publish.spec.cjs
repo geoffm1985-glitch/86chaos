@@ -32,12 +32,10 @@ test('Schedule Tools verifies all sources and publishes selected weeks without t
   try{
     const account=ownerLikeCreds();requireCreds(account);await login(page,account.email,account.password);
     await gotoTab(page,'schedule',{force:true,settleMs:0});await dismissBlockingDialogs(page,{maxPasses:4});
-    const tools=page.getByRole('button',{name:'Open Copilot Tools',exact:true});
-    if(!await page.getByTestId('schedule-builder-assign').isVisible())await page.getByRole('button',{name:/^Schedule Builder$/i}).first().click();
-    await expect(page.getByTestId('schedule-builder-assign')).toBeVisible();
-    await tools.click();
+    if(!await page.getByTestId('schedule-workspace').isVisible())await page.getByRole('button',{name:/^Schedule Builder$/i}).first().click();
+    await page.getByRole('button',{name:'Smart Schedule',exact:true}).click();
     await expect(page.getByRole('heading',{name:'Templates, coverage gaps, warnings, and publish review'})).toBeVisible();
-    const review=page.getByRole('button',{name:/Review.*Publish/i});
+    const review=page.locator('.schedule-copilot-compact').getByRole('button',{name:/Review.*Publish/i});
     await expect(review).toBeEnabled({timeout:35000});
     await expect(page.getByRole('status').filter({hasText:'Schedule check incomplete'})).toHaveCount(0);
     await review.click();

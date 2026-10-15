@@ -1,4 +1,5 @@
 import { ShiftChangeReview } from '../components/ShiftChangeReview';
+import { ScheduleWorkspace } from './scheduling/ScheduleWorkspace';
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { Bell, Check, Camera, ChevronLeft, ChevronRight, MessageSquare, Plus, Trash2, Users, Calendar, Clock, X, Loader2, Package, ClipboardList, Menu, Settings, LogOut, Shield, Send, Repeat, Edit, Moon, Sun, TrendingUp, BookOpen, Search, ChefHat, Scale, Coffee, Star, Bug, Wrench, Globe } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
@@ -1572,7 +1573,7 @@ const handleOfferSwap = async (shift) => {
 
       {subTab === 'schedule-builder' && scheduleBuilderProps && (
         <div className="animate-[slideIn_0.2s_ease-out]">
-          <TabScheduleWorkbench {...scheduleBuilderProps} availabilityRecords={availabilityRecords} availabilityDataState={{ ...availabilityRecordsState, count: availabilityRecords.length, limit: availabilityLimit, workspaceId: appUser?.restaurantId || '' }} />
+          <TabScheduleWorkbench {...scheduleBuilderProps} setCurrentDate={setCurrentDate} availabilityRecords={availabilityRecords} availabilityDataState={{ ...availabilityRecordsState, count: availabilityRecords.length, limit: availabilityLimit, workspaceId: appUser?.restaurantId || '' }} />
         </div>
       )}
 
@@ -1807,7 +1808,7 @@ const handleOfferSwap = async (shift) => {
   );
 };
 
-const TabSchedule = ({ currentDate, users: rawUsers, shifts: rawShifts, events: rawEvents, timeOffRequests: rawTimeOffRequests, timePunches = [], addToast, appUser, clientData = null, initialSubTab = 'schedule', hideSubTabs = false, availabilityRecords: rawAvailabilityRecords = [], schedulePeriodContext = null, reviewPublishRequest = 0 }) => {
+const TabSchedule = ({ currentDate, setCurrentDate = null, users: rawUsers, shifts: rawShifts, events: rawEvents, timeOffRequests: rawTimeOffRequests, timePunches = [], addToast, appUser, clientData = null, initialSubTab = 'schedule', hideSubTabs = false, availabilityRecords: rawAvailabilityRecords = [], scheduleDataState = null, onSmartSchedule = null, schedulePeriodContext = null, reviewPublishRequest = 0 }) => {
   const { t, locale, formatMonth: i18nMonth } = useI18n();
   const users = safeScheduleBuilderRecords(rawUsers);
   const shifts = safeScheduleBuilderRecords(rawShifts);
@@ -1815,6 +1816,8 @@ const TabSchedule = ({ currentDate, users: rawUsers, shifts: rawShifts, events: 
   const timeOffRequests = safeRequestOffRows(rawTimeOffRequests).map(normalizeRequestOffRuntimeRow).filter(Boolean);
   const availabilityRecords = safeScheduleBuilderRecords(rawAvailabilityRecords);
   const [subTab, setSubTab] = useState(initialSubTab); 
+  const [legacyBuilderView,setLegacyBuilderView] = useState(false);
+  const scheduleWorkspaceRef = useRef(null);
   const [selectedEmp, setSelectedEmp] = useState(''); 
   const [assignDates, setAssignDates] = useState([]); 
   const [isAssigningShift, setIsAssigningShift] = useState(false); 
@@ -1869,6 +1872,10 @@ const [eventDate, setEventDate] = useState(getToday());
   const [autoPopSourceMonth, setAutoPopSourceMonth] = useState('');
   const [autoFillVisibleShifts, setAutoFillVisibleShifts] = useState([]);
   const [isClearingScheduleMonth, setIsClearingScheduleMonth] = useState(false);
+  const monthRecoveryKey=`86chaos:month-recovery:${appUser?.restaurantId}:${appUser?.authUid || appUser?.uid || appUser?.id}`;
+  const [monthRecovery,setMonthRecovery]=useState(()=>{try{return JSON.parse(sessionStorage.getItem(monthRecoveryKey));}catch(_){return null;}});
+  useEffect(()=>{try{setMonthRecovery(JSON.parse(sessionStorage.getItem(monthRecoveryKey)));}catch(_){setMonthRecovery(null);}},[monthRecoveryKey]);
+  const rememberMonthRecovery=value=>{setMonthRecovery(value);try{sessionStorage.setItem(monthRecoveryKey,JSON.stringify(value));}catch(_){}};
   const [localBuilderShiftEchoes, setLocalBuilderShiftEchoes] = useState([]);
   const [localBuilderDeletedShiftMarkers, setLocalBuilderDeletedShiftMarkers] = useState(() => readScheduleDeletedShiftMarkersFromStorage(appUser?.restaurantId));
   const [localBuilderPublishedShiftIds, setLocalBuilderPublishedShiftIds] = useState([]);
@@ -2617,40 +2624,55 @@ const [eventDate, setEventDate] = useState(getToday());
     autoFillVisibleShifts.filter(shift => !isDeletedScheduleShift(shift))
   ).filter(shift => shiftBelongsToScheduleMonth(shift, targetMonth));
 
+  const applyReviewedMonthResult=result=>{
+    const restored=(result.results || []).filter(row=>row.after),deleted=(result.results || []).filter(row=>!row.after).map(row=>row.before).filter(Boolean);
+    const affected=new Set((result.results || []).map(row=>row.id));
+    setLocalBuilderShiftEchoes(previous=>[...previous.filter(row=>!affected.has(getShiftWritableDocId(row))),...restored.map(row=>row.after)]);
+    setAutoFillVisibleShifts(previous=>previous.filter(row=>!affected.has(getShiftWritableDocId(row))));
+    const restoredKeys=new Set(buildLocalShiftDeletionMarkers(restored.map(row=>row.after)).map(marker=>marker.key));
+    setLocalBuilderDeletedShiftMarkers(previous=>mergeLocalShiftDeletionMarkers(previous.filter(marker=>!restoredKeys.has(marker.key)),buildLocalShiftDeletionMarkers(deleted)));
+  };
+  const runReviewedMonth=async(recovery,restore=false)=>{
+    setIsClearingScheduleMonth(true);
+    rememberMonthRecovery(recovery);
+    try {
+      let result;
+      for(let step=0;step<51;step++){
+        result=await scheduleShiftDeleteRequest(restore?'restore-cleared-month':'clear-month',{reviewId:recovery.reviewId,confirmed:true,reason:restore?recovery.restoreReason:recovery.reason});
+        applyReviewedMonthResult(result);
+        recovery={...recovery,status:result.status,deletedCount:result.deletedCount,restoredCount:result.restoredCount};rememberMonthRecovery(recovery);
+        if(result.done)break;
+      }
+      if(!result?.done)throw new Error('This reviewed operation is incomplete. Resume it to confirm the remaining chunks.');
+      setAssignDates([]);
+      addToast(restore?'Reviewed Shifts Restored':'Reviewed Shifts Cleared',`${restore?result.restoredCount:result.deletedCount} reviewed shift records ${restore?'restored':'removed'}. ${restore?'Newer edits are protected.':'New shifts outside the review were preserved. Restore cleared shifts remains available.'}`);
+    } catch(error) {
+      addToast('Month Operation Incomplete',`${error.message} Completed chunks retain recovery receipts. Resume to verify an interrupted outcome; restore cannot overwrite newer changes.`);
+    } finally {setIsClearingScheduleMonth(false);}
+  };
+  const handleRestoreClearedMonth=async()=>{
+    if(isClearingScheduleMonth || !monthRecovery)return;
+    if(!window.confirm(`Restore the reviewed shifts from ${i18nMonth(monthRecovery.month)}? Newer changes will be protected and published changes will be audited.`))return;
+    const restoreReason=monthRecovery.restoreReason || window.prompt('Reason for restoring these reviewed shifts:','Manager reviewed month restoration');
+    if(!restoreReason || restoreReason.trim().length<4)return;
+    await runReviewedMonth({...monthRecovery,restoreReason},true);
+  };
   const handleClearScheduleMonth = async () => {
     if (isClearingScheduleMonth) return;
+    if(monthRecovery && ['review','clearing','restoring'].includes(monthRecovery.status))return addToast('Reviewed Operation Pending','Resume or restore the pending month operation before starting another clear.');
     if (isPublishingSchedule) return addToast('Publishing in Progress', 'Wait for schedule publishing to finish before clearing a month.');
     if (isAssigningShift) return addToast('Assignment in Progress', 'Wait for the current shift assignment to finish before clearing a month.');
     const targetMonth = monthStr;
     const monthLabel = i18nMonth(targetMonth);
-    const markerSource = visibleScheduleBuilderMonthShifts(targetMonth);
-    const visibleCount = markerSource.length;
-    const confirmed = window.confirm(
-      `Delete ALL saved shifts from ${monthLabel}?${visibleCount ? ` ${visibleCount} shift${visibleCount === 1 ? '' : 's'} ${visibleCount === 1 ? 'is' : 'are'} currently shown.` : ''} This includes draft and published shifts. Events and time-off requests will NOT be deleted. This cannot be undone.`
-    );
-    if (!confirmed) return;
-
-    const optimisticOperationId = `clear-month-${targetMonth}-${Date.now()}`;
-    const optimisticMarkers = buildLocalShiftDeletionMarkers(markerSource).map(marker => ({ ...marker, optimisticOperationId }));
-    if (optimisticMarkers.length) setLocalBuilderDeletedShiftMarkers(prev => mergeLocalShiftDeletionMarkers(prev, optimisticMarkers));
     setIsClearingScheduleMonth(true);
     try {
-      const result = await scheduleShiftDeleteRequest('clear-month', { month: targetMonth });
-      if (Number(result?.remainingCount || 0) > 0) {
-        throw new Error(`${result.remainingCount} saved shift record${result.remainingCount === 1 ? '' : 's'} still remain in ${monthLabel}. Refresh before making more schedule changes.`);
-      }
-
-      const deletedIdSet = new Set(markerSource.map(getShiftWritableDocId).filter(Boolean));
-      setLocalBuilderShiftEchoes(prev => prev.filter(shift => !shiftBelongsToScheduleMonth(shift, targetMonth)));
-      setAutoFillVisibleShifts(prev => prev.filter(shift => !shiftBelongsToScheduleMonth(shift, targetMonth)));
-      setLocalBuilderPublishedShiftIds(prev => (prev || []).filter(id => !deletedIdSet.has(id)));
-      setAssignDates([]);
-      const deletedCount = Number(result?.deletedCount || visibleCount);
-      addToast('Month Cleared', `${deletedCount} saved shift record${deletedCount === 1 ? '' : 's'} removed from ${monthLabel}. Events and time-off requests were left unchanged.`);
+      const review=await scheduleShiftDeleteRequest('review-month',{month:targetMonth});
+      if(!review.count)return addToast('No Saved Shifts',`No saved shifts were found in ${monthLabel}.`);
+      if(!window.confirm(`Delete ALL saved shifts from ${monthLabel} included in this verified review (${review.count} shifts)? This includes draft and published shifts (${review.publishedCount} published). Events and time-off requests will NOT be deleted. New shifts added afterward are preserved. Restore cleared shifts will be available.`))return;
+      const reason=window.prompt('Reason for this reviewed month clear:','Manager reviewed schedule month clear');
+      if(!reason || reason.trim().length<4)return;
+      await runReviewedMonth({reviewId:review.reviewId,month:targetMonth,reason,status:'review'});
     } catch (err) {
-      if (optimisticMarkers.length) {
-        setLocalBuilderDeletedShiftMarkers(prev => prev.filter(marker => marker?.optimisticOperationId !== optimisticOperationId));
-      }
       addToast('Clear Month Failed', err?.message || `Could not clear ${i18nMonth(targetMonth)}.`);
     } finally {
       setIsClearingScheduleMonth(false);
@@ -2831,10 +2853,10 @@ const [eventDate, setEventDate] = useState(getToday());
         const assignedIdKeys = new Set(savedShiftEchoes.map(shift => getShiftWritableDocId(shift)).filter(Boolean).map(id => `id:${id}`));
         setLocalBuilderDeletedShiftMarkers(prev => prev.filter(marker => !assignedPruneKeys.has(marker?.key) && !assignedIdKeys.has(marker?.key)));
         setLocalBuilderShiftEchoes(prev => mergeVisibleScheduleShifts(prev, savedShiftEchoes));
-        recordScheduleOperationDiagnostic('totalScheduleDocumentsWritten', savedShiftEchoes.length);
+        recordScheduleOperationDiagnostic('totalScheduleDocumentsWritten', Number(result.writtenCount ?? savedShiftEchoes.length));
       }
       setAssignDates([]);
-      addToast('Assigned', `Added ${savedShiftEchoes.length} shift${savedShiftEchoes.length === 1 ? '' : 's'} for ${emp.name || 'selected staff'}.`);
+      addToast(result.duplicate?'Already Confirmed':'Assigned', result.duplicate?'The original assignment is confirmed. Current shift records were retained.':`Added ${savedShiftEchoes.length} shift${savedShiftEchoes.length === 1 ? '' : 's'} for ${emp.name || 'selected staff'}.`);
     } catch (err) {
       addToast('Assignment Failed', err?.message || 'Could not assign the selected shift. Refresh Schedule Builder and try again.');
     } finally {
@@ -4394,6 +4416,9 @@ const handleExportTimesheets = () => {
       )}
 
       {subTab === 'schedule' && (
+        <>
+        <ScheduleWorkspace key={`schedule-workspace-${appUser?.restaurantId}-${appUser?.authUid || appUser?.uid || appUser?.id}`} ref={scheduleWorkspaceRef} currentDate={currentDate} users={users} shifts={visibleShifts} timeOffRequests={timeOffRequests} availabilityRecords={availabilityRecords} events={events} roles={publishSelectableRoles} appUser={{...appUser,systemSettings:mergeWorkspaceSettings(appUser,clientData)}} sourceState={scheduleDataState?.shifts} onNavigate={setCurrentDate} onPublish={()=>openPublishPicker('schedule-tools')} onSmartSchedule={onSmartSchedule} legacyView={legacyBuilderView} onLegacyView={setLegacyBuilderView} onApplied={result=>{const restored=(result.results || []).filter(row=>row.after);const restoredIds=new Set(restored.map(row=>row.id));const deleted=(result.results || []).filter(row=>!row.after).map(row=>row.before).filter(Boolean);setLocalBuilderShiftEchoes(previous=>[...previous.filter(row=>!restoredIds.has(getShiftWritableDocId(row)) && !deleted.some(item=>getShiftWritableDocId(item)===getShiftWritableDocId(row))),...restored.map(row=>row.after)]);const restoredMarkerKeys=new Set(buildLocalShiftDeletionMarkers(restored.map(row=>row.after)).map(marker=>marker.key));setLocalBuilderDeletedShiftMarkers(previous=>mergeLocalShiftDeletionMarkers(previous.filter(marker=>!restoredMarkerKeys.has(marker.key)),buildLocalShiftDeletionMarkers(deleted)));}}/>
+        {legacyBuilderView && (
         <div className="schedule-builder-workbench space-y-3 animate-[slideIn_0.2s_ease-out]">
           
           <div className={`schedule-builder-publish-strip ${T.card} p-1.5 border-[#D4A381]/30 flex flex-col sm:flex-row sm:items-center justify-between gap-2`}>
@@ -4477,6 +4502,7 @@ const handleExportTimesheets = () => {
                 {isClearingScheduleMonth ? <Loader2 size={16} className="mr-1 animate-spin"/> : <Trash2 size={16} className="mr-1"/>}
                 {isClearingScheduleMonth ? t('builder.clearing') : t('builder.clearMonth')}
               </button>
+              {monthRecovery && <><button type="button" disabled={isClearingScheduleMonth || monthRecovery.status==='restored'} onClick={handleRestoreClearedMonth} className={`schedule-builder-action-button ${T.btnAlt} min-h-[44px] px-2`}>Restore cleared shifts</button>{['review','clearing','restoring'].includes(monthRecovery.status) && <button type="button" disabled={isClearingScheduleMonth} onClick={()=>runReviewedMonth(monthRecovery,monthRecovery.status==='restoring')} className={`schedule-builder-action-button ${T.btnAlt} min-h-[44px] px-2`}>Resume reviewed month operation</button>}</>}
               <button onClick={() => openPublishPicker('builder')} disabled={isClearingScheduleMonth} className={`schedule-builder-action-button flex-1 lg:flex-none ${T.btnAlt} py-1.5 h-9 flex items-center justify-center font-black disabled:opacity-50`}>{t('builder.publish')}</button>
               <button onClick={openNewEventModal} className={`schedule-builder-action-button flex-1 lg:flex-none ${T.btnAlt} border-[#D4A381] text-[#D4A381] py-1.5 h-9 flex items-center justify-center font-black`}><Plus size={16} className="mr-1"/> Event</button>
             </div>
@@ -4574,12 +4600,12 @@ const handleExportTimesheets = () => {
                                   <button 
                                     key={shift.id || `${d}-${u.id}-${shift.startTime}-${shift.endTime}`}
                                     type="button"
-                                    onClick={(event) => handleDeleteSpecificShift(event, shift, u, d)}
-                                    aria-label={`Delete shift ${timeStatus.displayRange} for ${u.name || u.email || 'employee'} on ${d}`}
-                                    data-chaos-control-kind="destructive-mutation"
-                                    data-chaos-workflow-id="schedule-delete-shift"
+                                    onClick={(event) => {event.preventDefault();event.stopPropagation();scheduleWorkspaceRef.current?.openShift({...shift,id:getShiftWritableDocId(shift)},u,d);}}
+                                    aria-label={`Edit shift ${timeStatus.displayRange} for ${u.name || u.email || 'employee'} on ${d}`}
+                                    data-chaos-control-kind="local-editor"
+                                    data-chaos-workflow-id="schedule-edit-shift"
                                     className={`schedule-builder-time-chip w-full rounded font-bold text-[7px] sm:text-[8px] py-0.5 text-center ${invalidTimeRange ? 'bg-amber-950/70 text-amber-200 border border-amber-400/90 shadow-[0_0_8px_rgba(245,158,11,0.35)]' : getRoleColors(shift.role, isBuilderShiftPublished(shift))} ${shiftConflict ? 'border-2 border-red-500 animate-pulse shadow-[0_0_8px_rgba(239,68,68,0.8)]' : ''}`} 
-                                    title={`${timeStatus.displayRange} ${shiftConflict ? '(CONFLICT DETECTED)' : ''}${invalidTimeRange ? ` (INVALID TIME RANGE - NOT COUNTED: ${timeStatus.reason})` : ''} Tap to delete only this shift.`}
+                                    title={`${timeStatus.displayRange} ${shiftConflict ? '(CONFLICT DETECTED)' : ''}${invalidTimeRange ? ` (INVALID TIME RANGE - NOT COUNTED: ${timeStatus.reason})` : ''} Tap to edit this shift.`}
                                   >
                                     {invalidTimeRange ? <><span className="block">INVALID TIME</span><span className="block text-[6px] leading-none">{timeStatus.displayRange}</span></> : `${formatShortTime(shift.startTime)}-${formatShortTime(shift.endTime)}`}
                                   </button>
@@ -4644,6 +4670,8 @@ const handleExportTimesheets = () => {
             </div>
           </div>
         </div>
+        )}
+        </>
       )}
 
 {/* --- THE NEW EVENTS LEDGER SUB-TAB --- */}
@@ -5820,13 +5848,15 @@ const TabTimeOff = ({ timeOffRequests, appUser, users, addToast, events = [], sh
   );
 };
 
-const TabScheduleWorkbench = ({ currentDate, users, shifts, events, timeOffRequests, timePunches, addToast, appUser, clientData = null, availabilityRecords = [], availabilityDataState = null, scheduleDataState = null }) => {
+const TabScheduleWorkbench = ({ currentDate, setCurrentDate = null, users, shifts, events, timeOffRequests, timePunches, addToast, appUser, clientData = null, availabilityRecords = [], availabilityDataState = null, scheduleDataState = null }) => {
   const [reviewPublishRequest, setReviewPublishRequest] = useState(0);
+  const [smartScheduleRequest,setSmartScheduleRequest] = useState(0);
   const schedulePeriodContext = getSchedulePeriodContext(currentDate, appUser, clientData);
   const scheduleToolsPeriod = schedulePeriodContext.period;
   return (
     <div className="space-y-5">
-      <ScheduleCopilot
+      <div hidden={smartScheduleRequest===0}><ScheduleCopilot
+        openRequest={smartScheduleRequest}
         period={scheduleToolsPeriod}
         periodLabel={schedulePeriodContext.label}
         users={users}
@@ -5838,8 +5868,8 @@ const TabScheduleWorkbench = ({ currentDate, users, shifts, events, timeOffReque
         addToast={addToast}
         appUser={appUser}
         onReviewPublish={() => setReviewPublishRequest(value => value + 1)}
-      />
-      <TabSchedule currentDate={currentDate} users={users} shifts={shifts} events={events} timeOffRequests={timeOffRequests} timePunches={timePunches} addToast={addToast} appUser={appUser} clientData={clientData} availabilityRecords={availabilityRecords} schedulePeriodContext={schedulePeriodContext} reviewPublishRequest={reviewPublishRequest} />
+      /></div>
+      <TabSchedule currentDate={currentDate} setCurrentDate={setCurrentDate} users={users} shifts={shifts} events={events} timeOffRequests={timeOffRequests} timePunches={timePunches} addToast={addToast} appUser={appUser} clientData={clientData} availabilityRecords={availabilityRecords} scheduleDataState={scheduleDataState} onSmartSchedule={()=>setSmartScheduleRequest(value=>value+1)} schedulePeriodContext={schedulePeriodContext} reviewPublishRequest={reviewPublishRequest} />
     </div>
   );
 };
@@ -5870,9 +5900,10 @@ const ScheduleWarningCard = ({ warning, appUser }) => {
   </div>;
 };
 
-const ScheduleCopilot = ({ period, periodLabel = '', users = [], shifts = [], timeOffRequests = [], availabilityRecords = [], availabilityDataState = null, scheduleDataState = null, addToast, appUser, onReviewPublish = null }) => {
+const ScheduleCopilot = ({ period, periodLabel = '', users = [], shifts = [], timeOffRequests = [], availabilityRecords = [], availabilityDataState = null, scheduleDataState = null, addToast, appUser, onReviewPublish = null, openRequest = 0 }) => {
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
+  useEffect(()=>{if(openRequest>0)setOpen(true);},[openRequest]);
   const copilotReadEnabled = Boolean(open && appUser?.restaurantId);
   const demandHistoryState = useDemandHistory(appUser,getToday(),copilotReadEnabled);
   const [forecastBusy, setForecastBusy] = useState(false);

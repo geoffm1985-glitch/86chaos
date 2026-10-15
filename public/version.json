@@ -1,24 +1,25 @@
 {
-  "version": "19.0.2",
-  "name": "86 Chaos 19.0.2",
-  "build": "19.0.2",
-  "label": "86 Chaos 19.0.2",
-  "title": "86 Chaos 19.0.2",
-  "releasedAt": "2026-10-15T03:24:26.255Z",
-  "releaseTitle": "Complete mobile source promoted to testing",
-  "summary": "The complete mobile application is the testing foundation with guarded Firebase isolation and universal platform parity requirements.",
-  "description": "Testing candidate. Scheduling phases and final certification are pending.",
+  "version": "19.0.3",
+  "name": "86 Chaos 19.0.3",
+  "build": "19.0.3",
+  "label": "86 Chaos 19.0.3",
+  "title": "86 Chaos 19.0.3",
+  "releasedAt": "2026-10-15T06:15:09.404Z",
+  "releaseTitle": "Schedule Builder Phase 1 preview",
+  "summary": "Weekly and mobile shift editing with reviewed movement and safe action recovery.",
+  "description": "Testing candidate; targeted/delta, production-backed native API compatibility and physical-device acceptance remain pending.",
   "notes": [
-    "Complete current mobile source retained.",
-    "Testing web/API uses chaos-test-d1601; APK production configuration remains protected.",
-    "No GitHub Actions or production deployment authorized."
+    "Complete mobile foundation and existing application features retained.",
+    "Testing website/API remains chaos-test-d1601. APK remains production Firebase with retained signing.",
+    "APK is provided before targeted/delta acceptance at Geoff request. No production website deployment or full gate."
   ],
   "highlights": [
     "Strict source verification without output-triggered request stalls",
     "Actual linked-worktree Git identity protection"
   ],
   "changes": [
-    "Testing candidate 19.0.2",
-    "Baseline targeted/delta validation required before Phase 1."
+    "Default weekly and mobile Schedule Builder with tap-to-edit.",
+    "Reviewed movement/copying, keyboard alternatives and transactional Undo/Redo.",
+    "Resumable reviewed month clear and restoration protect newer work."
   ]
 }

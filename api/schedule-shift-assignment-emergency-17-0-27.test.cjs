@@ -7,21 +7,19 @@ const path = require('node:path');
 function makeDb() {
   const rows = new Map();
   const metrics = { commits: 0, sets: 0 };
+  const receipts = new Map();let autoId=0;
   return {
     rows,
     metrics,
     collection(name) {
-      if (name !== 'shifts') throw new Error(`Unexpected collection ${name}`);
       return {
-        doc(id) { return { id, path: `shifts/${id}` }; }
+        doc(id) { return { id:id || `auto_${++autoId}`, path: `${name}/${id || `auto_${autoId}`}`,name }; }
       };
     },
-    batch() {
+    async runTransaction(callback) {
       const writes = [];
-      return {
-        set(ref, data) { metrics.sets += 1; writes.push([ref.id, JSON.parse(JSON.stringify(data))]); },
-        async commit() { metrics.commits += 1; for (const [id, data] of writes) rows.set(id, data); }
-      };
+      const tx={get:async ref=>{const store=ref.name==='shifts'?rows:receipts;const key=ref.name==='shifts'?ref.id:ref.path;return{exists:store.has(key),data:()=>store.get(key)};},create(ref,data){metrics.sets++;writes.push([ref,JSON.parse(JSON.stringify(data))]);}};
+      const result=await callback(tx);if(writes.length){metrics.commits++;for(const [ref,data] of writes)(ref.name==='shifts'?rows:receipts).set(ref.name==='shifts'?ref.id:ref.path,data);}return result;
     }
   };
 }
@@ -149,6 +147,19 @@ test('17.0.27 assignment server requires actual Schedule Builder authority', asy
     assert.equal(result.body.code, 'schedule_permission_required');
     assert.equal(db.rows.size, 0);
   } finally { loaded.restore(); }
+});
+
+test('assignment replay preserves a later published edit and altered operation intent is refused',async()=>{
+  const db=makeDb(),loaded=loadHandler(db);
+  try {
+    const body={restaurantId:'rest-a',operationId:'replay-protection',assignments:[assignment]};
+    const first=await call(loaded.handler,body),id=first.body.created[0].id;
+    db.rows.set(id,{...db.rows.get(id),isPublished:true,revision:9,startTime:'11:00',notes:'Newer manager work'});
+    const sets=db.metrics.sets,second=await call(loaded.handler,body);
+    assert.equal(second.statusCode,200);assert.equal(second.body.duplicate,true);assert.equal(second.body.created[0].isPublished,true);assert.equal(db.metrics.sets,sets);assert.equal(db.rows.get(id).notes,'Newer manager work');
+    const changed=await call(loaded.handler,{...body,assignments:[{...assignment,startTime:'12:00'}]});
+    assert.equal(changed.statusCode,409);assert.equal(changed.body.code,'operation_reused');assert.equal(db.rows.size,1);
+  }finally{loaded.restore();}
 });
 
 test('17.0.27 Schedule Builder assignment uses the authenticated server boundary, reports failure, and clears stale delete tombstones for re-added shifts', () => {

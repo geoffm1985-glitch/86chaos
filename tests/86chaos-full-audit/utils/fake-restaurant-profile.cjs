@@ -173,11 +173,13 @@ function buildFakeRestaurantProfile({ restaurantId = '', runId = '', anchorDate 
     // Tuesday has two distinct seeded bartenders at 10a-4p; target 1 gives a deterministic over-coverage warning.
     { restaurantId, dayIndex: 2, role: 'Bartender', startTime: '10a', endTime: '4p', count: 1, ...tag },
   ];
+  const roleNames=[...new Set([...users.map(user=>user.role),...shifts.map(shift=>shift.role),...scheduleCoverageTargets.map(target=>target.role),'Owner','Manager','Kitchen','Line Cook'].filter(Boolean))].sort();
+  const roles=roleNames.map(name=>({restaurantId,name,revision:1,archived:false,...tag}));
 
   return {
     restaurant: { restaurantId, name: QA_WORKSPACE_NAME, timezone: 'America/Chicago', type: 'Bar & Grill', scheduleStyle: 'biweekly', payrollWeekStart: 'Monday', timeOffPolicy: { enabled: false, cutoffDaysBeforeRelease: 10, monthlyReleaseDay: 25, nonMonthlyReleaseLeadDays: 7, blackouts: [] }, systemSettings: { overtime: 40, enableTargets: true, targetLaborPct: 23 }, ...tag },
     collections: {
-      users, vendors, inventoryItems, recipes, hrOnboardingTasks, menuDependencies, shifts, timeOffRequests, events, timePunches, prepItems, tasks, maintenanceLogs, pmSchedules, sales, financialExpenses, restaurantAdminAlerts, personalReminders: reminders, availabilityRecords, scheduleTemplates, scheduleCoverageTargets,
+      users, vendors, inventoryItems, recipes, hrOnboardingTasks, menuDependencies, shifts, timeOffRequests, events, timePunches, prepItems, tasks, maintenanceLogs, pmSchedules, sales, financialExpenses, restaurantAdminAlerts, personalReminders: reminders, availabilityRecords, scheduleTemplates, scheduleCoverageTargets, roles,
     },
     expectations: {
       fixture,

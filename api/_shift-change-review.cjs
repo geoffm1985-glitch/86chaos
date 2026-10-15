@@ -10,7 +10,10 @@ function materialShift(shift = {}) {
     endTime: clean(shift.endTime || shift.end), roleId: clean(shift.rosterRoleId),
     role: clean(shift.rosterRoleNameSnapshot || shift.role), location: clean(shift.location || shift.station),
     authUid: clean(shift.authUid || shift.accountUserId), employeeId: clean(shift.scheduleUserId || shift.employeeId),
-    employeeName: clean(shift.employeeName || shift.assignedName), cancelled: Boolean(shift.cancelled || shift.deleted || shift.isDeleted || shift.status === 'deleted')
+    employeeName: clean(shift.employeeName || shift.assignedName), cancelled: Boolean(shift.cancelled || shift.deleted || shift.isDeleted || shift.status === 'deleted'),
+    notes: clean(shift.notes || shift.shiftNotes), breakMinutes: Number(shift.breakMinutes || 0), paidBreak: shift.paidBreak === true,
+    isOpenShift: shift.isOpenShift === true || shift.openShift === true, shiftType: clean(shift.shiftType || 'regular'),
+    endsNextDay: shift.endsNextDay === true || shift.isOvernight === true || shift.overnight === true || shift.crossesMidnight === true
   };
 }
 function headRef(db, tenant, shiftId) { return db.collection('scheduleChangeHeads').doc(hash([tenant, shiftId])); }
@@ -19,7 +22,7 @@ function manager(ctx) { return Boolean(ctx.isSuperAdmin || ctx.user?.isAdmin || 
 // Called inside the fenced publish transaction. All heads must be read before
 // this function writes; client shift fields never provide acknowledgment proof.
 function recordPublication({ db, tx, head, tenant, shiftId, shift, operationId, actor, at }) {
-  const after = materialShift(shift), before = head?.after || null;
+  const after = materialShift(shift), before = head?.after ? {notes:'',breakMinutes:0,paidBreak:false,isOpenShift:false,shiftType:'regular',endsNextDay:false,...head.after} : null;
   const fields = changedFields(before, after);
   if (!fields.length) return null;
   const version = hash([tenant, shiftId, operationId, after]);

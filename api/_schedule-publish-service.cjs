@@ -119,11 +119,14 @@ function resolveEmployeeForPublishShift(shift,people=[]) {
   const fallback=buildShiftIdentityFallback(shift);
   return fallback?{ok:true,person:fallback,source:'shift-identity-fallback',legacy:true,originalReason:resolved.reason}:resolved;
 }
-async function loadRosterPeople(db, restaurantId) {
+async function loadRosterPeople(db, restaurantId, options = {}) {
+  const get = options.get || (reference => reference.get());
+  const bounded = reference => options.limit ? reference.limit(options.limit) : reference;
   const [users,members]=await Promise.all([
-    db.collection('users').where('restaurantId','==',restaurantId).get(),
-    db.collection('workspaceMembers').where('restaurantId','==',restaurantId).get()
+    get(bounded(db.collection('users').where('restaurantId','==',restaurantId))),
+    get(bounded(db.collection('workspaceMembers').where('restaurantId','==',restaurantId)))
   ]);
+  if (options.limit && [users,members].some(snapshot=>snapshot.docs.length >= options.limit)) throw Object.assign(new Error('Roster coverage exceeds the safe edit limit; narrow the workspace before changing shifts.'),{statusCode:409,code:'incomplete_roster'});
   const userRows=users.docs.map(doc=>({id:doc.id,...doc.data(),_source:'user'}));
   const memberRows=members.docs.map(doc=>({id:doc.id,...doc.data(),_source:'workspaceMember'}));
   const claimedUsers=new Set(),people=[];

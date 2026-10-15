@@ -103,7 +103,7 @@ async function call(handler, body) {
   return res;
 }
 
-test('17.0.25 Clear Month counts and removes restaurantId, workspaceId, and tenantId legacy shifts only in the requested month', async () => {
+test('legacy month preview counts tenant aliases while unreviewed authenticated clears are refused', async () => {
   const db = makeDb({
     canonical: { restaurantId: 'rest-a', date: '2026-10-05', employeeId: 'u1', startTime: '10:00', endTime: '18:00' },
     legacyWorkspace: { workspaceId: 'rest-a', scheduleDateKey: '2026-10-06', userId: 'u2', startTime: '11:00', endTime: '19:00' },
@@ -120,18 +120,14 @@ test('17.0.25 Clear Month counts and removes restaurantId, workspaceId, and tena
     assert.equal(db.rows.size, 6, 'preview must not mutate');
 
     const cleared = await call(loaded.handler, { action: 'clear-month', restaurantId: 'rest-a', month: '2026-10' });
-    assert.equal(cleared.statusCode, 200);
-    assert.equal(cleared.body.ok, true);
-    assert.equal(cleared.body.deletedCount, 4);
-    assert.equal(cleared.body.remainingCount, 0);
-    assert.equal(db.metrics.queryGets, 6, 'preview uses three parallel tenant alias queries and clear performs one additional tenant scan only');
-    assert.equal(db.metrics.batchCommits, 0, 'authenticated deletion must use the cancellation transaction');
-    assert.equal(db.metrics.transactionCommits, 1);
-    assert.equal(db.metrics.transactionReads, 8, 'recheck each shift and publication head before deleting');
-    assert.equal(db.rows.has('canonical'), false);
-    assert.equal(db.rows.has('legacyWorkspace'), false);
-    assert.equal(db.rows.has('legacyTenant'), false);
-    assert.equal(db.rows.has('contradictoryLegacyAlias'), false);
+    assert.equal(cleared.statusCode, 400);
+    assert.equal(cleared.body.ok, false);assert.equal(cleared.body.code,'review_required');
+    assert.equal(db.metrics.queryGets, 3, 'refusing an unreviewed clear does not rescan or mutate');
+    assert.equal(db.metrics.batchCommits, 0);assert.equal(db.metrics.transactionCommits, 0);
+    assert.equal(db.rows.has('canonical'), true);
+    assert.equal(db.rows.has('legacyWorkspace'), true);
+    assert.equal(db.rows.has('legacyTenant'), true);
+    assert.equal(db.rows.has('contradictoryLegacyAlias'), true);
     assert.equal(db.rows.has('nextMonth'), true);
     assert.equal(db.rows.has('foreign'), true);
   } finally { loaded.restore(); }
@@ -170,7 +166,7 @@ test('17.0.25 Schedule Builder routes month and single-shift deletes through the
   const schedule = fs.readFileSync(path.join(__dirname, '..', 'src/features/schedule.jsx'), 'utf8');
   assert.match(schedule, /secureFetch\('\/api\/schedule-shift-delete'/);
   assert.doesNotMatch(schedule, /scheduleShiftDeleteRequest\('preview-month'/);
-  assert.match(schedule, /scheduleShiftDeleteRequest\('clear-month'/);
+  assert.match(schedule, /restore-cleared-month':'clear-month'/);
   assert.match(schedule, /scheduleShiftDeleteRequest\('delete-single'/);
   assert.match(schedule, /Delete ALL saved shifts from \$\{monthLabel\}/);
   assert.match(schedule, /optimisticOperationId/);

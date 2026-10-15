@@ -46,9 +46,9 @@ module.exports = defineConfig({
   projects: [
     { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
     { name: 'mobile-chromium', use: { ...devices['Pixel 5'] }, testIgnore: /21-runtime-code-coverage\.spec\.cjs/ },
-    { name: 'edge-pwa', testMatch: PWA_SPEC_PATTERN, use: { ...devices['Desktop Edge'], channel: 'msedge' } },
-    { name: 'firefox-pwa', testMatch: PWA_SPEC_PATTERN, use: { ...devices['Desktop Firefox'] } },
-    { name: 'webkit-pwa', testMatch: PWA_SPEC_PATTERN, use: { ...devices['Desktop Safari'] } },
-    { name: 'mobile-webkit-pwa', testMatch: PWA_SPEC_PATTERN, use: { ...devices['iPhone 13'] } }
+    { name: 'edge-pwa', testMatch: [PWA_SPEC_PATTERN, /schedule-builder-phase1-19\.spec\.cjs$/], use: { ...devices['Desktop Edge'], channel: 'msedge' } },
+    { name: 'firefox-pwa', testMatch: [PWA_SPEC_PATTERN, /schedule-builder-phase1-19\.spec\.cjs$/], use: { ...devices['Desktop Firefox'] } },
+    { name: 'webkit-pwa', testMatch: [PWA_SPEC_PATTERN, /schedule-builder-phase1-19\.spec\.cjs$/], use: { ...devices['Desktop Safari'] } },
+    { name: 'mobile-webkit-pwa', testMatch: [PWA_SPEC_PATTERN, /schedule-builder-phase1-19\.spec\.cjs$/], use: { ...devices['iPhone 13'] } }
   ]
 });

@@ -65,7 +65,7 @@ applyFirebaseEmulatorEnv(process.env);
 const ALLOW_MUTATION = boolEnv('CHAOS_ALLOW_MUTATION');
 
 const COLLECTION_ORDER = [
-  'restaurantAdminAlerts', 'eventReminders', 'personalReminders', 'scheduleCoverageTargets', 'scheduleTemplates', 'availabilityRecords', 'shiftSwaps', 'timePunches', 'timeOffRequests', 'shifts', 'events', 'financialExpenses', 'sales', 'maintenanceLogs', 'pmSchedules', 'tasks', 'prepItems', 'menuDependencies', 'recipes', 'inventoryItems', 'vendors', 'users'
+  'roles', 'restaurantAdminAlerts', 'eventReminders', 'personalReminders', 'scheduleCoverageTargets', 'scheduleTemplates', 'availabilityRecords', 'shiftSwaps', 'timePunches', 'timeOffRequests', 'shifts', 'events', 'financialExpenses', 'sales', 'maintenanceLogs', 'pmSchedules', 'tasks', 'prepItems', 'menuDependencies', 'recipes', 'inventoryItems', 'vendors', 'users'
 ];
 
 async function writeReport(report) {
@@ -271,6 +271,7 @@ const EXPECTED_MINIMUM_COUNTS = {
   availabilityRecords: 3,
   scheduleTemplates: 1,
   scheduleCoverageTargets: 2,
+  roles: 3,
 };
 
 function summarizeCreatedDocuments(createdByCollection = {}, memberships = [], restaurantRef = null, restaurantId = '') {
@@ -435,7 +436,7 @@ function buildServerSeedDocuments(profile) {
     docs.push(spec);
   });
   const ids = withIds(profile, created);
-  const restCollections = ['inventoryItems', 'recipes', 'hrOnboardingTasks', 'menuDependencies', 'shifts', 'timeOffRequests', 'events', 'timePunches', 'prepItems', 'tasks', 'maintenanceLogs', 'pmSchedules', 'sales', 'financialExpenses', 'restaurantAdminAlerts', 'personalReminders', 'availabilityRecords', 'scheduleTemplates', 'scheduleCoverageTargets'];
+  const restCollections = ['inventoryItems', 'recipes', 'hrOnboardingTasks', 'menuDependencies', 'shifts', 'timeOffRequests', 'events', 'timePunches', 'prepItems', 'tasks', 'maintenanceLogs', 'pmSchedules', 'sales', 'financialExpenses', 'restaurantAdminAlerts', 'personalReminders', 'availabilityRecords', 'scheduleTemplates', 'scheduleCoverageTargets', 'roles'];
   for (const colName of restCollections) {
     created[colName] = [];
     (profile.collections[colName] || []).forEach((record, index) => {

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "release": "19.0.2",
+  "release": "19.0.3",
   "groups": {
     "hostile-contracts": {
       "mandatory": true,
@@ -100,6 +100,20 @@
       ],
       "automated": "partial",
       "artifact": "native-mobile-evidence.json"
+    },
+    "scheduling-phase1": {
+      "mandatory": true,
+      "fidelity": [
+        "ACTUAL MODULE",
+        "REACT COMPONENT",
+        "FIREBASE EMULATOR",
+        "PLAYWRIGHT UI"
+      ],
+      "command": "npm run test:scheduling-phase1",
+      "runnerGroups": [
+        "Schedule Builder Phase 1"
+      ],
+      "automated": true
     }
   }
 }
