@@ -13,3 +13,5 @@ Tests and gates run locally. Playwright and Play Store tests run in visible Powe
 Keep source immutable while a test run is active. Evidence belongs to an exact commit, source hash, version, environment and platform. Preserve current failure and lineage evidence; apply authorized result retention only after live-process and lock checks. Do not claim delivery, synchronization, device acceptance or certification without evidence.
 
 Acceptance checklist: current source and build identities agree; environment and authorization checks pass; relevant business workflows and fallback paths pass; retries/concurrency/offline failures are covered; existing functionality remains discoverable; all three program documents reflect actual evidence and limitations.
+
+Declare Playwright tests in their .spec files. Shared helpers may export scenario bodies but must not register tests under helper locations. Canonical discovery must reject unrecognized declarations or a parsed count that differs from Playwright's reported total. Confirm every new case has a unique spec/suite/title/project identity in the actual CLI inventory, not just successful direct execution.

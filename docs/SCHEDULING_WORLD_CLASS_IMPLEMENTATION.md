@@ -22,6 +22,14 @@ Geoff authorizes automatic Phase 1 advancement after baseline acceptance. Comple
 - Repairs: navigate through the existing Schedule screen and explicit Schedule Builder control; reject live-project tokens in the actual emulator request selector with HTTP 403 before Admin initialization. Added an isolated child-process regression for that selector; both browser inventories retain the functional rejection case.
 - Corrected candidate preflight, deployment, targeted and delta results: pending. Phase 1 remains unstarted until they pass.
 
+### Baseline discovery repair — 19.0.2
+
+- Exact prior candidate: 19.0.1 / 2769daf5d069082d07c0e6e31368b6a6ecd8968f / source hash 21b8bc99416c408ccb8d0d6931308750f51c693d39e03b18e7c3ef848e027f7b. Testing deployment dpl_J63q1tB4yKa4QxRdaa2pBXJFxTiF served matching client/API identity and chaos-test-d1601; actual deployed Admin boundary verified before QA writes.
+- Prior targeted runs baseline-targeted-local-20261014-204054 and baseline-targeted-deployed-20261014-205803 each passed 30 tests, zero failures/skips, with QA cleanup passing. Canonical failed+new run 2026-10-14T21-18-08 passed all 79 selected tests, zero failures/timeouts/skips; server-verified QA cleanup passed. Canonical current-release prerequisites also passed on that exact sealed source. These results do not constitute full certification or acceptance of the incomplete inventory.
+- Diagnosis: promotion tests declared inside a shared helper appeared under fixtures/testing-promotion-scenarios.cjs in Playwright discovery. The inventory parser silently omitted those 12 cases even though direct targeted execution passed them. Baseline acceptance was withheld.
+- Repair: declarations now live in each spec; shared helpers contain only scenario bodies. The parser rejects unrecognized test declarations and mismatched Playwright totals. Both Playwright and release-gate specs exercise fail-closed discovery. Real CLI discovery regression requires every promotion case in both specs and both browser projects (16 including the new discovery case).
+- Local discovery preflight: 11 passed, zero failed/skipped; real full inventory list verified without executing the full release gate. Host evidence baseline-discovery-20261014-222232.log. Candidate deployment and targeted/delta acceptance remain pending; no Phase 1 implementation has started.
+
 | Phase | Candidate | Status |
 |---|---|---|
 | 1 — Schedule Builder | Next sequential patch | Not started; baseline must pass |

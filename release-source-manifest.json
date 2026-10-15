@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
-  "version": "19.0.1",
-  "sourceHash": "21b8bc99416c408ccb8d0d6931308750f51c693d39e03b18e7c3ef848e027f7b",
+  "version": "19.0.2",
+  "sourceHash": "c1e61d8f301e1a5fa0cbab14d4803a8c76c3a0e161b1c90c10be4221236fdbd5",
   "files": [
     {
       "file": ".gitattributes",
@@ -392,6 +392,10 @@
       "sha256": "110ce2ccd7b2048e4222a3e845d007c2a59cd98d387dbc8e298224ec0c98dfdd"
     },
     {
+      "file": "RELEASE_NOTES_19.0.2.md",
+      "sha256": "9f5b120e268f559dc59d42aaf995e0ae908ff601acc47a6033d2db98b7bff6d3"
+    },
+    {
       "file": "RUN_86CHAOS_CURRENT_BLOCKERS_RELEASE_GATE.ps1",
       "sha256": "6b612f784e2f17ebe5bc2d0ba6a0df8a8aeb2d6acc80f125905cdc0f70abdf31"
     },
@@ -433,7 +437,7 @@
     },
     {
       "file": "android/app/build.gradle",
-      "sha256": "1fc9966b16c6f656619f04898bb201f47dde7aa59036dd1d701e2c96954d6073"
+      "sha256": "2f3a4120efe979dc68518be71d1faf7be6a829a74bfbfb42f76ed2d52fd27022"
     },
     {
       "file": "android/app/capacitor.build.gradle",
@@ -793,7 +797,7 @@
     },
     {
       "file": "api/_pos-bridge-config.js",
-      "sha256": "34a2806d646dc446b159f4491b64c78c969fb807f3849fe2395319cc8a345f29"
+      "sha256": "a11a6f6a5ff495549fe4dbca6d9e2189b9dc2556ad541b5f392416f331ad5daa"
     },
     {
       "file": "api/_pos-bridge-events.js",
@@ -961,7 +965,7 @@
     },
     {
       "file": "api/_version.js",
-      "sha256": "71032dde10f249522ac7a1b573a137a79ce18abf3193d44f742cea8c1c21dfb4"
+      "sha256": "d99bcba2ca5f0f85f7df0b67c2a61224944f0fe54580f8713a37c963383b94cf"
     },
     {
       "file": "api/account-deletion-request.js",
@@ -1513,7 +1517,7 @@
     },
     {
       "file": "api/playwright-inventory-v3.test.cjs",
-      "sha256": "775f70728052fd90a113387769f0738df19db44d157aceab12821dfab88a0008"
+      "sha256": "87903304c7f2ff240759e30fa9ae1c1c67feecb17ffd350fe88be9d98bc9b280"
     },
     {
       "file": "api/playwright-status-classification.test.cjs",
@@ -2473,7 +2477,7 @@
     },
     {
       "file": "docs/ENGINEERING_PLAYBOOK.md",
-      "sha256": "5bbdcc1a2f237444f58b36552ad8ed246041f21955b88cbe375e75c9e0ba56b4"
+      "sha256": "1add71deefb7c9a131a8e21df1deb3fd77803f36a19f574af72937279acfbbbd"
     },
     {
       "file": "docs/PLAY_STORE_RELIABILITY_ACCEPTANCE.md",
@@ -2481,11 +2485,11 @@
     },
     {
       "file": "docs/SCHEDULING_PHASE_TEST_MATRIX.md",
-      "sha256": "47c648ea78c30d119ee803f86055cf4b7f352e75c9f6a6351580858c1b9f9b56"
+      "sha256": "fa9ce397d6ddfd521b60d8c8781728e756f6a44132bf76e236c186abf31d0b8a"
     },
     {
       "file": "docs/SCHEDULING_WORLD_CLASS_IMPLEMENTATION.md",
-      "sha256": "ae7c82b8020762118e936cb7c2892fcfaa1460a35c0d6ba2474aea617e28e916"
+      "sha256": "a4c87f8f70b930dfec66f99d768386401903817b4b9dbd34d5d67298931ec426"
     },
     {
       "file": "docs/UNIVERSAL_PLATFORM_PARITY_MATRIX.md",
@@ -2565,7 +2569,7 @@
     },
     {
       "file": "ios/App/App.xcodeproj/project.pbxproj",
-      "sha256": "6a443147c7b0f591ce877ad5d7c7af9a4fdc27a38a21c3ab7adac6dbe3434301"
+      "sha256": "494868d342bc5c31584427f1d27f4a32640fbb1b9d214f1879627986a1ead413"
     },
     {
       "file": "ios/App/App.xcodeproj/project.xcworkspace/xcshareddata/IDEWorkspaceChecks.plist",
@@ -2653,7 +2657,7 @@
     },
     {
       "file": "mobile/native-platform-contract.json",
-      "sha256": "c75ccb59d9c5d66d534080079c28aa701644957333d469119c05ad285edaf036"
+      "sha256": "a027ac6ba05d612586377894498f85824b8d0ea091d0dabf503591928bda65a5"
     },
     {
       "file": "mobile/testing/README.md",
@@ -2665,11 +2669,11 @@
     },
     {
       "file": "package-lock.json",
-      "sha256": "e5e4a8752e0a220c412d3153b422d9dd4ce60dd9b69ec7da10f3e90b8d58b217"
+      "sha256": "a35a38a7956829bcee0ec212bf031d1957fc5aa008591685244250b3175fd846"
     },
     {
       "file": "package.json",
-      "sha256": "a66e8c10b138050204bfd9623b1590f067de42e20ee42560b790b9da8dd91b5f"
+      "sha256": "942b50f0cf5bc12685d8ae2eebef9b21e66d4ba65527fea444b09beb39608310"
     },
     {
       "file": "playwright.config.js",
@@ -2893,7 +2897,7 @@
     },
     {
       "file": "public/version.json",
-      "sha256": "cf4c131a66b096fff103df1db0468434e8385a97cbfbc7880ce2ab6f8a364c6f"
+      "sha256": "caace2f3833004f597dd3938e6927ad2461e2665c4d4d47da2b927338d10dd9a"
     },
     {
       "file": "public/wisco.png",
@@ -3017,7 +3021,7 @@
     },
     {
       "file": "scripts/86chaos-release-gate/playwright-inventory.cjs",
-      "sha256": "589d75b4ce6973c6a7584600bc2a8ef23671d9a6059dafc31e6a9a24c1546952"
+      "sha256": "a352123ba53564018e4c1aa301e820c2881331e683c88a1e11b1fd2613e33abc"
     },
     {
       "file": "scripts/86chaos-release-gate/preflight-and-start.cjs",
@@ -4637,7 +4641,7 @@
     },
     {
       "file": "src/core/appCore.js",
-      "sha256": "68877a1067dccd1ef4a870a35be0e771caee735906ae1da33cee0853d9f9a96e"
+      "sha256": "02ac95dc0737f0b50861d48b1e93c2575242077a4c6f7dea45a5f09a4646b8a3"
     },
     {
       "file": "src/core/attendanceEvidence.cjs",
@@ -4653,11 +4657,11 @@
     },
     {
       "file": "src/core/customerHelpKnowledge.cjs",
-      "sha256": "81901128d600bd7cdd175e2d96c8d11a36a02dbb26d77b08bf238404cad736d5"
+      "sha256": "1beb75d430e6136a64aba23353a467cbf423956bdd792b5f4d7e97e3f140b563"
     },
     {
       "file": "src/core/customerHelpKnowledge.js",
-      "sha256": "54004400444d1f40d2b71b7a67c4beda1ba23e09d0d30e2ff838c2047f085128"
+      "sha256": "922668341ec57277ecb5963b5031de49b40540f5c66fc715e29cff2aa02bc4f8"
     },
     {
       "file": "src/core/deploymentBoundary.cjs",
@@ -5253,7 +5257,7 @@
     },
     {
       "file": "test-tools/certification/cost-performance-baselines.json",
-      "sha256": "67550aa2975d677836a6bb35cf436a3faf154ba57d46da141bf01ae85d1a5029"
+      "sha256": "408655abf815148fb831dee0a362927ab7502bf74c14775357a8820d373ac131"
     },
     {
       "file": "test-tools/certification/device-acceptance.json",
@@ -5261,7 +5265,7 @@
     },
     {
       "file": "test-tools/certification/groups.json",
-      "sha256": "e4f147d1dec9131afc8689a761bd2d4125524c91b1589eaa9849a5b69837af32"
+      "sha256": "2476d906f038045dd3bdbcc147488e527734c5d5bf14a930705db46c870ebe09"
     },
     {
       "file": "test-tools/certification/permission-matrix.json",
@@ -5325,7 +5329,7 @@
     },
     {
       "file": "test-tools/regressions/registry.json",
-      "sha256": "cd88515a50abfe2a8d4aff5e3d3c1c1f097dd03e39d926477c02e0bcd3547479"
+      "sha256": "9e6e1b06ebdc7fd73002742390c398db8c95a56874d4a38ea016919c7f7f38aa"
     },
     {
       "file": "test-tools/reporters/chaos-release-gate-reporter.cjs",
@@ -5537,7 +5541,7 @@
     },
     {
       "file": "tests/86chaos-release-gate/107-testing-promotion-19.spec.cjs",
-      "sha256": "3b1cb080c10aff300974d925c4b2f74dafc01d880959efb6428cceaf58262836"
+      "sha256": "225ba5bc2cdd5d6c87cad2009b73df0aa1185be6cc79dd1797da7dbcec85d38e"
     },
     {
       "file": "tests/86chaos-release-gate/15-interactive-control-census.spec.cjs",
@@ -6069,7 +6073,7 @@
     },
     {
       "file": "tests/e2e/testing-promotion-19.spec.cjs",
-      "sha256": "3b1cb080c10aff300974d925c4b2f74dafc01d880959efb6428cceaf58262836"
+      "sha256": "225ba5bc2cdd5d6c87cad2009b73df0aa1185be6cc79dd1797da7dbcec85d38e"
     },
     {
       "file": "tests/e2e/utils/release-login-helper.cjs",
@@ -6089,7 +6093,7 @@
     },
     {
       "file": "tests/fixtures/testing-promotion-scenarios.cjs",
-      "sha256": "c292bc8a17690372383bdca8fcb75a22e5b47359a1268845d38f53939b5d21aa"
+      "sha256": "d43839eec723dc6ff98b179bba029f4b09bf4c17f6dad27a50ca785b41e3a563"
     },
     {
       "file": "tests/layout/dialog-dismissal-navigation.spec.cjs",
@@ -6116,32 +6120,35 @@
       "sha256": "88ee1e1a65882a5986548278695529bcda7fb6142d776114bcc8386ebbafcaf9"
     }
   ],
-  "commit": "80b5a2be1796d7bd105f007b12ca57e3439c5f5e",
+  "commit": "2769daf5d069082d07c0e6e31368b6a6ecd8968f",
   "branch": "testing",
   "dirty": true,
   "dirtyPaths": [
-    " M AGENTS.md",
     " M android/app/build.gradle",
-    " M api/_firebase-project-admin.js",
     " M api/_pos-bridge-config.js",
     " M api/_version.js",
-    " M api/testing-promotion-boundary-19.test.cjs",
+    " M api/playwright-inventory-v3.test.cjs",
+    " M docs/ENGINEERING_PLAYBOOK.md",
+    " M docs/SCHEDULING_PHASE_TEST_MATRIX.md",
     " M docs/SCHEDULING_WORLD_CLASS_IMPLEMENTATION.md",
     " M ios/App/App.xcodeproj/project.pbxproj",
     " M mobile/native-platform-contract.json",
     " M package-lock.json",
     " M package.json",
     " M public/version.json",
+    " M scripts/86chaos-release-gate/playwright-inventory.cjs",
     " M src/core/appCore.js",
     " M src/core/customerHelpKnowledge.cjs",
     " M src/core/customerHelpKnowledge.js",
     " M test-tools/certification/cost-performance-baselines.json",
     " M test-tools/certification/groups.json",
     " M test-tools/regressions/registry.json",
+    " M tests/86chaos-release-gate/107-testing-promotion-19.spec.cjs",
+    " M tests/e2e/testing-promotion-19.spec.cjs",
     " M tests/fixtures/testing-promotion-scenarios.cjs",
-    "?? RELEASE_19_0_1.md"
+    "?? RELEASE_NOTES_19.0.2.md"
   ],
-  "capturedAt": "2026-10-15T01:36:57.541Z",
+  "capturedAt": "2026-10-15T03:25:49.636Z",
   "previewUrl": null,
   "intendedProductionUrl": "https://app.86chaos.com",
   "sourceArtifact": null

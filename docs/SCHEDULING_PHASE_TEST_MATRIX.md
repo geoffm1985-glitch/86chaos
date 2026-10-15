@@ -4,7 +4,7 @@ Every change requires both functional Playwright and canonical release-gate regr
 
 | Stage | Required coverage | Current result |
 |---|---|---|
-| Baseline | Complete source promotion, release identities, web/native isolation, production-token refusal, authenticated startup, retained scheduling, native contracts | Pending |
+| Baseline | Complete source promotion, release identities, web/native isolation, production-token refusal, authenticated startup, retained scheduling, native contracts, complete discovery with stable spec identities | 19.0.1: local/deployed targeted 30/30 each; delta 79/79; cleanup passed. Discovery gap repaired locally (11/11); 19.0.2 candidate targeted/delta pending. |
 | 1 | Editor, weekly/mobile navigation, primary-grid move/copy/resize, keyboard/touch alternatives, sticky scrolling, undo/concurrency, retained views | Pending |
 | 2 | Hard/soft constraints, trustworthy inputs, deterministic draft generation, conflicts/repairs, templates, rescue duplicate claims, confidence-aware quality | Pending |
 | 3 | Current competencies, collective station coverage, incomplete demand, owner wage boundaries, fairness, voice/typed approval | Pending |

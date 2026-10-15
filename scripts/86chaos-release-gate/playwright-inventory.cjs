@@ -36,7 +36,21 @@ function parsePlaywrightListLine(line = '', root = process.cwd()) {
   return row;
 }
 function parsePlaywrightListOutput(output = '', root = process.cwd()) {
-  const records = String(output || '').split(/\r?\n/).map(line => parsePlaywrightListLine(line, root)).filter(Boolean);
+  const lines = String(output || '').split(/\r?\n/);
+  const records = [];
+  let unrecognizedTestCount = 0;
+  for (const line of lines) {
+    const record = parsePlaywrightListLine(line, root);
+    if (record) records.push(record);
+    else if (/^\s*\[[^\]]+\]\s+›\s+/.test(line)) unrecognizedTestCount += 1;
+  }
+  if (unrecognizedTestCount) {
+    throw new Error(`Playwright inventory omitted ${unrecognizedTestCount} test declarations: declare tests in their .spec files, with shared helpers limited to test bodies.`);
+  }
+  const totals = [...String(output || '').matchAll(/^\s*Total:\s*(\d+)\s+tests?\b/gm)];
+  if (totals.length > 1 || (totals.length === 1 && Number(totals[0][1]) !== records.length)) {
+    throw new Error(`Playwright inventory count mismatch: declared ${totals.map(match => match[1]).join(', ')}, parsed ${records.length}.`);
+  }
   const validation = validateInventoryRecords(records);
   if (!validation.ok) {
     const err = new Error(`Duplicate Playwright inventory identities detected: ${validation.duplicateIdentityCount}`);

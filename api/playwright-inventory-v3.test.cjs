@@ -33,6 +33,20 @@ test('duplicate stable identities fail validation', () => {
   assert.throws(() => inv.parsePlaywrightListOutput(output, process.cwd()), /duplicate/i);
 });
 
+test('inventory fails closed when shared registration hides test declarations', () => {
+  const hidden = '[chromium] › fixtures/testing-promotion-scenarios.cjs:6:3 › promoted identity';
+  assert.throws(() => inv.parsePlaywrightListOutput(hidden + '\nTotal: 1 test in 1 file'), /omitted 1 test declarations/);
+  assert.throws(() => inv.parsePlaywrightListOutput(hidden), /omitted 1 test declarations/);
+});
+
+test('inventory compares discovered declarations against Playwright totals', () => {
+  const line = '[chromium] › e2e/promotion.spec.cjs:1:1 › promoted identity';
+  assert.equal(inv.parsePlaywrightListOutput(line + '\nTotal: 1 test in 1 file').length, 1);
+  assert.throws(() => inv.parsePlaywrightListOutput(line + '\nTotal: 2 tests in 1 file'), /count mismatch/);
+  assert.throws(() => inv.parsePlaywrightListOutput('Total: 1 test in 1 file'), /count mismatch/);
+  assert.throws(() => inv.parsePlaywrightListOutput(line + '\nTotal: 1 test in 1 file\nTotal: 1 test in 1 file'), /count mismatch/);
+});
+
 const fs = require('node:fs');
 const path = require('node:path');
 const childProcess = require('node:child_process');
@@ -65,4 +79,10 @@ test('real Playwright list discovery does not recurse when Playwright is install
   assert.ok(parsed.length > 0, 'inventory contains discovered tests');
   assert.equal(inv.titleContainsTemplate(parsed).length, 0, 'no ${...} titles');
   assert.equal(inv.validateInventoryRecords(parsed).duplicateIdentityCount, 0, 'no duplicate stable identities');
+  const promotionSpecs = ['e2e/testing-promotion-19.spec.cjs', '86chaos-release-gate/107-testing-promotion-19.spec.cjs'];
+  const promotion = parsed.filter(row => promotionSpecs.includes(row.specPath));
+  assert.equal(promotion.length, 16, 'all four promotion cases in both specs and both browser projects must be discovered');
+  for (const spec of promotionSpecs) for (const project of ['chromium', 'mobile-chromium']) {
+    assert.equal(promotion.filter(row => row.specPath === spec && row.project === project).length, 4, `${spec}/${project}`);
+  }
 });
