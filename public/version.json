@@ -1,27 +1,26 @@
 {
-  "version": "19.0.12",
-  "name": "86 Chaos 19.0.12",
-  "build": "19.0.12",
-  "label": "86 Chaos 19.0.12",
-  "title": "86 Chaos 19.0.12",
-  "releasedAt": "2026-10-15T19:22:03.126Z",
-  "releaseTitle": "Phase 1 scheduling recovery and browser validation repair",
-  "summary": "Retain verified shift revisions across late snapshots, isolate warning dismissal regressions, and separately record proven Windows WebKit reload cancellation evidence.",
-  "description": "Testing Phase 1 candidate. Exact targeted/delta validation and native device acceptance remain pending. No production deployment.",
+  "version": "19.0.13",
+  "name": "86 Chaos 19.0.13",
+  "build": "19.0.13",
+  "label": "86 Chaos 19.0.13",
+  "title": "86 Chaos 19.0.13",
+  "releasedAt": "2026-10-15T22:15:00Z",
+  "releaseTitle": "Phase 1 concurrent informational-dialog validation repair",
+  "summary": "Preserve original modal identity when an explicit tour skip completes during a close action; retain business assertions and fail-closed confirmation handling.",
+  "description": "Testing Phase 1 candidate. Fresh exact targeted/delta and native device acceptance remain pending. No production deployment.",
   "notes": [
-    "Acknowledged shift revision floors preserve the latest reviewed edit evidence.",
-    "Coverage-warning dismissal retains approved-leave conflicts and unchanged business records across reload.",
-    "Only the explicitly authorized, proven Windows WebKit engine navigation cancellation is recorded separately; business and other runtime failures remain fatal.",
-    "Testing web/API uses chaos-test-d1601. APK retains production Firebase, signing and destinations; production native API availability is deferred.",
-    "No production website/API deployment, GitHub Actions or full release gate."
+    "Concurrent explicit tour dismissal cannot redirect a pending close into a replacement dialog.",
+    "Five actual-browser regressions preserve blocked controls, unknown errors and consequential confirmation boundaries.",
+    "Scoped repair preflight passed 121 Node checks, 21 React tests and real Firestore, with isolated emulator shutdown.",
+    "Testing web/API remains chaos-test-d1601. APK retains production Firebase, signing and destinations; native backend/device acceptance is pending.",
+    "No production deployment, GitHub Actions or full release gate."
   ],
   "highlights": [
     "Strict source verification without output-triggered request stalls",
     "Actual linked-worktree Git identity protection"
   ],
   "changes": [
-    "Testing candidate 19.0.12",
-    "Scoped preflight passed 116 Node checks, 21 React tests and real Firestore, with emulator shutdown.",
-    "Exact deployed/local targeted and canonical failed+new delta acceptance remain pending."
+    "Testing candidate 19.0.13",
+    "Fresh exact deployed/local targeted and canonical failed+new delta validation is required."
   ]
 }

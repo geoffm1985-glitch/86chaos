@@ -1,6 +1,6 @@
 {
   "name": "86chaos",
-  "version": "19.0.12",
+  "version": "19.0.13",
   "private": true,
   "dependencies": {
     "@capacitor-firebase/messaging": "8.5.2",
@@ -313,7 +313,7 @@
     "test:repair:19.0.1": "npm run test:current-release-targeted",
     "validate:19.0.2": "node scripts/validate-current-release.cjs",
     "test:repair:19.0.2": "npm run test:current-release-targeted",
-    "test:scheduling-phase1": "node --test api/release-gate-emulator-runtime-boundaries-17-0-64.test.cjs api/release-gate-emulator-playwright-fidelity-17-0-78.test.cjs api/release-gate-failed-new-lineage-repair-17-0-82.test.cjs api/release-gate-request-off-maturity-refactor-17-0-83.test.cjs api/failed-only-runner-launch-16-0-194.test.cjs api/release-gate-maturity-16-0-209.test.cjs api/release-gate-maturity-16-0-210.test.cjs api/webkit-navigation-evidence-19.test.cjs api/schedule-deletion-overlay-19.test.cjs api/firestore-platform-transport-19.test.cjs api/schedule-qa-request-19.test.cjs api/audit-auth-surface-19.test.cjs api/release-gate-lineage-title-migration-17-0-65.test.cjs api/schedule-workspace-19.test.cjs api/schedule-builder-clear-month-17-0-24.test.cjs api/schedule-shift-delete-17-0-25.test.cjs api/schedule-shift-assignment-emergency-17-0-27.test.cjs api/reliability-qa-cleanup.test.cjs && react-scripts test --watchAll=false --runInBand --runTestsByPath src/features/scheduling/ScheduleWorkspace.test.jsx && node scripts/run-schedule-workspace-emulator-tests.cjs",
+    "test:scheduling-phase1": "node --test api/audit-dialog-dismissal-19.test.cjs api/release-gate-emulator-runtime-boundaries-17-0-64.test.cjs api/release-gate-emulator-playwright-fidelity-17-0-78.test.cjs api/release-gate-failed-new-lineage-repair-17-0-82.test.cjs api/release-gate-request-off-maturity-refactor-17-0-83.test.cjs api/failed-only-runner-launch-16-0-194.test.cjs api/release-gate-maturity-16-0-209.test.cjs api/release-gate-maturity-16-0-210.test.cjs api/webkit-navigation-evidence-19.test.cjs api/schedule-deletion-overlay-19.test.cjs api/firestore-platform-transport-19.test.cjs api/schedule-qa-request-19.test.cjs api/audit-auth-surface-19.test.cjs api/release-gate-lineage-title-migration-17-0-65.test.cjs api/schedule-workspace-19.test.cjs api/schedule-builder-clear-month-17-0-24.test.cjs api/schedule-shift-delete-17-0-25.test.cjs api/schedule-shift-assignment-emergency-17-0-27.test.cjs api/reliability-qa-cleanup.test.cjs && react-scripts test --watchAll=false --runInBand --runTestsByPath src/features/scheduling/ScheduleWorkspace.test.jsx && node scripts/run-schedule-workspace-emulator-tests.cjs",
     "validate:19.0.3": "node scripts/validate-current-release.cjs",
     "test:repair:19.0.3": "npm run test:current-release-targeted",
     "validate:19.0.4": "node scripts/validate-current-release.cjs",
@@ -333,7 +333,9 @@
     "validate:19.0.11": "node scripts/validate-current-release.cjs",
     "test:repair:19.0.11": "npm run test:current-release-targeted",
     "validate:19.0.12": "node scripts/validate-current-release.cjs",
-    "test:repair:19.0.12": "npm run test:current-release-targeted"
+    "test:repair:19.0.12": "npm run test:current-release-targeted",
+    "validate:19.0.13": "node scripts/validate-current-release.cjs",
+    "test:repair:19.0.13": "npm run test:current-release-targeted"
   },
   "browserslist": {
     "production": [

@@ -423,9 +423,35 @@ async function dismissBlockingDialogs(page, options = {}) {
     const topModal = backdropCount ? page.locator('.chaos-modal-backdrop:visible').last() : page.locator('[role="dialog"]:visible').last();
     const headerClose = topModal.locator('button[data-chaos-modal-close="true"]').first();
     if (await headerClose.isVisible().catch(() => false) && await headerClose.isEnabled().catch(() => false)) {
-      await headerClose.click({ timeout: 2500 });
-      await topModal.waitFor({ state: 'hidden', timeout: 3500 });
-      dismissed.push({ title: dialogs.at(-1)?.title || 'modal', control: 'modal header close' });
+      // A registered explicit tour-skip handler may remove this modal during
+      // Playwright's actionability check. Freeze its identity so a replacement
+      // scheduling dialog cannot become the target of the pending close.
+      // Resolve both nodes in one read without a locator actionability check:
+      // even locator.elementHandle() may invoke the concurrent skip handler.
+      const snapshot = await page.evaluateHandle(() => {
+        const visible = node => getComputedStyle(node).visibility !== 'hidden' && node.getClientRects().length > 0;
+        const backdrops = [...document.querySelectorAll('.chaos-modal-backdrop')].filter(visible);
+        const modal = backdrops.at(-1) || [...document.querySelectorAll('[role="dialog"]')].filter(visible).at(-1);
+        return { modal, close: modal?.querySelector('button[data-chaos-modal-close="true"]') };
+      });
+      const originalModal = (await snapshot.getProperty('modal')).asElement();
+      const originalClose = (await snapshot.getProperty('close')).asElement();
+      let control = 'modal header close';
+      try {
+        if (!originalModal || !originalClose) continue;
+        try { await originalClose.click({ timeout: 2500 }); }
+        catch (error) {
+          const removedTarget = error.name === 'TimeoutError' || /^elementHandle\.click: Element is not attached to the DOM(?:\r?\n|$)/.test(error.message);
+          if (!removedTarget || await originalModal.isVisible()) throw error;
+          control = 'concurrent informational dismissal';
+        }
+        await originalModal.waitForElementState('hidden', { timeout: 3500 });
+      } finally {
+        await originalClose?.dispose();
+        await originalModal?.dispose();
+        await snapshot.dispose();
+      }
+      dismissed.push({ title: dialogs.at(-1)?.title || 'modal', control });
       continue;
     }
     const dialog = dialogs[0] || { title: 'modal backdrop', text: '' };
