@@ -20,7 +20,10 @@ function promotionScenarios() {
     const errors = []; page.on('pageerror', error => errors.push(error.message));
     const creds = ownerLikeCreds(); expect(Boolean(creds.email && creds.password),'Owner/manager credentials are required for baseline acceptance').toBe(true);
     await login(page,creds.email,creds.password);
-    await gotoTab(page,'schedule-builder'); await dismissBlockingDialogs(page);
+    await gotoTab(page,'schedule',{force:true}); await dismissBlockingDialogs(page);
+    const assign = page.getByTestId('schedule-builder-assign');
+    if (!await assign.isVisible()) await page.getByRole('button',{name:/^Schedule Builder$/i}).first().click();
+    await expect(assign).toBeVisible();
     await expect(page.getByTestId('schedule-builder-sticky-day-header')).toBeVisible();
     const expectedProject = ['127.0.0.1','localhost'].includes(new URL(baseURL).hostname) ? 'demo-86chaos' : 'chaos-test-d1601';
     await expect.poll(() => page.evaluate(() => window.__CHAOS_FIREBASE_DIAGNOSTICS__?.projectId)).toBe(expectedProject);

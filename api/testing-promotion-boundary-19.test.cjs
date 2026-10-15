@@ -41,6 +41,13 @@ test('isolated emulator contracts cannot select a live project', () => {
   assert.equal(assertDeploymentBoundary({ emulator: true, projectId: 'demo-86chaos' }).environment, 'emulator');
   assert.throws(() => assertDeploymentBoundary({ emulator: true, projectId: 'cheers-34b8d' }));
 });
+
+test('actual emulator API project selection rejects live tokens with a client error', () => {
+  const { spawnSync } = require('node:child_process');
+  const script = `const assert=require('node:assert/strict'); const api=require('./api/_firebase-project-admin'); const token=['e30',Buffer.from(JSON.stringify({aud:'cheers-34b8d'})).toString('base64url'),'invalid'].join('.'); assert.throws(()=>api.getRequestedProjectId({headers:{host:'127.0.0.1:3000',authorization:'Bearer '+token}}),{code:'firebase_environment_mismatch',statusCode:403}); assert.equal(api.getRequestedProjectId({headers:{}}),'demo-86chaos');`;
+  const result = spawnSync(process.execPath, ['-e', script], { cwd: require('node:path').resolve(__dirname, '..'), env: { ...process.env, YARDMASTER_FIREBASE_TARGET: 'emulator', CHAOS_FIREBASE_TARGET: 'emulator' }, encoding: 'utf8', windowsHide: true });
+  assert.equal(result.status, 0, result.stderr);
+});
 test('testing rejects a production token before any Admin app can be selected', () => {
   const api = require('./_firebase-project-admin');
   const jwt = ['e30', Buffer.from(JSON.stringify({ aud: 'cheers-34b8d' })).toString('base64url'), 'signature'].join('.');

@@ -361,8 +361,8 @@ function getRequestedProjectId(req, fallback = '') {
     catch (_) {}
   }
   selected = selected || (fallback ? clean(fallback) : getConfiguredDefaultProjectId(req));
-  if (!FIREBASE_TARGET.emulator && deploymentLooksLikeTesting(req)) {
-    require('../src/core/deploymentBoundary.cjs').assertDeploymentBoundary({ branch: 'testing', projectId: selected });
+  if (FIREBASE_TARGET.emulator || deploymentLooksLikeTesting(req)) {
+    require('../src/core/deploymentBoundary.cjs').assertDeploymentBoundary({ branch: 'testing', emulator: FIREBASE_TARGET.emulator, projectId: selected });
   }
   return selected;
 }

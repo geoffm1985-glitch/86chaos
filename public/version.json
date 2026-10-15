@@ -1,13 +1,13 @@
 {
-  "version": "19.0.0",
-  "name": "86 Chaos 19.0.0",
-  "build": "19.0.0",
-  "label": "86 Chaos 19.0.0",
-  "title": "86 Chaos 19.0.0",
-  "releasedAt": "2026-10-14T23:52:50.739Z",
-  "releaseTitle": "Complete mobile source promoted to testing",
-  "summary": "The complete mobile application is the testing foundation with guarded Firebase isolation and universal platform parity requirements.",
-  "description": "Testing candidate. Scheduling phases and final certification are pending.",
+  "version": "19.0.1",
+  "name": "86 Chaos 19.0.1",
+  "build": "19.0.1",
+  "label": "86 Chaos 19.0.1",
+  "title": "86 Chaos 19.0.1",
+  "releasedAt": "2026-10-15T01:36:52.408Z",
+  "releaseTitle": "Testing baseline isolation and browser validation repair",
+  "summary": "Reject live-project tokens before emulator Admin initialization and verify Schedule Builder through its existing navigation.",
+  "description": "Baseline repair candidate. Phase 1 remains pending until targeted and delta validation passes.",
   "notes": [
     "Complete current mobile source retained.",
     "Testing web/API uses chaos-test-d1601; APK production configuration remains protected.",
@@ -18,7 +18,8 @@
     "Actual linked-worktree Git identity protection"
   ],
   "changes": [
-    "Testing candidate 19.0.0",
-    "Baseline targeted/delta validation required before Phase 1."
+    "Emulator project mismatch returns HTTP 403 before Admin initialization.",
+    "Playwright and release-gate baseline scenarios open Schedule Builder through the real Schedule workflow.",
+    "Phase 1 may proceed after baseline acceptance; Phase 2 and APK links remain held."
   ]
 }
