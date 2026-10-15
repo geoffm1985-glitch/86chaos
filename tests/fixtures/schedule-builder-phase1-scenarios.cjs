@@ -2,6 +2,7 @@
 const {expect}=require('@playwright/test');
 const {ownerLikeCreds,login,gotoTab,dismissBlockingDialogs,readSeedReport,ALLOW_MUTATION,RUN_ID}=require('../86chaos-full-audit/utils/audit-helpers.cjs');
 const {workspaceEvidence,workspaceEditable,shiftDateBy}=require('../../src/core/scheduleWorkspace.shared.js');
+const scenarios=new WeakMap();
 
 async function openWorkspace(page) {
   const seed=readSeedReport();
@@ -9,12 +10,19 @@ async function openWorkspace(page) {
   expect(seed?.ok).toBe(true);expect(seed.runId).toBe(RUN_ID);expect(seed.restaurantId).toMatch(/^qa_/);
   const account=ownerLikeCreds();expect(Boolean(account.email && account.password)).toBe(true);
   await login(page,account.email,account.password);await gotoTab(page,'schedule',{force:true});await dismissBlockingDialogs(page);
+  // Tours can load after identity hydration, including after the persistence reload.
+  // Only the explicit tour skip is handled; scheduling confirmations stay under test control.
+  await page.addLocatorHandler(page.getByRole('button',{name:"Skip and don't show again",exact:true}),async button=>{
+    for(let pass=0;pass<2 && await button.isVisible();pass++)await button.press('Enter',{timeout:2500});
+    await expect(button).toBeHidden({timeout:2500});
+  });
   const workspace=page.getByTestId('schedule-workspace');
   if(!await workspace.isVisible())await page.getByRole('button',{name:/^Schedule Builder$/i}).first().click();
   await expect(workspace).toBeVisible();await expect(workspace.getByRole('status').first()).toContainText('Schedule loaded from the server');
   await expect(workspace.getByRole('button',{name:'Monthly & advanced tools',exact:true})).toBeVisible();
   await expect(workspace.getByRole('button',{name:'Undo',exact:true})).toBeVisible();
-  return{seed,workspace,mobile:await page.getByTestId('mobile-schedule-calendar').isVisible(),headers:null,ids:new Set()};
+  const ctx={seed,workspace,mobile:await page.getByTestId('mobile-schedule-calendar').isVisible(),headers:null,ids:new Set()};
+  scenarios.set(page,ctx);return ctx;
 }
 async function mutate(page,ctx,action) {
   const waiting=page.waitForResponse(response=>response.url().endsWith('/api/schedule-workspace') && response.request().method()==='POST' && JSON.parse(response.request().postData() || '{}').action!=='read');
@@ -31,13 +39,21 @@ async function authoritativeRows(page,ctx,ids=[...ctx.ids]) {
   expect(response.status()).toBe(200);const body=await response.json();expect(body.authoritative).toBe(true);return body.shifts;
 }
 async function cleanup(page,ctx) {
-  if(!ctx?.headers || !ctx.ids.size)return;
+  if(!ctx?.headers || !ctx.ids.size)return{ownedShiftCount:0,remaining:0};
   const rows=await authoritativeRows(page,ctx);
   const changes=rows.filter(row=>row.exists!==false).map(row=>({kind:'delete',id:row.id,expected:workspaceEvidence(row)}));
-  if(!changes.length)return;
+  if(!changes.length)return{ownedShiftCount:ctx.ids.size,remaining:0,authoritative:true};
   const response=await page.request.post('/api/schedule-workspace',{headers:ctx.headers,data:{restaurantId:ctx.seed.restaurantId,operationId:'qa_cleanup_'+require('node:crypto').randomUUID(),changes,acknowledgedWarnings:true,confirmedPublished:true,reason:'Remove this test workflow own isolated QA shifts'}});
   expect(response.status(),'QA workflow cleanup must be authoritative').toBe(200);
   expect((await authoritativeRows(page,ctx)).every(row=>row.exists===false)).toBe(true);
+  return{ownedShiftCount:ctx.ids.size,remaining:0,authoritative:true};
+}
+// Playwright gives afterEach its own cleanup budget after a body timeout. Keeping cleanup
+// out of finally preserves the original failure and prevents an owned shift poisoning later cases.
+async function cleanupScenario({page,context},testInfo) {
+  await context.setOffline(false);await page.unroute('**/api/schedule-workspace');
+  const proof=await cleanup(page,scenarios.get(page));scenarios.delete(page);
+  await testInfo.attach('phase1-workflow-cleanup',{body:JSON.stringify(proof),contentType:'application/json'});
 }
 async function revealDate(page,ctx,date) {
   if(ctx.mobile)await page.locator(`.sw-day-strip button[data-date="${date}"]`).click();
@@ -60,7 +76,6 @@ async function createShift(page,ctx,dateOverride='') {
 }
 async function verifyEditingRecovery({page}) {
   const ctx=await openWorkspace(page);const errors=[];page.on('pageerror',error=>errors.push(error.message));
-  try {
     const row=await createShift(page,ctx);
     await card(page,ctx,row.id).getByRole('button',{name:/Edit shift/}).click();
     const editor=page.getByRole('dialog',{name:'Edit shift',exact:true});await expect(editor).toBeVisible();
@@ -69,7 +84,7 @@ async function verifyEditingRecovery({page}) {
     expect((await authoritativeRows(page,ctx))[0]).toMatchObject({endTime:'22:00',notes:'Reviewed dinner extension',paidBreak:true});
     await mutate(page,ctx,()=>ctx.workspace.getByRole('button',{name:'Undo',exact:true}).click());expect((await authoritativeRows(page,ctx))[0].endTime).toBe('21:00');
     await mutate(page,ctx,()=>ctx.workspace.getByRole('button',{name:'Redo',exact:true}).click());expect((await authoritativeRows(page,ctx))[0].endTime).toBe('22:00');
-    await page.reload();await expect(ctx.workspace).toBeVisible();await revealDate(page,ctx,row.date);await card(page,ctx,row.id).getByRole('button',{name:/Edit shift/}).click();
+    await page.reload();await dismissBlockingDialogs(page);await expect(ctx.workspace).toBeVisible();await revealDate(page,ctx,row.date);await card(page,ctx,row.id).getByRole('button',{name:/Edit shift/}).click();
     await expect(page.getByTestId('shift-editor-notes')).toHaveValue('Reviewed dinner extension');
     let mutations=0;const count=request=>{if(request.url().endsWith('/api/schedule-workspace') && JSON.parse(request.postData() || '{}').action!=='read')mutations++;};page.on('request',count);
     await page.getByTestId('shift-editor-save').click();await expect(page.getByRole('dialog')).toHaveCount(0);expect(mutations).toBe(0);page.off('request',count);
@@ -78,11 +93,9 @@ async function verifyEditingRecovery({page}) {
     await mutate(page,ctx,()=>page.getByTestId('schedule-confirm-preview').click());expect((await authoritativeRows(page,ctx))[0].exists).toBe(false);
     await mutate(page,ctx,()=>ctx.workspace.getByRole('button',{name:'Undo',exact:true}).click());expect((await authoritativeRows(page,ctx))[0].notes).toBe('Reviewed dinner extension');
     expect(errors).toEqual([]);
-  } finally {await cleanup(page,ctx);}
 }
 async function verifyMoveCopy({page}) {
   const ctx=await openWorkspace(page);
-  try {
     const row=await createShift(page,ctx);
     if(ctx.mobile) {
       await card(page,ctx,row.id).getByRole('button',{name:/Edit shift/}).click();await page.getByRole('button',{name:'Reassign',exact:true}).click();
@@ -104,11 +117,9 @@ async function verifyMoveCopy({page}) {
     await mutate(page,ctx,()=>ctx.workspace.getByRole('button',{name:'Undo',exact:true}).click());
     expect((await authoritativeRows(page,ctx,[copied.results[0].id]))[0].exists).toBe(false);
     await mutate(page,ctx,()=>ctx.workspace.getByRole('button',{name:'Undo',exact:true}).click());expect((await authoritativeRows(page,ctx,[row.id]))[0].employeeId).toBe(row.employeeId);
-  } finally {await cleanup(page,ctx);}
 }
 async function verifyInterruptedSave({page,context}) {
   const ctx=await openWorkspace(page);
-  try {
     const row=await createShift(page,ctx);await card(page,ctx,row.id).getByRole('button',{name:/Edit shift/}).click();await page.getByTestId('shift-editor-notes').fill('Explicit retry retains its operation identity');
     const attempts=[];let abort=true;
     await page.route('**/api/schedule-workspace',async route=>{const body=route.request().postDataJSON();if(body.action==='read')return route.continue();attempts.push(body);if(abort){abort=false;return route.abort('failed');}return route.continue();});
@@ -118,7 +129,6 @@ async function verifyInterruptedSave({page,context}) {
     await mutate(page,ctx,()=>page.getByRole('button',{name:'Review outcome and retry the same saved request'}).click());
     expect(attempts).toHaveLength(2);expect(attempts[1]).toEqual(attempts[0]);expect((await authoritativeRows(page,ctx))[0].notes).toBe('Explicit retry retains its operation identity');
     await page.unroute('**/api/schedule-workspace');
-  } finally {await context.setOffline(false);await cleanup(page,ctx);}
 }
 async function verifyLayoutAndKeyboard({page}) {
   const ctx=await openWorkspace(page);
@@ -143,7 +153,6 @@ async function verifyLayoutAndKeyboard({page}) {
 }
 async function verifyReviewedMonthRecovery({page}) {
   const ctx=await openWorkspace(page);
-  try {
     const row=await createShift(page,ctx,'2031-02-12');
     const reviewResponse=await page.request.post('/api/schedule-shift-delete',{headers:ctx.headers,data:{action:'review-month',restaurantId:ctx.seed.restaurantId,month:'2031-02'}});
     expect(reviewResponse.status()).toBe(200);const review=await reviewResponse.json();expect(review.count,'Only this workflow owns shifts in the isolated future month').toBe(1);
@@ -157,6 +166,5 @@ async function verifyReviewedMonthRecovery({page}) {
     const restore=await page.request.post('/api/schedule-shift-delete',{headers:ctx.headers,data:{...body,action:'restore-cleared-month',reason:'Regression manager confirmed reviewed restoration'}});
     expect(restore.status()).toBe(200);expect(await restore.json()).toMatchObject({ok:true,done:true,restoredCount:1});
     const restored=await authoritativeRows(page,ctx,[row.id,later.id]);expect(restored[0]).toMatchObject({date:'2031-02-12',notes:row.notes});expect(restored[1].notes).toBe('Added after frozen month review');
-  } finally {await cleanup(page,ctx);}
 }
-module.exports={verifyEditingRecovery,verifyMoveCopy,verifyInterruptedSave,verifyLayoutAndKeyboard,verifyReviewedMonthRecovery};
+module.exports={cleanupScenario,verifyEditingRecovery,verifyMoveCopy,verifyInterruptedSave,verifyLayoutAndKeyboard,verifyReviewedMonthRecovery};

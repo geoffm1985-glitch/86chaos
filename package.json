@@ -1,6 +1,6 @@
 {
   "name": "86chaos",
-  "version": "19.0.4",
+  "version": "19.0.5",
   "private": true,
   "dependencies": {
     "@capacitor-firebase/messaging": "8.5.2",
@@ -317,7 +317,9 @@
     "validate:19.0.3": "node scripts/validate-current-release.cjs",
     "test:repair:19.0.3": "npm run test:current-release-targeted",
     "validate:19.0.4": "node scripts/validate-current-release.cjs",
-    "test:repair:19.0.4": "npm run test:current-release-targeted"
+    "test:repair:19.0.4": "npm run test:current-release-targeted",
+    "validate:19.0.5": "node scripts/validate-current-release.cjs",
+    "test:repair:19.0.5": "npm run test:current-release-targeted"
   },
   "browserslist": {
     "production": [
