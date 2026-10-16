@@ -1,5 +1,5 @@
 'use strict';
-const {test,expect}=require('@playwright/test');
+const {test,expect}=require('../fixtures/emulator-navigation-test.cjs');
 const {ownerLikeCreds,requireCreds,login,gotoTab,readSeedReport,RUN_ID,dismissBlockingDialogs}=require('../86chaos-full-audit/utils/audit-helpers.cjs');
 
 test('Schedule Tools verifies all sources and publishes selected weeks without tenant permission errors',async({page},info)=>{

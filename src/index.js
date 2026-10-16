@@ -3,7 +3,9 @@ import { createRoot } from "react-dom/client";
 
 import App from "./App";
 import { installMobileNoZoomGuard } from "./core/mobileNoZoom";
-import { firebaseEmulatorReadiness } from "./core/appCore";
+import { firebaseEmulatorReadiness, db, clearTenantListenerCache } from "./core/appCore";
+import { waitForPendingWrites } from "firebase/firestore";
+import { createEmulatorNavigationLifecycle } from "./core/emulatorNavigation.shared";
 import { firebaseRuntimeTarget } from "./core/firebaseTarget";
 import "./styles.css";
 
@@ -18,6 +20,15 @@ const renderApp = () => root.render(
   </StrictMode>
 );
 if (firebaseRuntimeTarget === 'EMULATOR') {
+  window.__CHAOS_EMULATOR_NAVIGATION__ = createEmulatorNavigationLifecycle({
+    target: firebaseRuntimeTarget,
+    projectId: db.app.options.projectId,
+    hostname: window.location.hostname,
+    failClosed: window.__CHAOS_FIREBASE_DIAGNOSTICS__?.failClosed === true,
+    settleWrites: async () => { await firebaseEmulatorReadiness; await waitForPendingWrites(db); },
+    unmount: () => root.unmount(),
+    releaseListeners: clearTenantListenerCache,
+  });
   firebaseEmulatorReadiness.then(renderApp).catch((error) => {
     console.error('86 Chaos Firebase Emulator startup failed:', error);
     root.render(<StrictMode><main data-testid="firebase-emulator-startup-failure" style={{ padding: 24, fontFamily: 'system-ui, sans-serif' }}><h1>Firebase Emulator Suite unavailable</h1><p>{String(error?.message || error)}</p><p>86 Chaos did not fall back to live Firebase.</p></main></StrictMode>);

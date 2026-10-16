@@ -1,5 +1,5 @@
 'use strict';
-const { test, expect } = require('@playwright/test');
+const { test, expect } = require('../fixtures/emulator-navigation-test.cjs');
 const {
   qualifyManifestSelectionsWithCurrentInventory,
 } = require('../../scripts/86chaos-release-gate/failed-only-manifest-utils.cjs');

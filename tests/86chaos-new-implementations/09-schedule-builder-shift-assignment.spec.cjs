@@ -1,5 +1,5 @@
 'use strict';
-const { test, expect } = require('@playwright/test');
+const { test, expect } = require('../fixtures/emulator-navigation-test.cjs');
 const { ownerLikeCreds, requireCreds, login, gotoTab } = require('../86chaos-full-audit/utils/audit-helpers.cjs');
 
 test.describe('17.0.27 Schedule Builder shift assignment emergency repair', () => {

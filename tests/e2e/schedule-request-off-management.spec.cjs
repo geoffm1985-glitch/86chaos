@@ -1,4 +1,4 @@
-const { test, expect } = require('@playwright/test');
+const { test, expect } = require('../fixtures/emulator-navigation-test.cjs');
 const { bodyText, attachJson } = require('../86chaos-full-audit/utils/audit-helpers.cjs');
 const { scheduleRequestOffConflictAnchorFromSeed } = require('./utils/schedule-request-off-fixture-anchor.cjs');
 const { ensureSeeded, resetSeededRequestOffFixture, openSchedule, openWarnings, openManagerRequestOff, openRequestOffView, waitForRequestOffEmployee, selectRequestOffEmployee, clearRequestOffEmployee, verifyWarningDismissalIsolation } = require('../fixtures/schedule-request-off-management.cjs');

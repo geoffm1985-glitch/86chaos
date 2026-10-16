@@ -251,3 +251,5 @@ async function verifyServerReadFallback({page,context}) {
   await page.unroute('**/google.firestore.v1.Firestore/Listen/channel**');
 }
 module.exports={cleanupScenario,verifyEditingRecovery,verifyDeletionRecovery,verifyMoveCopy,verifyInterruptedSave,verifyLayoutAndKeyboard,verifyReviewedMonthRecovery,verifyServerReadFallback};
+
+module.exports.openWorkspace = openWorkspace;

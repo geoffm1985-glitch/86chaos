@@ -87,6 +87,8 @@ test('real Playwright list discovery does not recurse when Playwright is install
   }
   const phaseSpecs=['e2e/schedule-builder-phase1-19.spec.cjs','86chaos-release-gate/108-schedule-builder-phase1-19.spec.cjs'];
   const phase=parsed.filter(row=>phaseSpecs.includes(row.specPath));
-  assert.equal(phase.length,84,'all seven Phase 1 workflows in both wrappers and six browser projects must be discovered');
-  for(const spec of phaseSpecs)for(const project of ['chromium','mobile-chromium','edge-pwa','firefox-pwa','webkit-pwa','mobile-webkit-pwa'])assert.equal(phase.filter(row=>row.specPath===spec && row.project===project).length,7,`${spec}/${project}`);
+  assert.equal(phase.filter(row=>row.leafTitle.startsWith('Phase 1 ')).length,84,'all original seven Phase 1 workflows in both wrappers and six browser projects remain discovered');
+  assert.equal(phase.filter(row=>row.leafTitle==='Local emulator reload acknowledges listener removal and restores authoritative scheduling').length,12,'both new local lifecycle wrappers cover all six browser projects');
+  assert.equal(phase.length,96,'original workflows and new lifecycle contracts are all discovered');
+  for(const spec of phaseSpecs)for(const project of ['chromium','mobile-chromium','edge-pwa','firefox-pwa','webkit-pwa','mobile-webkit-pwa'])assert.equal(phase.filter(row=>row.specPath===spec && row.project===project).length,8,`${spec}/${project}`);
 });

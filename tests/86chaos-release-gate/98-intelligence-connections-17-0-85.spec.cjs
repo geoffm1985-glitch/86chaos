@@ -1,5 +1,5 @@
 'use strict';
-const {test,expect}=require('@playwright/test');
+const {test,expect}=require('../fixtures/emulator-navigation-test.cjs');
 const {ownerLikeCreds,requireCreds,login,gotoTab,watchForProblems}=require('../86chaos-full-audit/utils/audit-helpers.cjs');
 test.describe('98 intelligence connections 17.0.85',()=>{
   test('Today exposes real history coverage and explicit item matching without automatic imports',async({page})=>{

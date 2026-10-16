@@ -1,4 +1,4 @@
-const { test, expect } = require('@playwright/test');
+const { test, expect } = require('../fixtures/emulator-navigation-test.cjs');
 const { ownerLikeCreds, requireCreds, login, gotoTab, bodyText, attachJson } = require('../86chaos-full-audit/utils/audit-helpers.cjs');
 
 test.describe('56 Manager Brief runtime + sticky Schedule Builder day header', () => {

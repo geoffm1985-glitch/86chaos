@@ -1,4 +1,4 @@
-const { test, expect } = require('@playwright/test');
+const { test, expect } = require('../fixtures/emulator-navigation-test.cjs');
 const { ownerLikeCreds, requireCreds, login, gotoTab, attachJson } = require('../86chaos-full-audit/utils/audit-helpers.cjs');
 const {verifyHeaderTouchHandoff}=require('../fixtures/schedule-header-touch-scenario.cjs');
 

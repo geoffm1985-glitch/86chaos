@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
-  "version": "19.0.15",
-  "sourceHash": "a8382c31ad3d8a3ccbf2e1464b67823501f8caf7067a7d324a14c3d31e69bb81",
+  "version": "19.0.16",
+  "sourceHash": "f0e74f63bdf650acca282cae0b1f6ffcaab983074fc719204377e27b9f3cb982",
   "files": [
     {
       "file": ".gitattributes",
@@ -404,6 +404,10 @@
       "sha256": "a7aec3eef64a4a9a6afdcf36a6c12c24726396b457d4016428dae3792600070d"
     },
     {
+      "file": "RELEASE_NOTES_19.0.16.md",
+      "sha256": "f5215d3aadcebb95a5ae1eab8c701224240eb0ceb3139c8f474300e71ebb7cfa"
+    },
+    {
       "file": "RELEASE_NOTES_19.0.2.md",
       "sha256": "9f5b120e268f559dc59d42aaf995e0ae908ff601acc47a6033d2db98b7bff6d3"
     },
@@ -449,7 +453,7 @@
     },
     {
       "file": "android/app/build.gradle",
-      "sha256": "c0c9a66d49313044f7da419716c12a8e7b96908af6234e599bd690b12549a032"
+      "sha256": "841b6620b985a8be02c7afc379904d83e14e1e406982ce4471ed5a709a849d74"
     },
     {
       "file": "android/app/capacitor.build.gradle",
@@ -809,7 +813,7 @@
     },
     {
       "file": "api/_pos-bridge-config.js",
-      "sha256": "d681935a790d0f016c6497ddf133cd153a2363ac15bc7f79234fcda97a4e9770"
+      "sha256": "3aee2dc8e81c5a44ba603ec574673ccec6c40cb50d86dcd404260661509a47ac"
     },
     {
       "file": "api/_pos-bridge-events.js",
@@ -985,7 +989,7 @@
     },
     {
       "file": "api/_version.js",
-      "sha256": "fefd248f3ede10b890629ae7091f4cd7fe408650396f4e712ada9f08a297f7d9"
+      "sha256": "56d5b1386cdc8d5d971d11dc57041cafdc37396da3ff5f8c49f13b17cc996646"
     },
     {
       "file": "api/account-deletion-request.js",
@@ -1178,6 +1182,10 @@
     {
       "file": "api/employee-access-revocation.test.cjs",
       "sha256": "e42febb733b64f5131f93e7b467459240524b69daf69bb6f46bb41416ee3ad36"
+    },
+    {
+      "file": "api/emulator-navigation-19.test.cjs",
+      "sha256": "07b2da7c409c76cc96a0ca748e2aec3549d40937e115671788618bd871ca305d"
     },
     {
       "file": "api/failed-and-new-inventory.test.cjs",
@@ -1553,7 +1561,7 @@
     },
     {
       "file": "api/playwright-inventory-v3.test.cjs",
-      "sha256": "d64f3a328c73ed6476b020ea15a9e72f7406c6386a03b27513ebb27254ae7ba9"
+      "sha256": "29d4d683f76eba0b3bb96f893be301c828d66a8e1cfb13477ceb8158a1ce6502"
     },
     {
       "file": "api/playwright-status-classification.test.cjs",
@@ -2533,7 +2541,7 @@
     },
     {
       "file": "docs/ENGINEERING_PLAYBOOK.md",
-      "sha256": "704d72f8817775cf4686e9856232ec6bb0987eb4b7534a4c35caffdc5141b09d"
+      "sha256": "36969a6880e47be67d6de503906ef470fff8b9d4097f58302914a5ef65c75265"
     },
     {
       "file": "docs/PLAY_STORE_RELIABILITY_ACCEPTANCE.md",
@@ -2541,15 +2549,15 @@
     },
     {
       "file": "docs/SCHEDULING_PHASE_TEST_MATRIX.md",
-      "sha256": "4e28467825f8e78203d50b442c4916aeb4eab3f03d8f5e4f53d0b4c1ebdf7452"
+      "sha256": "463d62d7d8fa5b27fd3d38409320d680aca848e428b86992ca096c6f08c0b9e0"
     },
     {
       "file": "docs/SCHEDULING_WORLD_CLASS_IMPLEMENTATION.md",
-      "sha256": "14ef553d309408aa0c3dc0d4ef7f277e6f7db31e2c3a057166c6a9c20ed45cad"
+      "sha256": "49a7251bb7adc958101ce12a16a1334b0642594c15713956f50734b56cc5bbee"
     },
     {
       "file": "docs/UNIVERSAL_PLATFORM_PARITY_MATRIX.md",
-      "sha256": "c54d180e70adc4d2bba49f5928db2816a62f87fe0e9b956f0f8dbbd9d17bfc3d"
+      "sha256": "e8241f8dc603219a2102962d417a90f752c380959eedc8a9d5b498d15f4bccfa"
     },
     {
       "file": "docs/daily-briefing-feature-status.md",
@@ -2625,7 +2633,7 @@
     },
     {
       "file": "ios/App/App.xcodeproj/project.pbxproj",
-      "sha256": "8695b92cb126ec44a07de0c22478b1a67471c4a7079f2062f4dd6a8be1add5ed"
+      "sha256": "4b6bda3a1f96e57f932c2efc6e4f315ca0ef186e154b179d7c2e2e618eda7f08"
     },
     {
       "file": "ios/App/App.xcodeproj/project.xcworkspace/xcshareddata/IDEWorkspaceChecks.plist",
@@ -2713,7 +2721,7 @@
     },
     {
       "file": "mobile/native-platform-contract.json",
-      "sha256": "3cd31c9c01fd14c74c03b6996aa6a1d985caa1a388466f826f435d2c087ebfe8"
+      "sha256": "8e753ccb0fe1ba6c32dfe0d5c73db530848ef7b21f23bbe8c476f6ac1e9c8dc4"
     },
     {
       "file": "mobile/testing/README.md",
@@ -2725,11 +2733,11 @@
     },
     {
       "file": "package-lock.json",
-      "sha256": "3851e93cde13bfaabe328ac598b683dce9c1352c90b80e767b7f7cbd8cf0593f"
+      "sha256": "a7187a3c64101bf0de4443e69dfa516896f1acb66b6c1fa7a66b4d0774d1a714"
     },
     {
       "file": "package.json",
-      "sha256": "03da1a6d3188edeaf4cb89a12a090aaef769363588da9eaa9ca73152396de918"
+      "sha256": "6ba369747a3fccc96ed25565843815f60068a35aa5c703c586abf71eeccb2fa5"
     },
     {
       "file": "playwright.config.js",
@@ -2953,7 +2961,7 @@
     },
     {
       "file": "public/version.json",
-      "sha256": "c0e707f23c88de43adff134c1b58830efe8e579816415e1e5f10e669c059ecbd"
+      "sha256": "3060b50c3fd66cd4d11405ce5376960f43187ce14098f209f008b659a76f18d5"
     },
     {
       "file": "public/wisco.png",
@@ -4701,7 +4709,7 @@
     },
     {
       "file": "src/core/appCore.js",
-      "sha256": "01363d1ea46ddb86fff7277a5e5faac4f59576c13d0097f45a950f0606b5501e"
+      "sha256": "b8a4c20b7d4382438f448f05a41438ede80dbd62ee22684c809580e17c1f9564"
     },
     {
       "file": "src/core/attendanceEvidence.cjs",
@@ -4721,11 +4729,11 @@
     },
     {
       "file": "src/core/customerHelpKnowledge.cjs",
-      "sha256": "3c5a262f99a3a08cc841bda89b9037ddc1da9a831784dd8493852f99e89f3101"
+      "sha256": "56052568b3c3894aef05fa9583d728290cec0f103910af261ba712f16a2c74bc"
     },
     {
       "file": "src/core/customerHelpKnowledge.js",
-      "sha256": "fc1d4e2d573f44af455404a54de80e02d4c4ed4a6526b4d1edb1301b25978cca"
+      "sha256": "485cdcc2273ad53a21abe7741e230915bfc44478029b5ee03b75c836f0b56b77"
     },
     {
       "file": "src/core/deploymentBoundary.cjs",
@@ -4738,6 +4746,10 @@
     {
       "file": "src/core/deploymentBoundary.shared.js",
       "sha256": "80e574315a3d55eb30783102692f5d1600387ae2a1384c4a31b9604784db7d70"
+    },
+    {
+      "file": "src/core/emulatorNavigation.shared.js",
+      "sha256": "7b6f3af9797520ffc16e671aab948394d2230cde5b543a81701f1c5bd299e77d"
     },
     {
       "file": "src/core/fileCompression.js",
@@ -5333,7 +5345,7 @@
     },
     {
       "file": "src/index.js",
-      "sha256": "7e67f35550d1c70205b41b79561a61d1b6cdf16fb5b148bfa3a769a3183e9dfb"
+      "sha256": "7258bca4ffd7f2c0012af9361964194f38ca467b237e4053f4108674832d880b"
     },
     {
       "file": "src/lib/featureAccess.js",
@@ -5373,7 +5385,7 @@
     },
     {
       "file": "test-tools/certification/cost-performance-baselines.json",
-      "sha256": "9313ac9387865193c8c04c93c5af554f6db3467c4384af20574e978e936bcbf6"
+      "sha256": "970ad8171ff50b5c0a0494891ba85c225e587c502375d8b5b35b5a98176ed5a9"
     },
     {
       "file": "test-tools/certification/device-acceptance.json",
@@ -5381,7 +5393,7 @@
     },
     {
       "file": "test-tools/certification/groups.json",
-      "sha256": "911a972224ddf06c2c26707edb368201fb6dbf1faccfb8cd7ec2a9037ddcba1e"
+      "sha256": "e52f7ddc0f165e7177d9ec0d21922d9c34117d5877779b2fffe6da44e6225b20"
     },
     {
       "file": "test-tools/certification/permission-matrix.json",
@@ -5445,7 +5457,7 @@
     },
     {
       "file": "test-tools/regressions/registry.json",
-      "sha256": "05fabd9b14cd5c2dc874ccb046f4a3a2e5ae9ef8e0dda45d57af49e4c16cfe81"
+      "sha256": "564afcc8cfa3fc6278b9a8f497a717452d0765dc6264cc1670b2b18f1bf85c44"
     },
     {
       "file": "test-tools/reporters/chaos-release-gate-reporter.cjs",
@@ -5629,7 +5641,7 @@
     },
     {
       "file": "tests/86chaos-new-implementations/09-schedule-builder-shift-assignment.spec.cjs",
-      "sha256": "157cf51cc5cf1a532eec8bdb2cd43cb3c9ee28fb7a76c6dc8157ed80c91f50b1"
+      "sha256": "b3dcfb1d7e6aabba7eeb00fd462e7f1857c6dbcf769688ae18e6ce7db7b45c63"
     },
     {
       "file": "tests/86chaos-new-implementations/10-app-bootstrap-i18n-runtime.spec.cjs",
@@ -5653,7 +5665,7 @@
     },
     {
       "file": "tests/86chaos-release-gate/104-mobile-schedule-readiness-publish.spec.cjs",
-      "sha256": "3469df5bbd2496ec7109d8334ee8c54f0b3b6a0e49ca9b6cfe31e23218941eb5"
+      "sha256": "3286d36cd09334d5d8aeff9a8c20ec36e650ffa26a75e1e31b6141e9c0910e75"
     },
     {
       "file": "tests/86chaos-release-gate/106-mobile-prep-layout-18-0-16.spec.cjs",
@@ -5661,11 +5673,11 @@
     },
     {
       "file": "tests/86chaos-release-gate/107-testing-promotion-19.spec.cjs",
-      "sha256": "225ba5bc2cdd5d6c87cad2009b73df0aa1185be6cc79dd1797da7dbcec85d38e"
+      "sha256": "c23b4992984f6e74675350031b6e3cf13e6367f31f42e35c537bf8c5326a2e10"
     },
     {
       "file": "tests/86chaos-release-gate/108-schedule-builder-phase1-19.spec.cjs",
-      "sha256": "3bba8572fa73218dd21ed44ea2d15834f35646c2ea5190d9950fd354398d7758"
+      "sha256": "1bfa9fa11e1bab69d693e98f35c7d7185ab8f935421b3b576cf58d209fb84bfb"
     },
     {
       "file": "tests/86chaos-release-gate/15-interactive-control-census.spec.cjs",
@@ -5829,7 +5841,7 @@
     },
     {
       "file": "tests/86chaos-release-gate/54-emergency-schedule-requestoff.spec.cjs",
-      "sha256": "4062e6ce64b351525c01b626b883b1b6d904c7413678f542a7a18f550d926f6e"
+      "sha256": "030bc3fe9a9883fd96d02b5848504a6a902d42cfd18367946b3de24d75a7fdd1"
     },
     {
       "file": "tests/86chaos-release-gate/55-full-surface-traceability.spec.cjs",
@@ -5837,23 +5849,23 @@
     },
     {
       "file": "tests/86chaos-release-gate/56-manager-brief-sticky-day-header.spec.cjs",
-      "sha256": "1e869d5e24d745c2f462041866b5bc57611dd09437a1eb51818a41b3649084b3"
+      "sha256": "69f2a9fa94bc08354be35c5b980a7548f24c4463f8560640b67d4fa1e2842073"
     },
     {
       "file": "tests/86chaos-release-gate/57-sticky-header-touch-handoff.spec.cjs",
-      "sha256": "b413ded8ca27a3b81e60f16f4f03160ff7cf74d12e4302d7ae2ccf3220feb9a7"
+      "sha256": "2b8a37d1ea042fbbec12b45e9df4eab9176be74db8dab758c9212f47ca066cd2"
     },
     {
       "file": "tests/86chaos-release-gate/58-native-mobile-cost-foundation.spec.cjs",
-      "sha256": "da5398a33ce99fd80a4f9979ad47164427fe18bb09fdde4db37b6417aa05ce86"
+      "sha256": "6a01f2ef5fb9d261ba43507bbad54b2f380533aa5a306b396f8a51a7e040965b"
     },
     {
       "file": "tests/86chaos-release-gate/58-testing-gate-17-0-43.spec.cjs",
-      "sha256": "571391b6bae5629409b899cbe94c51bd8f8059f6eede8d90b3ca2deb71865caa"
+      "sha256": "65ccf20ece9e531acf186832ba64c68942f8816623092d1499979f07df8ab58e"
     },
     {
       "file": "tests/86chaos-release-gate/59-native-packaged-api-bridge.spec.cjs",
-      "sha256": "99f77282919fb09af6b4157f8af640c95e7d243dd9842f5de01245e66ef0e645"
+      "sha256": "f4d6555421d9a978e883874a826f95910015bf943f31faa0da542f09039f0bc2"
     },
     {
       "file": "tests/86chaos-release-gate/60-customer-help-version-17-0-45.spec.cjs",
@@ -5861,7 +5873,7 @@
     },
     {
       "file": "tests/86chaos-release-gate/60-native-system-bars-branding.spec.cjs",
-      "sha256": "7f2f42f7a1b7dae8d33795311f84c1610371e6e5900270cb24cb6edf06ebdfdc"
+      "sha256": "06b58fcfd51b5c1b3d02afcc1079526b7721f32fc7506d462733b9444fd09edc"
     },
     {
       "file": "tests/86chaos-release-gate/61-native-container-insets.spec.cjs",
@@ -5909,7 +5921,7 @@
     },
     {
       "file": "tests/86chaos-release-gate/71-release-gate-staleness-manifest-17-0-59.spec.cjs",
-      "sha256": "a047f4b0507d03fd1305f15582b96b0869ed5e59c0a5f1db3b32993d0492d2fc"
+      "sha256": "421cd6c59f11727072e00adc86598f5d040396063c9f5bf32d49dc57acd94b5f"
     },
     {
       "file": "tests/86chaos-release-gate/72-release-gate-source-inventory-17-0-60.spec.cjs",
@@ -5933,7 +5945,7 @@
     },
     {
       "file": "tests/86chaos-release-gate/77-release-gate-lineage-title-migration-17-0-65.spec.cjs",
-      "sha256": "4540a50297be734210cedd9972c6cc8a2376e7d2c67319820f4ac33bb6c776f7"
+      "sha256": "ec03b54c26a57cb42bc78fbe5e7aa244fce21905794dfed4c2bc05491f35b331"
     },
     {
       "file": "tests/86chaos-release-gate/78-release-gate-lineage-suite-prefix-17-0-66.spec.cjs",
@@ -6021,7 +6033,7 @@
     },
     {
       "file": "tests/86chaos-release-gate/98-intelligence-connections-17-0-85.spec.cjs",
-      "sha256": "a6bdf68a9f93e01c6720cbbfc60d7b2daa968a16253ff36b8254d27520541fb9"
+      "sha256": "de228341bbdb5c08ddbe5909d8a0849ee558778c8aba4c744df8f254393c1a93"
     },
     {
       "file": "tests/86chaos-release-gate/99-operational-completion-17-0-86.spec.cjs",
@@ -6173,7 +6185,7 @@
     },
     {
       "file": "tests/e2e/release-gate-lineage-title-migration.spec.cjs",
-      "sha256": "475bed27fbd7da1e2f5fc8d0695e1f0298f2b3477182d8af1139b6df2aacc736"
+      "sha256": "f2dea58585e57df6272b47504b6635f9303ab367a71c8ee5ecd2ecee38d26d09"
     },
     {
       "file": "tests/e2e/request-off-maturity-refactor-17-0-83.spec.cjs",
@@ -6185,11 +6197,11 @@
     },
     {
       "file": "tests/e2e/schedule-builder-phase1-19.spec.cjs",
-      "sha256": "3bba8572fa73218dd21ed44ea2d15834f35646c2ea5190d9950fd354398d7758"
+      "sha256": "1bfa9fa11e1bab69d693e98f35c7d7185ab8f935421b3b576cf58d209fb84bfb"
     },
     {
       "file": "tests/e2e/schedule-request-off-management.spec.cjs",
-      "sha256": "e985b69fd1f057a7fb58ce5fc057087de2929b1781e1f5cf2dd99ccb6b0265d1"
+      "sha256": "f81669873d87608e0a76b79dda61207a8abf950e88a64cb1e62d3956425fb620"
     },
     {
       "file": "tests/e2e/server-certification-drift-17-0-77.spec.cjs",
@@ -6201,7 +6213,7 @@
     },
     {
       "file": "tests/e2e/testing-promotion-19.spec.cjs",
-      "sha256": "225ba5bc2cdd5d6c87cad2009b73df0aa1185be6cc79dd1797da7dbcec85d38e"
+      "sha256": "c23b4992984f6e74675350031b6e3cf13e6367f31f42e35c537bf8c5326a2e10"
     },
     {
       "file": "tests/e2e/utils/release-login-helper.cjs",
@@ -6216,6 +6228,14 @@
       "sha256": "019c5d3341c175541c73ea81467c2fa465120e36722aeae0a13c0919298bb509"
     },
     {
+      "file": "tests/fixtures/emulator-navigation-test.cjs",
+      "sha256": "8e917e0a9847dfc703012f7682d32ed9b86dfdffdac9f08e8c8820c9564bfe48"
+    },
+    {
+      "file": "tests/fixtures/emulator-navigation.cjs",
+      "sha256": "a7bcccfb08480794c6315a51f20046bf9d8ec528335348a34f942d1f8c4d5c57"
+    },
+    {
       "file": "tests/fixtures/request-off-card-fixture.cjs",
       "sha256": "088c8cc956abefcc35d34ae4331f09c2e7be199a3bea52e0514c794a9ade43a5"
     },
@@ -6225,7 +6245,7 @@
     },
     {
       "file": "tests/fixtures/schedule-builder-phase1-scenarios.cjs",
-      "sha256": "eb1563cf7855c15221702e8638507ce1012aa23dc0c2d5e5ef34f75f45cbe078"
+      "sha256": "2f2738e9366121626a0ada2423e829ae34a39490a8e9fef67772de471ed62ce0"
     },
     {
       "file": "tests/fixtures/schedule-header-touch-scenario.cjs",
@@ -6276,16 +6296,17 @@
       "sha256": "88ee1e1a65882a5986548278695529bcda7fb6142d776114bcc8386ebbafcaf9"
     }
   ],
-  "commit": "b702d923ef40ff6a8595359aac30acdc22f82c62",
+  "commit": "8c073a8c0e4b6b6d971b29cb229c393a7183dbaf",
   "branch": "testing",
   "dirty": true,
   "dirtyPaths": [
-    "A  RELEASE_NOTES_19.0.15.md",
+    "A  RELEASE_NOTES_19.0.16.md",
     "M  android/app/build.gradle",
     "M  api/_pos-bridge-config.js",
-    "M  api/_schedule-workspace.cjs",
     "M  api/_version.js",
-    "M  api/schedule-workspace-19.test.cjs",
+    "A  api/emulator-navigation-19.test.cjs",
+    "M  api/playwright-inventory-v3.test.cjs",
+    "M  docs/ENGINEERING_PLAYBOOK.md",
     "M  docs/SCHEDULING_PHASE_TEST_MATRIX.md",
     "M  docs/SCHEDULING_WORLD_CLASS_IMPLEMENTATION.md",
     "M  docs/UNIVERSAL_PLATFORM_PARITY_MATRIX.md",
@@ -6297,12 +6318,34 @@
     "M  src/core/appCore.js",
     "M  src/core/customerHelpKnowledge.cjs",
     "M  src/core/customerHelpKnowledge.js",
+    "A  src/core/emulatorNavigation.shared.js",
+    "M  src/index.js",
     "M  test-tools/certification/cost-performance-baselines.json",
     "M  test-tools/certification/groups.json",
     "M  test-tools/regressions/registry.json",
-    "M  test-tools/schedule-workspace-emulator.test.cjs"
+    "M  tests/86chaos-new-implementations/09-schedule-builder-shift-assignment.spec.cjs",
+    "M  tests/86chaos-release-gate/104-mobile-schedule-readiness-publish.spec.cjs",
+    "M  tests/86chaos-release-gate/107-testing-promotion-19.spec.cjs",
+    "M  tests/86chaos-release-gate/108-schedule-builder-phase1-19.spec.cjs",
+    "M  tests/86chaos-release-gate/54-emergency-schedule-requestoff.spec.cjs",
+    "M  tests/86chaos-release-gate/56-manager-brief-sticky-day-header.spec.cjs",
+    "M  tests/86chaos-release-gate/57-sticky-header-touch-handoff.spec.cjs",
+    "M  tests/86chaos-release-gate/58-native-mobile-cost-foundation.spec.cjs",
+    "M  tests/86chaos-release-gate/58-testing-gate-17-0-43.spec.cjs",
+    "M  tests/86chaos-release-gate/59-native-packaged-api-bridge.spec.cjs",
+    "M  tests/86chaos-release-gate/60-native-system-bars-branding.spec.cjs",
+    "M  tests/86chaos-release-gate/71-release-gate-staleness-manifest-17-0-59.spec.cjs",
+    "M  tests/86chaos-release-gate/77-release-gate-lineage-title-migration-17-0-65.spec.cjs",
+    "M  tests/86chaos-release-gate/98-intelligence-connections-17-0-85.spec.cjs",
+    "M  tests/e2e/release-gate-lineage-title-migration.spec.cjs",
+    "M  tests/e2e/schedule-builder-phase1-19.spec.cjs",
+    "M  tests/e2e/schedule-request-off-management.spec.cjs",
+    "M  tests/e2e/testing-promotion-19.spec.cjs",
+    "A  tests/fixtures/emulator-navigation-test.cjs",
+    "A  tests/fixtures/emulator-navigation.cjs",
+    "M  tests/fixtures/schedule-builder-phase1-scenarios.cjs"
   ],
-  "capturedAt": "2026-10-16T05:29:49.228Z",
+  "capturedAt": "2026-10-16T12:46:19.352Z",
   "previewUrl": null,
   "intendedProductionUrl": "https://app.86chaos.com",
   "sourceArtifact": null
