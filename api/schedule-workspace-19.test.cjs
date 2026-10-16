@@ -61,6 +61,13 @@ function fixture() {
   return {store,db,ctx,patch,request,execute,writes:()=>writes};
 }
 
+for(const kind of ['ids','week'])test(`authoritative ${kind} reads use a nonlocking snapshot transaction`,async()=>{
+  const f=fixture(),run=f.db.runTransaction;
+  f.db.runTransaction=(callback,options)=>{assert.deepEqual(options,{readOnly:true},'authoritative reads must not acquire mutation-blocking transaction locks');return run(callback);};
+  const result=kind==='ids'?await readScheduleWorkspace({db:f.db,ctx:f.ctx,body:{restaurantId:'tenant',ids:['absent']}}):await readScheduleWeek({db:f.db,ctx:f.ctx,body:{restaurantId:'tenant',weekStart:'2026-10-19'}});
+  assert.equal(result.authoritative,true);assert.equal(f.writes(),0);
+});
+
 test('verified week read merges canonical identities, bounds scope and never returns private fields or writes',async()=>{
   const f=fixture();
   f.store.set('shifts/date_only',{restaurantId:'tenant',date:'2026-10-20',hourlyRate:999,privateNotificationToken:'secret'});

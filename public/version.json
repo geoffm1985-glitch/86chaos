@@ -1,26 +1,24 @@
 {
-  "version": "19.0.14",
-  "name": "86 Chaos 19.0.14",
-  "build": "19.0.14",
-  "label": "86 Chaos 19.0.14",
-  "title": "86 Chaos 19.0.14",
+  "version": "19.0.15",
+  "name": "86 Chaos 19.0.15",
+  "build": "19.0.15",
+  "label": "86 Chaos 19.0.15",
+  "title": "86 Chaos 19.0.15",
   "releasedAt": "2026-10-16T00:24:48.951691Z",
-  "releaseTitle": "Phase 1 native release identity guard",
-  "summary": "Synchronize every native release contract name/code and reject stale nested identities before packaging or testing.",
-  "description": "Testing Phase 1 candidate. Fresh exact targeted/delta and native device acceptance remain pending. No production deployment.",
+  "releaseTitle": "Schedule verification without mutation-blocking read locks",
+  "summary": "Authoritative schedule reads retain a consistent snapshot without blocking concurrent writes.",
+  "description": "Read-only schedule snapshot transactions preserve tenant/privacy boundaries and allow concurrent mutations. Exact-candidate Phase 1 acceptance remains pending.",
   "notes": [
-    "Android/iOS contract names and codes match the actual native projects and package release.",
-    "The complete pre-push validator rejects each stale native name/code independently.",
-    "All 84 Phase 1 workflow cases passed on19.0.13, but two metadata assertions failed; fresh14acceptance is required.",
-    "Testing web/API remains chaos-test-d1601. APK retains production Firebase, signing and destinations; native backend/device acceptance is pending.",
-    "No production deployment, GitHub Actions or full release gate."
+    "Authoritative shift and week reads use read-only Firestore transactions.",
+    "Real Firestore regressions verify concurrent writes and consistent original snapshots.",
+    "Signed APK, targeted/delta and native backend/device acceptance remain pending."
   ],
   "highlights": [
     "Strict source verification without output-triggered request stalls",
     "Actual linked-worktree Git identity protection"
   ],
   "changes": [
-    "Testing candidate 19.0.14",
+    "Testing candidate 19.0.15",
     "Exact corrected-candidate preflight, APK verification, deployment, targeted and failed+new delta acceptance are pending."
   ]
 }

@@ -135,3 +135,9 @@ APK packaging remains on production Firebase/signing/destinations. Native schedu
 # 19.0.14 native identity guard
 
 19.0.13 deployed targeted validation passed all 84 Phase 1 identities across six browser projects. Two source-contract cases caught stale nested Android/iOS names/codes despite the actual APK/native projects identifying13/190013. Final result153passed/twofailed/oneintentional skip/zero unrun, with authoritative cleanup and unchanged source verified. Candidate 19.0.14 corrects every native release identity and makes exact nested equality mandatory in the complete pre-push validator, with independent stale-field rejection regressions. Fresh candidate acceptance remains pending; no native backend/device certification or production deployment is implied.
+
+## Candidate 19.0.15 authoritative read snapshots
+
+Only schedule ID/week verification reads change to nonlocking Firestore snapshot transactions. Writes/CAS and both functional browser inventories remain intact for every project. Real emulator controls prove concurrent mutation and original-snapshot consistency; 24 scheduling Node checks passed. Sealed 19.0.14 deployed 155/156 and all 84 Phase 1 workflows passed, but both local runs stopped with three Edge timeouts; the second cleanup passed. Exact 19.0.15 acceptance is pending. Production deployment remains forbidden and native backend/device end-to-end evidence remains deferred.
+
+Final scoped preflight `phase1-component-20261016-002538` passed 128 Node checks, 21 React tests and all three isolated real Firestore scenarios with zero failures/skips, followed by emulator shutdown and all preflight process exits at 2026-10-16T05:29:17Z. The two new real Firestore regressions confirmed concurrent mutation and original-snapshot consistency. Exact sealed 19.0.15 APK/deployment/targeted/delta acceptance remains pending.

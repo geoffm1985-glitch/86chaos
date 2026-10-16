@@ -203,7 +203,7 @@ async function readScheduleWorkspace({db,ctx,body,clock=()=>new Date()}) {
     const refs=body.ids.map(id=>db.collection('shifts').doc(id));
     const snapshots=tx.getAll?await tx.getAll(...refs):await Promise.all(refs.map(ref=>tx.get(ref)));
     return {ok:true,authoritative:true,verifiedAt:clock().toISOString(),shifts:snapshots.map((snapshot,index)=>snapshot.exists && tenantMatches(snapshot.data(),tenant)?publicShift({id:body.ids[index],...snapshot.data()}):{id:body.ids[index],exists:false})};
-  });
+  },{readOnly:true});
 }
 async function readScheduleWeek({db,ctx,body,clock=()=>new Date()}) {
   const tenant=clean(body.restaurantId),weekStart=clean(body.weekStart);
@@ -222,6 +222,6 @@ async function readScheduleWeek({db,ctx,body,clock=()=>new Date()}) {
     }
     if(rows.size>5000)fail('incomplete_context','This week exceeds the safe verification limit. Narrow the schedule selection.');
     return {ok:true,authoritative:true,restaurantId:tenant,weekStart,dateStart,dateEnd,verifiedAt:clock().toISOString(),shifts:[...rows.values()]};
-  });
+  },{readOnly:true});
 }
 module.exports={editScheduleWorkspace,readScheduleWorkspace,readScheduleWeek,loadEditContext,normalizeProposal,publicShift,boundedRead,operationResult,tenantMatches};

@@ -5,7 +5,7 @@ Every change requires both functional Playwright and canonical release-gate regr
 | Stage | Required coverage | Current result |
 |---|---|---|
 | Baseline | Complete source promotion, release identities, web/native isolation, production-token refusal, authenticated startup, retained scheduling, native contracts, complete discovery with stable spec identities | 19.0.2 accepted: sealed 44/44; local/deployed targeted 34/34 each; canonical delta 16/16; cleanup passed; exact commit/hash in implementation ledger. |
-| 1 | Editor, weekly/mobile navigation, primary-grid move/copy, time editing, keyboard/touch alternatives, sticky scrolling, undo/concurrency, retained views | 19.0.13 deployed targeted: 153 passed, two nested native release metadata failures, one intentional skip, zero timeouts/unrun of 156; all 84 Phase 1 workflow identities passed and authoritative cleanup passed. Local/delta did not run. Candidate 19.0.14 synchronizes every native contract name/code and adds complete-validator negative regressions; exact 19.0.14 preflight/targeted/delta pending. Production deployment forbidden; native backend/device acceptance deferred. |
+| 1 | Editor, weekly/mobile navigation, primary-grid move/copy, time editing, keyboard/touch alternatives, sticky scrolling, undo/concurrency, retained views | 19.0.14 deployed targeted passed 155/156 with one intentional skip and all 84 Phase 1 workflows; cleanup passed. Both local attempts ended 110 passed, three timeouts, one intentional skip, 48 unrun of 162. Second cleanup passed. Preparing 19.0.15 nonlocking authoritative read snapshots with concurrency/snapshot regressions. Exact preflight, local/deployed targeted and canonical delta pending. Production forbidden; native backend/device acceptance deferred. |
 | 2 | Hard/soft constraints, trustworthy inputs, deterministic draft generation, conflicts/repairs, templates, rescue duplicate claims, confidence-aware quality | Pending |
 | 3 | Current competencies, collective station coverage, incomplete demand, owner wage boundaries, fairness, voice/typed approval | Pending |
 | 4 | Availability approval/effective dates, swaps/trades/withdrawal, transactional claims, published acknowledgments, notification evidence, protected calendar updates/revocation | Pending |
@@ -21,3 +21,9 @@ The three failures reproduced a concurrent explicit tour-skip/header-dismissal h
 # 19.0.14 scoped preflight
 
 Corrected complete-validator regressions passed 5/5. Final scoped preflight `phase1-component-20261015-192612` passed 126 Node checks, 21 React tests and the real Firestore integrity scenario with zero failures/skips, followed by isolated emulator shutdown and all process exits at 2026-10-16T00:29:49Z. Fresh sealed 19.0.14 local/deployed targeted and canonical failed+new delta acceptance remain pending; no full gate or Phase 2 advancement occurred.
+
+# 19.0.15 read transaction regressions
+
+Both actual read APIs blocked concurrent mutation under read/write transactions; explicit read-only controls committed without changing the reader snapshot. New Node and isolated real Firestore regressions cover both ID and complete-week reads. All browser business assertions and original limits remain mandatory. Phase 1 is not accepted.
+
+Final scoped preflight `phase1-component-20261016-002538` passed 128 Node checks, 21 React tests and all three isolated real Firestore scenarios with zero failures/skips, followed by emulator shutdown and all preflight process exits at 2026-10-16T05:29:17Z. The two new real Firestore regressions confirmed concurrent mutation and original-snapshot consistency. Exact sealed 19.0.15 APK/deployment/targeted/delta acceptance remains pending.

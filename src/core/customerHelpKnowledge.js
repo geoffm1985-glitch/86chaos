@@ -1,6 +1,6 @@
 'use strict';
 
-const CUSTOMER_HELP_VERSION = '19.0.14';
+const CUSTOMER_HELP_VERSION = '19.0.15';
 
 const AUDIENCE = Object.freeze({ EVERYONE: 'Everyone', EMPLOYEE: 'Employee', MANAGER_OWNER: 'Manager / Owner' });
 

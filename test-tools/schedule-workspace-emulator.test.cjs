@@ -7,6 +7,25 @@ const {prepareScheduleClear,advanceScheduleClear}=require('../api/_schedule-clea
 const {assignRows}=require('../api/schedule-shift-assign')._test;
 const {deleteSingleLogicalShift}=require('../api/schedule-shift-delete')._test;
 const {workspaceEvidence}=require('../src/core/scheduleWorkspace.shared.js');
+
+for(const kind of ['ids','week'])test(`actual Firestore ${kind} authoritative snapshot permits a concurrent write without mixing revisions`,{timeout:45000},async()=>{
+  assert.match(process.env.FIRESTORE_EMULATOR_HOST || '',/^127\.0\.0\.1:\d+$/);
+  assert.equal(process.env.GCLOUD_PROJECT,'demo-86chaos-scheduling');assert.equal(process.env.CHAOS_BLOCK_LIVE_FIREBASE,'1');
+  const id='qa_read_lock_'+require('node:crypto').randomUUID(),tenant='qa_read_'+require('node:crypto').randomUUID();
+  const app=initializeApp({projectId:'demo-86chaos-scheduling'},id),db=getFirestore(app),ref=db.collection('shifts').doc(id);
+  let release,entered,reader,writer,timer;const barrier=new Promise(resolve=>{release=resolve}),ready=new Promise(resolve=>{entered=resolve});let first=true;
+  try{
+    await ref.create({restaurantId:tenant,workspaceId:tenant,date:'2031-04-07',scheduleDateKey:'2031-04-07',startTime:'09:00',endTime:'17:00',notes:'before',revision:1,isOpenShift:true});
+    const wrapped={collection:db.collection.bind(db),runTransaction:(callback,options)=>db.runTransaction(tx=>callback(new Proxy(tx,{get(target,key){const value=Reflect.get(target,key);if(['get','getAll'].includes(key))return async(...args)=>{const result=await value.apply(target,args);if(first){first=false;entered();await barrier;}return result;};return typeof value==='function'?value.bind(target):value;}})),options)};
+    const ctx={uid:'qa_reader',restaurantId:tenant,permissions:{schedule:true}};
+    reader=kind==='ids'?readScheduleWorkspace({db:wrapped,ctx,body:{restaurantId:tenant,ids:[id]}}):readScheduleWeek({db:wrapped,ctx,body:{restaurantId:tenant,weekStart:'2031-04-07'}});
+    await ready;writer=ref.update({notes:'after',revision:2});
+    const committedBeforeReadFinished=await Promise.race([writer.then(()=>true),new Promise(resolve=>{timer=setTimeout(()=>resolve(false),2000);})]);
+    clearTimeout(timer);release();const result=await reader;await writer;
+    assert.equal(result.authoritative,true);assert.equal(result.shifts.length,1);assert.equal(result.shifts[0].notes,'before','all queries retain the original snapshot even after a concurrent mutation');assert.equal(result.shifts[0].revision,1);
+    assert.equal((await ref.get()).data().notes,'after');assert.equal(committedBeforeReadFinished,true,'the authoritative reader must not lock out a concurrent mutation');
+  }finally{clearTimeout(timer);release();await Promise.allSettled([reader,writer].filter(Boolean));await ref.delete();await db.terminate();await deleteApp(app);}
+});
 test('actual isolated Firestore enforces edit concurrency, undo, publication evidence and legacy retry integrity',async()=>{
   assert.match(process.env.FIRESTORE_EMULATOR_HOST || '',/^127\.0\.0\.1:\d+$/);
   assert.equal(process.env.GCLOUD_PROJECT,'demo-86chaos-scheduling');assert.equal(process.env.CHAOS_BLOCK_LIVE_FIREBASE,'1');
