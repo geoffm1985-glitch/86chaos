@@ -1,0 +1,1472 @@
+[
+  {
+    "title": "manager can assign one future shift through Schedule Builder and remove the QA shift afterward",
+    "targetRequestCount": 6,
+    "requests": [
+      {
+        "session": 0,
+        "responseSession": 1,
+        "databaseMatches": true,
+        "messages": [
+          {
+            "add": 2
+          }
+        ],
+        "status": 200
+      },
+      {
+        "session": 1,
+        "responseSession": null,
+        "databaseMatches": true,
+        "messages": [
+          {
+            "add": 4
+          }
+        ],
+        "status": 200
+      },
+      {
+        "session": 1,
+        "responseSession": null,
+        "databaseMatches": true,
+        "messages": [
+          {
+            "add": 6
+          },
+          {
+            "add": 8
+          },
+          {
+            "add": 10
+          },
+          {
+            "add": 12
+          },
+          {
+            "add": 14
+          },
+          {
+            "add": 16
+          },
+          {
+            "add": 18
+          },
+          {
+            "add": 20
+          },
+          {
+            "add": 22
+          },
+          {
+            "add": 24
+          },
+          {
+            "add": 26
+          },
+          {
+            "add": 28
+          },
+          {
+            "add": 30
+          }
+        ],
+        "status": 200
+      },
+      {
+        "session": 1,
+        "responseSession": null,
+        "databaseMatches": true,
+        "messages": [
+          {
+            "add": 32
+          },
+          {
+            "add": 34
+          },
+          {
+            "add": 36
+          },
+          {
+            "add": 38
+          },
+          {
+            "add": 40
+          },
+          {
+            "add": 42
+          },
+          {
+            "add": 44
+          },
+          {
+            "add": 46
+          },
+          {
+            "add": 48
+          },
+          {
+            "add": 50
+          },
+          {
+            "add": 52
+          },
+          {
+            "add": 54
+          },
+          {
+            "add": 56
+          },
+          {
+            "add": 58
+          }
+        ],
+        "status": 200
+      },
+      {
+        "session": 1,
+        "responseSession": null,
+        "databaseMatches": true,
+        "messages": [
+          {
+            "remove": 30
+          }
+        ],
+        "status": 200
+      },
+      {
+        "session": 1,
+        "responseSession": null,
+        "databaseMatches": true,
+        "messages": [
+          {
+            "remove": 4
+          },
+          {
+            "remove": 6
+          },
+          {
+            "remove": 8
+          },
+          {
+            "remove": 10
+          },
+          {
+            "remove": 12
+          },
+          {
+            "remove": 14
+          },
+          {
+            "remove": 16
+          },
+          {
+            "remove": 18
+          },
+          {
+            "remove": 20
+          },
+          {
+            "remove": 22
+          },
+          {
+            "remove": 24
+          },
+          {
+            "remove": 28
+          },
+          {
+            "remove": 32
+          },
+          {
+            "remove": 34
+          },
+          {
+            "remove": 36
+          },
+          {
+            "remove": 38
+          },
+          {
+            "remove": 40
+          },
+          {
+            "remove": 42
+          },
+          {
+            "remove": 44
+          },
+          {
+            "remove": 46
+          },
+          {
+            "remove": 48
+          },
+          {
+            "remove": 50
+          },
+          {
+            "remove": 52
+          },
+          {
+            "remove": 54
+          },
+          {
+            "remove": 56
+          },
+          {
+            "remove": 58
+          },
+          {
+            "remove": 2
+          },
+          {
+            "remove": 26
+          }
+        ],
+        "status": 200
+      }
+    ]
+  },
+  {
+    "title": "Schedule Tools verifies all sources and publishes selected weeks without tenant permission errors",
+    "targetRequestCount": 61,
+    "requests": [
+      {
+        "session": 0,
+        "responseSession": 1,
+        "databaseMatches": true,
+        "messages": [
+          {
+            "add": 2
+          }
+        ],
+        "status": 200
+      },
+      {
+        "session": 1,
+        "responseSession": null,
+        "databaseMatches": true,
+        "messages": [
+          {
+            "add": 4
+          }
+        ],
+        "status": 200
+      },
+      {
+        "session": 1,
+        "responseSession": null,
+        "databaseMatches": true,
+        "messages": [
+          {
+            "add": 6
+          },
+          {
+            "add": 8
+          },
+          {
+            "add": 10
+          },
+          {
+            "add": 12
+          },
+          {
+            "add": 14
+          },
+          {
+            "add": 16
+          },
+          {
+            "add": 18
+          },
+          {
+            "add": 20
+          },
+          {
+            "add": 22
+          },
+          {
+            "add": 24
+          },
+          {
+            "add": 26
+          },
+          {
+            "add": 28
+          },
+          {
+            "add": 30
+          }
+        ],
+        "status": 200
+      },
+      {
+        "session": 1,
+        "responseSession": null,
+        "databaseMatches": true,
+        "messages": [
+          {
+            "add": 32
+          },
+          {
+            "add": 34
+          },
+          {
+            "add": 36
+          },
+          {
+            "add": 38
+          },
+          {
+            "add": 40
+          },
+          {
+            "add": 42
+          },
+          {
+            "add": 44
+          },
+          {
+            "add": 46
+          },
+          {
+            "add": 48
+          },
+          {
+            "add": 50
+          },
+          {
+            "add": 52
+          },
+          {
+            "add": 54
+          },
+          {
+            "add": 56
+          },
+          {
+            "add": 58
+          }
+        ],
+        "status": 200
+      },
+      {
+        "session": 1,
+        "responseSession": null,
+        "databaseMatches": true,
+        "messages": [
+          {
+            "add": 60
+          }
+        ],
+        "status": 200
+      },
+      {
+        "session": 1,
+        "responseSession": null,
+        "databaseMatches": true,
+        "messages": [
+          {
+            "add": 62
+          },
+          {
+            "add": 64
+          },
+          {
+            "add": 66
+          },
+          {
+            "remove": 6
+          },
+          {
+            "remove": 8
+          },
+          {
+            "remove": 10
+          },
+          {
+            "remove": 12
+          },
+          {
+            "remove": 14
+          },
+          {
+            "remove": 16
+          },
+          {
+            "remove": 18
+          },
+          {
+            "remove": 20
+          },
+          {
+            "remove": 22
+          },
+          {
+            "remove": 24
+          },
+          {
+            "remove": 28
+          },
+          {
+            "remove": 32
+          },
+          {
+            "remove": 34
+          },
+          {
+            "remove": 36
+          },
+          {
+            "remove": 38
+          },
+          {
+            "remove": 40
+          },
+          {
+            "remove": 42
+          },
+          {
+            "remove": 44
+          },
+          {
+            "remove": 46
+          },
+          {
+            "remove": 48
+          },
+          {
+            "remove": 50
+          },
+          {
+            "remove": 52
+          },
+          {
+            "remove": 54
+          },
+          {
+            "remove": 56
+          },
+          {
+            "remove": 58
+          }
+        ],
+        "status": 200
+      },
+      {
+        "session": 1,
+        "responseSession": null,
+        "databaseMatches": true,
+        "messages": [
+          {
+            "add": 68
+          }
+        ],
+        "status": 200
+      },
+      {
+        "session": 1,
+        "responseSession": null,
+        "databaseMatches": true,
+        "messages": [
+          {
+            "add": 70
+          },
+          {
+            "add": 72
+          },
+          {
+            "add": 74
+          },
+          {
+            "add": 76
+          },
+          {
+            "add": 78
+          },
+          {
+            "add": 80
+          }
+        ],
+        "status": 200
+      },
+      {
+        "session": 1,
+        "responseSession": null,
+        "databaseMatches": true,
+        "messages": [
+          {
+            "add": 82
+          }
+        ],
+        "status": 200
+      },
+      {
+        "session": 1,
+        "responseSession": null,
+        "databaseMatches": true,
+        "messages": [
+          {
+            "add": 84
+          },
+          {
+            "add": 86
+          }
+        ],
+        "status": 200
+      },
+      {
+        "session": 1,
+        "responseSession": null,
+        "databaseMatches": true,
+        "messages": [
+          {
+            "add": 88
+          }
+        ],
+        "status": 200
+      },
+      {
+        "session": 1,
+        "responseSession": null,
+        "databaseMatches": true,
+        "messages": [
+          {
+            "remove": 88
+          }
+        ],
+        "status": 200
+      },
+      {
+        "session": 1,
+        "responseSession": null,
+        "databaseMatches": true,
+        "messages": [
+          {
+            "add": 90
+          }
+        ],
+        "status": 200
+      },
+      {
+        "session": 1,
+        "responseSession": null,
+        "databaseMatches": true,
+        "messages": [
+          {
+            "remove": 90
+          }
+        ],
+        "status": 200
+      },
+      {
+        "session": 1,
+        "responseSession": null,
+        "databaseMatches": true,
+        "messages": [
+          {
+            "add": 92
+          }
+        ],
+        "status": 200
+      },
+      {
+        "session": 1,
+        "responseSession": null,
+        "databaseMatches": true,
+        "messages": [
+          {
+            "remove": 92
+          }
+        ],
+        "status": 200
+      },
+      {
+        "session": 1,
+        "responseSession": null,
+        "databaseMatches": true,
+        "messages": [
+          {
+            "add": 94
+          }
+        ],
+        "status": 200
+      },
+      {
+        "session": 1,
+        "responseSession": null,
+        "databaseMatches": true,
+        "messages": [
+          {
+            "remove": 94
+          }
+        ],
+        "status": 200
+      },
+      {
+        "session": 1,
+        "responseSession": null,
+        "databaseMatches": true,
+        "messages": [
+          {
+            "add": 96
+          }
+        ],
+        "status": 200
+      },
+      {
+        "session": 1,
+        "responseSession": null,
+        "databaseMatches": true,
+        "messages": [
+          {
+            "remove": 96
+          },
+          {
+            "add": 98
+          }
+        ],
+        "status": 200
+      },
+      {
+        "session": 1,
+        "responseSession": null,
+        "databaseMatches": true,
+        "messages": [
+          {
+            "remove": 98
+          }
+        ],
+        "status": 200
+      },
+      {
+        "session": 1,
+        "responseSession": null,
+        "databaseMatches": true,
+        "messages": [
+          {
+            "add": 100
+          }
+        ],
+        "status": 200
+      },
+      {
+        "session": 1,
+        "responseSession": null,
+        "databaseMatches": true,
+        "messages": [
+          {
+            "remove": 100
+          }
+        ],
+        "status": 200
+      },
+      {
+        "session": 1,
+        "responseSession": null,
+        "databaseMatches": true,
+        "messages": [
+          {
+            "add": 102
+          }
+        ],
+        "status": 200
+      },
+      {
+        "session": 1,
+        "responseSession": null,
+        "databaseMatches": true,
+        "messages": [
+          {
+            "remove": 102
+          }
+        ],
+        "status": 200
+      },
+      {
+        "session": 1,
+        "responseSession": null,
+        "databaseMatches": true,
+        "messages": [
+          {
+            "add": 104
+          }
+        ],
+        "status": 200
+      },
+      {
+        "session": 1,
+        "responseSession": null,
+        "databaseMatches": true,
+        "messages": [
+          {
+            "remove": 104
+          },
+          {
+            "add": 106
+          }
+        ],
+        "status": 200
+      },
+      {
+        "session": 1,
+        "responseSession": null,
+        "databaseMatches": true,
+        "messages": [
+          {
+            "remove": 106
+          }
+        ],
+        "status": 200
+      },
+      {
+        "session": 1,
+        "responseSession": null,
+        "databaseMatches": true,
+        "messages": [
+          {
+            "add": 108
+          }
+        ],
+        "status": 200
+      },
+      {
+        "session": 1,
+        "responseSession": null,
+        "databaseMatches": true,
+        "messages": [
+          {
+            "remove": 108
+          }
+        ],
+        "status": 200
+      },
+      {
+        "session": 1,
+        "responseSession": null,
+        "databaseMatches": true,
+        "messages": [
+          {
+            "add": 110
+          }
+        ],
+        "status": 200
+      },
+      {
+        "session": 1,
+        "responseSession": null,
+        "databaseMatches": true,
+        "messages": [
+          {
+            "remove": 110
+          }
+        ],
+        "status": 200
+      },
+      {
+        "session": 1,
+        "responseSession": null,
+        "databaseMatches": true,
+        "messages": [
+          {
+            "add": 112
+          }
+        ],
+        "status": 200
+      },
+      {
+        "session": 1,
+        "responseSession": null,
+        "databaseMatches": true,
+        "messages": [
+          {
+            "remove": 112
+          }
+        ],
+        "status": 200
+      },
+      {
+        "session": 1,
+        "responseSession": null,
+        "databaseMatches": true,
+        "messages": [
+          {
+            "add": 114
+          }
+        ],
+        "status": 200
+      },
+      {
+        "session": 1,
+        "responseSession": null,
+        "databaseMatches": true,
+        "messages": [
+          {
+            "remove": 114
+          }
+        ],
+        "status": 200
+      },
+      {
+        "session": 1,
+        "responseSession": null,
+        "databaseMatches": true,
+        "messages": [
+          {
+            "add": 116
+          }
+        ],
+        "status": 200
+      },
+      {
+        "session": 1,
+        "responseSession": null,
+        "databaseMatches": true,
+        "messages": [
+          {
+            "remove": 116
+          }
+        ],
+        "status": 200
+      },
+      {
+        "session": 1,
+        "responseSession": null,
+        "databaseMatches": true,
+        "messages": [
+          {
+            "add": 118
+          }
+        ],
+        "status": 200
+      },
+      {
+        "session": 1,
+        "responseSession": null,
+        "databaseMatches": true,
+        "messages": [
+          {
+            "remove": 118
+          }
+        ],
+        "status": 200
+      },
+      {
+        "session": 1,
+        "responseSession": null,
+        "databaseMatches": true,
+        "messages": [
+          {
+            "add": 120
+          }
+        ],
+        "status": 200
+      },
+      {
+        "session": 1,
+        "responseSession": null,
+        "databaseMatches": true,
+        "messages": [
+          {
+            "remove": 120
+          }
+        ],
+        "status": 200
+      },
+      {
+        "session": 1,
+        "responseSession": null,
+        "databaseMatches": true,
+        "messages": [
+          {
+            "add": 122
+          }
+        ],
+        "status": 200
+      },
+      {
+        "session": 1,
+        "responseSession": null,
+        "databaseMatches": true,
+        "messages": [
+          {
+            "remove": 122
+          }
+        ],
+        "status": 200
+      },
+      {
+        "session": 1,
+        "responseSession": null,
+        "databaseMatches": true,
+        "messages": [
+          {
+            "add": 124
+          }
+        ],
+        "status": 200
+      },
+      {
+        "session": 1,
+        "responseSession": null,
+        "databaseMatches": true,
+        "messages": [
+          {
+            "remove": 124
+          }
+        ],
+        "status": 200
+      },
+      {
+        "session": 1,
+        "responseSession": null,
+        "databaseMatches": true,
+        "messages": [
+          {
+            "add": 126
+          }
+        ],
+        "status": 200
+      },
+      {
+        "session": 1,
+        "responseSession": null,
+        "databaseMatches": true,
+        "messages": [
+          {
+            "remove": 126
+          }
+        ],
+        "status": 200
+      },
+      {
+        "session": 1,
+        "responseSession": null,
+        "databaseMatches": true,
+        "messages": [
+          {
+            "add": 128
+          }
+        ],
+        "status": 200
+      },
+      {
+        "session": 1,
+        "responseSession": null,
+        "databaseMatches": true,
+        "messages": [
+          {
+            "remove": 128
+          }
+        ],
+        "status": 200
+      },
+      {
+        "session": 1,
+        "responseSession": null,
+        "databaseMatches": true,
+        "messages": [
+          {
+            "add": 130
+          }
+        ],
+        "status": 200
+      },
+      {
+        "session": 1,
+        "responseSession": null,
+        "databaseMatches": true,
+        "messages": [
+          {
+            "remove": 130
+          },
+          {
+            "add": 132
+          }
+        ],
+        "status": 200
+      },
+      {
+        "session": 1,
+        "responseSession": null,
+        "databaseMatches": true,
+        "messages": [
+          {
+            "remove": 132
+          }
+        ],
+        "status": 200
+      },
+      {
+        "session": 1,
+        "responseSession": null,
+        "databaseMatches": true,
+        "messages": [
+          {
+            "add": 134
+          }
+        ],
+        "status": 200
+      },
+      {
+        "session": 1,
+        "responseSession": null,
+        "databaseMatches": true,
+        "messages": [
+          {
+            "remove": 134
+          }
+        ],
+        "status": 200
+      },
+      {
+        "session": 1,
+        "responseSession": null,
+        "databaseMatches": true,
+        "messages": [
+          {
+            "add": 136
+          }
+        ],
+        "status": 200
+      },
+      {
+        "session": 1,
+        "responseSession": null,
+        "databaseMatches": true,
+        "messages": [
+          {
+            "remove": 136
+          }
+        ],
+        "status": 200
+      },
+      {
+        "session": 1,
+        "responseSession": null,
+        "databaseMatches": true,
+        "messages": [
+          {
+            "add": 138
+          }
+        ],
+        "status": 200
+      },
+      {
+        "session": 1,
+        "responseSession": null,
+        "databaseMatches": true,
+        "messages": [
+          {
+            "remove": 138
+          }
+        ],
+        "status": 200
+      },
+      {
+        "session": 1,
+        "responseSession": null,
+        "databaseMatches": true,
+        "messages": [
+          {
+            "remove": 30
+          }
+        ],
+        "status": 200
+      },
+      {
+        "session": 1,
+        "responseSession": null,
+        "databaseMatches": true,
+        "messages": [
+          {
+            "remove": 4
+          },
+          {
+            "remove": 60
+          },
+          {
+            "remove": 62
+          },
+          {
+            "remove": 64
+          },
+          {
+            "remove": 66
+          },
+          {
+            "remove": 68
+          },
+          {
+            "remove": 70
+          },
+          {
+            "remove": 72
+          },
+          {
+            "remove": 74
+          },
+          {
+            "remove": 76
+          },
+          {
+            "remove": 78
+          },
+          {
+            "remove": 80
+          },
+          {
+            "remove": 82
+          },
+          {
+            "remove": 84
+          },
+          {
+            "remove": 86
+          },
+          {
+            "remove": 2
+          },
+          {
+            "remove": 26
+          }
+        ],
+        "status": 200
+      }
+    ]
+  },
+  {
+    "title": "authenticated promoted Schedule Builder retains its workflow without startup crashes",
+    "targetRequestCount": 11,
+    "requests": [
+      {
+        "session": 0,
+        "responseSession": 1,
+        "databaseMatches": true,
+        "messages": [
+          {
+            "add": 2
+          }
+        ],
+        "status": 200
+      },
+      {
+        "session": 1,
+        "responseSession": null,
+        "databaseMatches": true,
+        "messages": [
+          {
+            "add": 4
+          }
+        ],
+        "status": 200
+      },
+      {
+        "session": 1,
+        "responseSession": null,
+        "databaseMatches": true,
+        "messages": [
+          {
+            "add": 6
+          },
+          {
+            "add": 8
+          },
+          {
+            "add": 10
+          },
+          {
+            "add": 12
+          },
+          {
+            "add": 14
+          },
+          {
+            "add": 16
+          },
+          {
+            "add": 18
+          },
+          {
+            "add": 20
+          },
+          {
+            "add": 22
+          },
+          {
+            "add": 24
+          },
+          {
+            "add": 26
+          },
+          {
+            "add": 28
+          },
+          {
+            "add": 30
+          }
+        ],
+        "status": 200
+      },
+      {
+        "session": 1,
+        "responseSession": null,
+        "databaseMatches": true,
+        "messages": [
+          {
+            "add": 32
+          }
+        ],
+        "status": 200
+      },
+      {
+        "session": 1,
+        "responseSession": null,
+        "databaseMatches": true,
+        "messages": [
+          {
+            "add": 34
+          },
+          {
+            "add": 36
+          },
+          {
+            "add": 38
+          },
+          {
+            "add": 40
+          },
+          {
+            "add": 42
+          },
+          {
+            "add": 44
+          },
+          {
+            "add": 46
+          },
+          {
+            "add": 48
+          },
+          {
+            "add": 50
+          },
+          {
+            "add": 52
+          },
+          {
+            "add": 54
+          },
+          {
+            "add": 56
+          },
+          {
+            "add": 58
+          }
+        ],
+        "status": 200
+      },
+      {
+        "session": 1,
+        "responseSession": null,
+        "databaseMatches": true,
+        "messages": [
+          {
+            "add": 60
+          }
+        ],
+        "status": 200
+      },
+      {
+        "session": 1,
+        "responseSession": null,
+        "databaseMatches": true,
+        "messages": [
+          {
+            "add": 62
+          },
+          {
+            "add": 64
+          },
+          {
+            "add": 66
+          },
+          {
+            "remove": 6
+          },
+          {
+            "remove": 8
+          },
+          {
+            "remove": 10
+          },
+          {
+            "remove": 12
+          },
+          {
+            "remove": 14
+          },
+          {
+            "remove": 16
+          },
+          {
+            "remove": 18
+          },
+          {
+            "remove": 20
+          },
+          {
+            "remove": 22
+          },
+          {
+            "remove": 24
+          },
+          {
+            "remove": 28
+          },
+          {
+            "remove": 32
+          },
+          {
+            "remove": 34
+          },
+          {
+            "remove": 36
+          },
+          {
+            "remove": 38
+          },
+          {
+            "remove": 40
+          },
+          {
+            "remove": 42
+          },
+          {
+            "remove": 44
+          },
+          {
+            "remove": 46
+          },
+          {
+            "remove": 48
+          },
+          {
+            "remove": 50
+          },
+          {
+            "remove": 52
+          },
+          {
+            "remove": 54
+          },
+          {
+            "remove": 56
+          },
+          {
+            "remove": 58
+          }
+        ],
+        "status": 200
+      },
+      {
+        "session": 1,
+        "responseSession": null,
+        "databaseMatches": true,
+        "messages": [
+          {
+            "add": 68
+          }
+        ],
+        "status": 200
+      },
+      {
+        "session": 1,
+        "responseSession": null,
+        "databaseMatches": true,
+        "messages": [
+          {
+            "add": 70
+          },
+          {
+            "add": 72
+          },
+          {
+            "add": 74
+          },
+          {
+            "add": 76
+          },
+          {
+            "add": 78
+          },
+          {
+            "add": 80
+          }
+        ],
+        "status": 200
+      },
+      {
+        "session": 1,
+        "responseSession": null,
+        "databaseMatches": true,
+        "messages": [
+          {
+            "remove": 30
+          }
+        ],
+        "status": 200
+      },
+      {
+        "session": 1,
+        "responseSession": null,
+        "databaseMatches": true,
+        "messages": [
+          {
+            "remove": 4
+          },
+          {
+            "remove": 60
+          },
+          {
+            "remove": 62
+          },
+          {
+            "remove": 64
+          },
+          {
+            "remove": 66
+          },
+          {
+            "remove": 68
+          },
+          {
+            "remove": 70
+          },
+          {
+            "remove": 72
+          },
+          {
+            "remove": 74
+          },
+          {
+            "remove": 76
+          },
+          {
+            "remove": 78
+          },
+          {
+            "remove": 80
+          },
+          {
+            "remove": 2
+          },
+          {
+            "remove": 26
+          }
+        ],
+        "status": 200
+      }
+    ]
+  }
+]

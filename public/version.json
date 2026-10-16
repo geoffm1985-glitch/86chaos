@@ -1,9 +1,9 @@
 {
-  "version": "19.0.16",
-  "name": "86 Chaos 19.0.16",
-  "build": "19.0.16",
-  "label": "86 Chaos 19.0.16",
-  "title": "86 Chaos 19.0.16",
+  "version": "19.0.17",
+  "name": "86 Chaos 19.0.17",
+  "build": "19.0.17",
+  "label": "86 Chaos 19.0.17",
+  "title": "86 Chaos 19.0.17",
   "releasedAt": "2026-10-16T00:24:48.951691Z",
   "releaseTitle": "Schedule verification without mutation-blocking read locks",
   "summary": "Authoritative schedule reads retain a consistent snapshot without blocking concurrent writes.",
@@ -18,7 +18,7 @@
     "Actual linked-worktree Git identity protection"
   ],
   "changes": [
-    "Testing candidate 19.0.16",
+    "Testing candidate 19.0.17",
     "Exact corrected-candidate preflight, APK verification, deployment, targeted and failed+new delta acceptance are pending."
   ]
 }

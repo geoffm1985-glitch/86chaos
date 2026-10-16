@@ -38,3 +38,37 @@ test('foreign project, malformed protocol and non-200 target removal fail closed
     const tracker = createTargetTracker(); tracker.request(req); await Promise.all([...tracker.pending]); assert.equal(tracker.evidence().failure, true);
   }
 });
+
+function capturedRequest(record, responseText) {
+  const sid=record.session ? `owned-session-${record.session}` : '';
+  const text=new URLSearchParams(record.messages.map((m,i)=>[`req${i}___data__`,JSON.stringify(m.add!==undefined?{addTarget:{targetId:m.add}}:{removeTarget:m.remove})])).toString();
+  const connected=`owned-session-${record.responseSession}`;
+  const frame=JSON.stringify([[0,['c',connected,'',8]]]);
+  return {url:()=>`http://127.0.0.1:8080/google.firestore.v1.Firestore/Listen/channel?database=projects%2Fdemo-86chaos%2Fdatabases%2F(default)${sid?'&SID='+sid:''}`,method:()=> 'POST',postData:()=>text,response:async()=>({status:()=>record.status,text:async()=>responseText===undefined?frame.length+'\n'+frame:await responseText})};
+}
+const captured=require('../test-tools/fixtures/firestore-initial-listen-protocol-19.json');
+for(const [index,trace] of captured.entries())test(`captured failed-run protocol ${index+1} maps the initial target to its assigned session without losing acknowledgments`,async()=>{
+  const tracker=createTargetTracker();
+  for(const record of trace.requests){tracker.request(capturedRequest(record));await Promise.all([...tracker.pending]);}
+  const proof=tracker.evidence();assert(proof.added>0);assert(proof.removed>0);assert.equal(proof.active,0);assert.equal(proof.pending,0);assert.equal(proof.failure,false);
+});
+test('a target removed before the initial handshake body resolves must not be resurrected',async()=>{
+  let release;const body=new Promise(resolve=>release=resolve),tracker=createTargetTracker();
+  tracker.request(capturedRequest({session:0,responseSession:1,messages:[{add:2}],status:200},body));
+  tracker.request(capturedRequest({session:1,messages:[{remove:2}],status:200}));
+  const frame=JSON.stringify([[0,['c','owned-session-1','',8]]]);release(frame.length+'\n'+frame);
+  await Promise.all([...tracker.pending]);assert.equal(tracker.evidence().active,0);assert.equal(tracker.evidence().failure,false);
+});
+test('overlapping handshakes with the same target ID remain isolated by their actual sessions',async()=>{
+  const tracker=createTargetTracker();
+  for(const session of [1,2])tracker.request(capturedRequest({session:0,responseSession:session,messages:[{add:2}],status:200}));
+  await Promise.all([...tracker.pending]);assert.equal(tracker.evidence().active,2);
+  tracker.request(capturedRequest({session:1,messages:[{remove:2}],status:200}));await Promise.all([...tracker.pending]);assert.equal(tracker.evidence().active,1);
+  tracker.request(capturedRequest({session:2,messages:[{remove:2}],status:200}));await Promise.all([...tracker.pending]);assert.equal(tracker.evidence().active,0);
+});
+test('missing, ambiguous or malformed successful handshake bodies remain fatal',async()=>{
+  const ambiguous=JSON.stringify([[0,['c','one']],[1,['c','two']]]);
+  for(const text of ['{}','5\n[]',ambiguous.length+'\n'+ambiguous]){
+    const tracker=createTargetTracker();tracker.request(capturedRequest({session:0,responseSession:1,messages:[{add:2}],status:200},text));await Promise.all([...tracker.pending]);assert.equal(tracker.evidence().failure,true);
+  }
+});
