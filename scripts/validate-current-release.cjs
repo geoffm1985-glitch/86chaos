@@ -14,6 +14,10 @@ assert.match(activity,/webView\.setPadding\(0, 0, 0, 0\)/);assert.doesNotMatch(a
 assert.match(read('android/app/build.gradle'),new RegExp("versionCode " + nativeVersionCode));assert.match(read('android/app/build.gradle'),new RegExp("versionName \"" + escapedVersion + "\""));
 assert.match(read('ios/App/App.xcodeproj/project.pbxproj'),new RegExp("CURRENT_PROJECT_VERSION = " + nativeVersionCode + ";"));assert.match(read('ios/App/App.xcodeproj/project.pbxproj'),new RegExp("MARKETING_VERSION = " + escapedVersion + ";"));
 assert.equal(contract.release,v);assert.equal(contract.nativeViewport.android.containerPadding,true);assert.equal(contract.nativeViewport.android.webViewPadding,false);
+assert.equal(contract.capacitor.android.versionName,v,'android.versionName matches package release');
+assert.equal(contract.capacitor.android.versionCode,nativeVersionCode,'android.versionCode matches package release');
+assert.equal(contract.capacitor.ios.marketingVersion,v,'ios.marketingVersion matches package release');
+assert.equal(contract.capacitor.ios.currentProjectVersion,nativeVersionCode,'ios.currentProjectVersion matches package release');
 assert.match(read('scripts/86chaos-release-gate/release-test-universe.cjs'),/61-native-container-insets\.spec\.cjs/);
 assert.match(read('playwright.mobile-foundation.config.cjs'),/61-native-container-insets/);
 for(const file of ['test-tools/certification/groups.json','test-tools/regressions/registry.json','test-tools/certification/cost-performance-baselines.json'])assert.equal(json(file).release,v);

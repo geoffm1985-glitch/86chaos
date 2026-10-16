@@ -44,8 +44,10 @@ test.describe('58 Native mobile and Firebase cost foundation',()=>{
     expect(cap.server.url).toBeUndefined();
     expect(contract.capacitor.version).toBe('8.5.2');
     expect(contract.capacitor.android.versionCode).toBeGreaterThanOrEqual(180000);
+    expect(contract.capacitor.android.versionCode).toBe(currentCode);
     expect(contract.capacitor.android.versionName).toBe(currentVersion);
     expect(contract.capacitor.ios.currentProjectVersion).toBeGreaterThanOrEqual(180000);
+    expect(contract.capacitor.ios.currentProjectVersion).toBe(currentCode);
     expect(contract.capacitor.ios.marketingVersion).toBe(currentVersion);
 
     expect(androidBuild).toMatch(new RegExp(`versionCode ${currentCode}\\b`));

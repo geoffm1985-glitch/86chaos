@@ -14,6 +14,7 @@
 - Every APK built or published for Geoff must use production Firebase project `cheers-34b8d`, production native Firebase registrations, and production API destinations.
 - Testing website work never authorizes switching an APK to testing Firebase. Never publish a testing-Firebase APK.
 - Verify the actual packaged Firebase resources, origin, API destinations, release version and retained signing certificate before publishing.
+- Synchronize package/lock/API/help/source/native identities and every nested Android/iOS release name/code in mobile/native-platform-contract.json. Run the current dynamic release validator and its stale-native-field rejection regressions before packaging; contract metadata never substitutes for actual packaged identity verification.
 
 ## Universal platform parity and scheduling rebuild
 

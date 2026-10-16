@@ -1,17 +1,17 @@
 {
-  "version": "19.0.13",
-  "name": "86 Chaos 19.0.13",
-  "build": "19.0.13",
-  "label": "86 Chaos 19.0.13",
-  "title": "86 Chaos 19.0.13",
-  "releasedAt": "2026-10-15T22:15:00Z",
-  "releaseTitle": "Phase 1 concurrent informational-dialog validation repair",
-  "summary": "Preserve original modal identity when an explicit tour skip completes during a close action; retain business assertions and fail-closed confirmation handling.",
+  "version": "19.0.14",
+  "name": "86 Chaos 19.0.14",
+  "build": "19.0.14",
+  "label": "86 Chaos 19.0.14",
+  "title": "86 Chaos 19.0.14",
+  "releasedAt": "2026-10-16T00:24:48.951691Z",
+  "releaseTitle": "Phase 1 native release identity guard",
+  "summary": "Synchronize every native release contract name/code and reject stale nested identities before packaging or testing.",
   "description": "Testing Phase 1 candidate. Fresh exact targeted/delta and native device acceptance remain pending. No production deployment.",
   "notes": [
-    "Concurrent explicit tour dismissal cannot redirect a pending close into a replacement dialog.",
-    "Five actual-browser regressions preserve blocked controls, unknown errors and consequential confirmation boundaries.",
-    "Scoped repair preflight passed 121 Node checks, 21 React tests and real Firestore, with isolated emulator shutdown.",
+    "Android/iOS contract names and codes match the actual native projects and package release.",
+    "The complete pre-push validator rejects each stale native name/code independently.",
+    "All 84 Phase 1 workflow cases passed on19.0.13, but two metadata assertions failed; fresh14acceptance is required.",
     "Testing web/API remains chaos-test-d1601. APK retains production Firebase, signing and destinations; native backend/device acceptance is pending.",
     "No production deployment, GitHub Actions or full release gate."
   ],
@@ -20,7 +20,7 @@
     "Actual linked-worktree Git identity protection"
   ],
   "changes": [
-    "Testing candidate 19.0.13",
-    "Fresh exact deployed/local targeted and canonical failed+new delta validation is required."
+    "Testing candidate 19.0.14",
+    "Exact corrected-candidate preflight, APK verification, deployment, targeted and failed+new delta acceptance are pending."
   ]
 }
