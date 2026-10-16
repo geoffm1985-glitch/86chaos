@@ -238,7 +238,8 @@ async function verifyServerReadFallback({page,context}) {
   const ctx=await openWorkspace(page),row=await createShift(page,ctx),date=shiftDateBy(row.date,7);
   const response=await postScheduleQa(page.request,'/api/schedule-workspace',{headers:ctx.headers,data:{restaurantId:ctx.seed.restaurantId,operationId:'qa_fallback_'+require('node:crypto').randomUUID(),acknowledgedWarnings:true,changes:[{kind:'create',patch:{...workspaceEditable(row),date,employeeId:'',isOpenShift:true,notes:'Verified while live snapshots are unavailable'}}]}});
   expect(response.status()).toBe(200);const result=await response.json(),future=result.results[0].after;ctx.ids.add(future.id);
-  await page.route('**/google.firestore.v1.Firestore/Listen/channel**',route=>route.abort('failed'));
+  const { withEmulatorListenFault, abortIntentionalListen } = require('./emulator-navigation.cjs');
+  await withEmulatorListenFault(page, () => page.route('**/google.firestore.v1.Firestore/Listen/channel**', route => abortIntentionalListen(page, route)));
   const waiting=page.waitForResponse(response=>response.url().endsWith('/api/schedule-workspace') && response.request().postDataJSON()?.action==='read-week');
   await ctx.workspace.getByRole('button',{name:'Next week',exact:true}).click();
   const read=await waiting;expect(read.status()).toBe(200);const verified=await read.json();expect(verified.authoritative).toBe(true);expect(verified.restaurantId).toBe(ctx.seed.restaurantId);expect(verified.shifts.find(shift=>shift.id===future.id)?.notes).toBe(future.notes);

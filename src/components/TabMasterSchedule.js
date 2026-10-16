@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { collection, query, where, onSnapshot, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
+import { collection, query, where, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
+import { onSnapshot } from '../core/firestoreClient';
 import { Bell, Calendar, Repeat, Clock } from 'lucide-react';
 import TabMonth from './TabMonth';
 import TabTimeOff from './TabTimeOff';

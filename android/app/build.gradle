@@ -7,8 +7,8 @@ android {
         applicationId "com.chiltonappworks.chaos86"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 190017
-        versionName "19.0.17"
+        versionCode 190018
+        versionName "19.0.18"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.

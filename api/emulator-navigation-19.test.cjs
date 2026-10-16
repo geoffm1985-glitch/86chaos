@@ -72,3 +72,37 @@ test('missing, ambiguous or malformed successful handshake bodies remain fatal',
     const tracker=createTargetTracker();tracker.request(capturedRequest({session:0,responseSession:1,messages:[{add:2}],status:200},text));await Promise.all([...tracker.pending]);assert.equal(tracker.evidence().failure,true);
   }
 });
+
+test('only a completed explicit fixture abort can retire an initial read add never accepted by the server',async()=>{
+ const tracker=createTargetTracker(),req=request({addTarget:{targetId:2}},{sid:''});req.response=async()=>null;
+ tracker.request(req);await tracker.abortReadRequest(req,async()=>{});await Promise.all([...tracker.pending]);
+ assert.deepEqual(tracker.evidence(),{added:1,removed:0,active:0,pending:0,failure:false,intentionallyAbortedAdds:1});
+});
+test('unknown aborts and actual non-200 responses remain fatal even when an abort was declared',async()=>{
+ for(const marked of [false,true]){
+  const tracker=createTargetTracker(),req=request({addTarget:{targetId:2}},{status:503});if(!marked)req.response=async()=>null;
+  tracker.request(req);if(marked)await tracker.abortReadRequest(req,async()=>{});await Promise.all([...tracker.pending]);assert.equal(tracker.evidence().failure,true);
+ }
+});
+test('explicit read fault never waives any target-removal acknowledgment',async()=>{
+ const tracker=createTargetTracker(),req=request({removeTarget:2});assert.throws(()=>tracker.abortReadRequest(req,async()=>{}));assert.equal(tracker.evidence().failure,true);
+});
+test('explicit fault cannot discard an already acknowledged server target',async()=>{
+ const tracker=createTargetTracker();tracker.request(request({addTarget:{targetId:2}}));await Promise.all([...tracker.pending]);
+ assert.throws(()=>tracker.abortReadRequest(request({addTarget:{targetId:2}}),async()=>{}));assert.equal(tracker.evidence().failure,true);assert.equal(tracker.evidence().active,1);
+});
+test('failed fault injection remains fatal rather than manufacturing successful cancellation evidence',async()=>{
+ const tracker=createTargetTracker(),req=request({addTarget:{targetId:2}});req.response=async()=>null;tracker.request(req);
+ await assert.rejects(tracker.abortReadRequest(req,async()=>{throw new Error('owned abort failure');}));await Promise.all([...tracker.pending]);assert.equal(tracker.evidence().failure,true);
+});
+test('late completion of an intentional aborted add cannot erase a later accepted command',async()=>{
+ let release;const tracker=createTargetTracker(),req=request({addTarget:{targetId:2}});req.response=()=>new Promise(resolve=>release=resolve);
+ tracker.request(req);await tracker.abortReadRequest(req,async()=>{});tracker.request(request({addTarget:{targetId:2}}));
+ await new Promise(resolve=>setImmediate(resolve));release(null);await Promise.all([...tracker.pending]);assert.equal(tracker.evidence().active,1);assert.equal(tracker.evidence().failure,false);
+ tracker.request(request({removeTarget:2}));await Promise.all([...tracker.pending]);assert.equal(tracker.evidence().active,0);
+});
+test('foreign, malformed or mutation-like fault descriptions cannot acquire an intentional read classification',()=>{
+ for(const req of [request({addTarget:{targetId:2}},{project:'cheers-34b8d'}),request({removeTarget:2}),{...request({addTarget:{targetId:2}}),postData:()=> 'req0___data__=invalid'}]){
+  const tracker=createTargetTracker();assert.throws(()=>tracker.abortReadRequest(req,async()=>{}));assert.equal(tracker.evidence().failure,true);
+ }
+});

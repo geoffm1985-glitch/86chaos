@@ -6,6 +6,7 @@ import { installMobileNoZoomGuard } from "./core/mobileNoZoom";
 import { firebaseEmulatorReadiness, db, clearTenantListenerCache } from "./core/appCore";
 import { waitForPendingWrites } from "firebase/firestore";
 import { createEmulatorNavigationLifecycle } from "./core/emulatorNavigation.shared";
+import { emulatorSubscriptionLifecycle } from "./core/firestoreClient";
 import { firebaseRuntimeTarget } from "./core/firebaseTarget";
 import "./styles.css";
 
@@ -27,7 +28,13 @@ if (firebaseRuntimeTarget === 'EMULATOR') {
     failClosed: window.__CHAOS_FIREBASE_DIAGNOSTICS__?.failClosed === true,
     settleWrites: async () => { await firebaseEmulatorReadiness; await waitForPendingWrites(db); },
     unmount: () => root.unmount(),
-    releaseListeners: clearTenantListenerCache,
+    releaseListeners: boundary => {
+      const result = clearTenantListenerCache(boundary);
+      if (emulatorSubscriptionLifecycle.evidence().failed) throw new Error('Local subscription teardown failed');
+      return result;
+    },
+    pauseSubscriptions: () => emulatorSubscriptionLifecycle.pause(),
+    resumeSubscriptions: () => emulatorSubscriptionLifecycle.resume(),
   });
   firebaseEmulatorReadiness.then(renderApp).catch((error) => {
     console.error('86 Chaos Firebase Emulator startup failed:', error);

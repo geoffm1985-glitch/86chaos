@@ -2,7 +2,8 @@ import { selectFirestoreTransport } from './firestorePlatformTransport';
 import React, { useState, useEffect } from 'react';
 import { appendOfflineQueueItem, classifyRuntimeIssue, normalizeOfflineQueue, readJsonFromStorage, recordLocalRuntimeEvent, writeJsonToStorage } from './maturityGuards';
 import { initializeApp } from 'firebase/app';
-import { getFirestore, initializeFirestore, connectFirestoreEmulator, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, getDoc, setDoc, getDocs, getDocsFromServer, enableIndexedDbPersistence, enableMultiTabIndexedDbPersistence, orderBy, limit as firestoreLimit } from 'firebase/firestore';
+import { getFirestore, initializeFirestore, connectFirestoreEmulator, collection, addDoc, updateDoc, deleteDoc, doc, query, where, getDoc, setDoc, getDocs, getDocsFromServer, enableIndexedDbPersistence, enableMultiTabIndexedDbPersistence, orderBy, limit as firestoreLimit } from 'firebase/firestore';
+import { onSnapshot } from './firestoreClient';
 import { getAuth, connectAuthEmulator, onAuthStateChanged } from 'firebase/auth';
 import { getMessaging, isSupported } from 'firebase/messaging';
 import { getStorage, connectStorageEmulator } from 'firebase/storage';
@@ -481,7 +482,7 @@ export const MASTER_ADMIN_EMAIL = (process.env.REACT_APP_MASTER_ADMIN_EMAIL || '
 export const EVENT_TAGS = ['Standard Day', 'Packers Game', 'Brewers Game', 'Live Music', 'Severe Weather', 'Private Catering', 'Holiday'];
 
 // --- VERSION TRACKING ---
-export const CURRENT_VERSION = '19.0.17';
+export const CURRENT_VERSION = '19.0.18';
 
 // --- Helpers ---
 const usePageVisible = () => {

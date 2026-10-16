@@ -11,7 +11,7 @@ test('Phase 1 weekly headers, touch targets and keyboard focus preserve navigati
 test('Phase 1 reviewed month clear preserves later shifts and supports authorized restoration',verifyReviewedMonthRecovery);
 test('Phase 1 verifies complete weeks through the API when live snapshots stall and invalidates offline evidence',verifyServerReadFallback);
 
-test('Local emulator reload acknowledges listener removal and restores authoritative scheduling', async ({page}) => {
+test('Local emulator reload acknowledges listener removal and restores authoritative scheduling', async ({page,context}) => {
   const {expectedFirebaseProject}=require('../../scripts/86chaos-firebase-target.cjs');
   test.skip(expectedFirebaseProject(process.env)!=='demo-86chaos','Local emulator transport lifecycle contract');
   const {openWorkspace}=require('../fixtures/schedule-builder-phase1-scenarios.cjs');
@@ -20,6 +20,10 @@ test('Local emulator reload acknowledges listener removal and restores authorita
   const {dismissBlockingDialogs}=require('../86chaos-full-audit/utils/audit-helpers.cjs');
   await openWorkspace(page);
   for(let cycle=0;cycle<2;cycle++) {
+    const status=page.getByTestId('schedule-workspace').getByRole('status').first();
+    await context.setOffline(true);await expect(status).toHaveAttribute('data-verification-source','unverified');
+    await context.setOffline(false);await page.getByTestId('schedule-workspace').getByRole('button',{name:'Refresh verified schedule',exact:true}).click();
+    await expect(status).toHaveAttribute('data-verification-source',/^(listener|api)$/);
     const proof=await drainEmulatorPage(page);
     expect(proof).toMatchObject({applicable:true,active:0,pending:0,failure:false});
     expect(proof.added).toBeGreaterThan(0);expect(proof.removed).toBeGreaterThan(0);
